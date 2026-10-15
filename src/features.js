@@ -1,15 +1,15 @@
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.5';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.5';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.7';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.7';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.5';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.7';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -19,7 +19,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=1.5';
+} from './excel-import-export.js?v=1.7';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -30,7 +30,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=1.5';
+} from './data/session-history-repository.js?v=1.7';
 
 export function setupFeatures(ctx) {
   const {
@@ -412,7 +412,7 @@ export function setupFeatures(ctx) {
           <td>
             <div style="cursor:pointer;" data-view-staff="${escapeHtml(emp.id)}" title="Bấm để xem phân công ca & lịch sử làm việc">
               <strong style="color:#2f5f3e; text-decoration:underline;">${escapeHtml(emp.name)}</strong>
-              <small style="display:block; color:#7d8c80; font-size:8px;">Bấm xem ca & lịch sử</small>
+              <small style="display:block; color:#7d8c80; font-size:12.5px;">Bấm xem ca & lịch sử</small>
             </div>
           </td>
           <td><strong>${escapeHtml(emp.code)}</strong></td>
@@ -421,9 +421,9 @@ export function setupFeatures(ctx) {
           <td>${escapeHtml(emp.email || '—')}</td>
           <td>${assignedBadges}</td>
           <td style="text-align:center; white-space:nowrap;">
-            <button type="button" class="outline-button" data-view-staff="${escapeHtml(emp.id)}" style="padding:4px 7px; font-size:9px;">Xem ca làm</button>
-            <button type="button" class="outline-button" data-edit-staff="${escapeHtml(emp.id)}" style="padding:4px 7px; font-size:9px; margin-left:4px;">Sửa</button>
-            <button type="button" class="text-danger" data-delete-staff="${escapeHtml(emp.id)}" style="padding:4px 7px; font-size:9px; margin-left:4px;">Xóa</button>
+            
+            <button type="button" class="outline-button" data-edit-staff="${escapeHtml(emp.id)}" style="padding:7px 12px; font-size:13.5px; margin-left:4px;">Sửa</button>
+            <button type="button" class="text-danger" data-delete-staff="${escapeHtml(emp.id)}" style="padding:7px 12px; font-size:13.5px; margin-left:4px;">Xóa</button>
           </td>
         </tr>
       `;
@@ -578,7 +578,7 @@ export function setupFeatures(ctx) {
         <span class="icon-box ${item.type === 'giasu' ? 'mint' : item.type === 'makeup' ? 'peach' : item.type === 'tutoring' ? 'lilac' : 'mint'}">${item.type === 'giasu' ? '⭐' : '✍'}</span>
         <div class="tutoring-card-main">
           <strong>${escapeHtml(item.studentName)} <span class="tutoring-badge ${escapeHtml(item.type)}">${item.type === 'giasu' ? 'Gia sư 1-kèm-1' : escapeHtml(typeLabels[item.type] || item.type)}</span> ${item.studentClass ? `<span class="room-chip">${escapeHtml(item.studentClass)}</span>` : ''}</strong>
-          ${item.previousHomeworkCheck ? `<p style="margin:3px 0; font-size:11px; color:#233d31;"><strong>📋 Kiểm tra BTVN buổi trước:</strong> ${escapeHtml(item.previousHomeworkCheck)}</p>` : ''}
+          ${item.previousHomeworkCheck ? `<p style="margin:3px 0; font-size:14.5px; color:#233d31;"><strong>📋 Kiểm tra BTVN buổi trước:</strong> ${escapeHtml(item.previousHomeworkCheck)}</p>` : ''}
           <p><strong>Nội dung kèm:</strong> ${escapeHtml(item.lessonContent)}</p>
           ${item.evaluation ? `<p><strong>Đánh giá:</strong> ${escapeHtml(item.evaluation)} ${item.score ? `· Điểm: <strong style="color:#2f7045;">${item.score}/10</strong>` : ''}</p>` : ''}
         </div>
@@ -675,7 +675,7 @@ export function setupFeatures(ctx) {
         }).slice(0, 8);
 
         if (!matches.length) {
-          dropdown.innerHTML = '<div style="padding:10px 12px; font-size:11px; color:#88988b; font-style:italic;">Không tìm thấy học sinh phù hợp. Bạn vẫn có thể tự nhập họ tên bên dưới.</div>';
+          dropdown.innerHTML = '<div style="padding:10px 12px; font-size:14.5px; color:#88988b; font-style:italic;">Không tìm thấy học sinh phù hợp. Bạn vẫn có thể tự nhập họ tên bên dưới.</div>';
           dropdown.hidden = false;
           return;
         }
@@ -691,8 +691,8 @@ export function setupFeatures(ctx) {
               <div style="display:flex; align-items:center; gap:8px;">
                 
                 <div>
-                  <strong style="color:#233d31; font-size:11.5px;">${escapeHtml(s.name)}</strong>
-                  <small style="display:block; color:#78887b; font-size:9.5px;">Mã: <strong style="color:#215f33;">${escapeHtml(s.studentCode || '—')}</strong> · ${escapeHtml(s.school || 'Chưa có trường')}</small>
+                  <strong style="color:#233d31; font-size:14.5px;">${escapeHtml(s.name)}</strong>
+                  <small style="display:block; color:#78887b; font-size:13.5px;">Mã: <strong style="color:#215f33;">${escapeHtml(s.studentCode || '—')}</strong> · ${escapeHtml(s.school || 'Chưa có trường')}</small>
                 </div>
               </div>
               <div>
@@ -811,25 +811,25 @@ export function setupFeatures(ctx) {
           </div>
           <div class="room-schedule-box" style="margin-top:10px; padding:10px 12px; background:#f5faf6; border-radius:8px; border:1px solid #dbe8dd;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <strong style="font-size:11px; color:#23442a;">📅 Các lớp sử dụng phòng này theo lịch (${getClassesInRoom(tpl.roomCode, catalog).length} lớp):</strong>
+              <strong style="font-size:14.5px; color:#23442a;">📅 Các lớp sử dụng phòng này theo lịch (${getClassesInRoom(tpl.roomCode, catalog).length} lớp):</strong>
             </div>
             ${getClassesInRoom(tpl.roomCode, catalog).length ? `
               <div style="display:grid; gap:5px;">
                 ${getClassesInRoom(tpl.roomCode, catalog).map(c => `
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; padding:5px 8px; background:#fff; border-radius:5px; border:1px solid #e1ebe2;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:14px; padding:5px 8px; background:#fff; border-radius:5px; border:1px solid #e1ebe2;">
                     <div>
-                      <strong style="color:#215f33; font-size:11px;">${escapeHtml(c.code || c.id)}</strong> <span class="room-chip" style="font-size:8px; padding:2px 5px;">${escapeHtml(formatBirthYearLabel(c.grade))}</span>
-                      <small style="display:block; color:#68786b; font-size:8.5px;">GV: ${escapeHtml(c.teacherName || '—')} · TA: ${escapeHtml(c.assistantName || '—')}</small>
+                      <strong style="color:#215f33; font-size:14.5px;">${escapeHtml(c.code || c.id)}</strong> <span class="room-chip" style="font-size:12.5px; padding:6px 10px;">${escapeHtml(formatBirthYearLabel(c.grade))}</span>
+                      <small style="display:block; color:#68786b; font-size:12.5px;">GV: ${escapeHtml(c.teacherName || '—')} · TA: ${escapeHtml(c.assistantName || '—')}</small>
                     </div>
                     <div style="text-align:right;">
                       <span class="room-chip" style="background:#eaf4ed; color:#27673b; font-weight:700;">${['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'][c.weekday]}</span>
                       <small style="display:block; color:#4e5e51; font-weight:700;">${escapeHtml(c.startTime)}–${escapeHtml(c.endTime)}</small>
-                      <button type="button" class="outline-button" data-enter-class="${escapeHtml(c.id)}" data-session-date="${new Date().toLocaleDateString('sv-SE')}" style="padding:2px 6px; font-size:8px; margin-top:2px;">Vào lớp</button>
+                      <button type="button" class="outline-button" data-enter-class="${escapeHtml(c.id)}" data-session-date="${new Date().toLocaleDateString('sv-SE')}" style="padding:6px 12px; font-size:12.5px; margin-top:2px;">Vào lớp</button>
                     </div>
                   </div>
                 `).join('')}
               </div>
-            ` : '<p style="margin:2px 0 0; font-size:9.5px; color:#87968a; font-style:italic;">Chưa có lớp nào xếp lịch học tại phòng này.</p>'}
+            ` : '<p style="margin:2px 0 0; font-size:13.5px; color:#87968a; font-style:italic;">Chưa có lớp nào xếp lịch học tại phòng này.</p>'}
           </div>
           <div class="room-template-actions" style="margin-top:10px;">
             <button type="button" class="outline-button" data-apply-template="${escapeHtml(tpl.id)}">Áp dụng sơ đồ vào lớp đang mở</button>
@@ -961,7 +961,7 @@ export function setupFeatures(ctx) {
           <td>${escapeHtml(s.parentContact?.name || '—')}</td>
           <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
           <td>
-            <button type="button" class="text-danger" data-remove-from-roster="${escapeHtml(s.id)}" style="font-size:9px; padding:4px 6px;">Bỏ khỏi lớp</button>
+            <button type="button" class="text-danger" data-remove-from-roster="${escapeHtml(s.id)}" style="font-size:13.5px; padding:7px 12px;">Bỏ khỏi lớp</button>
           </td>
         </tr>
       `;
@@ -1210,10 +1210,10 @@ export function setupFeatures(ctx) {
         <div class="attendance-report-heading" style="background:#f8faf8; border:1px solid #dce5dd; border-radius:8px; padding:12px 14px; margin-bottom:12px;">
           <div>
             <strong style="font-size:13px; color:#21442a;">BÁO CÁO TỔNG HỢP CA HỌC GỬI GIÁO VIÊN</strong>
-            <div style="font-size:11px; margin-top:3px;">Lớp: <strong>${escapeHtml(currentClass.name)} (${currentClass.code || currentClass.id})</strong> · ${escapeHtml(formatBirthYearLabel(currentClass.grade))} · Phòng: <strong>${escapeHtml(currentClass.room)}</strong></div>
-            <div style="font-size:10.5px; color:#526456;">Bài dạy: <strong>${escapeHtml(lessonTitle)}</strong></div>
+            <div style="font-size:14.5px; margin-top:3px;">Lớp: <strong>${escapeHtml(currentClass.name)} (${currentClass.code || currentClass.id})</strong> · ${escapeHtml(formatBirthYearLabel(currentClass.grade))} · Phòng: <strong>${escapeHtml(currentClass.room)}</strong></div>
+            <div style="font-size:14px; color:#526456;">Bài dạy: <strong>${escapeHtml(lessonTitle)}</strong></div>
           </div>
-          <div style="text-align:right; font-size:10.5px;">
+          <div style="text-align:right; font-size:14px;">
             <div>Ngày: <strong>${escapeHtml(date)}</strong> (${escapeHtml(currentClass.startTime)}–${escapeHtml(currentClass.endTime)})</div>
             <div>GV: <strong>${escapeHtml(currentClass.teacherName)}</strong> · TA: <strong>${escapeHtml(currentClass.assistantName)}</strong></div>
           </div>
@@ -1244,9 +1244,9 @@ export function setupFeatures(ctx) {
 
         <div style="display:grid; gap:12px;">
           <div style="background:#fff; border:1px solid #fecaca; border-radius:8px; padding:12px;">
-            <strong style="color:#991b1b; font-size:11.5px;">❌ 1. Học sinh KHÔNG nộp bài tập về nhà (${missingHW.length} bạn):</strong>
+            <strong style="color:#991b1b; font-size:14.5px;">❌ 1. Học sinh KHÔNG nộp bài tập về nhà (${missingHW.length} bạn):</strong>
             ${missingHW.length ? `
-              <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
+              <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
                   <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do không nộp</th><th>SĐT Phụ huynh</th></tr>
                 </thead>
@@ -1260,13 +1260,13 @@ export function setupFeatures(ctx) {
                   }).join('')}
                 </tbody>
               </table>
-            ` : '<div style="color:#15803d; font-size:10.5px; font-weight:600; margin-top:6px;">✓ 100% học sinh có mặt đã nộp bài tập về nhà đầy đủ!</div>'}
+            ` : '<div style="color:#15803d; font-size:14px; font-weight:600; margin-top:6px;">✓ 100% học sinh có mặt đã nộp bài tập về nhà đầy đủ!</div>'}
           </div>
 
           <div style="background:#fff; border:1px solid #fed7aa; border-radius:8px; padding:12px;">
-            <strong style="color:#9a3412; font-size:11.5px;">⏰ 2. Học sinh ĐI MUỘN (${lateList.length} bạn):</strong>
+            <strong style="color:#9a3412; font-size:14.5px;">⏰ 2. Học sinh ĐI MUỘN (${lateList.length} bạn):</strong>
             ${lateList.length ? `
-              <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
+              <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
                   <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Giờ đến lớp</th><th>Số phút muộn</th><th>SĐT Phụ huynh</th></tr>
                 </thead>
@@ -1277,13 +1277,13 @@ export function setupFeatures(ctx) {
                   }).join('')}
                 </tbody>
               </table>
-            ` : '<div style="color:#15803d; font-size:10.5px; font-weight:600; margin-top:6px;">✓ Không có học sinh nào đi muộn trong ca hôm nay!</div>'}
+            ` : '<div style="color:#15803d; font-size:14px; font-weight:600; margin-top:6px;">✓ Không có học sinh nào đi muộn trong ca hôm nay!</div>'}
           </div>
 
           <div style="background:#fff; border:1px solid #fde047; border-radius:8px; padding:12px;">
-            <strong style="color:#854d0e; font-size:11.5px;">⚠️ 3. Học sinh CÓ ĐIỂM THẤP (< 7.0 điểm) (${lowScores.length} bạn):</strong>
+            <strong style="color:#854d0e; font-size:14.5px;">⚠️ 3. Học sinh CÓ ĐIỂM THẤP (< 7.0 điểm) (${lowScores.length} bạn):</strong>
             ${lowScores.length ? `
-              <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
+              <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
                   <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Điểm BTVN</th><th>Điểm Test</th><th>Ghi chú</th></tr>
                 </thead>
@@ -1297,13 +1297,13 @@ export function setupFeatures(ctx) {
                   }).join('')}
                 </tbody>
               </table>
-            ` : '<div style="color:#15803d; font-size:10.5px; font-weight:600; margin-top:6px;">✓ Không có học sinh nào có điểm dưới 7.0!</div>'}
+            ` : '<div style="color:#15803d; font-size:14px; font-weight:600; margin-top:6px;">✓ Không có học sinh nào có điểm dưới 7.0!</div>'}
           </div>
 
           <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px;">
-            <strong style="color:#374151; font-size:11.5px;">🚫 4. Học sinh VẮNG MẶT (${absentList.length} bạn):</strong>
+            <strong style="color:#374151; font-size:14.5px;">🚫 4. Học sinh VẮNG MẶT (${absentList.length} bạn):</strong>
             ${absentList.length ? `
-              <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
+              <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
                   <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do</th><th>SĐT Phụ huynh</th></tr>
                 </thead>
@@ -1314,13 +1314,13 @@ export function setupFeatures(ctx) {
                   }).join('')}
                 </tbody>
               </table>
-            ` : '<div style="color:#15803d; font-size:10.5px; font-weight:600; margin-top:6px;">✓ 100% học sinh đều có mặt!</div>'}
+            ` : '<div style="color:#15803d; font-size:14px; font-weight:600; margin-top:6px;">✓ 100% học sinh đều có mặt!</div>'}
           </div>
 
           ${sessionMakeups.length ? `
             <div style="background:#fcfaff; border:1px solid #d8b4fe; border-radius:8px; padding:12px;">
-              <strong style="color:#6b21a8; font-size:11.5px;">🔄 5. Học sinh HỌC BÙ trong buổi (${sessionMakeups.length} bạn):</strong>
-              <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
+              <strong style="color:#6b21a8; font-size:14.5px;">🔄 5. Học sinh HỌC BÙ trong buổi (${sessionMakeups.length} bạn):</strong>
+              <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
                   <tr><th>Họ đệm</th><th>Tên</th><th>Mã HS</th><th>Học bù từ lớp</th><th>Trạng thái</th><th>Điểm BTVN / Test</th><th>Ghi chú</th></tr>
                 </thead>
@@ -1341,7 +1341,7 @@ export function setupFeatures(ctx) {
           ` : ''}
 
           ${sessionNote ? `
-            <div style="background:#f0fdf4; border-left:4px solid #22c55e; padding:10px 14px; border-radius:6px; font-size:10.5px; color:#166534;">
+            <div style="background:#f0fdf4; border-left:4px solid #22c55e; padding:10px 14px; border-radius:6px; font-size:14px; color:#166534;">
               <strong>📝 Nhận xét & Lưu ý của Trợ giảng trong ca:</strong>
               <p style="margin:4px 0 0; white-space:pre-wrap;">${escapeHtml(sessionNote)}</p>
             </div>
@@ -1407,7 +1407,7 @@ export function setupFeatures(ctx) {
             </tbody>
           </table>
         </div>
-        <div style="display:flex; justify-content:space-between; margin-top:24px; padding:0 30px; font-size:10px; color:#506256;">
+        <div style="display:flex; justify-content:space-between; margin-top:24px; padding:0 30px; font-size:14px; color:#506256;">
           <div style="text-align:center;">
             <strong>Chữ ký Trợ giảng</strong><br><br><br>
             <span>${escapeHtml(currentClass.assistantName)}</span>
@@ -2534,13 +2534,13 @@ export function setupFeatures(ctx) {
       <div class="student-profile-header">
         <div>
           <h3 style="margin:0 0 4px; font:800 16px Manrope,sans-serif; color:#233d31;">${escapeHtml(emp.name)}</h3>
-          <p style="margin:2px 0; font-size:10px; color:#5c6b60;">
+          <p style="margin:2px 0; font-size:14px; color:#5c6b60;">
             <span class="staff-role-badge ${escapeHtml(emp.role)}">${escapeHtml(roleLabels[emp.role] || emp.role)}</span> · Mã NV: <strong>${escapeHtml(emp.code)}</strong>
           </p>
-          <p style="margin:2px 0; font-size:10px; color:#5c6b60;">
+          <p style="margin:2px 0; font-size:14px; color:#5c6b60;">
             SĐT: <strong>${escapeHtml(emp.phone || '—')}</strong> · Email: <strong>${escapeHtml(emp.email || '—')}</strong>
           </p>
-          ${emp.note ? `<p style="margin:4px 0; font-size:9.5px; color:#78887b; font-style:italic;">Ghi chú: ${escapeHtml(emp.note)}</p>` : ''}
+          ${emp.note ? `<p style="margin:4px 0; font-size:13.5px; color:#78887b; font-style:italic;">Ghi chú: ${escapeHtml(emp.note)}</p>` : ''}
         </div>
       </div>
 
@@ -2573,7 +2573,7 @@ export function setupFeatures(ctx) {
                 </tbody>
               </table>
             </div>
-          ` : '<p style="color:#8a968c; font-size:9.5px; margin:0;">Chưa có ca cố định nào được phân công trong cấu hình lớp.</p>'}
+          ` : '<p style="color:#8a968c; font-size:13.5px; margin:0;">Chưa có ca cố định nào được phân công trong cấu hình lớp.</p>'}
         </section>
 
         <!-- Phần 2: Ca học bù / Tăng cường / Điều chỉnh -->
@@ -2608,7 +2608,7 @@ export function setupFeatures(ctx) {
                 </tbody>
               </table>
             </div>
-          ` : '<p style="color:#8a968c; font-size:9.5px; margin:0;">Không có ca học bù hoặc điều chỉnh phát sinh.</p>'}
+          ` : '<p style="color:#8a968c; font-size:13.5px; margin:0;">Không có ca học bù hoặc điều chỉnh phát sinh.</p>'}
         </section>
 
         <!-- Phần 3: Lịch sử những ca nhân viên đó đã làm -->
@@ -2634,8 +2634,8 @@ export function setupFeatures(ctx) {
                     const startStr = w.startedAt ? new Date(w.startedAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}) : '—';
                     const closeStr = w.closedAt ? new Date(w.closedAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}) : '—';
                     const statusBadge = w.status === 'closed'
-                      ? '<span class="session-badge-state closed" style="padding:2px 6px; font-size:8px;">✓ Đã đóng</span>'
-                      : '<span class="session-badge-state live" style="padding:2px 6px; font-size:8px;">● Đang làm</span>';
+                      ? '<span class="session-badge-state closed" style="padding:6px 12px; font-size:12.5px;">✓ Đã đóng</span>'
+                      : '<span class="session-badge-state live" style="padding:6px 12px; font-size:12.5px;">● Đang làm</span>';
                     return `
                       <tr>
                         <td><strong>${escapeHtml(w.date)}</strong></td>
@@ -2652,7 +2652,7 @@ export function setupFeatures(ctx) {
                 </tbody>
               </table>
             </div>
-          ` : '<p style="color:#8a968c; font-size:9.5px; margin:0;">Chưa ghi nhận ca làm nào trong lịch sử.</p>'}
+          ` : '<p style="color:#8a968c; font-size:13.5px; margin:0;">Chưa ghi nhận ca làm nào trong lịch sử.</p>'}
         </section>
       </div>
     `;
@@ -3691,7 +3691,7 @@ export function setupFeatures(ctx) {
             </div>
           </td>
           <td style="text-align:center; white-space:nowrap;">
-            <button type="button" class="primary-button" data-view-student-detail="${s.id}" style="padding:5px 10px; font-size:9.5px; font-weight:700;">Chi tiết</button>
+            <button type="button" class="primary-button" data-view-student-detail="${s.id}" style="padding:8px 14px; font-size:13.5px; font-weight:700;">Chi tiết</button>
           </td>
         </tr>
       `;
@@ -3813,17 +3813,17 @@ export function setupFeatures(ctx) {
         <div style="display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0;">
           <img src="${escapeHtml(student.photoURL)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" class="profile-portrait" id="class-profile-portrait-img" />
           <div style="display:flex; gap:3px;">
-            <label class="outline-button" style="padding:3px 7px; font-size:9px; cursor:pointer; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
+            <label class="outline-button" style="padding:3px 7px; font-size:13.5px; cursor:pointer; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
               📷 Đổi ảnh
               <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
             </label>
-            <button type="button" id="class-profile-remove-photo-btn" class="text-danger" style="padding:2px 5px; font-size:9px; background:none; border:none; cursor:pointer;">Xóa</button>
+            <button type="button" id="class-profile-remove-photo-btn" class="text-danger" style="padding:6px 10px; font-size:13.5px; background:none; border:none; cursor:pointer;">Xóa</button>
           </div>
         </div>
       ` : `
         <div style="display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0;">
           <div class="profile-portrait profile-portrait-placeholder">📷</div>
-          <label class="primary-button" style="padding:4px 8px; font-size:9.5px; cursor:pointer; font-weight:600;">
+          <label class="primary-button" style="padding:4px 8px; font-size:13.5px; cursor:pointer; font-weight:600;">
             📷 Tải ảnh chân dung
             <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
           </label>
@@ -3872,10 +3872,10 @@ export function setupFeatures(ctx) {
           </div>
 
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:#fcf9ff; border:1px solid #e9d5ff; border-radius:8px; padding:8px 12px; margin:10px 0;">
-            <div style="font-size:10.5px; color:#581c87;">
+            <div style="font-size:14px; color:#581c87;">
               📝 Phiếu BTVN bổ trợ: <strong style="color:#7e22ce;">Đã hoàn thành ${completedHW}/${sessionsForStudent.length} phiếu</strong>
             </div>
-            <div style="font-size:10.5px; color:#581c87;">
+            <div style="font-size:14px; color:#581c87;">
               ⭐ Ghi nhận: <strong>Các ca bổ trợ & gia sư được lưu chung 1 lớp quản lý</strong>
             </div>
           </div>
@@ -3883,7 +3883,7 @@ export function setupFeatures(ctx) {
           <div style="margin-top:14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <h5 style="margin:0; font:700 12px Manrope,sans-serif; color:#233d31;">📅 Lịch sử các ca bổ trợ & gia sư (${sessionsForStudent.length} buổi)</h5>
-              <small style="color:#6a7b6f; font-size:9px;">👉 Bấm vào từng buổi để xem chi tiết kiểm tra BTVN và đánh giá</small>
+              <small style="color:#6a7b6f; font-size:13.5px;">👉 Bấm vào từng buổi để xem chi tiết kiểm tra BTVN và đánh giá</small>
             </div>
             ${sessionsForStudent.length ? `
               <div class="student-session-accordion">
@@ -3999,10 +3999,10 @@ export function setupFeatures(ctx) {
 
           <!-- Overview bar for BTVN and Tests -->
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:#fbfdfb; border:1px solid #dce5dd; border-radius:8px; padding:8px 12px; margin:10px 0;">
-            <div style="font-size:10.5px; color:#3b4e40;">
+            <div style="font-size:14px; color:#3b4e40;">
               📚 BTVN: <strong style="color:#215f33;">Đã nộp ${metrics.hwSubmitted} bài</strong> · <strong style="color:${metrics.hwMissing ? '#c13b30' : '#495f50'};">Chưa nộp ${metrics.hwMissing} bài</strong>
             </div>
-            <div style="font-size:10.5px; color:#3b4e40;">
+            <div style="font-size:14px; color:#3b4e40;">
               📝 Bài kiểm tra: <strong>${metrics.scores.length} bài</strong> · Điểm TB: <strong style="color:#2563eb;">${metrics.avgScore}</strong>
             </div>
           </div>
@@ -4011,7 +4011,7 @@ export function setupFeatures(ctx) {
           <div style="margin-top:14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <h5 style="margin:0; font:700 12px Manrope,sans-serif; color:#233d31;">📅 Lịch sử chi tiết từng buổi học (${(metrics.detailedSessions || []).length} buổi)</h5>
-              <small style="color:#6a7b6f; font-size:9px;">👉 Bấm vào từng buổi để xem chi tiết học tập & vị trí ngồi</small>
+              <small style="color:#6a7b6f; font-size:13.5px;">👉 Bấm vào từng buổi để xem chi tiết học tập & vị trí ngồi</small>
             </div>
             ${(metrics.detailedSessions && metrics.detailedSessions.length) ? `
               <div class="student-session-accordion">
@@ -4077,7 +4077,7 @@ export function setupFeatures(ctx) {
                             <strong>${s.seat.aisle ? `Dãy ${s.seat.aisle} · Bàn ${s.seat.desk} (Ghế ${s.seat.position})` : 'Chưa có vị trí'}</strong>
                           </div>
                           <div style="margin: 4px 0;">
-                            <button type="button" class="outline-button btn-view-seat-map" data-view-seat-class="${escapeHtml(clsId)}" data-view-seat-date="${escapeHtml(s.date)}" data-view-seat-student="${escapeHtml(student.id)}" style="padding:4px 9px; font-size:9px; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5; width:100%;">
+                            <button type="button" class="outline-button btn-view-seat-map" data-view-seat-class="${escapeHtml(clsId)}" data-view-seat-date="${escapeHtml(s.date)}" data-view-seat-student="${escapeHtml(student.id)}" style="padding:8px 14px; font-size:13.5px; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5; width:100%;">
                               🗺 Xem vị trí cụ thể trên sơ đồ lớp ↗
                             </button>
                           </div>
@@ -4087,7 +4087,7 @@ export function setupFeatures(ctx) {
                             </div>
                           ` : '<small style="color:#94a397; font-style:italic;">Không có nhận xét riêng buổi này.</small>'}
                           ${s.classNote ? `
-                            <div style="font-size:9px; color:#6b7c70; margin-top:4px;">
+                            <div style="font-size:13.5px; color:#6b7c70; margin-top:4px;">
                               <span style="font-weight:600;">Ghi chú chung ca:</span> ${escapeHtml(s.classNote)}
                             </div>
                           ` : ''}
@@ -4107,8 +4107,8 @@ export function setupFeatures(ctx) {
           ${portraitHtml}
           <div style="flex:1;">
             <h3 style="margin:0 0 4px; font:800 16px Manrope,sans-serif; color:#233d31;">${escapeHtml(student.name)} ${student.isNew ? '<span class="student-tag new-tag">MỚI</span>' : ''}</h3>
-            <p style="margin:2px 0; font-size:10px; color:#5c6b60;">Mã HS: <strong>${escapeHtml(student.studentCode || '—')}</strong> · Trường: <strong>${escapeHtml(student.school || '—')}</strong></p>
-            <p style="margin:2px 0; font-size:10px; color:#5c6b60;">Phụ huynh: <strong>${escapeHtml(student.parentContact?.name || '—')}</strong> (SĐT: <strong>${escapeHtml(student.parentContact?.phone || '—')}</strong>)</p>
+            <p style="margin:2px 0; font-size:14px; color:#5c6b60;">Mã HS: <strong>${escapeHtml(student.studentCode || '—')}</strong> · Trường: <strong>${escapeHtml(student.school || '—')}</strong></p>
+            <p style="margin:2px 0; font-size:14px; color:#5c6b60;">Phụ huynh: <strong>${escapeHtml(student.parentContact?.name || '—')}</strong> (SĐT: <strong>${escapeHtml(student.parentContact?.phone || '—')}</strong>)</p>
           </div>
         </div>
 
@@ -4365,13 +4365,13 @@ export function setupFeatures(ctx) {
         <div style="background:#fff; border:1px solid #e1e8e2; border-radius:10px; padding:16px;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; border-bottom:1px solid #eef2ee; padding-bottom:12px;">
             <div>
-              <div style="font-size:10px; color:#5c6e60; text-transform:uppercase; font-weight:700;">${escapeHtml(dateFormatted)}</div>
+              <div style="font-size:14px; color:#5c6e60; text-transform:uppercase; font-weight:700;">${escapeHtml(dateFormatted)}</div>
               <h3 style="margin:4px 0; color:#223d2b; font-size:16px;">${escapeHtml(session.lessonTitle || 'Buổi học ' + session.date)}</h3>
-              <p style="margin:2px 0; font-size:10px; color:#78867c;">Phòng: <strong>${escapeHtml(session.room || cls.room || '—')}</strong> · GV: <strong>${escapeHtml(session.teacherName || cls.teacherName || '—')}</strong> · TA: <strong>${escapeHtml(session.assistantName || cls.assistantName || '—')}</strong></p>
+              <p style="margin:2px 0; font-size:14px; color:#78867c;">Phòng: <strong>${escapeHtml(session.room || cls.room || '—')}</strong> · GV: <strong>${escapeHtml(session.teacherName || cls.teacherName || '—')}</strong> · TA: <strong>${escapeHtml(session.assistantName || cls.assistantName || '—')}</strong></p>
             </div>
             <div style="text-align:right;">
               <div>${statusBadge}</div>
-              <button type="button" class="primary-button" data-reopen-class-date="${escapeHtml(session.date)}" style="margin-top:8px; padding:7px 12px; font-size:10px; font-weight:700; background:#2e6d42;">
+              <button type="button" class="primary-button" data-reopen-class-date="${escapeHtml(session.date)}" style="margin-top:8px; padding:7px 12px; font-size:14px; font-weight:700; background:#2e6d42;">
                 ▶ Mở ca học này trên sơ đồ
               </button>
             </div>
@@ -4380,34 +4380,34 @@ export function setupFeatures(ctx) {
           <!-- KPI Tóm tắt -->
           <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin:14px 0;">
             <div style="background:#f7faf8; border:1px solid #e4ece5; border-radius:8px; padding:10px; text-align:center;">
-              <span style="font-size:9px; color:#687c6e; display:block;">Có mặt / Sĩ số</span>
+              <span style="font-size:13.5px; color:#687c6e; display:block;">Có mặt / Sĩ số</span>
               <strong style="font-size:16px; color:#2e6d42;">${stats.present || 0}/${stats.total || students.length || 0}</strong>
             </div>
             <div style="background:#fffbf5; border:1px solid #f4e8d8; border-radius:8px; padding:10px; text-align:center;">
-              <span style="font-size:9px; color:#92400e; display:block;">Đi muộn</span>
+              <span style="font-size:13.5px; color:#92400e; display:block;">Đi muộn</span>
               <strong style="font-size:16px; color:#b45309;">${stats.late || 0}</strong>
             </div>
             <div style="background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:10px; text-align:center;">
-              <span style="font-size:9px; color:#b91c1c; display:block;">Vắng mặt</span>
+              <span style="font-size:13.5px; color:#b91c1c; display:block;">Vắng mặt</span>
               <strong style="font-size:16px; color:#dc2626;">${stats.absent || 0}</strong>
             </div>
             <div style="background:#f0fdf4; border:1px solid #dcfce7; border-radius:8px; padding:10px; text-align:center;">
-              <span style="font-size:9px; color:#15803d; display:block;">BTVN đã thu</span>
+              <span style="font-size:13.5px; color:#15803d; display:block;">BTVN đã thu</span>
               <strong style="font-size:16px; color:#16a34a;">${stats.homeworkDone || 0}</strong>
             </div>
           </div>
 
           <!-- Ghi chú chung của ca -->
           ${session.finalNote || session.notes || session.sessionNote ? `
-            <div style="background:#f9fbf9; border-left:3px solid #4a885e; padding:10px 12px; border-radius:4px; margin-bottom:14px; font-size:10px; color:#445749; line-height:1.5;">
+            <div style="background:#f9fbf9; border-left:3px solid #4a885e; padding:10px 12px; border-radius:4px; margin-bottom:14px; font-size:14px; color:#445749; line-height:1.5;">
               <strong>Ghi chú buổi học:</strong> ${escapeHtml(session.finalNote || session.notes || session.sessionNote)}
             </div>
           ` : ''}
 
           <!-- Danh sách học sinh trong buổi -->
-          <h4 style="margin:14px 0 8px; font-size:12px; color:#324436;">Tình hình học sinh trong buổi (${students.length} học sinh)</h4>
+          <h4 style="margin:14px 0 8px; font-size:15px; color:#324436;">Tình hình học sinh trong buổi (${students.length} học sinh)</h4>
           <div class="attendance-table-wrap">
-            <table class="attendance-report-table" style="font-size:10px;">
+            <table class="attendance-report-table" style="font-size:14px;">
               <thead>
                 <tr>
                   <th>Họ đệm</th>
@@ -4444,10 +4444,10 @@ export function setupFeatures(ctx) {
 
           <!-- Checklist đã thực hiện -->
           ${checklist.length ? `
-            <h4 style="margin:16px 0 8px; font-size:12px; color:#324436;">Các mục checklist đã hoàn tất trong ca</h4>
+            <h4 style="margin:16px 0 8px; font-size:15px; color:#324436;">Các mục checklist đã hoàn tất trong ca</h4>
             <div style="display:flex; flex-wrap:wrap; gap:6px;">
               ${checklist.map(item => `
-                <span class="status-pill done" style="background:#eaf5ec; color:#2e6d42; font-size:9px;">
+                <span class="status-pill done" style="background:#eaf5ec; color:#2e6d42; font-size:13.5px;">
                   ✓ ${escapeHtml(item.label || item)} ${item.doneBy ? `(${escapeHtml(item.doneBy)})` : ''}
                 </span>
               `).join('')}
@@ -4470,7 +4470,7 @@ export function setupFeatures(ctx) {
 
     // Render sidebar session cards
     if (!classSessions.length) {
-      listContainer.innerHTML = '<div style="padding:20px 10px; color:#8a998c; font-size:10px; text-align:center;">Lớp chưa có buổi học nào được ghi nhận trong lịch sử.</div>';
+      listContainer.innerHTML = '<div style="padding:20px 10px; color:#8a998c; font-size:14px; text-align:center;">Lớp chưa có buổi học nào được ghi nhận trong lịch sử.</div>';
       renderSelectedSessionDetail(null);
     } else {
       listContainer.innerHTML = classSessions.map((s, idx) => {
@@ -4479,15 +4479,15 @@ export function setupFeatures(ctx) {
         return `
           <div class="class-history-session-item ${idx === 0 ? 'active' : ''}" data-history-session-id="${escapeHtml(s.id)}" style="cursor:pointer; padding:10px 12px; border:1px solid #dce5dd; border-radius:8px; background:${idx === 0 ? '#edf6ee' : '#fff'}; transition:0.15s;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-              <strong style="color:#21432c; font-size:11px;">${escapeHtml(dateDisplay)}</strong>
-              <span style="font-size:8px; padding:2px 5px; border-radius:8px; font-weight:700; ${isClosed ? 'background:#eaf5ec; color:#2e6d42;' : 'background:#fef3c7; color:#92400e;'}">
+              <strong style="color:#21432c; font-size:14.5px;">${escapeHtml(dateDisplay)}</strong>
+              <span style="font-size:12.5px; padding:6px 10px; border-radius:8px; font-weight:700; ${isClosed ? 'background:#eaf5ec; color:#2e6d42;' : 'background:#fef3c7; color:#92400e;'}">
                 ${isClosed ? 'Đã đóng' : 'Đang mở'}
               </span>
             </div>
-            <p style="margin:0 0 4px; font-size:10px; color:#495f50; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            <p style="margin:0 0 4px; font-size:14px; color:#495f50; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
               ${escapeHtml(s.lessonTitle || 'Buổi học ' + s.date)}
             </p>
-            <div style="display:flex; justify-content:space-between; font-size:8px; color:#788b7d;">
+            <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#788b7d;">
               <span>Sĩ số: ${s.stats?.present || 0}/${s.stats?.total || s.studentsSnapshot?.length || 0}</span>
               <span>BTVN: ${s.stats?.homeworkDone || 0}</span>
             </div>
@@ -4551,7 +4551,7 @@ export function setupFeatures(ctx) {
   };
 }
 
-// v1.5: Universal backdrop click-to-close for all <dialog> elements (mobile bottom-sheet & desktop modal)
+// v1.7: Universal backdrop click-to-close for all <dialog> elements (mobile bottom-sheet & desktop modal)
 document.addEventListener("click", (e) => {
   if (e.target && e.target.tagName === "DIALOG" && e.target.open) {
     const rect = e.target.getBoundingClientRect();

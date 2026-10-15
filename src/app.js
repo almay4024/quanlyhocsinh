@@ -1,11 +1,12 @@
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.5';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.5';
+const APP_VERSION = "1.7";
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.7';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.7';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=1.5';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=1.5';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.5';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.5';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.5';
+import { setupFeatures } from './features.js?v=1.7';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=1.7';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.7';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.7';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.7';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -442,15 +443,11 @@ function updateSubtabUrl(subtab) {
   try { history.replaceState({}, '', `/class/${c?.code || CURRENT_CLASS_ID}/${sub}`); } catch {}
 }
 $('#chat-view-tab').onclick=()=>{ setClassView('chat'); updateSubtabUrl('chatlog'); };
-$('#class-chat-nav').onclick=()=>{ setClassView('chat'); updateSubtabUrl('chatlog'); };
 $('#seating-view-tab').onclick=()=>{ setClassView('seating'); updateSubtabUrl('map'); };
 $('#scores-view-tab')?.addEventListener('click', ()=>{ setClassView('scores'); updateSubtabUrl('scores'); });
 $('#scores-sidebar-tab')?.addEventListener('click', ()=>{ setClassView('scores'); updateSubtabUrl('scores'); });
-$('#class-room-nav').onclick=()=>{ setClassView('seating'); updateSubtabUrl('map'); };
 $('#checklist-view-tab').onclick=()=>{ setClassView('checklist'); updateSubtabUrl('checklist'); };
-$('#checklist-sidebar-tab').onclick=()=>{ setClassView('checklist'); updateSubtabUrl('checklist'); };
 $('#students-view-tab').onclick=()=>{ setClassView('students'); updateSubtabUrl('students'); };
-$('#students-tab').onclick=()=>{ setClassView('students'); updateSubtabUrl('students'); };
 const weekdayNames=['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
 const selectedRole=()=>['assistant','office','teacher','admin'].includes(signedInAccount?.role)?signedInAccount.role:'assistant';
 function occurrenceDate(classInfo,from=new Date()){const date=new Date(from);date.setHours(0,0,0,0);let days=(Number(classInfo.weekday)-date.getDay()+7)%7;const startToday=new Date(date),endToday=new Date(date);const [hour,minute]=String(classInfo.startTime||'15:30').split(':').map(Number),[endHour,endMinute]=String(classInfo.endTime||'17:00').split(':').map(Number);startToday.setHours(hour,minute,0,0);endToday.setHours(endHour,endMinute,0,0);if(days===0&&startToday<from&&from>=endToday)days=7;date.setDate(date.getDate()+days);return date;}
@@ -494,7 +491,7 @@ function assignedShiftInstances(role){
   }
   return results;
 }
-function scheduleCard(classInfo,dateArg,changeArg){const date=dateArg||occurrenceDate(classInfo),change=changeArg===undefined?getSessionChange(classInfo.id,date):changeArg,start=classScheduleStamp(classInfo,date),end=new Date(date);const [endHour,endMinute]=String(classInfo.endTime||'17:00').split(':').map(Number);end.setHours(endHour,endMinute,0,0);const ongoing=new Date()>=start&&new Date()<end,status=ongoing?'Đang diễn ra':change?.status==='makeup'?'Học bù':'Sắp tới',dateText=formatSessionDate(date),teacherNames=employeeNames(assignedIdsFor(classInfo,change,'teacher')),assistantNames=employeeNames(assignedIdsFor(classInfo,change,'assistant')),chip=change?.status==='makeup'?'<span class="shift-state live">Học bù</span>':change?.note?'<span class="shift-state">Đã điều chỉnh</span>':'';return '<article class="shift-card '+(ongoing?'ongoing':'')+'" style="cursor:pointer;" data-enter-class="'+escapeHtml(classInfo.id)+'" data-session-date="'+date.toLocaleDateString('sv-SE')+'"><div class="shift-card-icon">'+(ongoing?'◉':'◷')+'</div><div class="shift-card-main"><div class="shift-card-title"><strong style="font-size:13px; color:#214e2d;">'+escapeHtml(classInfo.code||classInfo.name)+'</strong><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">Khối '+escapeHtml(classInfo.grade||'—')+'</span><span class="shift-state '+(ongoing?'live':'')+'">'+status+'</span>'+chip+'</div><p>'+escapeHtml(classInfo.subject||'Lớp học')+' · '+escapeHtml(classInfo.room||'Chưa xếp phòng')+'</p><div class="shift-card-details"><span>◷ '+escapeHtml(dateText)+' · '+escapeHtml(classInfo.startTime)+'–'+escapeHtml(classInfo.endTime)+'</span><span>Giáo viên: '+escapeHtml(teacherNames)+' · Trợ giảng: '+escapeHtml(assistantNames)+'</span></div></div><button type="button" class="primary-button" data-enter-class="'+escapeHtml(classInfo.id)+'" data-session-date="'+date.toLocaleDateString('sv-SE')+'">'+(ongoing?'Mở lớp':'Xem lớp')+'</button></article>';}
+function scheduleCard(classInfo,dateArg,changeArg){const date=dateArg||occurrenceDate(classInfo),change=changeArg===undefined?getSessionChange(classInfo.id,date):changeArg,start=classScheduleStamp(classInfo,date),end=new Date(date);const [endHour,endMinute]=String(classInfo.endTime||'17:00').split(':').map(Number);end.setHours(endHour,endMinute,0,0);const ongoing=new Date()>=start&&new Date()<end,status=ongoing?'Đang diễn ra':change?.status==='makeup'?'Học bù':'Sắp tới',dateText=formatSessionDate(date),teacherNames=employeeNames(assignedIdsFor(classInfo,change,'teacher')),assistantNames=employeeNames(assignedIdsFor(classInfo,change,'assistant')),chip=change?.status==='makeup'?'<span class="shift-state live">Học bù</span>':change?.note?'<span class="shift-state">Đã điều chỉnh</span>':'';return '<article class="shift-card '+(ongoing?'ongoing':'')+'" style="cursor:pointer;" data-enter-class="'+escapeHtml(classInfo.id)+'" data-session-date="'+date.toLocaleDateString('sv-SE')+'"><div class="shift-card-icon">'+(ongoing?'◉':'◷')+'</div><div class="shift-card-main"><div class="shift-card-title"><strong style="font-size:16px; color:#214e2d;">'+escapeHtml(classInfo.code||classInfo.name)+'</strong><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">Khối '+escapeHtml(classInfo.grade||'—')+'</span><span class="shift-state '+(ongoing?'live':'')+'">'+status+'</span>'+chip+'</div><p>'+escapeHtml(classInfo.subject||'Lớp học')+' · '+escapeHtml(classInfo.room||'Chưa xếp phòng')+'</p><div class="shift-card-details"><span>◷ '+escapeHtml(dateText)+' · '+escapeHtml(classInfo.startTime)+'–'+escapeHtml(classInfo.endTime)+'</span><span>Giáo viên: '+escapeHtml(teacherNames)+' · Trợ giảng: '+escapeHtml(assistantNames)+'</span></div></div><button type="button" class="primary-button" data-enter-class="'+escapeHtml(classInfo.id)+'" data-session-date="'+date.toLocaleDateString('sv-SE')+'">'+(ongoing?'Mở lớp':'Xem lớp')+'</button></article>';}
 function renderMainMenu(){
   const role=selectedRole(),workPanel=$('#work-menu-panel'),managed=$('#managed-class-list');
   document.querySelector('.user-name small').textContent=({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role];
@@ -536,7 +533,7 @@ function renderMainMenu(){
         <div class="shift-card-icon">▦</div>
         <div class="shift-card-main">
           <div class="shift-card-title">
-            <strong style="font-size:13px; color:#214e2d;">${escapeHtml(item.code || item.name)}</strong>
+            <strong style="font-size:16px; color:#214e2d;">${escapeHtml(item.code || item.name)}</strong>
             <span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">${escapeHtml(formatBirthYearInline(item.grade))}</span>
             <span class="room-chip" style="background:#f2f5f2; color:#556858;">${escapeHtml(item.room || 'Phòng học')}</span>
           </div>
@@ -837,6 +834,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
     setGeneralViewTab(activeGeneralTab || 'history');
   }
 
+  if ($('#main-menu-shortcut')) $('#main-menu-shortcut').hidden = true;
   $('#topbar-crumb-label').textContent = 'Tổng quan lớp học';
   const crumbSub = document.querySelector('.crumb strong') || $('#topbar-crumb-sub');
   if (crumbSub) crumbSub.textContent = `${cls.code || cls.id} · ${cls.name}`;
@@ -900,43 +898,43 @@ function renderClassGeneralView(classId, preferredTab = null) {
         const dFormatted = new Date(`${s.date}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
         const staff = s.closedBy?.name || s.startedBy?.name || s.assistantName || 'Trợ giảng';
         const hasTestBadge = s.hasTest || (s.studentsSnapshot || []).some(st => st.testScore !== null && st.testScore !== undefined)
-          ? '<span class="room-chip" style="background:#f5f3ff; color:#5b21b6; font-weight:700; font-size:8.5px;">📝 Có bài Test</span>'
+          ? '<span class="room-chip" style="background:#f5f3ff; color:#5b21b6; font-weight:700; font-size:15.5px;">📝 Có bài Test</span>'
           : '';
         const hasBtvnBadge = (s.hasBtvn !== false && !s.noHomework)
-          ? '<span class="room-chip" style="background:#f0fdf4; color:#166534; font-weight:700; font-size:8.5px;">📚 Thu BTVN</span>'
-          : '<span class="room-chip" style="background:#f3f4f6; color:#4b5563; font-size:8.5px;">Không có BTVN</span>';
+          ? '<span class="room-chip" style="background:#f0fdf4; color:#166534; font-weight:700; font-size:15.5px;">📚 Thu BTVN</span>'
+          : '<span class="room-chip" style="background:#f3f4f6; color:#4b5563; font-size:15.5px;">Không có BTVN</span>';
 
         return `
           <div class="portal-stat-card general-session-card" data-open-session-card="${escapeHtml(s.date)}" style="padding:13px 16px; background:#fff; border:1px solid #dce5dd; border-radius:9px; cursor:pointer;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
               <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                <strong style="color:#21442a; font-size:12.5px;">📅 ${escapeHtml(dFormatted)}</strong>
-                <span class="room-chip" style="font-size:8.5px; background:${isClosed ? '#eaf5ec' : '#fef3c7'}; color:${isClosed ? '#2e6d42' : '#92400e'}; font-weight:700;">
+                <strong style="color:#21442a; font-size:15.5px;">📅 ${escapeHtml(dFormatted)}</strong>
+                <span class="room-chip" style="font-size:15.5px; background:${isClosed ? '#eaf5ec' : '#fef3c7'}; color:${isClosed ? '#2e6d42' : '#92400e'}; font-weight:700;">
                   ${isClosed ? '✓ Đã đóng ca' : '● Đang mở'}
                 </span>
                 ${hasBtvnBadge}
                 ${hasTestBadge}
               </div>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <button type="button" class="outline-button" data-score-history-date="${escapeHtml(s.date)}" style="padding:5px 10px; font-size:9.5px; background:#f5f3ff; color:#5b21b6; border-color:#c4b5fd; font-weight:700;">
+                <button type="button" class="outline-button" data-score-history-date="${escapeHtml(s.date)}" style="padding:8px 14px; font-size:13.5px; background:#f5f3ff; color:#5b21b6; border-color:#c4b5fd; font-weight:700;">
                   ✎ Nhập / Xem điểm buổi này
                 </button>
-                <button type="button" class="primary-button" data-view-history-date="${escapeHtml(s.date)}" style="padding:5px 10px; font-size:9.5px; background:#2e6d42; font-weight:700;">
+                <button type="button" class="primary-button" data-view-history-date="${escapeHtml(s.date)}" style="padding:8px 14px; font-size:13.5px; background:#2e6d42; font-weight:700;">
                   👁 Xem lại sơ đồ & ca học
                 </button>
               </div>
             </div>
-            <p style="margin:2px 0 6px; font-size:11px; color:#2b4231; font-weight:700;">
+            <p style="margin:2px 0 6px; font-size:14.5px; color:#2b4231; font-weight:700;">
               Bài học: ${escapeHtml(s.lessonTitle || 'Buổi học ' + s.date)}
             </p>
-            <div style="display:flex; gap:14px; font-size:9.5px; color:#5e7164; flex-wrap:wrap;">
+            <div style="display:flex; gap:14px; font-size:13.5px; color:#5e7164; flex-wrap:wrap;">
               <span>Trực ca: <strong>${escapeHtml(staff)}</strong></span>
               <span>Có mặt: <strong style="color:#2e6d42;">${s.stats?.present || 0}/${s.stats?.total || s.studentsSnapshot?.length || 0}</strong></span>
               <span>Đi muộn: <strong style="color:#bc7b26;">${s.stats?.late || 0}</strong></span>
               <span>Vắng: <strong style="color:#c13b30;">${s.stats?.absent || 0}</strong></span>
               <span>BTVN: <strong>${s.stats?.homeworkDone || 0}</strong></span>
             </div>
-            ${s.finalNote ? `<p style="margin:6px 0 0; font-size:9.5px; color:#556658; font-style:italic; border-top:1px dashed #e2e8e3; padding-top:4px;">"${escapeHtml(s.finalNote)}"</p>` : ''}
+            ${s.finalNote ? `<p style="margin:6px 0 0; font-size:13.5px; color:#556658; font-style:italic; border-top:1px dashed #e2e8e3; padding-top:4px;">"${escapeHtml(s.finalNote)}"</p>` : ''}
           </div>
         `;
       }).join('');
@@ -1624,7 +1622,7 @@ function renderStudentList(){
     return `
       ${bulkBarHtml}
       <div class="attendance-table-wrap">
-        <table class="attendance-report-table" style="font-size:10.5px;">
+        <table class="attendance-report-table" style="font-size:14px;">
           <thead>
             <tr>
               <th style="width:30px; text-align:center;"><input type="checkbox" id="live-student-select-all" ${visibleRegular.length && visibleRegular.every(i => selectedLiveClassStudentIds.has(i.student.id)) ? 'checked' : ''} title="Chọn tất cả" /></th>
@@ -1689,7 +1687,7 @@ function renderStudentList(){
                   </td>
                   <td>${escapeHtml(schoolLabel)}</td>
                   <td>
-                    <span class="room-chip" style="font-size:8.5px;">${escapeHtml(seat)}</span>
+                    <span class="room-chip" style="font-size:15.5px;">${escapeHtml(seat)}</span>
                   </td>
                   <td>${statusBadge}${isMakeupRow ? ' <span class="makeup-status-badge">Học bù</span>' : ''}</td>
                   <td>${hwBadge}</td>
@@ -1699,7 +1697,7 @@ function renderStudentList(){
                   </td>
                   <td style="text-align:center; white-space:nowrap;">
                     <button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(student.id)}" title="Mở sơ đồ lớp và tìm nhanh chỗ ngồi học sinh này">🗺 Tìm chỗ</button>
-                    <button type="button" class="outline-button" data-open-student-profile="${escapeHtml(student.id)}" style="padding:3px 7px; font-size:9px; margin-left:3px;">Hồ sơ ↗</button>
+                    
                   </td>
                 </tr>
               `;
@@ -1933,17 +1931,17 @@ function openStudentProfile(id, origin = null){
         <img class="profile-portrait" id="profile-portrait-preview" src="${escapeHtml(photo)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" />
       </button>
       <div style="display:flex; gap:4px; margin-top:2px;">
-        <label class="primary-button" style="padding:4px 8px; font-size:9.5px; cursor:pointer; font-weight:600;">
+        <label class="primary-button" style="padding:4px 8px; font-size:13.5px; cursor:pointer; font-weight:600;">
           📷 Đổi ảnh
           <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
         </label>
-        <button type="button" id="profile-remove-photo-btn" class="outline-button text-danger" style="padding:4px 7px; font-size:9.5px;">Xóa</button>
+        <button type="button" id="profile-remove-photo-btn" class="outline-button text-danger" style="padding:7px 12px; font-size:13.5px;">Xóa</button>
       </div>
     </div>
   ` : `
     <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
       <div id="profile-portrait-preview" class="profile-portrait profile-portrait-placeholder">📷</div>
-      <label class="primary-button" style="padding:5px 9px; font-size:10px; cursor:pointer; font-weight:600;">
+      <label class="primary-button" style="padding:5px 9px; font-size:14px; cursor:pointer; font-weight:600;">
         📷 Tải ảnh chân dung
         <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
       </label>
@@ -1981,10 +1979,10 @@ function openStudentProfile(id, origin = null){
 
     const pickerHtml = availableToAdd.length ? `
       <div style="display:inline-flex; align-items:center; gap:6px; margin-top:8px;">
-        <select id="profile-class-to-add-select" style="padding:4px 8px; font-size:11px; border:1px solid #cbd8cd; border-radius:6px; background:#fff; outline:none;">
+        <select id="profile-class-to-add-select" style="padding:4px 8px; font-size:14.5px; border:1px solid #cbd8cd; border-radius:6px; background:#fff; outline:none;">
           ${addOptionsHtml}
         </select>
-        <button type="button" id="profile-btn-add-class" class="primary-button" style="padding:4px 10px; font-size:10px; font-weight:700;">＋ Thêm lớp</button>
+        <button type="button" id="profile-btn-add-class" class="primary-button" style="padding:8px 14px; font-size:14px; font-weight:700;">＋ Thêm lớp</button>
       </div>
     ` : '<small style="color:#5b7760; font-weight:600; display:block; margin-top:6px;">(Đã gắn tất cả các lớp)</small>';
 
@@ -2079,7 +2077,7 @@ const closeStudentProfile=()=>{
   }
 };
 $('#close-student-profile').onclick=closeStudentProfile;
-$('#close-student-profile-secondary').onclick=closeStudentProfile;
+if($('#close-student-profile-secondary'))$('#close-student-profile-secondary').onclick=closeStudentProfile;
 $('#close-student-photo').onclick=()=>$('#student-photo-dialog').close();
 
 $('#save-student-profile').onclick=()=>{
@@ -2188,8 +2186,8 @@ function render(){
 
   classroom.innerHTML=displayLayout.map((aisle,ci)=>{
     const maxOccupants=Math.max(1,...aisle.desks.map(d=>(deskItems[d.id]||[]).length)),
-          aisleWidth=Math.max(148,24+maxOccupants*80),
-          studentWidth=Math.floor((aisleWidth-24-(maxOccupants-1)*5)/maxOccupants);
+          aisleWidth=Math.max(210,32+maxOccupants*112),
+          studentWidth=Math.floor((aisleWidth-28-(maxOccupants-1)*6)/maxOccupants);
     const origAisleIdx = isTeacherView ? (layout.length - 1 - ci) : ci;
     const sideLabel = isTeacherView ? (ci < displayLayout.length / 2 ? ' (Tay phải GV)' : ' (Tay trái GV)') : '';
 
@@ -2470,7 +2468,7 @@ function renderAisleFields(syncInput = false){
           const isAct = draftAisleDividers[i].has(di);
           return `<button type="button" class="aisle-divider-chip ${isAct ? 'active' : ''}" data-aisle-divider-chip="${i}" data-divider-di="${di}">━ Giữa bàn ${di + 1} & ${di + 2}</button>`;
         }).join('')
-      : '<small style="color:#87968a; font-size:9px;">Cần từ 2 bàn trở lên để đặt vạch phân cách</small>';
+      : '<small style="color:#87968a; font-size:13.5px;">Cần từ 2 bàn trở lên để đặt vạch phân cách</small>';
 
     return `<div class="aisle-config-card">
       <label class="field-label aisle-field" style="margin:0;">
@@ -2482,7 +2480,7 @@ function renderAisleFields(syncInput = false){
         </div>
       </label>
       <div style="margin-top:6px;">
-        <small style="color:#4b6352; font-size:9.5px; font-weight:700;">Vạch phân cách bàn (Dãy ${i+1}):</small>
+        <small style="color:#4b6352; font-size:13.5px; font-weight:700;">Vạch phân cách bàn (Dãy ${i+1}):</small>
         <div class="aisle-divider-chips" data-aisle-chips-wrap="${i}">${chipsHtml}</div>
       </div>
     </div>`;
@@ -3026,7 +3024,7 @@ function renderSeatingMapSearchResults() {
   const matches = searchStudents(pool, rawQuery).slice(0, 10);
 
   if (!matches.length) {
-    dropdown.innerHTML = '<div style="padding:8px 10px; font-size:10px; color:#7b8c7e; font-style:italic;">Không tìm thấy học sinh phù hợp trong lớp.</div>';
+    dropdown.innerHTML = '<div style="padding:8px 10px; font-size:14px; color:#7b8c7e; font-style:italic;">Không tìm thấy học sinh phù hợp trong lớp.</div>';
     dropdown.hidden = false;
     return;
   }
@@ -3047,9 +3045,9 @@ function renderSeatingMapSearchResults() {
       <div>
         <strong style="color:${isMakeup ? '#581c87' : '#1e3a29'};">${escapeHtml(s.name)}</strong>
         ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}
-        <small style="display:block; color:#6c7d70; font-size:9px;">${escapeHtml(s.studentCode || s.school || s.sourceClassName || '')}</small>
+        <small style="display:block; color:#6c7d70; font-size:13.5px;">${escapeHtml(s.studentCode || s.school || s.sourceClassName || '')}</small>
       </div>
-      <span class="room-chip" style="font-size:8.5px; font-weight:700; color:${seatColor};">${escapeHtml(seatLabel)}</span>
+      <span class="room-chip" style="font-size:15.5px; font-weight:700; color:${seatColor};">${escapeHtml(seatLabel)}</span>
     </button>`;
   }).join('');
   dropdown.hidden = false;
@@ -3513,7 +3511,7 @@ function renderScoresView() {
         <td style="text-align:center;">
           <button type="button" class="recent-scores-btn" data-open-score-history="${escapeHtml(s.id)}" title="Click để xem chi tiết điểm các buổi trước của ${escapeHtml(s.name)}">
             <span>${escapeHtml(item.recentFour)}</span>
-            <small style="font-size:9px; opacity:0.8;">🔍</small>
+            <small style="font-size:13.5px; opacity:0.8;">🔍</small>
           </button>
         </td>
         <td style="text-align:center;">

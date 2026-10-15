@@ -4,20 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Lớp học vui (v1.5) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=1.5" />
+  <title>Lớp học vui (v1.7) · Quản lý lớp học trung tâm</title>
+  <link rel="stylesheet" href="/src/styles.css?v=1.7" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span class="brand-mark">✳</span><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.5</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span class="brand-mark">✳</span><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.7</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav"><span>◷</span> Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav"><span>✍</span> Lớp bổ trợ</button>
       <button class="nav-item" id="management-menu-nav"><span>▤</span> Quản lý</button>
       <button class="nav-item" id="portal-menu-nav"><span>⏱</span> Chấm công TA</button>
 
-      <div class="sidebar-bottom"><div class="online-dot"></div><span>Hệ thống trực tuyến</span><button type="button" class="sidebar-logout-btn" id="sidebar-logout-btn" title="Đăng xuất">⎋</button><button class="help" id="system-help-btn" title="Hướng dẫn sử dụng">?</button></div>
+      <div class="sidebar-bottom"><div class="online-dot"></div><span>Hệ thống trực tuyến</span><button class="help" id="system-help-btn" title="Hướng dẫn sử dụng">?</button></div>
     </aside>
     <main class="main-content">
       <header class="topbar">
@@ -413,7 +413,7 @@
         <div class="page-heading class-page-heading" style="margin-bottom:16px;">
           <div>
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-              <button type="button" class="outline-button btn-back-classes" id="general-back-classes-btn" style="padding:4px 9px; font-size:10px; font-weight:700;">← Quay lại Menu chính</button>
+              <button type="button" class="outline-button btn-back-classes" id="general-back-classes-btn" style="padding:8px 14px; font-size:14px; font-weight:700;">← Quay lại Menu chính</button>
               <span class="eyebrow" style="margin:0;">TỔNG QUAN LỚP HỌC</span>
             </div>
             <h1>
@@ -435,7 +435,7 @@
             </p>
           </div>
           <div class="session-control-actions" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <button type="button" class="primary-button" id="general-enter-live-btn" style="background:#2e6d42; font-weight:800; padding:10px 18px; font-size:12px;">▶ Vào lớp (Mở ca mới)</button>
+            <button type="button" class="primary-button" id="general-enter-live-btn" style="background:#2e6d42; font-weight:800; padding:10px 18px; font-size:15px;">▶ Vào lớp (Mở ca mới)</button>
             <button type="button" class="outline-button" id="general-edit-class-btn">⚙ Cài đặt lớp</button>
             <button type="button" class="outline-button" id="general-roster-btn">👥 Quản lý DS gốc</button>
           </div>
@@ -475,8 +475,8 @@
         <div id="general-panel-history" class="portal-stat-card" style="padding:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
             <div>
-              <h3 style="margin:0; font:700 14px Manrope,sans-serif; color:#233d31;">📜 Lịch sử các buổi học của lớp</h3>
-              <p style="font-size:10.5px; color:#6b7c70; margin:3px 0 0;">Bấm vào từng ca học để xem lại sơ đồ/checklist hoặc <strong>nhập/sửa điểm của học sinh buổi hôm đó</strong>.</p>
+              <h3 style="margin:0; font:700 17px Manrope,sans-serif; color:#233d31;">📜 Lịch sử các buổi học của lớp</h3>
+              <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào từng ca học để xem lại sơ đồ/checklist hoặc <strong>nhập/sửa điểm của học sinh buổi hôm đó</strong>.</p>
             </div>
           </div>
           <div id="general-history-sessions-list" style="display:grid; gap:10px;"></div>
@@ -486,16 +486,16 @@
         <div id="general-panel-students" class="portal-stat-card" style="padding:16px;" hidden>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
             <div>
-              <h3 style="margin:0; font:700 14px Manrope,sans-serif; color:#233d31;">👥 Danh sách học sinh & Theo dõi 4 buổi gần nhất</h3>
-              <p style="font-size:10.5px; color:#6b7c70; margin:3px 0 0;">Bấm vào <strong>Tên học sinh</strong> để xem kỹ toàn bộ lịch sử điểm, trạng thái đi học và tên bài học từng buổi. Ký hiệu điểm danh: <strong>✓</strong> Có mặt · <strong>◷</strong> Đi muộn · <strong>×</strong> Vắng.</p>
+              <h3 style="margin:0; font:700 17px Manrope,sans-serif; color:#233d31;">👥 Danh sách học sinh & Theo dõi 4 buổi gần nhất</h3>
+              <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào <strong>Tên học sinh</strong> để xem kỹ toàn bộ lịch sử điểm, trạng thái đi học và tên bài học từng buổi. Ký hiệu điểm danh: <strong>✓</strong> Có mặt · <strong>◷</strong> Đi muộn · <strong>×</strong> Vắng.</p>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
-              <button type="button" class="outline-button" id="general-export-roster-btn" style="padding:5px 10px; font-size:10px;">Xuất Excel</button>
+              <button type="button" class="outline-button" id="general-export-roster-btn" style="padding:8px 14px; font-size:14px;">Xuất Excel</button>
             </div>
           </div>
 
           <div id="general-roster-table-wrap" class="attendance-table-wrap" style="overflow-x:auto;">
-            <table class="attendance-report-table general-timeline-table" id="general-roster-table" style="font-size:10.5px;">
+            <table class="attendance-report-table general-timeline-table" id="general-roster-table" style="font-size:14px;">
               <thead id="general-roster-thead">
                 <tr>
                   <th>Họ đệm</th>
@@ -706,7 +706,7 @@
               <label class="test-required-toggle scores-test-toggle" style="margin:0; padding:6px 12px; background:#f5f3ff; border:1px solid #c4b5fd; border-radius:8px; color:#5b21b6; font-weight:700; cursor:pointer;" title="Đồng bộ với mục Ca này có test bên tab Checklist">
                 <input type="checkbox" id="scores-tab-test-toggle" /> Ca này có test (Hiện cột Điểm Test)
               </label>
-              <span id="scores-tab-save-status" style="font-size:10px; color:#2e6d42; font-weight:700;">Tự động lưu khi nhập</span>
+              <span id="scores-tab-save-status" style="font-size:14px; color:#2e6d42; font-weight:700;">Tự động lưu khi nhập</span>
             </div>
           </div>
 
@@ -724,14 +724,14 @@
           </div>
 
           <div class="attendance-table-wrap">
-            <table class="attendance-report-table" id="scores-tab-table" style="font-size:10.5px;">
+            <table class="attendance-report-table" id="scores-tab-table" style="font-size:14px;">
               <thead>
                 <tr>
                   <th>Họ đệm</th>
                   <th>Tên</th>
                   <th>Trường</th>
                   <th>Trạng thái</th>
-                  <th style="text-align:center;">Điểm 4 bài gần nhất <small style="display:block; font-weight:500; font-size:8.5px; color:#5b21b6;">(Click xem chi tiết)</small></th>
+                  <th style="text-align:center;">Điểm 4 bài gần nhất <small style="display:block; font-weight:500; font-size:12.5px; color:#5b21b6;">(Click xem chi tiết)</small></th>
                   <th style="width:95px; text-align:center;">Điểm BTVN</th>
                   <th id="scores-tab-test-th" style="width:95px; text-align:center;" hidden>Điểm Test</th>
                   <th style="min-width:150px;">Ghi chú buổi học</th>
@@ -866,29 +866,7 @@
             <small id="homework-details-status" class="save-status">Các trường tự lưu trong ca học này</small>
           </section>
 
-          <!-- 05: Kết ca học & Lưu dữ liệu quản lý -->
-          <section class="checklist-panel close-session-panel" style="background:#fcfefc; border:1px solid #d5e8d8;">
-            <div class="checklist-panel-heading">
-              <div>
-                <span class="checklist-step" style="background:#eaf5ec; color:#2e6d42;">05</span>
-                <div>
-                  <h3>Kết thúc & Đóng ca học</h3>
-                  <p>Rà soát các đầu việc, bài tập, sĩ số và xác nhận đóng ca để lưu vào lịch sử quản lý.</p>
-                </div>
-              </div>
-            </div>
-            <div style="padding: 10px 0 6px;">
-              <p style="margin: 0 0 12px; font-size: 11px; color: #5a6b5e; line-height: 1.5;">
-                Khi bấm Kết ca, hệ thống sẽ tự động quét toàn bộ danh sách các mục checklist chưa tích và các ô thông tin chưa điền để bạn rà soát lại trước khi lưu trữ vào lịch sử trung tâm.
-              </p>
-              <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                <button type="button" class="primary-button" id="checklist-close-session-btn" style="padding:10px 18px; font-size:11px; font-weight:700; background:#2e6d42; border-color:#27673b;">
-                  ⏹ Kết ca học & Lưu lịch sử
-                </button>
-                <span id="checklist-close-session-status" style="font-size:10px; color:#687b6d; font-weight:600;"></span>
-              </div>
-            </div>
-          </section>
+          
         </section>
 
         <!-- Tab 4: Danh sách học sinh -->
@@ -972,7 +950,7 @@
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px;">
         <small style="color:#5c6f60;">Với điểm BTVN: ghi theo ngày và tên bài học của buổi thu & chấm bài.</small>
-        <button type="button" class="primary-button" id="close-score-history-btn">Đóng</button>
+        
       </div>
     </div>
   </dialog>
@@ -987,7 +965,7 @@
       
       <div id="account-switch-list" class="account-switch-list"></div>
       <div style="margin-top:16px; padding-top:12px; border-top:1px solid #edf0ed; display:flex; justify-content:space-between; align-items:center;">
-        <button type="button" class="text-danger" id="dialog-logout-btn" style="font-size:10px; padding:6px 10px; border:1px solid #fad2cf; border-radius:6px; background:#fff8f8; cursor:pointer;">⎋ Đăng xuất tài khoản này</button>
+        <button type="button" class="text-danger" id="dialog-logout-btn" style="font-size:14px; padding:6px 10px; border:1px solid #fad2cf; border-radius:6px; background:#fff8f8; cursor:pointer;">⎋ Đăng xuất tài khoản này</button>
       </div>
     </div>
   </dialog>
@@ -1008,7 +986,7 @@
       </div>
 
       <div id="finalize-absent-section">
-        <h4 style="margin: 12px 0 6px; font-size: 11px; color:#405447;">Danh sách học sinh vắng mặt:</h4>
+        <h4 style="margin: 12px 0 6px; font-size:14.5px; color:#405447;">Danh sách học sinh vắng mặt:</h4>
         <div id="finalize-absent-list" class="finalize-absent-list"></div>
       </div>
 
@@ -1150,11 +1128,11 @@
       <div id="column-mapping-section" class="column-mapping-wrap" hidden>
         <div class="eyebrow" style="margin: 8px 0 4px;">BƯỚC 2: TÙY CHỌN ÁNH XẠ CỘT TƯƠNG ỨNG</div>
         <div class="name-mode-choice" style="margin-bottom:8px;">
-          <span style="font-size:10px; font-weight:700; color:#495f50; margin-right:10px;">Chế độ Họ tên:</span>
-          <label style="font-size:10px; margin-right:12px; cursor:pointer;">
+          <span style="font-size:14px; font-weight:700; color:#495f50; margin-right:10px;">Chế độ Họ tên:</span>
+          <label style="font-size:14px; margin-right:12px; cursor:pointer;">
             <input type="radio" name="name-mode" value="single" checked id="name-mode-single" /> 1 cột "Họ và tên" (Hệ thống tự động tách Họ đệm & Tên)
           </label>
-          <label style="font-size:10px; cursor:pointer;">
+          <label style="font-size:14px; cursor:pointer;">
             <input type="radio" name="name-mode" value="split" id="name-mode-split" /> 2 cột riêng (1 cột Họ đệm + 1 cột Tên)
           </label>
         </div>
@@ -1456,7 +1434,7 @@
     <h2 id="student-profile-title">Thông tin học sinh</h2>
     <div id="student-profile-content"></div>
     <div class="student-profile-actions">
-      <button type="button" class="outline-button" id="close-student-profile-secondary">Đóng</button>
+      
       <button type="button" class="primary-button" id="save-student-profile">Lưu thay đổi</button>
     </div>
   </dialog>
@@ -1779,7 +1757,7 @@
     <h2 id="staff-detail-title">Chi tiết nhân sự & Lịch sử ca làm</h2>
     <div id="staff-detail-content"></div>
     <div class="student-profile-actions">
-      <button type="button" class="outline-button" id="close-staff-detail-btn">Đóng</button>
+      
       <button type="button" class="primary-button" id="edit-staff-from-detail-btn">Chỉnh sửa thông tin</button>
     </div>
   </dialog>
@@ -1898,10 +1876,10 @@
       <div id="close-session-details-box" class="checklist-log" style="line-height:1.6; margin: 12px 0;"></div>
 
       <div id="close-session-uncompleted-section" style="margin: 14px 0; padding: 12px 14px; background: #fffbf5; border: 1px solid #f2dfc6; border-radius: 8px;">
-        <h4 style="margin: 0 0 8px; color: #a45a16; font-size: 11px; display: flex; align-items: center; gap: 6px;">
+        <h4 style="margin: 0 0 8px; color: #a45a16; font-size:14.5px; display: flex; align-items: center; gap: 6px;">
           <span>⚠️</span> Các mục/nội dung chưa hoàn thành cần rà soát lại trước khi kết ca:
         </h4>
-        <div id="close-session-uncompleted-list" style="display: grid; gap: 8px; font-size: 10px; color: #5c4530;"></div>
+        <div id="close-session-uncompleted-list" style="display: grid; gap: 8px; font-size:14px; color: #5c4530;"></div>
       </div>
 
       <label class="field-label">Ghi chú tổng kết ca học:
@@ -1925,7 +1903,7 @@
 
       <div class="class-history-layout">
         <div class="class-history-sidebar">
-          <h4 style="margin: 0 0 10px; font-size: 11px; color: #405447; text-transform: uppercase; letter-spacing: 0.5px;">Danh sách buổi học</h4>
+          <h4 style="margin: 0 0 10px; font-size:14.5px; color: #405447; text-transform: uppercase; letter-spacing: 0.5px;">Danh sách buổi học</h4>
           <div id="class-history-sessions-list" style="display: grid; gap: 8px;"></div>
         </div>
         <div class="class-history-main">
@@ -1944,7 +1922,7 @@
     <h2 id="student-class-profile-title">Chi tiết học sinh trong lớp</h2>
     <div id="student-class-profile-content"></div>
     <div class="student-profile-actions">
-      <button type="button" class="outline-button" id="close-student-class-profile-btn">Đóng</button>
+      
       <button type="button" class="primary-button" id="edit-student-master-btn">Sửa thông tin học sinh</button>
     </div>
   </dialog>
@@ -1956,8 +1934,8 @@
         <div class="login-brand">
           <span class="brand-mark">✳</span>
           <div>
-            <strong style="font:800 16px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.5</span></strong>
-            <small style="display:block; font-size:8px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
+            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.7</span></strong>
+            <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
         <h1>Đăng nhập hệ thống</h1>
@@ -2022,7 +2000,37 @@
     </div>
   </section>
 
+  
+  <!-- Hidden compatibility nodes so any legacy/cached DOM selector never returns null -->
+  <div id="legacy-compat-dom" hidden style="display:none!important;" aria-hidden="true">
+    <button type="button" id="staff-menu-nav"></button>
+    <div id="class-nav-label"></div>
+    <div id="class-nav-group">
+      <button type="button" id="class-room-nav"></button>
+      <button type="button" id="scores-sidebar-tab"></button>
+      <button type="button" id="class-chat-nav"></button>
+      <button type="button" id="checklist-sidebar-tab"></button>
+      <button type="button" id="students-tab"></button>
+    </div>
+    <button type="button" id="sidebar-logout-btn"></button>
+    <button type="button" id="topbar-switch-role-btn"></button>
+    <span id="role-display-badge"></span>
+    <button type="button" id="switch-account-quick-btn"></button>
+    <button type="button" id="manage-employees-button"></button>
+    <button type="button" id="manage-templates-button"></button>
+    <button type="button" id="checklist-close-session-btn"></button>
+    <span id="checklist-close-session-status"></span>
+    <button type="button" id="close-score-history-btn"></button>
+    <button type="button" id="dialog-cancel-account-btn"></button>
+    <button type="button" id="close-sheets-sync-btn"></button>
+    <button type="button" id="close-student-profile-secondary"></button>
+    <button type="button" id="close-attendance-export-secondary"></button>
+    <button type="button" id="close-staff-detail-btn"></button>
+    <button type="button" id="close-class-history-btn"></button>
+    <button type="button" id="close-student-class-profile-btn"></button>
+  </div>
+
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=1.5"></script>
+  <script type="module" src="/src/app.js?v=1.7"></script>
 </body>
 </html>

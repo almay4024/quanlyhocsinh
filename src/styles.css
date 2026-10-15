@@ -2258,20 +2258,220 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 /* ==========================================================================
-   v1.5 UI/UX OVERHAUL:
-   - Deduplicate Navigation Bars (Sidebar vs Top Tabs)
-   - Unified Adaptive Sheet Modals (Bottom-Sheet Slide-Up on Mobile, Centered Sheet on Desktop)
-   - Anti-Crowding Responsive Grids for Topbar, Headers, Toolbars, and Tables
+   v1.7 HIGH-CLARITY SCALED UI, DEDUPLICATED NAVIGATION & ADAPTIVE SHEET MODALS
+   - Scales up typography, buttons, inputs, cards, tables, and seating desks
+   - Eliminates duplicate navigation/action buttons across desktop & mobile
+   - Unified Bottom-Sheet / Full-Page Sheet modal & notification system
+   - Anti-crowding scientific grids across all screen sizes
    ========================================================================== */
 
-/* 1. Deduplicate Navigation: When Desktop Sidebar is visible (>1400px), hide duplicate .main-menu-toolbar */
-@media (min-width: 1401px) {
-  .main-menu-toolbar {
+/* 1. Global Typography & Readability Scale-Up */
+:root {
+  font-size: 16px;
+}
+body {
+  font-size: 15.5px !important;
+  line-height: 1.5 !important;
+  color: #1c2820 !important;
+  overflow-x: hidden;
+}
+
+/* 2. Unified Navigation Breakpoint (1024px):
+   - Desktop (>1024px): Left Sidebar is visible; duplicate .main-menu-toolbar & #main-menu-shortcut are hidden.
+   - Tablet/Mobile (<=1024px): Sidebar is hidden; horizontal .main-menu-toolbar is visible. */
+@media (min-width: 1025px) {
+  .sidebar {
+    display: flex !important;
+    width: 264px !important;
+    padding: 26px 18px !important;
+  }
+  .main-content {
+    margin-left: 264px !important;
+    padding: 0 38px 56px !important;
+    max-width: 1720px !important;
+  }
+  .main-menu-toolbar,
+  #main-menu-shortcut {
     display: none !important;
   }
 }
 
-/* 2. Smooth Horizontal Scrollable Tab Bars (Never wrap or crowd on Mobile/Tablet) */
+@media (max-width: 1024px) {
+  .sidebar {
+    display: none !important;
+  }
+  .main-content {
+    margin-left: 0 !important;
+    padding: 0 18px 44px !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Scale up Sidebar elements */
+.brand {
+  font-size: 19px !important;
+  gap: 12px !important;
+  padding: 0 8px 32px !important;
+}
+.brand-mark {
+  width: 42px !important;
+  height: 42px !important;
+  font-size: 24px !important;
+  border-radius: 12px !important;
+}
+.brand small {
+  font-size: 11px !important;
+  margin-top: 3px !important;
+}
+.brand-version-badge {
+  font-size: 12px !important;
+  padding: 2px 8px !important;
+}
+.nav-label,
+.eyebrow {
+  font-size: 12px !important;
+  letter-spacing: 1px !important;
+  font-weight: 700 !important;
+}
+.nav-item {
+  font-size: 15px !important;
+  padding: 13px 14px !important;
+  border-radius: 10px !important;
+  margin-bottom: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+.nav-item span {
+  font-size: 19px !important;
+  width: 26px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.sidebar-bottom {
+  font-size: 13.5px !important;
+  padding: 14px 10px !important;
+  gap: 10px !important;
+}
+.help {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+}
+
+/* 3. Topbar & Notification Panel Anti-Crowding + Scale-Up */
+.topbar {
+  height: auto !important;
+  min-height: 70px !important;
+  padding: 10px 0 !important;
+  gap: 12px !important;
+  flex-wrap: nowrap !important;
+}
+.crumb {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  font-size: 15px !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+}
+.crumb strong {
+  font-size: 15.5px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+.main-menu-back {
+  font-size: 13.5px !important;
+  padding: 8px 14px !important;
+  border-radius: 9px !important;
+  font-weight: 700 !important;
+}
+.topbar-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex-shrink: 0 !important;
+}
+.realtime-sync-badge {
+  font-size: 13px !important;
+  padding: 7px 13px !important;
+  border-radius: 999px !important;
+}
+.bell {
+  width: 42px !important;
+  height: 42px !important;
+  font-size: 24px !important;
+}
+.notification-badge {
+  min-width: 20px !important;
+  height: 20px !important;
+  font-size: 11px !important;
+}
+.notification-panel {
+  right: 0 !important;
+  width: min(420px, calc(100vw - 24px)) !important;
+  border-radius: 14px !important;
+}
+.notification-heading strong {
+  font-size: 16px !important;
+}
+.notification-heading small,
+.notification-heading button,
+.notification-footer span,
+.notification-footer button {
+  font-size: 13px !important;
+}
+.notification-item strong {
+  font-size: 14px !important;
+}
+.notification-item p {
+  font-size: 13.5px !important;
+}
+.notification-item small {
+  font-size: 12px !important;
+}
+#user-profile-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 7px 14px !important;
+  border: 1px solid #cfe0d2 !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(25, 50, 32, 0.05);
+}
+#user-profile-button:hover {
+  border-color: #5ca370 !important;
+  background: #f2f8f3 !important;
+}
+.user-name {
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+}
+.user-name small {
+  font-size: 12px !important;
+  margin-top: 2px !important;
+}
+#user-profile-button .chevron {
+  font-size: 15px !important;
+  color: #2e6d42 !important;
+  font-weight: 800 !important;
+}
+.logout-button {
+  font-size: 13.5px !important;
+  padding: 8px 14px !important;
+  border-radius: 9px !important;
+  min-height: 40px !important;
+}
+
+/* 4. Smooth Scrollable Tab Bars & Scaled Tabs */
 .main-menu-tabs,
 .class-view-tabs,
 .sub-nav-tabs,
@@ -2282,7 +2482,7 @@ input[type="search"]::-webkit-search-decoration {
   overflow-y: hidden !important;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  gap: 6px !important;
+  gap: 8px !important;
 }
 .main-menu-tabs::-webkit-scrollbar,
 .class-view-tabs::-webkit-scrollbar,
@@ -2296,134 +2496,573 @@ input[type="search"]::-webkit-search-decoration {
 .report-tab {
   flex: 0 0 auto !important;
   white-space: nowrap !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  padding: 12px 18px !important;
+  min-height: 46px !important;
 }
 
-/* 3. Topbar Anti-Crowding & Unified Profile Switcher */
-.topbar {
-  height: auto !important;
-  min-height: 62px !important;
-  padding: 8px 0 !important;
-  gap: 10px !important;
-  flex-wrap: nowrap !important;
-}
-.crumb {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.crumb strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.topbar-right {
-  display: flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  flex-shrink: 0 !important;
-}
-#user-profile-button {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  padding: 5px 10px !important;
-  border: 1px solid #d8e4da !important;
-  border-radius: 9px !important;
-  background: #ffffff !important;
-  box-shadow: 0 1px 2px rgba(25, 50, 32, 0.04);
-}
-#user-profile-button:hover {
-  border-color: #68a77a !important;
-  background: #f2f8f3 !important;
-}
-#user-profile-button .chevron {
-  font-size: 13px;
-  color: #2e6d42;
-  font-weight: 800;
-}
-
-/* 4. Page Headings & Session Control Actions (Never overlap or clip) */
-.class-page-heading {
+/* 5. Scaled Headings, Buttons, Inputs & Selects */
+.page-heading,
+.class-page-heading,
+.main-menu-heading {
   display: flex !important;
   align-items: flex-start !important;
   justify-content: space-between !important;
   flex-wrap: wrap !important;
-  gap: 14px !important;
-  padding: 20px 0 16px !important;
+  gap: 16px !important;
+  padding: 24px 0 18px !important;
 }
-.class-page-heading h1 {
-  display: flex !important;
-  align-items: center !important;
-  flex-wrap: wrap !important;
-  gap: 8px !important;
+.page-heading h1,
+.class-page-heading h1,
+.main-menu-heading h1 {
+  font-size: clamp(24px, 2.6vw, 32px) !important;
   line-height: 1.25 !important;
-}
-.session-badge-wrap {
   display: flex !important;
   align-items: center !important;
   flex-wrap: wrap !important;
-  gap: 8px !important;
+  gap: 10px !important;
+}
+.page-heading p,
+.class-page-heading p,
+.main-menu-heading p,
+.menu-section-heading p,
+.management-toolbar p,
+.student-list-heading p,
+.checklist-page-heading p,
+.chat-page-heading p,
+.communication-panel-heading p {
+  font-size: 14.5px !important;
+  line-height: 1.5 !important;
+  color: #5b6d5f !important;
+  max-width: none !important;
+}
+.menu-section-heading h2,
+.management-toolbar h2,
+.layout-title h2,
+.student-list-heading h2,
+.checklist-page-heading h2,
+.chat-page-heading h2 {
+  font-size: clamp(19px, 2.1vw, 23px) !important;
+  line-height: 1.3 !important;
 }
 
-/* 5. Attendance Banner & Seating Layout Toolbar Scientific Grid */
+.primary-button,
+.outline-button,
+.roster-button,
+.filter-button {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  padding: 10px 16px !important;
+  min-height: 42px !important;
+  border-radius: 9px !important;
+  line-height: 1.3 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+}
+.text-danger {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  padding: 8px 12px !important;
+  min-height: 38px !important;
+  border-radius: 8px !important;
+}
+
+.field-label,
+.field-label-inline {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #3d5042 !important;
+  line-height: 1.45 !important;
+}
+.field-label input:not([type="checkbox"]):not([type="radio"]),
+.field-label select,
+.field-label textarea,
+.class-config-fields .field-label input,
+.class-config-fields .field-label select,
+.class-config-fields .field-label textarea,
+.profile-edit-grid input,
+.profile-edit-grid textarea,
+.student-list-tools select,
+.tutoring-filter-bar select,
+#portal-month-input {
+  font-size: 15px !important;
+  padding: 10px 13px !important;
+  min-height: 44px !important;
+  border-radius: 9px !important;
+}
+.student-list-search {
+  min-height: 44px !important;
+  padding: 0 13px !important;
+  border-radius: 9px !important;
+}
+.student-list-search input {
+  font-size: 15px !important;
+  padding: 10px 0 !important;
+}
+
+/* 6. Scaled Cards, Shift Lists, Managed Classes & KPI Grids */
+.summary-grid,
+.tutoring-metrics-grid,
+.staff-metrics-grid,
+.class-metrics-summary,
+.student-list-summary,
+.finalize-summary-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important;
+  gap: 14px !important;
+}
+.summary-card,
+.class-metric-box,
+.student-list-summary > div,
+.finalize-stat {
+  padding: 18px 20px !important;
+  border-radius: 12px !important;
+}
+.summary-top,
+.class-metric-box > span,
+.finalize-stat > span {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+.summary-card > strong,
+.class-metric-box > strong,
+.student-list-summary strong,
+.finalize-stat > strong,
+.portal-kpi-item > span {
+  font-size: 28px !important;
+}
+.summary-card > small,
+.class-metric-box > small,
+.student-list-summary small,
+.portal-kpi-item > small {
+  font-size: 13px !important;
+}
+.icon-box {
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 18px !important;
+  border-radius: 10px !important;
+}
+
+.shift-card-list,
+.managed-class-list {
+  gap: 14px !important;
+}
+.shift-card {
+  grid-template-columns: 48px minmax(0, 1fr) auto !important;
+  gap: 16px !important;
+  padding: 18px 20px !important;
+  border-radius: 13px !important;
+}
+.shift-card-icon {
+  width: 48px !important;
+  height: 48px !important;
+  font-size: 22px !important;
+  border-radius: 12px !important;
+}
+.shift-card-title strong,
+.managed-class-heading strong {
+  font-size: 17.5px !important;
+}
+.shift-card-main > p,
+.managed-class-heading span {
+  font-size: 14.5px !important;
+  margin: 5px 0 8px !important;
+}
+.shift-card-details {
+  font-size: 14px !important;
+  gap: 6px 20px !important;
+}
+
+.managed-class-card {
+  padding: 20px 22px !important;
+  border-radius: 13px !important;
+}
+.managed-class-details {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)) !important;
+  gap: 14px !important;
+  padding: 14px 0 !important;
+  margin: 14px 0 !important;
+}
+.managed-class-details > span {
+  font-size: 14px !important;
+  line-height: 1.45 !important;
+}
+.managed-class-details small {
+  font-size: 12.5px !important;
+}
+.managed-class-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+}
+
+/* Badges & Chips */
+.room-chip,
+.count-pill,
+.shift-state,
+.status-pill,
+.student-state,
+.makeup-status-badge,
+.subject-tag,
+.session-badge-state,
+.finalized-badge {
+  font-size: 12.5px !important;
+  padding: 5px 11px !important;
+  border-radius: 999px !important;
+  line-height: 1.3 !important;
+}
+.student-tag,
+.student-tag-inline {
+  font-size: 11.5px !important;
+  padding: 2px 8px !important;
+}
+
+/* 7. Seating Chart & Attendance Banner Scale-Up */
 .attendance-banner {
   display: grid !important;
-  grid-template-columns: auto minmax(200px, 1fr) auto auto auto !important;
+  grid-template-columns: auto minmax(240px, 1fr) auto auto auto !important;
   align-items: center !important;
-  gap: 14px !important;
-  padding: 14px 16px !important;
+  gap: 16px !important;
+  padding: 16px 20px !important;
+  border-radius: 12px !important;
 }
+.banner-mark {
+  width: 40px !important;
+  height: 40px !important;
+  font-size: 18px !important;
+}
+.banner-copy strong {
+  font-size: 15.5px !important;
+}
+.banner-copy span {
+  font-size: 13.5px !important;
+  line-height: 1.45 !important;
+}
+.banner-progress strong,
+.homework-progress strong {
+  font-size: 22px !important;
+}
+.banner-progress small,
+.homework-progress small,
+.no-hw-hint {
+  font-size: 12.5px !important;
+}
+.no-hw-toggle span {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
 .layout-toolbar {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
   flex-wrap: wrap !important;
-  gap: 12px !important;
-  margin: 18px 0 12px !important;
+  gap: 14px !important;
+  margin: 20px 0 14px !important;
 }
 .layout-title {
   display: flex !important;
   align-items: center !important;
   flex-wrap: wrap !important;
-  gap: 8px !important;
+  gap: 10px !important;
 }
 .layout-actions {
   display: flex !important;
   align-items: center !important;
   flex-wrap: wrap !important;
-  gap: 8px !important;
+  gap: 10px !important;
+}
+.layout-hint {
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  padding: 10px 14px !important;
+  background: #f3f8f4 !important;
+  border: 1px solid #dce8de !important;
+  border-radius: 10px !important;
+  margin-bottom: 14px !important;
 }
 
-/* 6. Class History Dialog Responsive Layout (Replaces rigid 320px inline grid) */
+.student-pool-wrap {
+  padding: 14px 18px !important;
+  border-radius: 12px !important;
+  margin-bottom: 16px !important;
+}
+.pool-heading {
+  font-size: 13.5px !important;
+  margin-bottom: 10px !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+.pool-heading strong {
+  font-size: 14.5px !important;
+  max-width: none !important;
+}
+.pool-token-rect {
+  min-height: 50px !important;
+  padding: 12px 22px !important;
+  font-size: 15.5px !important;
+  border-radius: 10px !important;
+}
+
+.classroom-wrap {
+  padding: 28px 22px 22px !important;
+  border-radius: 14px !important;
+}
+.board-label {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  margin-bottom: 24px !important;
+}
+.classroom {
+  gap: 16px !important;
+  overflow-x: auto !important;
+  padding: 4px 4px 14px !important;
+}
+.desk-row {
+  gap: 8px !important;
+}
+.row-label {
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  padding: 4px 2px !important;
+  width: 100% !important;
+}
+.row-collect-hw-btn {
+  font-size: 12.5px !important;
+  padding: 5px 10px !important;
+  border-radius: 7px !important;
+  font-weight: 700 !important;
+}
+.desk-row .desks {
+  border-radius: 10px !important;
+  border: 1.5px solid #cfdcd1 !important;
+}
+.desk-row .desk {
+  min-height: 60px !important;
+  padding: 7px 8px !important;
+}
+.desk-row .desk-seats {
+  min-height: 48px !important;
+  gap: 6px !important;
+}
+.desk-row .seat.seat-token {
+  min-height: 48px !important;
+  padding: 7px 9px !important;
+  border-radius: 8px !important;
+  border: 1px solid #d5e2d7 !important;
+  background: #f8fbf8 !important;
+}
+.desk-row .seat-token .seat-name {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+}
+.homework-mark {
+  font-size: 13.5px !important;
+  padding: 2px 6px !important;
+  border-radius: 5px !important;
+}
+.seat-empty-text {
+  font-size: 13.5px !important;
+}
+.desk-add-compact-btn {
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 18px !important;
+  border-radius: 8px !important;
+}
+.divider-pill {
+  font-size: 12px !important;
+  padding: 3px 10px !important;
+}
+.back-of-room > span {
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+}
+.late-area {
+  min-height: 60px !important;
+  padding: 12px !important;
+  border-radius: 10px !important;
+}
+.late-empty {
+  font-size: 13.5px !important;
+}
+.late-token {
+  font-size: 14px !important;
+  padding: 8px 14px !important;
+  border-radius: 8px !important;
+}
+.seat-legend,
+.seat-legend.homework-legend {
+  font-size: 13px !important;
+  gap: 14px !important;
+  flex-wrap: wrap !important;
+  padding-top: 14px !important;
+}
+.legend-icon {
+  width: 22px !important;
+  height: 22px !important;
+  font-size: 13px !important;
+}
+.bottom-actions strong {
+  font-size: 15.5px !important;
+}
+.bottom-actions small {
+  font-size: 13.5px !important;
+}
+
+/* 8. Tables, Scores, Checklist & Chat Scale-Up */
+.attendance-report-table,
+.portal-table,
+#scores-tab-table,
+#general-roster-table,
+#roster-table,
+#staff-table,
+#master-student-table {
+  font-size: 14px !important;
+}
+.attendance-report-table th,
+.portal-table th {
+  font-size: 13.5px !important;
+  padding: 12px 14px !important;
+}
+.attendance-report-table td,
+.portal-table td {
+  font-size: 14px !important;
+  padding: 11px 14px !important;
+}
+.manual-score-input {
+  width: 82px !important;
+  height: 42px !important;
+  font-size: 15.5px !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+}
+.recent-scores-btn {
+  font-size: 13.5px !important;
+  padding: 7px 12px !important;
+  border-radius: 8px !important;
+}
+.attendance-note-input {
+  font-size: 14px !important;
+  padding: 8px 10px !important;
+  min-height: 38px !important;
+}
+.scores-group-divider-row td {
+  font-size: 13.5px !important;
+  padding: 10px 14px !important;
+}
+
+.checklist-panel {
+  padding: 20px 22px !important;
+  border-radius: 12px !important;
+}
+.checklist-step {
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 14px !important;
+}
+.checklist-panel-heading h3 {
+  font-size: 16.5px !important;
+}
+.checklist-item {
+  padding: 13px 6px !important;
+  gap: 12px !important;
+}
+.checklist-item input[type="checkbox"],
+.test-required-toggle input[type="checkbox"] {
+  width: 20px !important;
+  height: 20px !important;
+}
+.checklist-item input.checklist-label-input,
+.checklist-item-copy strong,
+.test-required-toggle {
+  font-size: 15px !important;
+}
+.checklist-item-copy small,
+.checklist-log,
+.save-status {
+  font-size: 13px !important;
+}
+.personal-work-card {
+  padding: 16px 20px !important;
+  border-radius: 12px !important;
+}
+.personal-work-card strong {
+  font-size: 15.5px !important;
+}
+.personal-work-card small {
+  font-size: 13.5px !important;
+}
+.personal-work-card button {
+  font-size: 14px !important;
+  padding: 10px 16px !important;
+}
+
+.communication-panel h3 {
+  font-size: 16.5px !important;
+}
+.chat-message,
+.chat-system-message {
+  padding: 12px 14px !important;
+  border-radius: 10px !important;
+}
+.chat-message-meta strong {
+  font-size: 13.5px !important;
+}
+.chat-message time,
+.chat-system-message time {
+  font-size: 12px !important;
+}
+.chat-message > p,
+.chat-system-message p,
+.activity-log-item p {
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+}
+.activity-log-item small {
+  font-size: 12.5px !important;
+}
+.chat-compose textarea {
+  font-size: 14.5px !important;
+  padding: 10px 12px !important;
+}
+
+/* 9. Class History Dialog Responsive Layout */
 .class-history-layout {
   display: grid;
-  grid-template-columns: 290px minmax(0, 1fr);
-  gap: 16px;
-  margin-top: 14px;
-  min-height: 420px;
+  grid-template-columns: 310px minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 16px;
+  min-height: 440px;
 }
 .class-history-sidebar {
-  border-right: 1px solid #e7ece7;
-  padding-right: 14px;
+  border-right: 1px solid #e2ebe3;
+  padding-right: 16px;
   overflow-y: auto;
-  max-height: 68vh;
+  max-height: 70vh;
 }
 .class-history-main {
   overflow-y: auto;
-  max-height: 68vh;
+  max-height: 70vh;
   padding-left: 4px;
   min-width: 0;
 }
 
-/* 7. Unified Adaptive Sheet Modal System for ALL <dialog> elements */
+/* 10. Unified Adaptive Sheet Modal System for ALL <dialog> elements */
 @keyframes modal-scale-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateY(10px) scale(0.98);
   }
   to {
     opacity: 1;
@@ -2431,7 +3070,7 @@ input[type="search"]::-webkit-search-decoration {
   }
 }
 
-@keyframes bottom-sheet-up {
+@keyframes bottom-sheet-slide-up {
   from {
     opacity: 0.6;
     transform: translateY(100%);
@@ -2443,22 +3082,67 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 dialog {
-  border: 1px solid #d5e2d7 !important;
-  border-radius: 16px !important;
-  padding: 22px 24px !important;
+  position: fixed !important;
+  border: 1px solid #cfe0d2 !important;
+  border-radius: 18px !important;
+  padding: 28px 28px 24px !important;
   background: #ffffff !important;
-  color: #202a24 !important;
-  box-shadow: 0 24px 68px rgba(18, 38, 24, 0.24) !important;
-  max-height: 88dvh !important;
+  color: #1c2820 !important;
+  box-shadow: 0 26px 76px rgba(15, 34, 21, 0.28) !important;
+  max-height: 90dvh !important;
   overflow-y: auto !important;
   overscroll-behavior: contain !important;
 }
 dialog[open] {
-  animation: modal-scale-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: modal-scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 dialog::backdrop {
-  background: rgba(18, 32, 22, 0.52) !important;
-  backdrop-filter: blur(3px) !important;
+  background: rgba(15, 28, 19, 0.56) !important;
+  backdrop-filter: blur(4px) !important;
+}
+dialog h2 {
+  font-size: clamp(20px, 2.2vw, 24px) !important;
+  margin: 4px 0 14px !important;
+  padding-right: 52px !important;
+  line-height: 1.3 !important;
+}
+dialog .eyebrow {
+  padding-right: 52px !important;
+}
+dialog .dialog-hint {
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: #5c6e60 !important;
+  margin: -4px 0 16px !important;
+}
+
+/* Pin close button cleanly at top-right of every dialog without float collisions */
+dialog .close-button,
+.dialog-form .close-button {
+  position: absolute !important;
+  top: 16px !important;
+  right: 16px !important;
+  float: none !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  background: #edf5ef !important;
+  color: #2c4232 !important;
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  display: grid !important;
+  place-items: center !important;
+  z-index: 30 !important;
+  border: 1px solid #d5e4d8 !important;
+  transition: background 0.15s, color 0.15s, transform 0.15s !important;
+}
+dialog .close-button:hover,
+.dialog-form .close-button:hover {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: #b91c1c !important;
+  transform: scale(1.05);
 }
 
 /* Desktop Dialog Width Tiers */
@@ -2468,7 +3152,7 @@ dialog::backdrop {
   #layout-dialog,
   #session-change-dialog,
   #students-dialog {
-    width: min(500px, calc(100vw - 32px)) !important;
+    width: min(580px, calc(100vw - 32px)) !important;
   }
   #class-config-dialog,
   #tutoring-form-dialog,
@@ -2482,46 +3166,22 @@ dialog::backdrop {
   #staff-detail-dialog,
   #session-schedule-dialog,
   #google-sheets-sync-dialog {
-    width: min(720px, calc(100vw - 32px)) !important;
+    width: min(840px, calc(100vw - 32px)) !important;
   }
   #attendance-export-dialog,
   #class-history-dialog,
   #roster-admin-dialog,
   #import-roster-dialog,
   #student-score-history-dialog {
-    width: min(980px, calc(100vw - 32px)) !important;
+    width: min(1120px, calc(100vw - 32px)) !important;
   }
 }
 
-/* Close button inside any dialog */
-dialog .close-button {
-  position: sticky !important;
-  top: 0 !important;
-  float: right !important;
-  width: 32px !important;
-  height: 32px !important;
-  border-radius: 50% !important;
-  background: #f1f6f2 !important;
-  color: #3a4e3f !important;
-  font-size: 20px !important;
-  font-weight: 700 !important;
-  line-height: 1 !important;
-  display: grid !important;
-  place-items: center !important;
-  z-index: 20 !important;
-  margin-left: 8px !important;
-  transition: background 0.15s, color 0.15s !important;
-}
-dialog .close-button:hover {
-  background: #fee2e2 !important;
-  color: #b91c1c !important;
-}
-
-/* 8. Mobile & Tablet Responsive Optimizations (Bottom-Sheet Modals & Clean Blocks) */
-@media (max-width: 960px) {
+/* 11. Tablet & Mobile Responsive Layout & Bottom-Sheet / Full-Page Sheet System */
+@media (max-width: 1100px) {
   .attendance-banner {
     grid-template-columns: 1fr 1fr !important;
-    gap: 10px !important;
+    gap: 12px !important;
   }
   .attendance-banner .banner-mark {
     display: none !important;
@@ -2533,15 +3193,15 @@ dialog .close-button:hover {
     grid-column: 1 / -1 !important;
     border-left: 0 !important;
     border-top: 1px solid #d6e5d9 !important;
-    padding: 8px 0 0 !important;
-  }
-  .student-list-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    padding: 10px 0 0 !important;
   }
 }
 
 @media (max-width: 768px) {
-  /* Convert ALL dialogs into smooth slide-up Bottom-Sheets on Mobile */
+  body {
+    font-size: 15px !important;
+  }
+  /* Convert ALL dialogs and notification panel into smooth slide-up Bottom-Sheets on Mobile */
   dialog,
   #seat-dialog,
   #late-dialog,
@@ -2569,42 +3229,65 @@ dialog .close-button:hover {
     margin: 0 !important;
     width: 100vw !important;
     max-width: 100vw !important;
-    max-height: 92dvh !important;
-    border-radius: 20px 20px 0 0 !important;
+    max-height: 94dvh !important;
+    border-radius: 22px 22px 0 0 !important;
     border: 0 !important;
-    border-top: 1px solid #cbe0ce !important;
-    padding: 16px 15px max(16px, env(safe-area-inset-bottom)) !important;
-    box-shadow: 0 -12px 42px rgba(15, 32, 20, 0.25) !important;
+    border-top: 1px solid #c5dbca !important;
+    padding: 20px 18px max(20px, env(safe-area-inset-bottom)) !important;
+    box-shadow: 0 -14px 48px rgba(15, 32, 20, 0.28) !important;
+  }
+  /* Full-page sheet height for large data/form dialogs on mobile */
+  #attendance-export-dialog,
+  #class-history-dialog,
+  #roster-admin-dialog,
+  #import-roster-dialog,
+  #student-score-history-dialog,
+  #class-config-dialog,
+  #tutoring-form-dialog,
+  #student-profile-dialog,
+  #student-class-profile-dialog,
+  #staff-detail-dialog {
+    min-height: 82dvh !important;
   }
   dialog[open] {
-    animation: bottom-sheet-up 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    animation: bottom-sheet-slide-up 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
-  /* Visual pull handle pill at the top of every mobile bottom-sheet */
   dialog::before {
     content: "";
     display: block;
-    width: 42px;
-    height: 4px;
+    width: 44px;
+    height: 5px;
     border-radius: 999px;
-    background: #cbd8cd;
-    margin: 0 auto 10px;
+    background: #c5d4c8;
+    margin: 0 auto 12px;
   }
   dialog > .dialog-form,
   dialog > form {
     padding: 0 !important;
   }
-  /* Sticky footer buttons inside mobile bottom-sheet */
+  .notification-panel {
+    position: fixed !important;
+    inset: auto 0 0 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: 85dvh !important;
+    border-radius: 22px 22px 0 0 !important;
+    z-index: 999 !important;
+    box-shadow: 0 -14px 48px rgba(15, 32, 20, 0.28) !important;
+  }
+
+  /* Sticky footer action bars inside mobile bottom-sheet */
   .class-config-actions,
   .finalize-dialog-actions,
   .student-profile-actions,
   .attendance-export-actions {
     position: sticky !important;
-    bottom: -16px !important;
+    bottom: -20px !important;
     background: #ffffff !important;
-    padding: 10px 0 12px !important;
-    margin-top: 14px !important;
-    border-top: 1px solid #e5ede6 !important;
-    z-index: 15 !important;
+    padding: 12px 0 14px !important;
+    margin-top: 16px !important;
+    border-top: 1px solid #e2ece4 !important;
+    z-index: 20 !important;
   }
 
   /* Stack Class History Sidebar & Detail cleanly on Mobile */
@@ -2616,8 +3299,8 @@ dialog .close-button:hover {
     border-right: 0 !important;
     border-bottom: 1px solid #e2ebe3 !important;
     padding-right: 0 !important;
-    padding-bottom: 12px !important;
-    max-height: 220px !important;
+    padding-bottom: 14px !important;
+    max-height: 240px !important;
   }
   .class-history-main {
     max-height: none !important;
@@ -2628,7 +3311,7 @@ dialog .close-button:hover {
   .layout-toolbar {
     flex-direction: column !important;
     align-items: stretch !important;
-    gap: 10px !important;
+    gap: 12px !important;
   }
   .layout-title {
     flex-direction: row !important;
@@ -2639,7 +3322,7 @@ dialog .close-button:hover {
   .layout-actions {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
-    gap: 7px !important;
+    gap: 8px !important;
     width: 100% !important;
   }
   .layout-actions .seating-map-search-box {
@@ -2648,15 +3331,26 @@ dialog .close-button:hover {
   }
   .layout-actions > button {
     width: 100% !important;
-    min-height: 36px !important;
+    min-height: 42px !important;
     justify-content: center !important;
-    font-size: 10px !important;
-    padding: 7px 8px !important;
+    font-size: 13.5px !important;
+    padding: 9px 10px !important;
   }
 
-  /* Compact Topbar on Mobile */
+  /* Shift card on mobile: clean 2-col layout with full-width button */
+  .shift-card {
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+    gap: 12px !important;
+    padding: 16px !important;
+  }
+  .shift-card > .primary-button {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  /* Topbar on Mobile */
   .realtime-sync-badge span:last-child {
-    max-width: 92px;
+    max-width: 96px;
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -2664,22 +3358,28 @@ dialog .close-button:hover {
     display: none !important;
   }
   .logout-button {
-    padding: 6px 8px !important;
-    font-size: 9.5px !important;
-    margin-left: 0 !important;
+    padding: 7px 10px !important;
+    font-size: 12.5px !important;
   }
 
-  /* Class Metrics 2x2 grid on Mobile */
-  .class-metrics-summary {
-    grid-template-columns: 1fr 1fr !important;
-    gap: 8px !important;
+  /* KPI grids 2x2 on Mobile */
+  .summary-grid,
+  .tutoring-metrics-grid,
+  .staff-metrics-grid,
+  .class-metrics-summary,
+  .student-list-summary,
+  .finalize-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
   }
 
-  /* Form grids single column on small mobile */
+  /* Form grids single column on Mobile */
   .class-config-fields,
   .profile-edit-grid,
   .form-row {
     grid-template-columns: 1fr !important;
-    gap: 8px !important;
+    gap: 10px !important;
   }
 }
+
+#legacy-compat-dom, #legacy-compat-dom * { display: none !important; visibility: hidden !important; pointer-events: none !important; }
