@@ -2256,3 +2256,430 @@ input[type="search"]::-webkit-search-decoration {
   border-color: #6eb381 !important;
   box-shadow: 0 4px 12px rgba(33, 87, 50, 0.09);
 }
+
+/* ==========================================================================
+   v1.5 UI/UX OVERHAUL:
+   - Deduplicate Navigation Bars (Sidebar vs Top Tabs)
+   - Unified Adaptive Sheet Modals (Bottom-Sheet Slide-Up on Mobile, Centered Sheet on Desktop)
+   - Anti-Crowding Responsive Grids for Topbar, Headers, Toolbars, and Tables
+   ========================================================================== */
+
+/* 1. Deduplicate Navigation: When Desktop Sidebar is visible (>1400px), hide duplicate .main-menu-toolbar */
+@media (min-width: 1401px) {
+  .main-menu-toolbar {
+    display: none !important;
+  }
+}
+
+/* 2. Smooth Horizontal Scrollable Tab Bars (Never wrap or crowd on Mobile/Tablet) */
+.main-menu-tabs,
+.class-view-tabs,
+.sub-nav-tabs,
+.report-nav-tabs {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  gap: 6px !important;
+}
+.main-menu-tabs::-webkit-scrollbar,
+.class-view-tabs::-webkit-scrollbar,
+.sub-nav-tabs::-webkit-scrollbar,
+.report-nav-tabs::-webkit-scrollbar {
+  display: none;
+}
+.main-menu-tab,
+.class-view-tab,
+.sub-nav-tab,
+.report-tab {
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+}
+
+/* 3. Topbar Anti-Crowding & Unified Profile Switcher */
+.topbar {
+  height: auto !important;
+  min-height: 62px !important;
+  padding: 8px 0 !important;
+  gap: 10px !important;
+  flex-wrap: nowrap !important;
+}
+.crumb {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.crumb strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+#user-profile-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 5px 10px !important;
+  border: 1px solid #d8e4da !important;
+  border-radius: 9px !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(25, 50, 32, 0.04);
+}
+#user-profile-button:hover {
+  border-color: #68a77a !important;
+  background: #f2f8f3 !important;
+}
+#user-profile-button .chevron {
+  font-size: 13px;
+  color: #2e6d42;
+  font-weight: 800;
+}
+
+/* 4. Page Headings & Session Control Actions (Never overlap or clip) */
+.class-page-heading {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  flex-wrap: wrap !important;
+  gap: 14px !important;
+  padding: 20px 0 16px !important;
+}
+.class-page-heading h1 {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  line-height: 1.25 !important;
+}
+.session-badge-wrap {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+/* 5. Attendance Banner & Seating Layout Toolbar Scientific Grid */
+.attendance-banner {
+  display: grid !important;
+  grid-template-columns: auto minmax(200px, 1fr) auto auto auto !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 14px 16px !important;
+}
+.layout-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+  margin: 18px 0 12px !important;
+}
+.layout-title {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+.layout-actions {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+/* 6. Class History Dialog Responsive Layout (Replaces rigid 320px inline grid) */
+.class-history-layout {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 14px;
+  min-height: 420px;
+}
+.class-history-sidebar {
+  border-right: 1px solid #e7ece7;
+  padding-right: 14px;
+  overflow-y: auto;
+  max-height: 68vh;
+}
+.class-history-main {
+  overflow-y: auto;
+  max-height: 68vh;
+  padding-left: 4px;
+  min-width: 0;
+}
+
+/* 7. Unified Adaptive Sheet Modal System for ALL <dialog> elements */
+@keyframes modal-scale-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes bottom-sheet-up {
+  from {
+    opacity: 0.6;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+dialog {
+  border: 1px solid #d5e2d7 !important;
+  border-radius: 16px !important;
+  padding: 22px 24px !important;
+  background: #ffffff !important;
+  color: #202a24 !important;
+  box-shadow: 0 24px 68px rgba(18, 38, 24, 0.24) !important;
+  max-height: 88dvh !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+}
+dialog[open] {
+  animation: modal-scale-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+dialog::backdrop {
+  background: rgba(18, 32, 22, 0.52) !important;
+  backdrop-filter: blur(3px) !important;
+}
+
+/* Desktop Dialog Width Tiers */
+@media (min-width: 769px) {
+  #seat-dialog,
+  #late-dialog,
+  #layout-dialog,
+  #session-change-dialog,
+  #students-dialog {
+    width: min(500px, calc(100vw - 32px)) !important;
+  }
+  #class-config-dialog,
+  #tutoring-form-dialog,
+  #room-template-dialog,
+  #staff-form-dialog,
+  #account-switch-dialog,
+  #finalize-dialog,
+  #close-session-dialog,
+  #student-profile-dialog,
+  #student-class-profile-dialog,
+  #staff-detail-dialog,
+  #session-schedule-dialog,
+  #google-sheets-sync-dialog {
+    width: min(720px, calc(100vw - 32px)) !important;
+  }
+  #attendance-export-dialog,
+  #class-history-dialog,
+  #roster-admin-dialog,
+  #import-roster-dialog,
+  #student-score-history-dialog {
+    width: min(980px, calc(100vw - 32px)) !important;
+  }
+}
+
+/* Close button inside any dialog */
+dialog .close-button {
+  position: sticky !important;
+  top: 0 !important;
+  float: right !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  background: #f1f6f2 !important;
+  color: #3a4e3f !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  display: grid !important;
+  place-items: center !important;
+  z-index: 20 !important;
+  margin-left: 8px !important;
+  transition: background 0.15s, color 0.15s !important;
+}
+dialog .close-button:hover {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
+/* 8. Mobile & Tablet Responsive Optimizations (Bottom-Sheet Modals & Clean Blocks) */
+@media (max-width: 960px) {
+  .attendance-banner {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+  .attendance-banner .banner-mark {
+    display: none !important;
+  }
+  .attendance-banner .banner-copy {
+    grid-column: 1 / -1 !important;
+  }
+  .attendance-banner .banner-no-hw-box {
+    grid-column: 1 / -1 !important;
+    border-left: 0 !important;
+    border-top: 1px solid #d6e5d9 !important;
+    padding: 8px 0 0 !important;
+  }
+  .student-list-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Convert ALL dialogs into smooth slide-up Bottom-Sheets on Mobile */
+  dialog,
+  #seat-dialog,
+  #late-dialog,
+  #layout-dialog,
+  #class-config-dialog,
+  #roster-admin-dialog,
+  #import-roster-dialog,
+  #tutoring-form-dialog,
+  #room-template-dialog,
+  #staff-form-dialog,
+  #account-switch-dialog,
+  #finalize-dialog,
+  #close-session-dialog,
+  #student-profile-dialog,
+  #student-class-profile-dialog,
+  #staff-detail-dialog,
+  #session-schedule-dialog,
+  #google-sheets-sync-dialog,
+  #attendance-export-dialog,
+  #class-history-dialog,
+  #student-score-history-dialog,
+  #students-dialog {
+    position: fixed !important;
+    inset: auto 0 0 0 !important;
+    margin: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: 92dvh !important;
+    border-radius: 20px 20px 0 0 !important;
+    border: 0 !important;
+    border-top: 1px solid #cbe0ce !important;
+    padding: 16px 15px max(16px, env(safe-area-inset-bottom)) !important;
+    box-shadow: 0 -12px 42px rgba(15, 32, 20, 0.25) !important;
+  }
+  dialog[open] {
+    animation: bottom-sheet-up 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+  /* Visual pull handle pill at the top of every mobile bottom-sheet */
+  dialog::before {
+    content: "";
+    display: block;
+    width: 42px;
+    height: 4px;
+    border-radius: 999px;
+    background: #cbd8cd;
+    margin: 0 auto 10px;
+  }
+  dialog > .dialog-form,
+  dialog > form {
+    padding: 0 !important;
+  }
+  /* Sticky footer buttons inside mobile bottom-sheet */
+  .class-config-actions,
+  .finalize-dialog-actions,
+  .student-profile-actions,
+  .attendance-export-actions {
+    position: sticky !important;
+    bottom: -16px !important;
+    background: #ffffff !important;
+    padding: 10px 0 12px !important;
+    margin-top: 14px !important;
+    border-top: 1px solid #e5ede6 !important;
+    z-index: 15 !important;
+  }
+
+  /* Stack Class History Sidebar & Detail cleanly on Mobile */
+  .class-history-layout {
+    grid-template-columns: 1fr !important;
+    min-height: 0 !important;
+  }
+  .class-history-sidebar {
+    border-right: 0 !important;
+    border-bottom: 1px solid #e2ebe3 !important;
+    padding-right: 0 !important;
+    padding-bottom: 12px !important;
+    max-height: 220px !important;
+  }
+  .class-history-main {
+    max-height: none !important;
+    padding-left: 0 !important;
+  }
+
+  /* Seating Map Toolbar on Mobile: Search full width, Buttons in neat 2-col grid */
+  .layout-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .layout-title {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+  }
+  .layout-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 7px !important;
+    width: 100% !important;
+  }
+  .layout-actions .seating-map-search-box {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+  .layout-actions > button {
+    width: 100% !important;
+    min-height: 36px !important;
+    justify-content: center !important;
+    font-size: 10px !important;
+    padding: 7px 8px !important;
+  }
+
+  /* Compact Topbar on Mobile */
+  .realtime-sync-badge span:last-child {
+    max-width: 92px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .user-name small {
+    display: none !important;
+  }
+  .logout-button {
+    padding: 6px 8px !important;
+    font-size: 9.5px !important;
+    margin-left: 0 !important;
+  }
+
+  /* Class Metrics 2x2 grid on Mobile */
+  .class-metrics-summary {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Form grids single column on small mobile */
+  .class-config-fields,
+  .profile-edit-grid,
+  .form-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+}

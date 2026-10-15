@@ -1,11 +1,11 @@
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.4';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.4';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.5';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.5';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=1.4';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=1.4';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.4';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.4';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.4';
+import { setupFeatures } from './features.js?v=1.5';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=1.5';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.5';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.5';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.5';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -549,7 +549,7 @@ function renderMainMenu(){
         <button type="button" class="primary-button" data-enter-class="${escapeHtml(item.id)}" data-session-date="${date.toLocaleDateString('sv-SE')}">Vào lớp</button>
       </article>`;
     }).join('') || '<div class="menu-empty">Chưa có lớp học nào trong hệ thống.</div>';
-  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-heading"><div><div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><strong>${escapeHtml(item.name)}</strong><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span></div><span>${escapeHtml(item.subject||'Chưa có môn học')}</span></div><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span></div><div class="managed-class-details"><span><small>Mã lớp & Năm sinh</small><strong>${escapeHtml(item.code||item.id)}</strong> (${escapeHtml(formatBirthYearInline(item.grade))})</span><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist mặc định</small>${item.defaultChecklist.startItems.length} đầu giờ · ${item.defaultChecklist.endItems.length} cuối giờ</span><span><small>Nhắc theo lịch</small>${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions"><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}" style="font-weight:700; color:#215732; background:#f2f8f3; border-color:#9dc7a5;">📋 Chi tiết & Lịch sử</button><button type="button" class="outline-button" data-roster-class="${escapeHtml(item.id)}">Danh sách lớp gốc</button><button type="button" class="outline-button" data-edit-class="${escapeHtml(item.id)}">Chỉnh sửa</button><button type="button" class="outline-button" data-edit-session="${escapeHtml(item.id)}">Điều chỉnh buổi</button><button type="button" class="primary-button" data-enter-class="${escapeHtml(item.id)}" data-session-date="${occurrenceDate(item).toLocaleDateString('sv-SE')}" style="padding:7px 12px; font-weight:700;">Vào lớp</button><button type="button" class="outline-button" data-enter-class="${escapeHtml(item.id)}" data-session-date="${occurrenceDate(item).toLocaleDateString('sv-SE')}">Mở ca</button><button type="button" class="text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';$('#add-class-button').hidden=!(role==='office'||role==='admin');$('#manage-employees-button').hidden=role!=='admin';}
+  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-heading"><div><div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><strong>${escapeHtml(item.name)}</strong><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span></div><span>${escapeHtml(item.subject||'Chưa có môn học')}</span></div><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span></div><div class="managed-class-details"><span><small>Mã lớp & Năm sinh</small><strong>${escapeHtml(item.code||item.id)}</strong> (${escapeHtml(formatBirthYearInline(item.grade))})</span><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist mặc định</small>${item.defaultChecklist.startItems.length} đầu giờ · ${item.defaultChecklist.endItems.length} cuối giờ</span><span><small>Nhắc theo lịch</small>${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions"><button type="button" class="primary-button" data-enter-live-class="${escapeHtml(item.id)}" data-session-date="${occurrenceDate(item).toLocaleDateString('sv-SE')}" style="padding:7px 12px; font-weight:700;">▶ Vào lớp (Mở ca)</button><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}" style="font-weight:700; color:#215732; background:#f2f8f3; border-color:#9dc7a5;">📋 Tổng quan & Lịch sử</button><button type="button" class="outline-button" data-roster-class="${escapeHtml(item.id)}">👥 DS gốc</button><button type="button" class="outline-button" data-edit-class="${escapeHtml(item.id)}">⚙ Sửa lớp</button><button type="button" class="outline-button" data-edit-session="${escapeHtml(item.id)}">📅 Đổi lịch buổi</button><button type="button" class="text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';if($('#add-class-button'))$('#add-class-button').hidden=!(role==='office'||role==='admin');if($('#manage-employees-button'))$('#manage-employees-button').hidden=role!=='admin';}
 function setMainMenuPanel(panel){
   try {
     if (location.pathname !== '/' && location.pathname !== '/class') {
@@ -1222,6 +1222,7 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
     $('#history-switch-live-btn').onclick = () => navigateTo(`class/${cls.code || cls.id}/live/map`);
   }
   if ($('#header-class-general-btn')) {
+    $('#header-class-general-btn').hidden = Boolean(isClassHistoryViewMode);
     $('#header-class-general-btn').onclick = () => navigateTo(`class/${cls.code || cls.id}/general`);
   }
   if ($('#header-edit-class-btn')) {
@@ -1435,7 +1436,7 @@ document.addEventListener('click',event=>{
   const edit=event.target.closest('[data-edit-class]');if(edit){openClassConfig(edit.dataset.editClass);return;}const remove=event.target.closest('[data-delete-class]');if(remove){const item=classCatalog.find(row=>row.id===remove.dataset.deleteClass);if(item&&window.confirm(`Xóa lớp ${item.name} khỏi danh sách quản lý? Dữ liệu buổi học đã lưu trên thiết bị sẽ không bị xóa.`)){classCatalog=classCatalog.filter(row=>row.id!==item.id);saveClassCatalog(classCatalog);renderMainMenu();}}});
 function roleLabel(role){return ({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role]||role;}
 function renderEmployeeAdminList(){const host=$('#employee-admin-list');host.innerHTML=masterData.employees.map(employee=>'<div class="employee-admin-row" data-employee-id="'+escapeHtml(employee.id)+'"><label class="field-label">Mã<input data-employee-code value="'+escapeHtml(employee.code)+'" required></label><label class="field-label">Họ tên<input data-employee-name value="'+escapeHtml(employee.name)+'" required></label><label class="field-label">Vai trò<select data-employee-role><option value="assistant" '+(employee.role==='assistant'?'selected':'')+'>Trợ giảng</option><option value="office" '+(employee.role==='office'?'selected':'')+'>Văn phòng</option><option value="teacher" '+(employee.role==='teacher'?'selected':'')+'>Giáo viên</option><option value="admin" '+(employee.role==='admin'?'selected':'')+'>Admin</option></select></label></div>').join('');}
-$('#manage-employees-button').onclick=()=>{
+if($('#manage-employees-button'))$('#manage-employees-button').onclick=()=>{
   setMainMenuPanel('management');
   $('#mgmt-tab-staff')?.click();
   if (window.__featuresApp?.renderStaffManagement) {
@@ -1906,7 +1907,7 @@ function renderAttendanceExport(){
 }
 $('#export-attendance-button').onclick=()=>{renderAttendanceExport();$('#attendance-export-dialog').showModal();};
 document.addEventListener('input',event=>{const input=event.target.closest('[data-session-note]');if(!input)return;saveSessionNote(input.dataset.sessionNote,input.value);});
-$('#close-attendance-export').onclick=()=>$('#attendance-export-dialog').close();$('#close-attendance-export-secondary').onclick=()=>$('#attendance-export-dialog').close();$('#print-attendance-export').onclick=()=>window.print();
+$('#close-attendance-export').onclick=()=>$('#attendance-export-dialog').close();if($('#close-attendance-export-secondary'))$('#close-attendance-export-secondary').onclick=()=>$('#attendance-export-dialog').close();$('#print-attendance-export').onclick=()=>window.print();
 function profileDate(item){return item.date||new Date(item.timestamp||Date.now()).toLocaleDateString('vi-VN');}
 function openStudentProfile(id, origin = null){
   const student=studentById(id);if(!student)return;activeProfileId=id;
@@ -3625,3 +3626,22 @@ function initSearchClearButtons() {
   });
 }
 initSearchClearButtons();
+
+
+// Universal Backdrop Click-to-Close for all <dialog> elements (Mobile Bottom-Sheet & Desktop Modal)
+document.querySelectorAll('dialog').forEach(dlg => {
+  dlg.addEventListener('click', (e) => {
+    if (e.target === dlg) {
+      const rect = dlg.getBoundingClientRect();
+      const clickedInDialog = (
+        rect.top <= e.clientY &&
+        e.clientY <= rect.top + rect.height &&
+        rect.left <= e.clientX &&
+        e.clientX <= rect.left + rect.width
+      );
+      if (!clickedInDialog) {
+        dlg.close();
+      }
+    }
+  });
+});

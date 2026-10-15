@@ -1,15 +1,15 @@
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.4';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.4';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.5';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.5';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.4';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.5';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -19,7 +19,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=1.4';
+} from './excel-import-export.js?v=1.5';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -30,7 +30,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=1.4';
+} from './data/session-history-repository.js?v=1.5';
 
 export function setupFeatures(ctx) {
   const {
@@ -4550,3 +4550,19 @@ export function setupFeatures(ctx) {
     loadSessionHistory
   };
 }
+
+// v1.5: Universal backdrop click-to-close for all <dialog> elements (mobile bottom-sheet & desktop modal)
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.tagName === "DIALOG" && e.target.open) {
+    const rect = e.target.getBoundingClientRect();
+    const clickedInDialog = (
+      e.clientX >= rect.left &&
+      e.clientX <= rect.right &&
+      e.clientY >= rect.top &&
+      e.clientY <= rect.bottom
+    );
+    if (!clickedInDialog) {
+      e.target.close();
+    }
+  }
+});
