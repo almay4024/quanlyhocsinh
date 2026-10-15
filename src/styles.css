@@ -2168,3 +2168,91 @@ input[type="search"]::-webkit-search-decoration {
 .score-history-val.missing {
   color: #9ca3af;
 }
+
+/* ==========================================================================
+   v1.4 ENHANCEMENTS:
+   - Class General View 2-Tab Layout & 4-Session Compact Timeline Table
+   - Clickable Student Name for Full Score & Session History Modal
+   ========================================================================== */
+.general-timeline-table th,
+.general-timeline-table td {
+  padding: 7px 8px !important;
+  vertical-align: middle !important;
+}
+.timeline-date-th {
+  background: #e6f3ea !important;
+  color: #1b522c !important;
+  font-weight: 800 !important;
+  text-align: center !important;
+  border-left: 2px solid #b7d8c0 !important;
+  white-space: nowrap !important;
+}
+.timeline-btvn-th {
+  background: #f4fbf6 !important;
+  color: #2c663e !important;
+  font-weight: 700 !important;
+  text-align: center !important;
+  font-size: 9.5px !important;
+  white-space: nowrap !important;
+}
+.timeline-test-th {
+  background: #f5f3ff !important;
+  color: #5b21b6 !important;
+  font-weight: 800 !important;
+  text-align: center !important;
+  font-size: 9.5px !important;
+  white-space: nowrap !important;
+}
+.timeline-att-td {
+  text-align: center !important;
+  font-weight: 800 !important;
+  border-left: 2px solid #dfece2 !important;
+  white-space: nowrap !important;
+}
+.timeline-score-td {
+  text-align: center !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+}
+.timeline-score-td.test-col {
+  color: #5b21b6 !important;
+  background: #fcfaff !important;
+}
+.att-sym-present {
+  color: #15803d;
+  font-weight: 800;
+}
+.att-sym-late {
+  color: #b45309;
+  font-weight: 800;
+}
+.att-sym-absent {
+  color: #dc2626;
+  font-weight: 800;
+}
+.student-name-history-btn {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 5px;
+  font: inherit;
+  color: #1b522c;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: #86c292;
+  text-underline-offset: 2px;
+  transition: background 0.15s, color 0.15s;
+}
+.student-name-history-btn:hover {
+  background: #eaf5ec;
+  color: #14532d;
+}
+.general-session-card {
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.general-session-card:hover {
+  border-color: #6eb381 !important;
+  box-shadow: 0 4px 12px rgba(33, 87, 50, 0.09);
+}

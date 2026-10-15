@@ -1,5 +1,5 @@
 // Storage boundary for student records. Synchronizes automatically via localStorage + realtime-sync.js.
-const STUDENTS_KEY = 'lopvui.students.v6';
+const STUDENTS_KEY = 'lopvui.students.v7';
 const MAKEUP_KEY = 'lopvui.makeup-students.v1';
 
 const getStorage = () => (typeof localStorage !== 'undefined' ? localStorage : null);
@@ -33,6 +33,11 @@ export const seedStudents = [
     parentContact: { name: 'Nguyễn Văn Hùng', phone: '0988123456' },
     learningNotes: 'Tư duy hình học tốt, cần rèn trình bày tự luận cẩn thận hơn.',
     scores: [
+      { classId: 'class-math-8a-algebra', type: 'BTVN', score: 9, date: '2026-10-14', lessonTitle: 'Hình học: Đường thẳng song song với mặt phẳng' },
+      { classId: 'class-math-8a-algebra', type: 'Test', score: 9, date: '2026-10-07', lessonTitle: 'Kiểm tra chuyên đề: Giao tuyến và thiết diện' },
+      { classId: 'class-math-8a-algebra', type: 'BTVN', score: 7, date: '2026-09-30', lessonTitle: 'Giới thiệu hình không gian (buổi 2)' },
+      { classId: 'class-math-8a-algebra', type: 'Test', score: 9, date: '2026-09-23', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng' },
+      { classId: 'class-math-8a-algebra', type: 'BTVN', score: 8.5, date: '2026-09-23', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng' },
       { classId: 'class-math-8a-algebra', type: 'Test', score: 9, date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng' },
       { classId: 'class-math-8a-algebra', type: 'BTVN', score: 8.5, date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng' },
       { classId: 'class-math-8a-algebra', type: 'BTVN', score: 7, date: '2026-09-19', lessonTitle: 'Giới thiệu hình không gian (buổi 2)' },
@@ -52,6 +57,10 @@ export const seedStudents = [
       { classId: 'class-math-8a-algebra', date: '2026-09-19', aisle: 1, desk: 1, position: 1 }
     ],
     sessionNotes: [
+      { classId: 'class-math-8a-algebra', date: '2026-10-14', lessonTitle: 'Hình học: Đường thẳng song song với mặt phẳng', homeworkStatus: 'graded', homeworkScore: 9, note: 'Hăng hái phát biểu' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-07', lessonTitle: 'Kiểm tra chuyên đề: Giao tuyến và thiết diện', homeworkStatus: 'uncollected', testScore: 9, note: '' },
+      { classId: 'class-math-8a-algebra', date: '2026-09-30', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'not_submitted', homeworkScore: 7, homeworkStatusNote: 'Có đi học (Không làm BTVN) - Đã làm bù BTVN', note: 'Đã làm bù BTVN' },
+      { classId: 'class-math-8a-algebra', date: '2026-09-23', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'graded', homeworkScore: 8.5, testScore: 9, attendanceStatusOverride: 'Có đi học', homeworkStatusNote: 'Vắng - Đã học bù T5', note: '' },
       { classId: 'class-math-8a-algebra', date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'graded', homeworkScore: 8.5, testScore: 9, attendanceStatusOverride: 'Có đi học', homeworkStatusNote: 'Vắng - Đã học bù T5', note: '' },
       { classId: 'class-math-8a-algebra', date: '2026-09-19', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'not_submitted', homeworkScore: 7, homeworkStatusNote: 'Có đi học (Không làm BTVN) - Đã làm bù BTVN', note: 'Đã làm bù BTVN' },
       { classId: 'class-math-8a-algebra', date: '2026-09-12', lessonTitle: 'Giới thiệu hình không gian (buổi 1)', homeworkStatus: 'uncollected', homeworkScore: null, homeworkStatusNote: 'Vắng', note: '' },

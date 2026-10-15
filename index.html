@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Lớp học vui (v1.3) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=1.3" />
+  <title>Lớp học vui (v1.4) · Quản lý lớp học trung tâm</title>
+  <link rel="stylesheet" href="/src/styles.css?v=1.4" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span class="brand-mark">✳</span><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.3</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span class="brand-mark">✳</span><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.4</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav"><span>◷</span> Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav"><span>✍</span> Lớp bổ trợ</button>
@@ -89,26 +89,20 @@
         <section id="work-menu-panel" class="menu-panel">
           <div class="menu-section-heading">
             <div>
-              <h2>Ca đang diễn ra</h2>
-              <p>Vào lớp để bắt đầu hoặc tiếp tục quy trình điểm danh, thu bài và checklist.</p>
+              <h2>Ca làm hôm nay</h2>
+              <p>Các ca học diễn ra trong ngày hôm nay. Bấm vào lớp để mở trang tổng quan, xem lịch sử hoặc vào ca mới.</p>
             </div>
           </div>
           <div id="ongoing-shift-list" class="shift-card-list"></div>
           
           <div class="menu-section-heading upcoming-heading">
             <div>
-              <h2>Ca sắp tới</h2>
-              <p>Các ca được phân công cho tài khoản của bạn trong tuần.</p>
+              <h2>Các lớp phụ trách</h2>
+              <p>Danh sách các lớp bạn phụ trách. Bấm vào lớp để xem lịch sử các buổi học, bảng điểm 4 buổi gần nhất hoặc mở ca mới.</p>
             </div>
           </div>
           <div id="upcoming-shift-list" class="shift-card-list"></div>
-          <div class="menu-section-heading upcoming-heading" style="margin-top:24px;">
-            <div>
-              <h2>Tất cả các lớp học trung tâm</h2>
-              <p>Truy cập trực tiếp vào lớp để làm việc, điểm danh, thu bài hoặc xem sơ đồ phòng học.</p>
-            </div>
-          </div>
-          <div id="all-classes-quick-list" class="shift-card-list"></div>
+          <div id="all-classes-quick-list" class="shift-card-list" hidden></div>
           <p class="menu-demo-note">Hỗ trợ chế độ Ngoại tuyến (Offline): Khi rớt mạng, hệ thống tự động lưu trữ cục bộ và đồng bộ khi có kết nối lại.</p>
         </section>
 
@@ -245,13 +239,13 @@
               </label>
               <select id="master-grade-filter" aria-label="Lọc theo năm sinh" style="min-width:140px;">
                 <option value="all">Tất cả năm sinh</option>
-                <option value="2009">Năm sinh 2009 (2k9)</option>
-                <option value="2010">Năm sinh 2010 (2k10)</option>
-                <option value="2011">Năm sinh 2011 (2k11)</option>
-                <option value="2012">Năm sinh 2012 (2k12)</option>
-                <option value="2013">Năm sinh 2013 (2k13)</option>
-                <option value="2014">Năm sinh 2014 (2k14)</option>
-                <option value="2015">Năm sinh 2015 (2k15)</option>
+                <option value="2009">2009</option>
+                <option value="2010">2010</option>
+                <option value="2011">2011</option>
+                <option value="2012">2012</option>
+                <option value="2013">2013</option>
+                <option value="2014">2014</option>
+                <option value="2015">2015</option>
               </select>
               <select id="master-class-filter" aria-label="Lọc theo lớp học">
                 <option value="all">Tất cả các lớp</option>
@@ -433,14 +427,14 @@
         <div class="page-heading class-page-heading" style="margin-bottom:16px;">
           <div>
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-              <button type="button" class="outline-button btn-back-classes" id="general-back-classes-btn" style="padding:4px 9px; font-size:10px; font-weight:700;">← Tất cả các lớp</button>
-              <span class="eyebrow" style="margin:0;">QUẢN LÝ CHUNG LỚP HỌC</span>
+              <button type="button" class="outline-button btn-back-classes" id="general-back-classes-btn" style="padding:4px 9px; font-size:10px; font-weight:700;">← Quay lại Menu chính</button>
+              <span class="eyebrow" style="margin:0;">TỔNG QUAN LỚP HỌC</span>
             </div>
             <h1>
               <span id="general-class-name">Toán 8A</span>
               <span class="subject-tag" id="general-class-subject">ĐẠI SỐ</span>
               <span class="room-chip" id="general-class-code-badge" style="background:#e8f4eb; color:#2e6d42; font-weight:700;">MÃ: TOAN8A</span>
-              <span class="room-chip" id="general-class-grade-badge" style="background:#edf2f7; color:#4a5568; font-weight:600;">NĂM SINH 2013</span>
+              <span class="room-chip" id="general-class-grade-badge" style="background:#edf2f7; color:#4a5568; font-weight:600;">2013</span>
             </h1>
             <p>
               <span id="general-class-room">P1-T3-CS1</span>
@@ -455,14 +449,14 @@
             </p>
           </div>
           <div class="session-control-actions" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <button type="button" class="primary-button" id="general-enter-live-btn" style="background:#2e6d42; font-weight:700; padding:9px 16px;">▶ Vào ca trực hôm nay (Live)</button>
+            <button type="button" class="primary-button" id="general-enter-live-btn" style="background:#2e6d42; font-weight:800; padding:10px 18px; font-size:12px;">▶ Vào lớp (Mở ca mới)</button>
             <button type="button" class="outline-button" id="general-edit-class-btn">⚙ Cài đặt lớp</button>
-            <button type="button" class="outline-button" id="general-roster-btn">👥 Danh sách học sinh</button>
+            <button type="button" class="outline-button" id="general-roster-btn">👥 Quản lý DS gốc</button>
           </div>
         </div>
 
         <!-- Summary metrics -->
-        <div class="class-metrics-summary" style="margin-bottom:20px;">
+        <div class="class-metrics-summary" style="margin-bottom:16px;">
           <div class="class-metric-box">
             <span>Sĩ số lớp</span>
             <strong id="general-stat-total">0</strong>
@@ -471,7 +465,7 @@
           <div class="class-metric-box">
             <span>Số buổi đã học</span>
             <strong id="general-stat-sessions" style="color:#2e6d42;">0</strong>
-            <small style="color:#667;">Buổi đã hoàn tất</small>
+            <small style="color:#667;">Buổi trong lịch sử</small>
           </div>
           <div class="class-metric-box">
             <span>Chuyên cần TB</span>
@@ -485,57 +479,47 @@
           </div>
         </div>
 
-        <!-- Two Column Grid: History Sessions and Class Roster -->
-        <div class="general-management-grid">
-          <!-- Panel 1: Lịch sử các buổi học -->
-          <div class="portal-stat-card" style="padding:16px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-              <h3 style="margin:0; font:700 14px Manrope,sans-serif; color:#233d31;">📜 Lịch sử các buổi học đã qua</h3>
-              <span class="status-pill" id="general-history-count" style="font-size:9px; background:#edf5ef; color:#2e6d42; font-weight:700;">0 buổi</span>
+        <!-- 2 Tabs in General View: 1. Lịch sử (Mặc định) | 2. Danh sách học sinh -->
+        <div class="sub-nav-tabs" role="tablist" style="margin-bottom:14px;">
+          <button type="button" class="sub-nav-tab active" id="general-tab-history-btn">📜 Lịch sử các ca học (<span id="general-history-count">0 buổi</span>)</button>
+          <button type="button" class="sub-nav-tab" id="general-tab-students-btn">👥 Danh sách học sinh & Điểm 4 buổi gần nhất</button>
+        </div>
+
+        <!-- Tab 1 (Default): Lịch sử các buổi học -->
+        <div id="general-panel-history" class="portal-stat-card" style="padding:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <h3 style="margin:0; font:700 14px Manrope,sans-serif; color:#233d31;">📜 Lịch sử các buổi học của lớp</h3>
+              <p style="font-size:10.5px; color:#6b7c70; margin:3px 0 0;">Bấm vào từng ca học để xem lại sơ đồ/checklist hoặc <strong>nhập/sửa điểm của học sinh buổi hôm đó</strong>.</p>
             </div>
-            <p style="font-size:10px; color:#6b7c70; margin:0 0 12px;">Bấm vào từng buổi học để xem lại chi tiết sơ đồ lớp, danh sách điểm danh, BTVN và checklist.</p>
-            <div id="general-history-sessions-list" style="display:grid; gap:10px; max-height:480px; overflow-y:auto; padding-right:4px;"></div>
+          </div>
+          <div id="general-history-sessions-list" style="display:grid; gap:10px;"></div>
+        </div>
+
+        <!-- Tab 2: Danh sách học sinh (với các cột điểm danh & điểm 4 buổi gần nhất viết liền) -->
+        <div id="general-panel-students" class="portal-stat-card" style="padding:16px;" hidden>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <h3 style="margin:0; font:700 14px Manrope,sans-serif; color:#233d31;">👥 Danh sách học sinh & Theo dõi 4 buổi gần nhất</h3>
+              <p style="font-size:10.5px; color:#6b7c70; margin:3px 0 0;">Bấm vào <strong>Tên học sinh</strong> để xem kỹ toàn bộ lịch sử điểm, trạng thái đi học và tên bài học từng buổi. Ký hiệu điểm danh: <strong>✓</strong> Có mặt · <strong>◷</strong> Đi muộn · <strong>×</strong> Vắng.</p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button type="button" class="outline-button" id="general-export-roster-btn" style="padding:5px 10px; font-size:10px;">Xuất Excel</button>
+            </div>
           </div>
 
-          <!-- Panel 2: Danh sách học sinh của lớp -->
-          <div class="portal-stat-card" style="padding:16px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-              <h3 style="margin:0; font:700 14px Manrope,sans-serif; color:#233d31;">👥 Danh sách học sinh của lớp</h3>
-              <button type="button" class="outline-button" id="general-export-roster-btn" style="padding:4px 8px; font-size:9px;">Xuất Excel</button>
-            </div>
-            <!-- Roster Bulk Actions Bar -->
-            <div id="roster-bulk-bar" class="bulk-actions-bar" hidden>
-              <div class="bulk-actions-info">
-                <span>Đã chọn <strong id="roster-bulk-count">0</strong> học sinh:</span>
-              </div>
-              <div class="bulk-actions-buttons">
-                <button type="button" class="outline-button" id="roster-bulk-add-tag-btn">🏷 Thêm tag</button>
-                <button type="button" class="outline-button" id="roster-bulk-remove-tag-btn">🏷 Xóa tag</button>
-                <button type="button" class="outline-button" id="roster-bulk-add-class-btn">➕ Thêm vào lớp khác</button>
-                <button type="button" class="outline-button" id="roster-bulk-move-class-btn">🔄 Chuyển sang lớp khác</button>
-                <button type="button" class="outline-button text-danger" id="roster-bulk-remove-class-btn">✕ Bỏ khỏi lớp này</button>
-                <button type="button" class="outline-button" id="roster-bulk-clear-btn" style="color:#666;">✕ Bỏ chọn</button>
-              </div>
-            </div>
-
-            <div id="general-roster-table-wrap" style="max-height:480px; overflow-y:auto;">
-              <table class="attendance-report-table" id="general-roster-table" style="font-size:10px;">
-                <thead>
-                  <tr>
-                    <th style="width:30px; text-align:center;"><input type="checkbox" id="roster-bulk-select-all" title="Chọn tất cả" /></th>
-                    <th class="sortable-th" data-roster-sort="family">Họ đệm <span class="sort-icon">⇅</span></th>
-                    <th class="sortable-th" data-roster-sort="name">Tên <span class="sort-icon">⇅</span></th>
-                    <th class="sortable-th" data-roster-sort="school">Trường / Phân loại <span class="sort-icon">⇅</span></th>
-                    <th class="sortable-th" data-roster-sort="attendance">Tình trạng điểm danh <span class="sort-icon">⇅</span></th>
-                    <th class="sortable-th" data-roster-sort="homework">Tình trạng BTVN <span class="sort-icon">⇅</span></th>
-                    <th style="width:75px; text-align:center;" class="sortable-th" data-roster-sort="score">Điểm số <span class="sort-icon">⇅</span></th>
-                    <th class="sortable-th" data-roster-sort="note">Ghi chú chung buổi học <span class="sort-icon">⇅</span></th>
-                    <th style="width:110px; text-align:center;">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody id="general-roster-table-body"></tbody>
-              </table>
-            </div>
+          <div id="general-roster-table-wrap" class="attendance-table-wrap" style="overflow-x:auto;">
+            <table class="attendance-report-table general-timeline-table" id="general-roster-table" style="font-size:10.5px;">
+              <thead id="general-roster-thead">
+                <tr>
+                  <th>Họ đệm</th>
+                  <th>Tên</th>
+                  <th>Trường</th>
+                  <th>Ghi chú học lực</th>
+                </tr>
+              </thead>
+              <tbody id="general-roster-table-body"></tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -565,7 +549,7 @@
               <span id="active-class-name">Toán 8A</span>
               <span class="subject-tag" id="active-class-subject">ĐẠI SỐ</span>
               <span class="room-chip" id="active-class-code-badge" style="background:#e8f4eb; color:#2e6d42; font-weight:700;">MÃ: TOAN8A</span>
-              <span class="room-chip" id="active-class-grade-badge" style="background:#edf2f7; color:#4a5568; font-weight:600;">NĂM SINH 2013</span>
+              <span class="room-chip" id="active-class-grade-badge" style="background:#edf2f7; color:#4a5568; font-weight:600;">2013</span>
             </h1>
             <p>
               <span id="active-class-room">P1-T3-CS1</span>
@@ -682,7 +666,7 @@
           </section>
 
           <div class="layout-hint">
-            <span>ⓘ</span> <strong>Thao tác:</strong> Kéo biểu tượng học sinh ở giữa vào bàn, bấm vào khe giữa 2 bàn trên-dưới để bật/tắt <strong>vạch phân cách bàn</strong>, hoặc dùng ô tìm kiếm để định vị nhanh chỗ ngồi.
+            <span>ⓘ</span> <strong>Thao tác:</strong> Kéo biểu tượng học sinh ở giữa vào bàn, dùng ô tìm kiếm để định vị nhanh chỗ ngồi (vạch phân cách bàn được chỉnh trong nút <strong>⚙ Điều chỉnh layout</strong> hoặc <strong>Mẫu phòng học</strong>).
           </div>
 
           <section class="student-pool-wrap">
@@ -1385,14 +1369,14 @@
         </label>
         <label class="field-label">Năm sinh *
           <select id="config-class-grade" required>
-            <option value="2009">Năm sinh 2009 (2k9)</option>
-            <option value="2010">Năm sinh 2010 (2k10)</option>
-            <option value="2011">Năm sinh 2011 (2k11)</option>
-            <option value="2012">Năm sinh 2012 (2k12)</option>
-            <option value="2013" selected>Năm sinh 2013 (2k13)</option>
-            <option value="2014">Năm sinh 2014 (2k14)</option>
-            <option value="2015">Năm sinh 2015 (2k15)</option>
-            <option value="2016">Năm sinh 2016 (2k16)</option>
+            <option value="2009">2009</option>
+            <option value="2010">2010</option>
+            <option value="2011">2011</option>
+            <option value="2012">2012</option>
+            <option value="2013" selected>2013</option>
+            <option value="2014">2014</option>
+            <option value="2015">2015</option>
+            <option value="2016">2016</option>
             <option value="Khác">Khác</option>
           </select>
         </label>
@@ -1991,7 +1975,7 @@
         <div class="login-brand">
           <span class="brand-mark">✳</span>
           <div>
-            <strong style="font:800 16px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.3</span></strong>
+            <strong style="font:800 16px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.4</span></strong>
             <small style="display:block; font-size:8px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2058,6 +2042,6 @@
   </section>
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=1.3"></script>
+  <script type="module" src="/src/app.js?v=1.4"></script>
 </body>
 </html>

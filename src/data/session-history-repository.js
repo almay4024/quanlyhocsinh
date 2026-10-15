@@ -1,12 +1,12 @@
 // Repository boundary for Class Session Histories, Open/Close session state,
 // Real-time Active Session Sync, No-Homework detection, and Staff Shift tracking.
 
-const SESSION_HISTORY_KEY = 'lopvui.session-history.v1';
+const SESSION_HISTORY_KEY = 'lopvui.session-history.v2';
 const SESSION_OVERRIDES_KEY = 'lopvui.session-overrides.v1';
 
 export const seedSessionHistory = [
   {
-    id: 'session-class-math-8a-algebra-2026-09-26',
+    id: 'session-class-math-8a-algebra-2026-10-14',
     classId: 'class-math-8a-algebra',
     classCode: 'TOAN8A',
     className: 'Toán 8A',
@@ -15,149 +15,120 @@ export const seedSessionHistory = [
     grade: '2013',
     teacherName: 'Cô Minh Anh',
     assistantName: 'Anh Linh',
-    date: '2026-09-26',
+    date: '2026-10-14',
     status: 'closed',
-    lessonTitle: 'Tìm giao tuyến 2 mặt phẳng',
-    finalNote: 'Cả lớp làm bài kiểm tra cuối giờ và thu chấm BTVN.',
-    studentsSnapshot: [
-      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'present' }, homework: { status: 'graded', score: 8.5 }, testScore: 9, note: '' },
-      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'present' }, homework: { status: 'graded', score: 8 }, testScore: 9, note: 'Ghi chép cẩn thận' },
-      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'late', lateMinutes: 10 }, homework: { status: 'not_submitted', reason: 'Quên vở', score: null }, testScore: 7.5, note: 'Quên mang vở' }
-    ]
-  },
-  {
-    id: 'session-class-math-8a-algebra-2026-09-19',
-    classId: 'class-math-8a-algebra',
-    classCode: 'TOAN8A',
-    className: 'Toán 8A',
-    subject: 'Toán',
-    room: 'P1-T3-CS1',
-    grade: '2013',
-    teacherName: 'Cô Minh Anh',
-    assistantName: 'Anh Linh',
-    date: '2026-09-19',
-    status: 'closed',
-    lessonTitle: 'Giới thiệu hình không gian (buổi 2)',
-    finalNote: 'Thu và chấm BTVN buổi 1 giao về nhà.',
-    studentsSnapshot: [
-      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'present' }, homework: { status: 'not_submitted', score: 7 }, note: 'Đã làm bù BTVN' },
-      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'absent_excused' }, homework: { status: 'uncollected', score: null }, note: 'Xin phép nghỉ ốm' },
-      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'graded', score: 8 }, note: 'Cần chú ý bài tính nhanh' }
-    ]
-  },
-  {
-    id: 'session-class-math-8a-algebra-2026-09-12',
-    classId: 'class-math-8a-algebra',
-    classCode: 'TOAN8A',
-    className: 'Toán 8A',
-    subject: 'Toán',
-    room: 'P1-T3-CS1',
-    grade: '2013',
-    teacherName: 'Cô Minh Anh',
-    assistantName: 'Anh Linh',
-    date: '2026-09-12',
-    status: 'closed',
-    lessonTitle: 'Giới thiệu hình không gian (buổi 1)',
-    finalNote: 'Buổi mở đầu chuyên đề hình không gian.',
-    studentsSnapshot: [
-      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'absent_excused' }, homework: { status: 'uncollected', score: null }, note: '' },
-      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'present' }, homework: { status: 'graded', score: 7.5 }, note: 'Làm bài cẩn thận' },
-      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'graded', score: 6.5 }, note: 'Cần rèn thêm biến đổi' }
-    ]
-  },
-  {
-    id: 'session-class-math-8a-algebra-2026-10-01',
-    classId: 'class-math-8a-algebra',
-    classCode: 'TOAN8A',
-    className: 'Toán 8A',
-    subject: 'Toán',
-    room: 'P1-T3-CS1',
-    grade: '8',
-    teacherName: 'Cô Minh Anh',
-    assistantName: 'Anh Linh',
-    date: '2026-10-01',
-    status: 'closed',
-    startedAt: '2026-10-01T15:28:00.000Z',
+    hasBtvn: true,
+    hasTest: false,
+    startedAt: '2026-10-14T15:28:00.000Z',
     startedBy: { id: 'employee-ta-001', name: 'Anh Linh', role: 'assistant' },
-    closedAt: '2026-10-01T17:05:00.000Z',
+    closedAt: '2026-10-14T17:05:00.000Z',
     closedBy: { id: 'employee-ta-001', name: 'Anh Linh', role: 'assistant' },
-    lessonTitle: 'Ôn tập chương I: Đa thức và phân thức',
+    lessonTitle: 'Hình học: Đường thẳng song song với mặt phẳng',
     finalNote: 'Lớp học sôi nổi, các bạn làm bài tập tốt. Bạn Quân và Ngọc nắm bài nhanh.',
     layout: [
-      {id:'aisle-1',desks:[{id:'d11',seats:2},{id:'d12',seats:2},{id:'d13',seats:2}]},
-      {id:'aisle-2',desks:[{id:'d21',seats:2},{id:'d22',seats:2},{id:'d23',seats:2}]},
-      {id:'aisle-3',desks:[{id:'d31',seats:2},{id:'d32',seats:2}]}
+      {id:'aisle-1',desks:[{id:'d11',seats:2,dividerAfter:false},{id:'d12',seats:2,dividerAfter:true},{id:'d13',seats:2,dividerAfter:false}]},
+      {id:'aisle-2',desks:[{id:'d21',seats:2,dividerAfter:false},{id:'d22',seats:2,dividerAfter:true},{id:'d23',seats:2,dividerAfter:false}]},
+      {id:'aisle-3',desks:[{id:'d31',seats:2,dividerAfter:false},{id:'d32',seats:2,dividerAfter:false}]}
     ],
     deskItems: {
-      'd11': [{ studentId: 'stu-seed-01', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 } }],
-      'd12': [{ studentId: 'stu-seed-02', attendance: { status: 'present' }, homework: { status: 'submitted', score: 8.5 } }],
-      'd22': [{ studentId: 'stu-seed-05', attendance: { status: 'present' }, homework: { status: 'submitted', score: 7.5 } }]
-    },
-    checklistSummary: [
-      { label: 'Lau bảng', done: true, doneBy: 'Anh Linh' },
-      { label: 'Bật đèn và kiểm tra quạt/điều hòa', done: true, doneBy: 'Anh Linh' },
-      { label: 'Chuẩn bị tài liệu và bài tập', done: true, doneBy: 'Anh Linh' },
-      { label: 'Kiểm tra bàn ghế, cửa sổ và phòng học', done: true, doneBy: 'Anh Linh' }
-    ],
-    stats: {
-      total: 5,
-      present: 5,
-      late: 0,
-      absent: 0,
-      homeworkDone: 5,
-      testsCollected: 5
-    },
-    studentsSnapshot: [
-      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', studentCode: 'K09.3049', school: 'THCS Cầu Giấy', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 }, testScore: 9.5, note: 'Hăng hái phát biểu' },
-      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', studentCode: '2K9.H4.GIANGNH', school: 'THCS Yên Hòa', attendance: { status: 'present' }, homework: { status: 'submitted', score: 8.5 }, testScore: 9.0, note: 'Làm bài cẩn thận' },
-      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', studentCode: null, school: 'THCS Nghĩa Tân', attendance: { status: 'present' }, homework: { status: 'submitted', score: 7.5 }, testScore: 8.0, note: 'Cần chú ý bài tính nhanh' }
-    ]
-  },
-  {
-    id: 'session-class-math-8a-algebra-2026-10-05',
-    classId: 'class-math-8a-algebra',
-    classCode: 'TOAN8A',
-    className: 'Toán 8A',
-    subject: 'Toán',
-    room: 'P1-T3-CS1',
-    grade: '8',
-    teacherName: 'Cô Minh Anh',
-    assistantName: 'Anh Linh',
-    date: '2026-10-05',
-    status: 'closed',
-    startedAt: '2026-10-05T15:30:00.000Z',
-    startedBy: { id: 'employee-ta-001', name: 'Anh Linh', role: 'assistant' },
-    closedAt: '2026-10-05T17:03:00.000Z',
-    closedBy: { id: 'employee-ta-001', name: 'Anh Linh', role: 'assistant' },
-    lessonTitle: 'Hình học: Hình thang cân và hình thoi',
-    finalNote: 'Đã hoàn thành vẽ hình và chứng minh tính chất.',
-    layout: [
-      {id:'aisle-1',desks:[{id:'d11',seats:2},{id:'d12',seats:2},{id:'d13',seats:2}]},
-      {id:'aisle-2',desks:[{id:'d21',seats:2},{id:'d22',seats:2},{id:'d23',seats:2}]},
-      {id:'aisle-3',desks:[{id:'d31',seats:2},{id:'d32',seats:2}]}
-    ],
-    deskItems: {
-      'd11': [{ studentId: 'stu-seed-01', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 } }],
-      'd12': [{ studentId: 'stu-seed-02', attendance: { status: 'present' }, homework: { status: 'submitted', score: 8.5 } }],
-      'd22': [{ studentId: 'stu-seed-05', attendance: { status: 'late', lateMinutes: 10, minutesLate: 10 }, homework: { status: 'not_submitted', reason: 'Quên vở' } }]
+      'd11': [{ studentId: 'stu-seed-01', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.0 } }],
+      'd12': [{ studentId: 'stu-seed-02', attendance: { status: 'present' }, homework: { status: 'graded', score: 8.5 } }],
+      'd22': [{ studentId: 'stu-seed-05', attendance: { status: 'late', lateMinutes: 10 }, homework: { status: 'not_submitted', reason: 'Quên vở', score: null } }]
     },
     checklistSummary: [
       { label: 'Lau bảng', done: true, doneBy: 'Anh Linh' },
       { label: 'Bật đèn và kiểm tra quạt/điều hòa', done: true, doneBy: 'Anh Linh' },
       { label: 'Chuẩn bị tài liệu và bài tập', done: true, doneBy: 'Anh Linh' }
     ],
-    stats: {
-      total: 5,
-      present: 4,
-      late: 1,
-      absent: 0,
-      homeworkDone: 4,
-      testsCollected: 5
-    },
+    stats: { total: 3, present: 2, late: 1, absent: 0, homeworkDone: 2, testsCollected: 0 },
     studentsSnapshot: [
-      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', studentCode: 'K09.3049', school: 'THCS Cầu Giấy', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 }, testScore: 9.0, note: '' },
-      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', studentCode: '2K9.H4.GIANGNH', school: 'THCS Yên Hòa', attendance: { status: 'present' }, homework: { status: 'submitted', score: 8.5 }, testScore: 8.5, note: '' },
-      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', studentCode: null, school: 'THCS Nghĩa Tân', attendance: { status: 'late', lateMinutes: 10, minutesLate: 10 }, homework: { status: 'not_submitted', reason: 'Quên vở' }, testScore: 7.5, note: 'Đi muộn 10p do kẹt xe' }
+      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', studentCode: 'K09.3049', school: 'THPT Việt Đức', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.0 }, testScore: null, note: 'Hăng hái phát biểu' },
+      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', studentCode: '2K9.H4.GIANGNH', school: 'THCS Yên Hòa', attendance: { status: 'present' }, homework: { status: 'graded', score: 8.5 }, testScore: null, note: 'Làm bài cẩn thận' },
+      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', studentCode: null, school: 'THCS Nghĩa Tân', attendance: { status: 'late', lateMinutes: 10, minutesLate: 10 }, homework: { status: 'not_submitted', reason: 'Quên vở', score: null }, testScore: null, note: 'Đi muộn 10p do kẹt xe' }
+    ]
+  },
+  {
+    id: 'session-class-math-8a-algebra-2026-10-07',
+    classId: 'class-math-8a-algebra',
+    classCode: 'TOAN8A',
+    className: 'Toán 8A',
+    subject: 'Toán',
+    room: 'P1-T3-CS1',
+    grade: '2013',
+    teacherName: 'Cô Minh Anh',
+    assistantName: 'Anh Linh',
+    date: '2026-10-07',
+    status: 'closed',
+    hasBtvn: false,
+    hasTest: true,
+    noHomework: true,
+    startedAt: '2026-10-07T15:30:00.000Z',
+    startedBy: { id: 'employee-ta-001', name: 'Anh Linh', role: 'assistant' },
+    closedAt: '2026-10-07T17:03:00.000Z',
+    closedBy: { id: 'employee-ta-001', name: 'Anh Linh', role: 'assistant' },
+    lessonTitle: 'Kiểm tra chuyên đề: Giao tuyến và thiết diện',
+    finalNote: 'Buổi kiểm tra định kỳ chuyên đề hình không gian.',
+    layout: [
+      {id:'aisle-1',desks:[{id:'d11',seats:2,dividerAfter:false},{id:'d12',seats:2,dividerAfter:true},{id:'d13',seats:2,dividerAfter:false}]},
+      {id:'aisle-2',desks:[{id:'d21',seats:2,dividerAfter:false},{id:'d22',seats:2,dividerAfter:true},{id:'d23',seats:2,dividerAfter:false}]},
+      {id:'aisle-3',desks:[{id:'d31',seats:2,dividerAfter:false},{id:'d32',seats:2,dividerAfter:false}]}
+    ],
+    deskItems: {
+      'd11': [{ studentId: 'stu-seed-01', attendance: { status: 'present' }, homework: { status: 'uncollected' }, testScore: 9.0 }],
+      'd12': [{ studentId: 'stu-seed-02', attendance: { status: 'present' }, homework: { status: 'uncollected' }, testScore: 9.0 }],
+      'd22': [{ studentId: 'stu-seed-05', attendance: { status: 'present' }, homework: { status: 'uncollected' }, testScore: 7.5 }]
+    },
+    stats: { total: 3, present: 3, late: 0, absent: 0, homeworkDone: 0, testsCollected: 3 },
+    studentsSnapshot: [
+      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', studentCode: 'K09.3049', school: 'THPT Việt Đức', attendance: { status: 'present' }, homework: { status: 'uncollected', score: null }, testScore: 9.0, note: '' },
+      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', studentCode: '2K9.H4.GIANGNH', school: 'THCS Yên Hòa', attendance: { status: 'present' }, homework: { status: 'uncollected', score: null }, testScore: 9.0, note: '' },
+      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', studentCode: null, school: 'THCS Nghĩa Tân', attendance: { status: 'present' }, homework: { status: 'uncollected', score: null }, testScore: 7.5, note: 'Cần chú ý bài tính nhanh' }
+    ]
+  },
+  {
+    id: 'session-class-math-8a-algebra-2026-09-30',
+    classId: 'class-math-8a-algebra',
+    classCode: 'TOAN8A',
+    className: 'Toán 8A',
+    subject: 'Toán',
+    room: 'P1-T3-CS1',
+    grade: '2013',
+    teacherName: 'Cô Minh Anh',
+    assistantName: 'Anh Linh',
+    date: '2026-09-30',
+    status: 'closed',
+    hasBtvn: true,
+    hasTest: false,
+    lessonTitle: 'Giới thiệu hình không gian (buổi 2)',
+    finalNote: 'Thu và chấm BTVN buổi trước.',
+    stats: { total: 3, present: 2, late: 0, absent: 1, homeworkDone: 2, testsCollected: 0 },
+    studentsSnapshot: [
+      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'present' }, homework: { status: 'not_submitted', score: 7 }, testScore: null, note: 'Đã làm bù BTVN' },
+      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'absent_excused' }, homework: { status: 'uncollected', score: null }, testScore: null, note: 'Xin phép nghỉ ốm' },
+      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'graded', score: 8 }, testScore: null, note: '' }
+    ]
+  },
+  {
+    id: 'session-class-math-8a-algebra-2026-09-23',
+    classId: 'class-math-8a-algebra',
+    classCode: 'TOAN8A',
+    className: 'Toán 8A',
+    subject: 'Toán',
+    room: 'P1-T3-CS1',
+    grade: '2013',
+    teacherName: 'Cô Minh Anh',
+    assistantName: 'Anh Linh',
+    date: '2026-09-23',
+    status: 'closed',
+    hasBtvn: true,
+    hasTest: true,
+    lessonTitle: 'Tìm giao tuyến 2 mặt phẳng',
+    finalNote: 'Cả lớp làm bài kiểm tra 15p và thu chấm BTVN.',
+    stats: { total: 3, present: 3, late: 0, absent: 0, homeworkDone: 3, testsCollected: 3 },
+    studentsSnapshot: [
+      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'present' }, homework: { status: 'graded', score: 8.5 }, testScore: 9, note: '' },
+      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'present' }, homework: { status: 'graded', score: 8 }, testScore: 8.5, note: 'Ghi chép cẩn thận' },
+      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'graded', score: 6.5 }, testScore: 7, note: '' }
     ]
   },
   {
@@ -167,11 +138,13 @@ export const seedSessionHistory = [
     className: 'Vật lý 11B',
     subject: 'Vật lý',
     room: 'P2-T1-CS1',
-    grade: '11',
+    grade: '2010',
     teacherName: 'Thầy Quang',
     assistantName: 'Anh Linh',
     date: '2026-10-04',
     status: 'closed',
+    hasBtvn: true,
+    hasTest: true,
     startedAt: '2026-10-04T17:58:00.000Z',
     startedBy: { id: 'employee-ta-001', name: 'Anh Linh', role: 'assistant' },
     closedAt: '2026-10-04T19:35:00.000Z',
@@ -179,28 +152,21 @@ export const seedSessionHistory = [
     lessonTitle: 'Định luật Cu-lông và điện trường',
     finalNote: 'Các bạn làm bài tập lực tương tác tĩnh điện tốt.',
     layout: [
-      {id:'aisle-1',desks:[{id:'d11',seats:2},{id:'d12',seats:2},{id:'d13',seats:2}]},
-      {id:'aisle-2',desks:[{id:'d21',seats:2},{id:'d22',seats:2}]}
+      {id:'aisle-1',desks:[{id:'d11',seats:2,dividerAfter:false},{id:'d12',seats:2,dividerAfter:true},{id:'d13',seats:2,dividerAfter:false}]},
+      {id:'aisle-2',desks:[{id:'d21',seats:2,dividerAfter:false},{id:'d22',seats:2,dividerAfter:false}]}
     ],
     deskItems: {
-      'd11': [{ studentId: 'stu-seed-03', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 } }],
-      'd12': [{ studentId: 'stu-seed-06', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.5 } }]
+      'd11': [{ studentId: 'stu-seed-03', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.0 } }],
+      'd12': [{ studentId: 'stu-seed-06', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.5 } }]
     },
     checklistSummary: [
       { label: 'Lau bảng', done: true, doneBy: 'Anh Linh' },
       { label: 'Chuẩn bị đề phát tay', done: true, doneBy: 'Anh Linh' }
     ],
-    stats: {
-      total: 4,
-      present: 4,
-      late: 0,
-      absent: 0,
-      homeworkDone: 4,
-      testsCollected: 4
-    },
+    stats: { total: 4, present: 4, late: 0, absent: 0, homeworkDone: 4, testsCollected: 4 },
     studentsSnapshot: [
-      { studentId: 'stu-seed-03', studentName: 'Lê Hoàng Nam', studentCode: 'CONGNT', school: 'THPT Chu Văn An', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 }, testScore: 9.0, note: '' },
-      { studentId: 'stu-seed-06', studentName: 'Vũ Hải Yến', studentCode: null, school: 'THPT Chuyên Hà Nội - Amsterdam', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.5 }, testScore: 10, note: 'Làm đúng 100%' }
+      { studentId: 'stu-seed-03', studentName: 'Lê Hoàng Nam', studentCode: 'CONGNT', school: 'THPT Chu Văn An', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.0 }, testScore: 9.0, note: '' },
+      { studentId: 'stu-seed-06', studentName: 'Vũ Hải Yến', studentCode: null, school: 'THPT Chuyên Hà Nội - Amsterdam', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.5 }, testScore: 10, note: 'Làm đúng 100%' }
     ]
   }
 ];
