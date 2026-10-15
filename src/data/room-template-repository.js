@@ -1,5 +1,5 @@
 // Repository for Center Rooms and Layouts (Quản lý Phòng học & Sơ đồ tại Trung tâm).
-// Stored in localStorage, easily pluggable to Firebase Firestore collection 'roomTemplates'.
+// Supports desk dividers (vạch phân cách bàn) to help TAs orient physical desks with the seating map.
 const ROOM_TEMPLATES_KEY = 'lopvui.room-templates.v1';
 
 export const defaultRoomTemplates = [
@@ -11,6 +11,7 @@ export const defaultRoomTemplates = [
     aisles: 3,
     desksPerAisle: [3, 3, 2],
     seatsPerDesk: 2,
+    dividerAfterDesks: [2],
     createdAt: 1728100000000
   },
   {
@@ -21,6 +22,7 @@ export const defaultRoomTemplates = [
     aisles: 2,
     desksPerAisle: [3, 3],
     seatsPerDesk: 2,
+    dividerAfterDesks: [2],
     createdAt: 1728100000000
   },
   {
@@ -31,6 +33,7 @@ export const defaultRoomTemplates = [
     aisles: 3,
     desksPerAisle: [3, 3, 3],
     seatsPerDesk: 2,
+    dividerAfterDesks: [2],
     createdAt: 1728100000000
   },
   {
@@ -41,6 +44,7 @@ export const defaultRoomTemplates = [
     aisles: 3,
     desksPerAisle: [3, 3, 3],
     seatsPerDesk: 2,
+    dividerAfterDesks: [2],
     createdAt: 1728100000000
   },
   {
@@ -51,6 +55,7 @@ export const defaultRoomTemplates = [
     aisles: 2,
     desksPerAisle: [3, 3],
     seatsPerDesk: 2,
+    dividerAfterDesks: [2],
     createdAt: 1728100000000
   },
   {
@@ -61,6 +66,7 @@ export const defaultRoomTemplates = [
     aisles: 3,
     desksPerAisle: [4, 4, 3],
     seatsPerDesk: 2,
+    dividerAfterDesks: [2],
     createdAt: 1728100000000
   },
   {
@@ -71,6 +77,7 @@ export const defaultRoomTemplates = [
     aisles: 2,
     desksPerAisle: [2, 2],
     seatsPerDesk: 2,
+    dividerAfterDesks: [1],
     createdAt: 1728100000000
   }
 ];
@@ -79,40 +86,48 @@ export function loadRoomTemplates(storage = localStorage) {
   try {
     const saved = JSON.parse(storage.getItem(ROOM_TEMPLATES_KEY) || 'null');
     if (Array.isArray(saved) && saved.length) {
-      // Ensure all center rooms exist
       const existingCodes = new Set(saved.map(r => r.roomCode));
       for (const d of defaultRoomTemplates) {
         if (!existingCodes.has(d.roomCode)) {
           saved.push(d);
         }
       }
-      return saved;
+      return saved.map(tpl => ({
+        ...tpl,
+        dividerAfterDesks: Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks : [2]
+      }));
     }
   } catch {}
-  storage.setItem(ROOM_TEMPLATES_KEY, JSON.stringify(defaultRoomTemplates));
+  try {
+    storage.setItem(ROOM_TEMPLATES_KEY, JSON.stringify(defaultRoomTemplates));
+  } catch {}
   return structuredClone(defaultRoomTemplates);
 }
 
 export function saveRoomTemplates(templates, storage = localStorage) {
-  storage.setItem(ROOM_TEMPLATES_KEY, JSON.stringify(templates));
+  try {
+    storage.setItem(ROOM_TEMPLATES_KEY, JSON.stringify(templates));
+  } catch {}
 }
 
 export function buildLayoutFromTemplate(classId, template) {
   const counts = Array.isArray(template.desksPerAisle)
     ? template.desksPerAisle
     : Array.from({ length: Number(template.aisles) || 3 }, () => 3);
-  return counts.map((count, row) => ({
-    id: `${classId}-aisle-${row + 1}`,
-    desks: Array.from({ length: Number(count) || 1 }, (_, desk) => ({
-      id: `${classId}-desk-${row + 1}-${desk + 1}`,
-      seats: Number(template.seatsPerDesk) || 2
-    }))
-  }));
+  const dividers = Array.isArray(template.dividerAfterDesks) ? template.dividerAfterDesks.map(Number) : [];
+  return counts.map((count, row) => {
+    const numDesks = Number(count) || 1;
+    return {
+      id: `${classId}-aisle-${row + 1}`,
+      desks: Array.from({ length: numDesks }, (_, desk) => ({
+        id: `${classId}-desk-${row + 1}-${desk + 1}`,
+        seats: Number(template.seatsPerDesk) || 2,
+        dividerAfter: desk < numDesks - 1 && dividers.includes(desk + 1)
+      }))
+    };
+  });
 }
 
-/**
- * Returns all classes that use this room in the center according to schedule.
- */
 export function getClassesInRoom(roomCode, classCatalog = []) {
   if (!roomCode) return [];
   const clean = String(roomCode).trim().toLowerCase();

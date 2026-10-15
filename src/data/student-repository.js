@@ -178,13 +178,39 @@ export const seedStudents = [
   }
 ];
 
+export const seedMakeupStudents = [
+  {
+    id: 'stu-makeup-seed-01',
+    name: 'Hoàng Gia Bảo',
+    familyName: 'Hoàng Gia',
+    givenName: 'Bảo',
+    studentCode: '2K13.MK01',
+    school: '',
+    sourceClassName: 'Toán 8B',
+    attendingClassId: 'class-math-8a-algebra',
+    classIds: [],
+    parentContact: { name: 'Hoàng Văn Minh', phone: '0918223344' },
+    scores: [],
+    attendanceHistory: [],
+    seatingHistory: [],
+    sessionNotes: [],
+    tags: ['Học bù'],
+    studentType: 'makeup',
+    isNew: false
+  }
+];
+
 export function loadStudentRecords(currentClassId, storage = getStorage()) {
   let stored = read(STUDENTS_KEY, null, storage);
-  const makeup = read(MAKEUP_KEY, [], storage);
+  let makeup = read(MAKEUP_KEY, null, storage);
 
   if (!Array.isArray(stored) || !stored.length) {
     stored = structuredClone(seedStudents);
     if (storage) storage.setItem(STUDENTS_KEY, JSON.stringify(stored));
+  }
+  if (!Array.isArray(makeup)) {
+    makeup = structuredClone(seedMakeupStudents);
+    if (storage) storage.setItem(MAKEUP_KEY, JSON.stringify(makeup));
   }
 
   const regular = stored.filter(student => student && student.studentType !== 'makeup');

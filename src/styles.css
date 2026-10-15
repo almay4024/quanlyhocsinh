@@ -1693,3 +1693,417 @@
   border-color: #34d399;
   transform: scale(1.03);
 }
+
+/* ==========================================================================
+   v1.2 ENHANCEMENTS:
+   - Single Centered Rectangular Student Drag Pool Token
+   - Desk Dividers (Bold Line Between Upper & Lower Desks)
+   - Mobile Stepper & Layout Divider Controls
+   - Makeup Student Visual Distinction on Seating Map & Lists
+   - Seating Map Quick Search & Find-Seat Button
+   - Universal Clear "×" Button for All Search Inputs
+   - Manual Score Entry Dialog
+   ========================================================================== */
+
+/* 1. Single Centered Rectangular Student Pool Token */
+.student-pool {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 50px !important;
+  padding: 2px 0 !important;
+}
+.pool-token-rect {
+  width: min(460px, 100%) !important;
+  height: 44px !important;
+  padding: 0 24px !important;
+  border-radius: 10px !important;
+  border: 2px dashed #4a9d63 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #eff8f1 100%) !important;
+  color: #1c5b31 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  font: 700 12.5px Manrope, 'DM Sans', sans-serif !important;
+  cursor: grab !important;
+  touch-action: none !important;
+  box-shadow: 0 2px 8px rgba(33, 87, 50, 0.1) !important;
+  transition: all 0.16s ease !important;
+}
+.pool-token-rect:hover {
+  background: #e1f3e5 !important;
+  border-color: #2e7a46 !important;
+  border-style: solid !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(33, 87, 50, 0.16) !important;
+}
+.pool-token-rect .pool-token-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #d7efe0;
+  color: #1f6434;
+}
+.pool-token-rect .pool-token-icon svg {
+  width: 17px !important;
+  height: 17px !important;
+}
+.pool-token-rect .pool-token-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.1px;
+}
+
+/* 2. Desk Dividers (Bold Line Between Upper & Lower Desks) */
+.desk-divider-slot {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 2px 0;
+  padding: 2px 0;
+  cursor: pointer;
+  user-select: none;
+  background: transparent;
+  border: 0;
+  transition: all 0.15s ease;
+}
+.desk-divider-slot .divider-bar {
+  width: 100%;
+  height: 2px;
+  border-top: 1.5px dashed #cbd8cd;
+  position: relative;
+  transition: all 0.15s ease;
+}
+.desk-divider-slot .divider-pill {
+  position: absolute;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font: 700 8px 'DM Sans', sans-serif;
+  background: #f4f7f4;
+  color: #7c8f80;
+  border: 1px solid #d5e0d7;
+  opacity: 0.75;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.desk-divider-slot:hover .divider-bar {
+  border-top: 2.5px solid #2e6d42;
+}
+.desk-divider-slot:hover .divider-pill {
+  opacity: 1;
+  background: #eaf5ec;
+  color: #1f5f33;
+  border-color: #86c292;
+}
+.desk-divider-slot.active {
+  margin: 5px 0;
+  padding: 3px 0;
+}
+.desk-divider-slot.active .divider-bar {
+  height: 4px;
+  background: #1e3a29;
+  border-top: none;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(30, 58, 41, 0.28);
+}
+.desk-divider-slot.active .divider-pill {
+  opacity: 1;
+  background: #1e3a29;
+  color: #ffffff;
+  border-color: #1e3a29;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+.desk-divider-readonly {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 6px 0;
+  padding: 2px 0;
+}
+.desk-divider-readonly .divider-bar {
+  width: 100%;
+  height: 4px;
+  background: #1e3a29;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(30, 58, 41, 0.25);
+}
+.desk-divider-readonly .divider-pill {
+  position: absolute;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font: 800 8px 'DM Sans', sans-serif;
+  background: #1e3a29;
+  color: #ffffff;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.legend-icon.divider-mark {
+  background: #1e3a29;
+  color: #fff;
+  font-weight: 800;
+}
+
+/* 3. Mobile Number Stepper & Divider Chips in #layout-dialog */
+.mobile-number-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.mobile-number-stepper input {
+  text-align: center;
+  font-weight: 800 !important;
+  font-size: 13px !important;
+  flex: 1;
+}
+.stepper-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #bfd4c3;
+  background: #f2f8f3;
+  color: #1f5f33;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  touch-action: manipulation;
+  user-select: none;
+}
+.stepper-btn:hover {
+  background: #367950;
+  color: #fff;
+  border-color: #367950;
+}
+.aisle-config-card {
+  padding: 10px 12px;
+  background: #f8fbf8;
+  border: 1px solid #dce6dd;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.aisle-divider-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.aisle-divider-chip {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #cbd8cd;
+  background: #fff;
+  color: #526656;
+  font: 600 9.5px 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.aisle-divider-chip.active {
+  background: #1e3a29;
+  color: #fff;
+  border-color: #1e3a29;
+  font-weight: 700;
+}
+
+/* 4. Makeup Student Visual Distinction on Seating Map & Tables */
+.seat.seat-makeup {
+  background: linear-gradient(135deg, #f5f0ff 0%, #ede4ff 100%) !important;
+  border: 1.5px solid #9333ea !important;
+  color: #4c1d95 !important;
+  box-shadow: 0 1px 4px rgba(147, 51, 234, 0.18) !important;
+}
+.seat.seat-makeup .seat-name {
+  color: #581c87 !important;
+  font-weight: 800 !important;
+}
+.makeup-seat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  margin-right: 3px;
+  border-radius: 4px;
+  background: #7e22ce;
+  color: #ffffff;
+  font-size: 7.5px;
+  font-weight: 800;
+  line-height: 1.1;
+  vertical-align: middle;
+}
+.late-token.late-makeup {
+  background: #f5f0ff !important;
+  border-color: #a855f7 !important;
+  color: #581c87 !important;
+}
+.legend-icon.makeup {
+  background: #7e22ce;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 7px;
+  padding: 0 3px;
+  width: auto;
+  min-width: 18px;
+}
+.makeup-row-tr {
+  background: #fcfaff !important;
+}
+.makeup-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #f3e8ff;
+  color: #6b21a8;
+  border: 1px solid #d8b4fe;
+  font-size: 8.5px;
+  font-weight: 800;
+  margin-left: 4px;
+}
+
+/* 5. Seating Map Search Box & Results Dropdown */
+.seating-map-search-box {
+  position: relative;
+  min-width: 210px;
+}
+.seating-search-label {
+  margin: 0 !important;
+  padding: 5px 26px 5px 9px !important;
+  border-radius: 8px !important;
+  border: 1px solid #bfd6c4 !important;
+  background: #fff !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  font-size: 11px !important;
+}
+.seating-search-label input {
+  border: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+  font: 600 11px 'DM Sans', sans-serif !important;
+  color: #1f3b28 !important;
+  width: 100% !important;
+  padding: 0 !important;
+}
+.seating-map-search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 260px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #b8d1be;
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgba(28, 56, 38, 0.18);
+  z-index: 90;
+}
+.seating-search-result-item {
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: 0;
+  border-bottom: 1px solid #eef3ee;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font: 10.5px 'DM Sans', sans-serif;
+}
+.seating-search-result-item:hover {
+  background: #eaf5ec;
+}
+.seating-search-result-item:last-child {
+  border-bottom: 0;
+}
+.seat-search-match {
+  outline: 2.5px solid #2563eb !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.28) !important;
+}
+
+/* 6. Universal Search Clear "×" Button */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+.search-clear-wrap {
+  position: relative !important;
+}
+.search-clear-x-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 0;
+  background: #dce5dd;
+  color: #374b3c;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  z-index: 5;
+  transition: background 0.15s, color 0.15s;
+}
+.search-clear-x-btn:hover {
+  background: #b91c1c;
+  color: #ffffff;
+}
+.search-clear-x-btn[hidden] {
+  display: none !important;
+}
+
+/* 7. Find Seat Button in Student Tables */
+.find-seat-btn {
+  padding: 3px 7px !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  color: #1d4ed8 !important;
+  background: #eff6ff !important;
+  border-color: #bfdbfe !important;
+  white-space: nowrap !important;
+}
+.find-seat-btn:hover {
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+  border-color: #1d4ed8 !important;
+}
+
+/* 8. Manual Score Input Styling */
+.manual-score-input {
+  width: 82px;
+  padding: 5px 7px;
+  border: 1.5px solid #cbd8cd;
+  border-radius: 6px;
+  font: 700 11.5px Manrope, sans-serif;
+  text-align: center;
+  color: #1e3a29;
+  background: #fff;
+}
+.manual-score-input:focus {
+  border-color: #5b21b6;
+  background: #faf5ff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.18);
+}

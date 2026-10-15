@@ -1,8 +1,15 @@
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.1';
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.1';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.2';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.2';
+
+function formatBirthYearLabel(val) {
+  const by = normalizeGradeToBirthYear(val);
+  if (!by || by === '—') return 'Năm sinh —';
+  return /^\d{4}$/.test(String(by)) ? `Năm sinh ${by}` : String(by);
+}
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.2';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -12,7 +19,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=1.1';
+} from './excel-import-export.js?v=1.2';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -23,7 +30,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=1.1';
+} from './data/session-history-repository.js?v=1.2';
 
 export function setupFeatures(ctx) {
   const {
@@ -682,7 +689,7 @@ export function setupFeatures(ctx) {
           return `
             <div class="tutoring-search-item" data-choose-student="${escapeHtml(s.id)}">
               <div style="display:flex; align-items:center; gap:8px;">
-                ${s.photoURL ? `<img src="${escapeHtml(s.photoURL)}" style="width:28px; height:28px; border-radius:6px; object-fit:cover; border:1px solid #447e54;" />` : `<div style="width:28px; height:28px; border-radius:6px; background:#eaf5ec; color:#47855e; display:grid; place-items:center; font-size:11px; font-weight:700;">${escapeHtml(s.givenName?.[0] || 'HS')}</div>`}
+                
                 <div>
                   <strong style="color:#233d31; font-size:11.5px;">${escapeHtml(s.name)}</strong>
                   <small style="display:block; color:#78887b; font-size:9.5px;">Mã: <strong style="color:#215f33;">${escapeHtml(s.studentCode || '—')}</strong> · ${escapeHtml(s.school || 'Chưa có trường')}</small>
@@ -791,11 +798,16 @@ export function setupFeatures(ctx) {
           </div>
           <p>${escapeHtml(tpl.description || 'Chưa có mô tả.')} · <strong>${aisles} dãy · ${totalDesks} bàn · Sức chứa ~${estCapacity} HS</strong></p>
           <div class="template-layout-preview" aria-label="Sơ đồ mô phỏng">
-            ${desks.map(deskCount => `
-              <div class="template-aisle-preview">
-                ${Array.from({ length: deskCount }, () => `<div class="template-desk-box"></div>`).join('')}
-              </div>
-            `).join('')}
+            ${desks.map(deskCount => {
+              const divs = Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks.map(Number) : [2];
+              return `
+                <div class="template-aisle-preview">
+                  ${Array.from({ length: deskCount }, (_, di) => `
+                    <div class="template-desk-box" style="${divs.includes(di + 1) && di < deskCount - 1 ? 'border-bottom: 3px solid #1e3a29; margin-bottom: 3px;' : ''}"></div>
+                  `).join('')}
+                </div>
+              `;
+            }).join('')}
           </div>
           <div class="room-schedule-box" style="margin-top:10px; padding:10px 12px; background:#f5faf6; border-radius:8px; border:1px solid #dbe8dd;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
@@ -806,7 +818,7 @@ export function setupFeatures(ctx) {
                 ${getClassesInRoom(tpl.roomCode, catalog).map(c => `
                   <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; padding:5px 8px; background:#fff; border-radius:5px; border:1px solid #e1ebe2;">
                     <div>
-                      <strong style="color:#215f33; font-size:11px;">${escapeHtml(c.code || c.id)}</strong> <span class="room-chip" style="font-size:8px; padding:2px 5px;">Khối ${escapeHtml(c.grade || '—')}</span>
+                      <strong style="color:#215f33; font-size:11px;">${escapeHtml(c.code || c.id)}</strong> <span class="room-chip" style="font-size:8px; padding:2px 5px;">${escapeHtml(formatBirthYearLabel(c.grade))}</span>
                       <small style="display:block; color:#68786b; font-size:8.5px;">GV: ${escapeHtml(c.teacherName || '—')} · TA: ${escapeHtml(c.assistantName || '—')}</small>
                     </div>
                     <div style="text-align:right;">
@@ -874,6 +886,7 @@ export function setupFeatures(ctx) {
       $('#room-template-seats').value = tpl.seatsPerDesk || 2;
       $('#room-template-aisles').value = tpl.aisles || 3;
       $('#room-template-desks').value = Array.isArray(tpl.desksPerAisle) ? tpl.desksPerAisle.join(', ') : '3, 3, 2';
+      if ($('#room-template-dividers')) $('#room-template-dividers').value = Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks.join(', ') : '2';
       $('#room-template-desc').value = tpl.description || '';
     } else {
       $('#room-template-dialog-title').textContent = 'Thêm mẫu phòng học mới';
@@ -883,6 +896,7 @@ export function setupFeatures(ctx) {
       $('#room-template-seats').value = '2';
       $('#room-template-aisles').value = '3';
       $('#room-template-desks').value = '3, 3, 2';
+      if ($('#room-template-dividers')) $('#room-template-dividers').value = '2';
       $('#room-template-desc').value = '';
     }
 
@@ -934,19 +948,24 @@ export function setupFeatures(ctx) {
       return;
     }
 
-    tbody.innerHTML = roster.map((s, index) => `
-      <tr>
-        <td style="text-align:center;">${index + 1}</td>
-        <td><strong>${escapeHtml(s.name)}</strong></td>
-        <td>${escapeHtml(s.studentCode || '—')}</td>
-        <td>${escapeHtml(s.school || '—')}</td>
-        <td>${escapeHtml(s.parentContact?.name || '—')}</td>
-        <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
-        <td>
-          <button type="button" class="text-danger" data-remove-from-roster="${escapeHtml(s.id)}" style="font-size:9px; padding:4px 6px;">Bỏ khỏi lớp</button>
-        </td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = roster.map((s) => {
+      const parts = splitVietnameseName(s.name);
+      const fam = s.familyName ?? parts.familyName;
+      const giv = s.givenName ?? parts.givenName;
+      return `
+        <tr>
+          <td>${escapeHtml(fam || '—')}</td>
+          <td><strong>${escapeHtml(giv || s.name)}</strong></td>
+          <td>${escapeHtml(s.studentCode || '—')}</td>
+          <td>${escapeHtml(s.school || '—')}</td>
+          <td>${escapeHtml(s.parentContact?.name || '—')}</td>
+          <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
+          <td>
+            <button type="button" class="text-danger" data-remove-from-roster="${escapeHtml(s.id)}" style="font-size:9px; padding:4px 6px;">Bỏ khỏi lớp</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
 
     tbody.querySelectorAll('[data-remove-from-roster]').forEach(btn => {
       btn.onclick = () => {
@@ -1130,27 +1149,46 @@ export function setupFeatures(ctx) {
 
     const currentClass = getActiveClassConfig();
     const date = getChecklistDate();
-    const roster = [...classStudents()].sort((a, b) => {
+    const byAlpha = (a, b) => {
       const aGiven = a.givenName || splitVietnameseName(a.name).givenName;
       const bGiven = b.givenName || splitVietnameseName(b.name).givenName;
       const aFamily = a.familyName || splitVietnameseName(a.name).familyName;
       const bFamily = b.familyName || splitVietnameseName(b.name).familyName;
       return aGiven.localeCompare(bGiven, 'vi') || aFamily.localeCompare(bFamily, 'vi');
-    });
+    };
+    const entries = allEntries();
+    const lateQueueIds = getLateQueue();
+    const regularRoster = [...classStudents()].sort(byAlpha);
+    const allMakeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
+    const sessionMakeups = allMakeups.filter(m =>
+      m.attendingClassId === currentClass.id ||
+      entries.some(e => e.entry.studentId === m.id) ||
+      lateQueueIds.includes(m.id)
+    ).sort(byAlpha);
+
+    // Combined list with makeup students placed at the bottom
+    const roster = [...regularRoster, ...sessionMakeups];
     const container = $('#attendance-export-content');
     if (!container) return;
 
+    const getFamGiv = (s) => {
+      const parts = splitVietnameseName(s.name);
+      return {
+        fam: s.familyName ?? parts.familyName,
+        giv: s.givenName ?? parts.givenName,
+        isMakeup: s.studentType === 'makeup' || !(s.classIds || []).includes(currentClass.id)
+      };
+    };
+
     if (tabName === 'teacher-summary') {
-      // Báo cáo tổng hợp ca học gửi Giáo viên chuyên sâu (đầy đủ các đầu mục)
-      const entries = allEntries();
       const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'present').length;
       const lateList = roster.filter(s => {
         const seated = entries.find(p => p.entry.studentId === s.id);
-        return getLateQueue().includes(s.id) || seated?.entry.attendance?.status === 'late';
+        return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
       });
-      const absentList = roster.filter(s => {
+      const absentList = regularRoster.filter(s => {
         const seated = entries.find(p => p.entry.studentId === s.id);
-        const inLate = getLateQueue().includes(s.id);
+        const inLate = lateQueueIds.includes(s.id);
         return !seated && !inLate;
       });
       const missingHW = roster.filter(s => {
@@ -1172,7 +1210,7 @@ export function setupFeatures(ctx) {
         <div class="attendance-report-heading" style="background:#f8faf8; border:1px solid #dce5dd; border-radius:8px; padding:12px 14px; margin-bottom:12px;">
           <div>
             <strong style="font-size:13px; color:#21442a;">BÁO CÁO TỔNG HỢP CA HỌC GỬI GIÁO VIÊN</strong>
-            <div style="font-size:11px; margin-top:3px;">Lớp: <strong>${escapeHtml(currentClass.name)} (${currentClass.code || currentClass.id})</strong> · Phòng: <strong>${escapeHtml(currentClass.room)}</strong></div>
+            <div style="font-size:11px; margin-top:3px;">Lớp: <strong>${escapeHtml(currentClass.name)} (${currentClass.code || currentClass.id})</strong> · ${escapeHtml(formatBirthYearLabel(currentClass.grade))} · Phòng: <strong>${escapeHtml(currentClass.room)}</strong></div>
             <div style="font-size:10.5px; color:#526456;">Bài dạy: <strong>${escapeHtml(lessonTitle)}</strong></div>
           </div>
           <div style="text-align:right; font-size:10.5px;">
@@ -1184,8 +1222,8 @@ export function setupFeatures(ctx) {
         <div class="class-metrics-summary" style="margin-bottom:14px;">
           <div class="class-metric-box">
             <span>Tổng sĩ số</span>
-            <strong>${roster.length}</strong>
-            <small style="color:#667;">học sinh lớp</small>
+            <strong>${regularRoster.length}${sessionMakeups.length ? ` (+${sessionMakeups.length} bù)` : ''}</strong>
+            <small style="color:#667;">học sinh trong ca</small>
           </div>
           <div class="class-metric-box">
             <span>Có mặt</span>
@@ -1210,14 +1248,15 @@ export function setupFeatures(ctx) {
             ${missingHW.length ? `
               <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
                 <thead>
-                  <tr><th>STT</th><th>Họ tên</th><th>Trường</th><th>Lý do không nộp</th><th>SĐT Phụ huynh</th></tr>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do không nộp</th><th>SĐT Phụ huynh</th></tr>
                 </thead>
                 <tbody>
-                  ${missingHW.map((s, idx) => {
+                  ${missingHW.map((s) => {
+                    const { fam, giv, isMakeup } = getFamGiv(s);
                     const seated = entries.find(p => p.entry.studentId === s.id);
                     const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
                     const reason = reasonMap[seated?.entry.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
-                    return `<tr><td style="text-align:center;">${idx+1}</td><td><strong>${escapeHtml(s.name)}</strong></td><td>${escapeHtml(s.school||'—')}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
+                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -1229,12 +1268,13 @@ export function setupFeatures(ctx) {
             ${lateList.length ? `
               <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
                 <thead>
-                  <tr><th>STT</th><th>Họ tên</th><th>Trường</th><th>Giờ đến lớp</th><th>Số phút muộn</th><th>SĐT Phụ huynh</th></tr>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Giờ đến lớp</th><th>Số phút muộn</th><th>SĐT Phụ huynh</th></tr>
                 </thead>
                 <tbody>
-                  ${lateList.map((s, idx) => `
-                    <tr><td style="text-align:center;">${idx+1}</td><td><strong>${escapeHtml(s.name)}</strong></td><td>${escapeHtml(s.school||'—')}</td><td>${escapeHtml(s.arrivalTime||'—')}</td><td style="color:#c2410c; font-weight:700;">${entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.lateMinutes || entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.minutesLate || s.attendance?.lateMinutes || s.lateMinutes || 10} phút</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>
-                  `).join('')}
+                  ${lateList.map((s) => {
+                    const { fam, giv, isMakeup } = getFamGiv(s);
+                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td>${escapeHtml(s.arrivalTime||'—')}</td><td style="color:#c2410c; font-weight:700;">${entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.lateMinutes || entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.minutesLate || s.attendance?.lateMinutes || s.lateMinutes || 10} phút</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
+                  }).join('')}
                 </tbody>
               </table>
             ` : '<div style="color:#15803d; font-size:10.5px; font-weight:600; margin-top:6px;">✓ Không có học sinh nào đi muộn trong ca hôm nay!</div>'}
@@ -1245,14 +1285,15 @@ export function setupFeatures(ctx) {
             ${lowScores.length ? `
               <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
                 <thead>
-                  <tr><th>STT</th><th>Họ tên</th><th>Trường</th><th>Điểm BTVN</th><th>Điểm Test</th><th>Ghi chú</th></tr>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Điểm BTVN</th><th>Điểm Test</th><th>Ghi chú</th></tr>
                 </thead>
                 <tbody>
-                  ${lowScores.map((s, idx) => {
+                  ${lowScores.map((s) => {
+                    const { fam, giv, isMakeup } = getFamGiv(s);
                     const seated = entries.find(p => p.entry.studentId === s.id);
                     const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '—';
                     const testScore = s.testScore ?? seated?.entry.testScore ?? '—';
-                    return `<tr><td style="text-align:center;">${idx+1}</td><td><strong>${escapeHtml(s.name)}</strong></td><td>${escapeHtml(s.school||'—')}</td><td style="color:#b45309; font-weight:700;">${hwScore}</td><td style="color:#b45309; font-weight:700;">${testScore}</td><td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || 'Cần bám sát')}</td></tr>`;
+                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b45309; font-weight:700;">${hwScore}</td><td style="color:#b45309; font-weight:700;">${testScore}</td><td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || 'Cần bám sát')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -1264,16 +1305,40 @@ export function setupFeatures(ctx) {
             ${absentList.length ? `
               <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
                 <thead>
-                  <tr><th>STT</th><th>Họ tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do</th><th>SĐT Phụ huynh</th></tr>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do</th><th>SĐT Phụ huynh</th></tr>
                 </thead>
                 <tbody>
-                  ${absentList.map((s, idx) => `
-                    <tr><td style="text-align:center;">${idx+1}</td><td><strong>${escapeHtml(s.name)}</strong></td><td>${escapeHtml(s.school||'—')}</td><td>${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}</td><td>${escapeHtml(s.attendance?.reason||'Chưa có lý do')}</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>
-                  `).join('')}
+                  ${absentList.map((s) => {
+                    const { fam, giv } = getFamGiv(s);
+                    return `<tr><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong></td><td>${escapeHtml(s.school||'—')}</td><td>${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}</td><td>${escapeHtml(s.attendance?.reason||'Chưa có lý do')}</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
+                  }).join('')}
                 </tbody>
               </table>
             ` : '<div style="color:#15803d; font-size:10.5px; font-weight:600; margin-top:6px;">✓ 100% học sinh đều có mặt!</div>'}
           </div>
+
+          ${sessionMakeups.length ? `
+            <div style="background:#fcfaff; border:1px solid #d8b4fe; border-radius:8px; padding:12px;">
+              <strong style="color:#6b21a8; font-size:11.5px;">🔄 5. Học sinh HỌC BÙ trong buổi (${sessionMakeups.length} bạn):</strong>
+              <table class="attendance-report-table" style="font-size:10px; margin-top:8px;">
+                <thead>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Mã HS</th><th>Học bù từ lớp</th><th>Trạng thái</th><th>Điểm BTVN / Test</th><th>Ghi chú</th></tr>
+                </thead>
+                <tbody>
+                  ${sessionMakeups.map((s) => {
+                    const { fam, giv } = getFamGiv(s);
+                    const seated = entries.find(p => p.entry.studentId === s.id);
+                    const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
+                    const isPresent = Boolean(seated);
+                    const stLabel = isLate ? 'Học bù (Đi muộn)' : isPresent ? 'Học bù (Có mặt)' : 'Học bù (Chưa vào bàn)';
+                    const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '—';
+                    const testScore = s.testScore ?? seated?.entry.testScore ?? '—';
+                    return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge">🔄 Học bù</span></td><td>${escapeHtml(s.studentCode||'—')}</td><td>${escapeHtml(s.sourceClassName||'Lớp khác')}</td><td><strong>${stLabel}</strong></td><td>BTVN: ${hwScore} · Test: ${testScore}</td><td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '')}</td></tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : ''}
 
           ${sessionNote ? `
             <div style="background:#f0fdf4; border-left:4px solid #22c55e; padding:10px 14px; border-radius:6px; font-size:10.5px; color:#166534;">
@@ -1284,12 +1349,12 @@ export function setupFeatures(ctx) {
         </div>
       `;
     } else if (tabName === 'a4-roster') {
-      // Standard printable A4 attendance sheet
+      // Standard printable A4 attendance sheet (No STT, Split Họ đệm & Tên, Makeup students at the bottom)
       container.innerHTML = `
         <div class="attendance-report-heading">
           <div>
             <strong>TRUNG TÂM HỌC TẬP - BẢNG ĐIỂM DANH & THEO DÕI CA HỌC</strong>
-            <div>Lớp: <strong>${escapeHtml(currentClass.name)}</strong> · Phòng: ${escapeHtml(currentClass.room)} · Môn: ${escapeHtml(currentClass.subject)}</div>
+            <div>Lớp: <strong>${escapeHtml(currentClass.name)}</strong> (${escapeHtml(formatBirthYearLabel(currentClass.grade))}) · Phòng: ${escapeHtml(currentClass.room)} · Môn: ${escapeHtml(currentClass.subject)}</div>
           </div>
           <div style="text-align:right;">
             <div>Ngày: <strong>${escapeHtml(date)}</strong> · Giờ: ${escapeHtml(currentClass.startTime)}–${escapeHtml(currentClass.endTime)}</div>
@@ -1300,11 +1365,10 @@ export function setupFeatures(ctx) {
           <table class="attendance-report-table">
             <thead>
               <tr>
-                <th style="width:30px; text-align:center;">STT</th>
                 <th>Họ đệm</th>
                 <th>Tên</th>
                 <th>Mã HS</th>
-                <th>Trường</th>
+                <th>Trường / Phân loại</th>
                 <th>Điểm danh</th>
                 <th>Giờ đến</th>
                 <th>BTVN</th>
@@ -1314,24 +1378,24 @@ export function setupFeatures(ctx) {
               </tr>
             </thead>
             <tbody>
-              ${roster.map((s, idx) => {
-                const seated = allEntries().find(p => p.entry.studentId === s.id);
-                const isLate = getLateQueue().includes(s.id) || seated?.entry.attendance?.status === 'late';
+              ${roster.map((s) => {
+                const { fam, giv, isMakeup } = getFamGiv(s);
+                const seated = entries.find(p => p.entry.studentId === s.id);
+                const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
                 const isPresent = Boolean(seated);
-                const attStatus = isLate ? 'Đi muộn' : isPresent ? 'Có mặt' : (s.attendance?.status === 'absent_excused' ? 'Vắng có phép' : s.attendance?.status === 'absent_unexcused' ? 'Vắng K.phép' : 'Chưa điểm danh');
+                const baseAttStatus = isLate ? 'Đi muộn' : isPresent ? 'Có mặt' : (s.attendance?.status === 'absent_excused' ? 'Vắng có phép' : s.attendance?.status === 'absent_unexcused' ? 'Vắng K.phép' : 'Chưa điểm danh');
+                const attStatus = isMakeup ? `Học bù (${baseAttStatus})` : baseAttStatus;
                 const hwStatus = homeworkLabel(seated?.entry.homework?.status || s.homework?.status);
                 const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '';
-                const testScore = s.testScore ?? '';
-                const fam = s.familyName || splitVietnameseName(s.name).familyName;
-                const giv = s.givenName || splitVietnameseName(s.name).givenName;
+                const testScore = seated?.entry.testScore ?? s.testScore ?? '';
+                const schoolText = isMakeup ? `Học bù từ: ${s.sourceClassName || s.school || 'Lớp khác'}` : (s.school || '');
                 return `
-                  <tr>
-                    <td style="text-align:center;">${idx + 1}</td>
+                  <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
                     <td>${escapeHtml(fam)}</td>
-                    <td><strong>${escapeHtml(giv)}</strong></td>
+                    <td><strong style="color:${isMakeup ? '#581c87' : 'inherit'};">${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td>
                     <td>${escapeHtml(s.studentCode || '—')}</td>
-                    <td>${escapeHtml(s.school || '')}</td>
-                    <td><span class="student-state ${isPresent ? (isLate ? 'state-late' : 'state-present') : 'state-missing'}">${attStatus}</span></td>
+                    <td>${escapeHtml(schoolText)}</td>
+                    <td><span class="student-state ${isPresent ? (isLate ? 'state-late' : 'state-present') : 'state-missing'}">${escapeHtml(attStatus)}</span></td>
                     <td>${escapeHtml(s.arrivalTime || (isLate ? 'Đi muộn' : isPresent ? 'Đúng giờ' : '—'))}</td>
                     <td>${escapeHtml(hwStatus)}</td>
                     <td style="text-align:center;">${escapeHtml(hwScore)}</td>
@@ -1355,9 +1419,8 @@ export function setupFeatures(ctx) {
         </div>
       `;
     } else if (tabName === 'missing-hw') {
-      // Students who did not submit homework
       const missingHW = roster.filter(s => {
-        const seated = allEntries().find(p => p.entry.studentId === s.id);
+        const seated = entries.find(p => p.entry.studentId === s.id);
         const status = seated?.entry.homework?.status || s.homework?.status;
         return status === 'not_submitted';
       });
@@ -1368,18 +1431,19 @@ export function setupFeatures(ctx) {
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>#</th><th>Họ và tên</th><th>Trường</th><th>Lý do không nộp</th><th>SĐT Phụ huynh</th><th>Ghi chú</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do không nộp</th><th>SĐT Phụ huynh</th><th>Ghi chú</th></tr>
             </thead>
             <tbody>
-              ${missingHW.length ? missingHW.map((s, idx) => {
-                const seated = allEntries().find(p => p.entry.studentId === s.id);
+              ${missingHW.length ? missingHW.map((s) => {
+                const { fam, giv, isMakeup } = getFamGiv(s);
+                const seated = entries.find(p => p.entry.studentId === s.id);
                 const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
                 const reason = reasonMap[seated?.entry.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
                 return `
-                  <tr>
-                    <td>${idx + 1}</td>
-                    <td><strong>${escapeHtml(s.name)}</strong></td>
-                    <td>${escapeHtml(s.school || '—')}</td>
+                  <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
+                    <td>${escapeHtml(fam)}</td>
+                    <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td>
+                    <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
                     <td><strong class="text-danger">${escapeHtml(reason)}</strong></td>
                     <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
                     <td>${escapeHtml(seated?.entry.homework?.note || '—')}</td>
@@ -1391,10 +1455,9 @@ export function setupFeatures(ctx) {
         </div>
       `;
     } else if (tabName === 'late-students') {
-      // Late students
       const lateList = roster.filter(s => {
-        const seated = allEntries().find(p => p.entry.studentId === s.id);
-        return getLateQueue().includes(s.id) || seated?.entry.attendance?.status === 'late';
+        const seated = entries.find(p => p.entry.studentId === s.id);
+        return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
       });
 
       container.innerHTML = `
@@ -1403,28 +1466,30 @@ export function setupFeatures(ctx) {
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>#</th><th>Họ và tên</th><th>Trường</th><th>Giờ đến lớp</th><th>Số phút đi muộn</th><th>SĐT Phụ huynh</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Giờ đến lớp</th><th>Số phút đi muộn</th><th>SĐT Phụ huynh</th></tr>
             </thead>
             <tbody>
-              ${lateList.length ? lateList.map((s, idx) => `
-                <tr>
-                  <td>${idx + 1}</td>
-                  <td><strong>${escapeHtml(s.name)}</strong></td>
-                  <td>${escapeHtml(s.school || '—')}</td>
-                  <td>${escapeHtml(s.arrivalTime || '—')}</td>
-                  <td><strong style="color:#ab5d18;">${s.attendance?.lateMinutes ? `Muộn ${s.attendance.lateMinutes} phút` : 'Đến muộn'}</strong></td>
-                  <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
-                </tr>
-              `).join('') : `<tr><td colspan="6" style="text-align:center; padding:18px; color:#497955;">Không có học sinh nào đi muộn trong ca học này.</td></tr>`}
+              ${lateList.length ? lateList.map((s) => {
+                const { fam, giv, isMakeup } = getFamGiv(s);
+                return `
+                  <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
+                    <td>${escapeHtml(fam)}</td>
+                    <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td>
+                    <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
+                    <td>${escapeHtml(s.arrivalTime || '—')}</td>
+                    <td><strong style="color:#ab5d18;">${s.attendance?.lateMinutes ? `Muộn ${s.attendance.lateMinutes} phút` : 'Đến muộn'}</strong></td>
+                    <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
+                  </tr>
+                `;
+              }).join('') : `<tr><td colspan="6" style="text-align:center; padding:18px; color:#497955;">Không có học sinh nào đi muộn trong ca học này.</td></tr>`}
             </tbody>
           </table>
         </div>
       `;
     } else if (tabName === 'absent-students') {
-      // Absent students
-      const absentList = roster.filter(s => {
-        const seated = allEntries().find(p => p.entry.studentId === s.id);
-        const inLate = getLateQueue().includes(s.id);
+      const absentList = regularRoster.filter(s => {
+        const seated = entries.find(p => p.entry.studentId === s.id);
+        const inLate = lateQueueIds.includes(s.id);
         return !seated && !inLate;
       });
 
@@ -1434,15 +1499,16 @@ export function setupFeatures(ctx) {
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>#</th><th>Họ và tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do vắng</th><th>SĐT Phụ huynh</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do vắng</th><th>SĐT Phụ huynh</th></tr>
             </thead>
             <tbody>
-              ${absentList.length ? absentList.map((s, idx) => {
+              ${absentList.length ? absentList.map((s) => {
+                const { fam, giv } = getFamGiv(s);
                 const isExcused = s.attendance?.status === 'absent_excused';
                 return `
                   <tr>
-                    <td>${idx + 1}</td>
-                    <td><strong>${escapeHtml(s.name)}</strong></td>
+                    <td>${escapeHtml(fam)}</td>
+                    <td><strong>${escapeHtml(giv)}</strong></td>
                     <td>${escapeHtml(s.school || '—')}</td>
                     <td><span class="student-state ${isExcused ? 'state-late' : 'state-missing'}">${isExcused ? 'Có phép' : 'Không phép'}</span></td>
                     <td>${escapeHtml(s.attendance?.reason || 'Chưa ghi nhận')}</td>
@@ -1455,7 +1521,6 @@ export function setupFeatures(ctx) {
         </div>
       `;
     } else if (tabName === 'tests-handover') {
-      // Test collection and handover report
       container.innerHTML = `
         <h3>Biên bản thu bài kiểm tra cuối giờ & Bàn giao bài chấm</h3>
         <div class="attendance-report-heading">
@@ -1468,22 +1533,23 @@ export function setupFeatures(ctx) {
             <div>Trạng thái: <strong>${escapeHtml($('#handover-status')?.textContent || 'Chưa bàn giao')}</strong></div>
           </div>
         </div>
-        <p class="dialog-hint">Danh sách học sinh nộp bài test cuối giờ của buổi học:</p>
+        <p class="dialog-hint">Danh sách học sinh nộp bài test cuối giờ của buổi học (Học bù xếp ở cuối):</p>
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>#</th><th>Họ và tên</th><th>Trường</th><th>Trạng thái bài test</th><th>Điểm số</th><th>Ghi chú</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Trạng thái bài test</th><th>Điểm số</th><th>Ghi chú</th></tr>
             </thead>
             <tbody>
-              ${roster.map((s, idx) => {
-                const seated = allEntries().find(p => p.entry.studentId === s.id);
+              ${roster.map((s) => {
+                const { fam, giv, isMakeup } = getFamGiv(s);
+                const seated = entries.find(p => p.entry.studentId === s.id);
                 return `
-                  <tr>
-                    <td>${idx + 1}</td>
-                    <td><strong>${escapeHtml(s.name)}</strong></td>
-                    <td>${escapeHtml(s.school || '—')}</td>
+                  <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
+                    <td>${escapeHtml(fam)}</td>
+                    <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td>
+                    <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
                     <td><span class="student-state ${seated ? 'state-collected' : 'state-pending'}">${seated ? 'Đã thu bài test' : 'Vắng mặt'}</span></td>
-                    <td style="text-align:center;">${escapeHtml(s.testScore ?? '—')}</td>
+                    <td style="text-align:center;">${escapeHtml(seated?.entry.testScore ?? s.testScore ?? '—')}</td>
                     <td>${escapeHtml(s.testNote || '')}</td>
                   </tr>
                 `;
@@ -1498,34 +1564,48 @@ export function setupFeatures(ctx) {
   function exportReportAsCsv() {
     const currentClass = getActiveClassConfig();
     const date = getChecklistDate();
-    const roster = [...classStudents()].sort((a, b) => {
+    const byAlpha = (a, b) => {
       const aGiven = a.givenName || splitVietnameseName(a.name).givenName;
       const bGiven = b.givenName || splitVietnameseName(b.name).givenName;
       const aFamily = a.familyName || splitVietnameseName(a.name).familyName;
       const bFamily = b.familyName || splitVietnameseName(b.name).familyName;
       return aGiven.localeCompare(bGiven, 'vi') || aFamily.localeCompare(bFamily, 'vi');
-    });
+    };
+    const entries = allEntries();
+    const lateQueueIds = getLateQueue();
+    const regularRoster = [...classStudents()].sort(byAlpha);
+    const allMakeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
+    const sessionMakeups = allMakeups.filter(m =>
+      m.attendingClassId === currentClass.id ||
+      entries.some(e => e.entry.studentId === m.id) ||
+      lateQueueIds.includes(m.id)
+    ).sort(byAlpha);
+    const roster = [...regularRoster, ...sessionMakeups];
 
-    const headers = ['STT', 'Họ đệm', 'Tên', 'Mã HS', 'Trường', 'Điểm danh', 'Giờ đến', 'Trạng thái BTVN', 'Điểm BTVN', 'SĐT Phụ huynh', 'Ghi chú'];
-    const rows = roster.map((s, idx) => {
-      const seated = allEntries().find(p => p.entry.studentId === s.id);
-      const isLate = getLateQueue().includes(s.id) || seated?.entry.attendance?.status === 'late';
+    const headers = ['Họ đệm', 'Tên', 'Mã HS', 'Trường / Lớp gốc', 'Phân loại', 'Điểm danh', 'Giờ đến', 'Trạng thái BTVN', 'Điểm BTVN', 'Điểm Test', 'SĐT Phụ huynh', 'Ghi chú'];
+    const rows = roster.map((s) => {
+      const seated = entries.find(p => p.entry.studentId === s.id);
+      const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
       const isPresent = Boolean(seated);
-      const att = isLate ? 'Đi muộn' : isPresent ? 'Có mặt' : (s.attendance?.status === 'absent_excused' ? 'Vắng có phép' : s.attendance?.status === 'absent_unexcused' ? 'Vắng không phép' : 'Chưa điểm danh');
+      const isMakeup = s.studentType === 'makeup' || !(s.classIds || []).includes(currentClass.id);
+      const baseAtt = isLate ? 'Đi muộn' : isPresent ? 'Có mặt' : (s.attendance?.status === 'absent_excused' ? 'Vắng có phép' : s.attendance?.status === 'absent_unexcused' ? 'Vắng không phép' : 'Chưa điểm danh');
+      const att = isMakeup ? `Học bù (${baseAtt})` : baseAtt;
       const hw = homeworkLabel(seated?.entry.homework?.status || s.homework?.status);
       const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '';
+      const testScore = seated?.entry.testScore ?? s.testScore ?? '';
       const fam = s.familyName || splitVietnameseName(s.name).familyName;
       const giv = s.givenName || splitVietnameseName(s.name).givenName;
       return [
-        idx + 1,
         fam,
         giv,
         s.studentCode || '',
-        s.school || '',
+        isMakeup ? (s.sourceClassName || s.school || '') : (s.school || ''),
+        isMakeup ? 'Học bù' : 'Chính thức',
         att,
         s.arrivalTime || (isLate ? 'Đi muộn' : isPresent ? 'Đúng giờ' : ''),
         hw,
         hwScore,
+        testScore,
         s.parentContact?.phone || '',
         (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || ''
       ];
@@ -1533,7 +1613,7 @@ export function setupFeatures(ctx) {
 
     const fileName = `DiemDanh_${(currentClass.code || currentClass.name).replace(/\s+/g, '_')}_${date}.csv`;
     exportToCsv(headers, rows, fileName);
-    toast(`Đã tải về file Excel (xếp theo alphabet): ${fileName}`);
+    toast(`Đã tải về file Excel (gồm cả Học bù ở cuối danh sách): ${fileName}`);
   }
 
   // ----------------------------------------------------
@@ -1867,12 +1947,17 @@ export function setupFeatures(ctx) {
       const seatsPerDesk = Number($('#room-template-seats').value) || 2;
       const description = $('#room-template-desc').value.trim();
 
+      const dividersRaw = ($('#room-template-dividers')?.value || '2')
+        .split(',')
+        .map(s => Number(s.trim()))
+        .filter(n => !isNaN(n) && n > 0);
       const newTpl = {
         id,
         name,
         roomCode,
         aisles,
         desksPerAisle: desksRaw.length ? desksRaw : [3, 3, 2],
+        dividerAfterDesks: dividersRaw,
         seatsPerDesk,
         description,
         createdAt: Date.now()
@@ -2108,6 +2193,11 @@ export function setupFeatures(ctx) {
         ``,
         `🚫 VẮNG MẶT (${absentList.length} bạn):`,
         absentList.length ? absentList.map((s, i) => `  ${i+1}. ${s.name} (SĐT PH: ${s.parentContact?.phone || '—'})`).join('\n') : `  ✓ Đầy đủ sĩ số`,
+        ...((ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).length ? [
+          ``,
+          `🔄 HỌC BÙ TRONG BUỔI (${(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).length} bạn):`,
+          ...(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).map((m, i) => `  ${i+1}. ${m.name} (Bù từ: ${m.sourceClassName || 'Lớp khác'})`)
+        ] : []),
         sessionNote ? `\n📝 GHI CHÚ TRỢ GIẢNG:\n${sessionNote}` : ''
       ];
 
@@ -3158,7 +3248,7 @@ export function setupFeatures(ctx) {
     const catalog = getClassCatalog();
     if (defaultClassSelect) {
       defaultClassSelect.innerHTML = catalog.map(c => 
-        `<option value="${c.id}">[${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)} - Khối ${escapeHtml(c.grade || '')} (${escapeHtml(c.subject || '')})</option>`
+        `<option value="${c.id}">[${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)} - ${escapeHtml(formatBirthYearLabel(c.grade))} (${escapeHtml(c.subject || '')})</option>`
       ).join('');
     }
 
@@ -3475,7 +3565,7 @@ export function setupFeatures(ctx) {
     const classFilter = $('#master-class-filter');
     if (classFilter && classFilter.options.length <= 1) {
       classFilter.innerHTML = '<option value="all">Tất cả các lớp</option>' + catalog.map(c => 
-        `<option value="${c.id}">${escapeHtml(c.code || c.id)} (Khối ${escapeHtml(c.grade || '')})</option>`
+        `<option value="${c.id}">${escapeHtml(c.code || c.id)} (${escapeHtml(formatBirthYearLabel(c.grade))})</option>`
       ).join('');
     }
 
@@ -3499,9 +3589,10 @@ export function setupFeatures(ctx) {
         if (!(s.classIds || []).includes(selectedClass)) return false;
       }
       if (selectedGrade !== 'all') {
+        const normTarget = normalizeGradeToBirthYear(selectedGrade);
         const hasMatchingGrade = (s.classIds || []).some(cid => {
           const c = catalog.find(x => x.id === cid);
-          return c && String(c.grade) === String(selectedGrade);
+          return c && normalizeGradeToBirthYear(c.grade) === normTarget;
         });
         if (!hasMatchingGrade) return false;
       }
@@ -3565,13 +3656,14 @@ export function setupFeatures(ctx) {
     });
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:18px; color:#879389;">Không tìm thấy học sinh nào phù hợp.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:18px; color:#879389;">Không tìm thấy học sinh nào phù hợp.</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = filtered.map((s, index) => {
-      const nameParts = s.name.split(' ').filter(Boolean);
-      const initials = nameParts.length >= 2 ? (nameParts[0][0] + nameParts.at(-1)[0]).toUpperCase() : s.name.slice(0, 2).toUpperCase();
+    tbody.innerHTML = filtered.map((s) => {
+      const parts = splitVietnameseName(s.name);
+      const fam = s.familyName ?? parts.familyName;
+      const giv = s.givenName ?? parts.givenName;
 
       const classBadges = (s.classIds || []).map(cid => {
         const c = catalog.find(x => x.id === cid);
@@ -3582,19 +3674,12 @@ export function setupFeatures(ctx) {
       return `
         <tr>
           <td style="text-align:center;"><input type="checkbox" class="master-student-cb" data-student-id="${escapeHtml(s.id)}" ${selectedMasterStudentIds.has(s.id) ? 'checked' : ''} /></td>
-          <td style="text-align:center;">${index + 1}</td>
-          <td>
-            <div style="display:flex; align-items:center; gap:8px;">
-              ${s.photoURL ? `<img src="${escapeHtml(s.photoURL)}" alt="${escapeHtml(s.name)}" style="width:28px; height:28px; border-radius:6px; object-fit:cover; border:1px solid #447e54;" />` : `<div style="width:28px; height:28px; border-radius:6px; background:#eaf5ec; color:#47855e; display:grid; place-items:center; font-size:11px; font-weight:700;">${escapeHtml(s.givenName?.[0] || 'HS')}</div>`}
-              <div>
-                <strong>${escapeHtml(s.name)}</strong>
-                ${s.isNew || (s.tags && s.tags.includes('Mới')) ? '<span class="student-tag new-tag">MỚI</span>' : ''}
-              </div>
-            </div>
-          </td>
           <td><strong>${escapeHtml(s.studentCode || '—')}</strong></td>
-          <td>${escapeHtml(s.familyName || '—')}</td>
-          <td><strong>${escapeHtml(s.givenName || '—')}</strong></td>
+          <td>${escapeHtml(fam || '—')}</td>
+          <td>
+            <strong>${escapeHtml(giv || s.name)}</strong>
+            ${s.isNew || (s.tags && s.tags.includes('Mới')) ? '<span class="student-tag new-tag">MỚI</span>' : ''}
+          </td>
           <td>${escapeHtml(s.school || '—')}</td>
           <td>
             <div>${escapeHtml(s.parentContact?.name || 'Phụ huynh')}</div>
@@ -3884,7 +3969,7 @@ export function setupFeatures(ctx) {
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
               <div>
                 <h4 style="margin:0; color:#233d31; font:700 13px Manrope,sans-serif;">📊 Tình hình học tại lớp: <span style="color:#215f33; font-weight:800;">${escapeHtml(targetClass?.code || clsId)}</span></h4>
-                <small style="color:#728375;">Khối ${escapeHtml(targetClass?.grade || '—')} · GV: ${escapeHtml(targetClass?.teacherName || '—')} · TA: ${escapeHtml(targetClass?.assistantName || '—')}</small>
+                <small style="color:#728375;">${escapeHtml(formatBirthYearLabel(targetClass?.grade))} · GV: ${escapeHtml(targetClass?.teacherName || '—')} · TA: ${escapeHtml(targetClass?.assistantName || '—')}</small>
               </div>
             </div>
           </div>
@@ -4252,7 +4337,7 @@ export function setupFeatures(ctx) {
     if (!dialog) return;
 
     $('#class-history-title').textContent = `Lịch sử các buổi học · ${cls.code || cls.id} (${cls.name})`;
-    $('#class-history-sub').textContent = `Khối ${cls.grade || '—'} · Phòng: ${cls.room || '—'} · GV: ${cls.teacherName || '—'} · TA: ${cls.assistantName || '—'}`;
+    $('#class-history-sub').textContent = `${formatBirthYearLabel(cls.grade)} · Phòng: ${cls.room || '—'} · GV: ${cls.teacherName || '—'} · TA: ${cls.assistantName || '—'}`;
 
     const allHistory = loadSessionHistory();
     const classSessions = allHistory.filter(s => s.classId === classId).sort((a, b) => b.date.localeCompare(a.date));
@@ -4325,8 +4410,8 @@ export function setupFeatures(ctx) {
             <table class="attendance-report-table" style="font-size:10px;">
               <thead>
                 <tr>
-                  <th style="width:30px; text-align:center;">STT</th>
-                  <th>Họ tên</th>
+                  <th>Họ đệm</th>
+                  <th>Tên</th>
                   <th>Mã HS</th>
                   <th>Điểm danh</th>
                   <th>BTVN</th>
@@ -4336,13 +4421,14 @@ export function setupFeatures(ctx) {
                 </tr>
               </thead>
               <tbody>
-                ${students.length ? students.map((s, idx) => {
+                ${students.length ? students.map((s) => {
+                  const parts = splitVietnameseName(s.studentName || s.name || '');
                   const att = s.attendance?.status === 'present' ? '<span class="student-state state-present">Có mặt</span>' : s.attendance?.status === 'late' ? '<span class="student-state state-late">Đi muộn</span>' : '<span class="student-state state-missing">Vắng</span>';
                   const hw = s.homework?.status === 'submitted' ? '<span class="student-state state-collected">Đã nộp</span>' : s.homework?.status === 'not_submitted' ? `<span class="student-state state-missing">Chưa nộp (${escapeHtml(s.homework?.reason || 'Quên')})</span>` : 'Chưa thu';
                   return `
                     <tr>
-                      <td style="text-align:center;">${idx + 1}</td>
-                      <td><strong>${escapeHtml(s.studentName || s.name || '—')}</strong></td>
+                      <td>${escapeHtml(s.familyName || parts.familyName || '—')}</td>
+                      <td><strong>${escapeHtml(s.givenName || parts.givenName || s.studentName || s.name || '—')}</strong></td>
                       <td>${escapeHtml(s.studentCode || '—')}</td>
                       <td>${att}</td>
                       <td>${hw}</td>

@@ -221,7 +221,7 @@ Web App quản lý lớp học thời gian thực (real-time) và ngoại tuyế
 
 ---
 
-## 🛡️ Phiên bản v1.1 (Tích hợp Bộ đồng bộ Real-time Nội tuyến & Bảo toàn Dữ liệu Local)
+## 🛡️ Phiên bản v1.2 (Tích hợp Bộ đồng bộ Real-time Nội tuyến & Bảo toàn Dữ liệu Local)
 
 ### 1. Tích hợp Trực tiếp Bộ máy Real-time vào `src/app.js` (Zero-External-Dependency)
 - Nhúng trực tiếp bộ đồng bộ thời gian thực (`initRealtimeSync`, `forceSyncNow`) và hàm đồng bộ ca học (`syncActiveClassSessionRecord`) ngay bên trong `src/app.js`, loại bỏ hoàn toàn sự phụ thuộc vào file rời bên ngoài để tránh lỗi `Failed to load module script` trên Firebase Hosting.
