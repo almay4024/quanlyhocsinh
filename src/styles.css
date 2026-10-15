@@ -2107,3 +2107,64 @@ input[type="search"]::-webkit-search-decoration {
   outline: none;
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.18);
 }
+
+/* ==========================================================================
+   v1.3 ENHANCEMENTS:
+   - Scores Tab (#scores-view) with 3-tier priority grouping
+   - Clickable 4-recent-scores pill & Student Score History Dialog
+   ========================================================================== */
+.scores-group-divider-row td {
+  background: #eef6f0 !important;
+  color: #1f5732 !important;
+  font: 800 10px Manrope, 'DM Sans', sans-serif !important;
+  padding: 6px 10px !important;
+  letter-spacing: 0.2px;
+  border-top: 1.5px solid #c6decb !important;
+  border-bottom: 1px solid #d5e6d8 !important;
+}
+.scores-group-divider-row.group-2 td {
+  background: #fffbeb !important;
+  color: #92400e !important;
+  border-top-color: #fde68a !important;
+  border-bottom-color: #fef3c7 !important;
+}
+.scores-group-divider-row.group-3 td {
+  background: #f9fafb !important;
+  color: #4b5563 !important;
+  border-top-color: #e5e7eb !important;
+  border-bottom-color: #f3f4f6 !important;
+}
+.recent-scores-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1.5px solid #c4b5fd;
+  background: #f5f3ff;
+  color: #4c1d95;
+  font: 800 11px Manrope, 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.recent-scores-btn:hover {
+  background: #7c3aed;
+  color: #ffffff;
+  border-color: #6d28d9;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(109, 40, 217, 0.2);
+}
+#score-history-detail-table th,
+#score-history-detail-table td {
+  padding: 9px 12px;
+  font-size: 11.5px;
+}
+.score-history-val {
+  font: 800 13px Manrope, sans-serif;
+  color: #1f5732;
+}
+.score-history-val.missing {
+  color: #9ca3af;
+}

@@ -1,15 +1,15 @@
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.2';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.2';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.3';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.3';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return 'Năm sinh —';
   return /^\d{4}$/.test(String(by)) ? `Năm sinh ${by}` : String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.2';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.3';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -19,7 +19,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=1.2';
+} from './excel-import-export.js?v=1.3';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -30,7 +30,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=1.2';
+} from './data/session-history-repository.js?v=1.3';
 
 export function setupFeatures(ctx) {
   const {

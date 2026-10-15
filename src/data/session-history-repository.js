@@ -6,6 +6,66 @@ const SESSION_OVERRIDES_KEY = 'lopvui.session-overrides.v1';
 
 export const seedSessionHistory = [
   {
+    id: 'session-class-math-8a-algebra-2026-09-26',
+    classId: 'class-math-8a-algebra',
+    classCode: 'TOAN8A',
+    className: 'Toán 8A',
+    subject: 'Toán',
+    room: 'P1-T3-CS1',
+    grade: '2013',
+    teacherName: 'Cô Minh Anh',
+    assistantName: 'Anh Linh',
+    date: '2026-09-26',
+    status: 'closed',
+    lessonTitle: 'Tìm giao tuyến 2 mặt phẳng',
+    finalNote: 'Cả lớp làm bài kiểm tra cuối giờ và thu chấm BTVN.',
+    studentsSnapshot: [
+      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'present' }, homework: { status: 'graded', score: 8.5 }, testScore: 9, note: '' },
+      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'present' }, homework: { status: 'graded', score: 8 }, testScore: 9, note: 'Ghi chép cẩn thận' },
+      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'late', lateMinutes: 10 }, homework: { status: 'not_submitted', reason: 'Quên vở', score: null }, testScore: 7.5, note: 'Quên mang vở' }
+    ]
+  },
+  {
+    id: 'session-class-math-8a-algebra-2026-09-19',
+    classId: 'class-math-8a-algebra',
+    classCode: 'TOAN8A',
+    className: 'Toán 8A',
+    subject: 'Toán',
+    room: 'P1-T3-CS1',
+    grade: '2013',
+    teacherName: 'Cô Minh Anh',
+    assistantName: 'Anh Linh',
+    date: '2026-09-19',
+    status: 'closed',
+    lessonTitle: 'Giới thiệu hình không gian (buổi 2)',
+    finalNote: 'Thu và chấm BTVN buổi 1 giao về nhà.',
+    studentsSnapshot: [
+      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'present' }, homework: { status: 'not_submitted', score: 7 }, note: 'Đã làm bù BTVN' },
+      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'absent_excused' }, homework: { status: 'uncollected', score: null }, note: 'Xin phép nghỉ ốm' },
+      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'graded', score: 8 }, note: 'Cần chú ý bài tính nhanh' }
+    ]
+  },
+  {
+    id: 'session-class-math-8a-algebra-2026-09-12',
+    classId: 'class-math-8a-algebra',
+    classCode: 'TOAN8A',
+    className: 'Toán 8A',
+    subject: 'Toán',
+    room: 'P1-T3-CS1',
+    grade: '2013',
+    teacherName: 'Cô Minh Anh',
+    assistantName: 'Anh Linh',
+    date: '2026-09-12',
+    status: 'closed',
+    lessonTitle: 'Giới thiệu hình không gian (buổi 1)',
+    finalNote: 'Buổi mở đầu chuyên đề hình không gian.',
+    studentsSnapshot: [
+      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'absent_excused' }, homework: { status: 'uncollected', score: null }, note: '' },
+      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'present' }, homework: { status: 'graded', score: 7.5 }, note: 'Làm bài cẩn thận' },
+      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'graded', score: 6.5 }, note: 'Cần rèn thêm biến đổi' }
+    ]
+  },
+  {
     id: 'session-class-math-8a-algebra-2026-10-01',
     classId: 'class-math-8a-algebra',
     classCode: 'TOAN8A',
@@ -151,7 +211,14 @@ export function loadSessionHistory(storage = (typeof localStorage !== 'undefined
       const raw = storage.getItem(SESSION_HISTORY_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          seedSessionHistory.forEach(seedItem => {
+            if (!parsed.some(p => p.id === seedItem.id || (p.classId === seedItem.classId && p.date === seedItem.date))) {
+              parsed.push(structuredClone(seedItem));
+            }
+          });
+          return parsed;
+        }
       }
     }
   } catch {}

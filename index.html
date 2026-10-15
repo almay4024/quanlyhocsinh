@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Lớp học vui (v1.2) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=1.2" />
+  <title>Lớp học vui (v1.3) · Quản lý lớp học trung tâm</title>
+  <link rel="stylesheet" href="/src/styles.css?v=1.3" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span class="brand-mark">✳</span><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.2</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span class="brand-mark">✳</span><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.3</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav"><span>◷</span> Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav"><span>✍</span> Lớp bổ trợ</button>
@@ -20,6 +20,7 @@
       <div class="nav-label class-nav-label" id="class-nav-label" hidden>CA ĐANG MỞ</div>
       <div id="class-nav-group" hidden>
         <button class="nav-item" id="class-room-nav"><span>▦</span> Lớp đang làm</button>
+        <button class="nav-item" id="scores-sidebar-tab"><span>✎</span> Nhập điểm</button>
         <button class="nav-item" id="class-chat-nav"><span>☷</span> Chat & Nhật ký</button>
         <button class="nav-item" id="checklist-sidebar-tab"><span>☑</span> Checklist</button>
         <button class="nav-item" id="students-tab"><span>♙</span> Danh sách học sinh</button>
@@ -589,6 +590,7 @@
         <nav class="class-view-tabs" aria-label="Các phần của ca học">
           <button type="button" class="class-view-tab" id="chat-view-tab">Chat & Nhật ký</button>
           <button type="button" class="class-view-tab active" id="seating-view-tab">Sơ đồ lớp</button>
+          <button type="button" class="class-view-tab" id="scores-view-tab">Nhập điểm</button>
           <button type="button" class="class-view-tab" id="checklist-view-tab">Checklist</button>
           <button type="button" class="class-view-tab" id="students-view-tab">Danh sách học sinh</button>
         </nav>
@@ -671,7 +673,6 @@
                 </label>
                 <div id="seating-map-search-results" class="seating-map-search-results" hidden></div>
               </div>
-              <button type="button" class="outline-button" id="open-manual-score-btn" style="background:#f5f3ff; color:#5b21b6; border-color:#c4b5fd; font-weight:700;" title="Nhập điểm BTVN / Điểm Test nhanh bằng danh sách & tìm kiếm">📝 Nhập điểm tay</button>
               <button type="button" class="outline-button" id="toggle-seating-edit-btn" style="background:#eaf5ec; color:#1f5f33; border-color:#86c292; font-weight:700;" title="Bật/Tắt chế độ chỉnh sửa sơ đồ (khi tắt vẫn kéo được học sinh đi muộn vào bàn)">✏️ Sửa sơ đồ: ĐANG BẬT</button>
               <button type="button" class="outline-button" id="undo-layout-button" disabled title="Hoàn tác thao tác vừa thực hiện trên sơ đồ (Ctrl+Z)">↩ Hoàn tác</button>
               <button type="button" class="outline-button" id="teacher-view-button" title="Chuyển đổi góc nhìn của Giáo viên từ bục giảng (lật ngược trên-dưới và trái-phải)">👨‍🏫 Góc nhìn Giáo viên</button>
@@ -722,6 +723,55 @@
             <button id="finalize-button" class="primary-button finalize-attendance-btn">Chốt sĩ số ca học</button>
           </section>
         </div>
+
+        <!-- Tab 2.5: Nhập điểm (Scores View) -->
+        <section id="scores-view" class="students-view scores-view" hidden>
+          <div class="student-list-heading">
+            <div>
+              <div class="eyebrow" id="scores-class-label">NHẬP ĐIỂM TRONG CA · TOÁN 8A</div>
+              <h2>Nhập điểm & Theo dõi lịch sử điểm học sinh</h2>
+              <p>Thứ tự tự động ưu tiên: <strong>(1) Đã điểm danh + Đã thu BTVN</strong> → <strong>(2) Đã điểm danh - Chưa thu / Không nộp BTVN</strong> → <strong>(3) Chưa điểm danh / Vắng mặt</strong>. Bấm vào cột <strong>Điểm 4 bài gần nhất</strong> để xem chi tiết từng buổi trước.</p>
+            </div>
+            <div class="student-list-heading-actions" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <label class="test-required-toggle scores-test-toggle" style="margin:0; padding:6px 12px; background:#f5f3ff; border:1px solid #c4b5fd; border-radius:8px; color:#5b21b6; font-weight:700; cursor:pointer;" title="Đồng bộ với mục Ca này có test bên tab Checklist">
+                <input type="checkbox" id="scores-tab-test-toggle" /> Ca này có test (Hiện cột Điểm Test)
+              </label>
+              <span id="scores-tab-save-status" style="font-size:10px; color:#2e6d42; font-weight:700;">Tự động lưu khi nhập</span>
+            </div>
+          </div>
+
+          <div class="student-list-tools" style="margin:12px 0;">
+            <label class="student-list-search" style="flex:1;">⌕
+              <input id="scores-tab-search" type="search" autocomplete="off" placeholder="Tìm nhanh học sinh theo họ đệm, tên, trường hoặc #tag..." />
+            </label>
+            <select id="scores-tab-filter" aria-label="Lọc danh sách nhập điểm">
+              <option value="all">Tất cả học sinh (Sắp xếp theo 3 nhóm ưu tiên)</option>
+              <option value="group1">Nhóm 1: Đã điểm danh + Đã thu BTVN</option>
+              <option value="group2">Nhóm 2: Đã điểm danh - Chưa thu / Không nộp BTVN</option>
+              <option value="group3">Nhóm 3: Chưa điểm danh / Vắng mặt</option>
+              <option value="makeup">Chỉ học sinh Học bù</option>
+            </select>
+          </div>
+
+          <div class="attendance-table-wrap">
+            <table class="attendance-report-table" id="scores-tab-table" style="font-size:10.5px;">
+              <thead>
+                <tr>
+                  <th>Họ đệm</th>
+                  <th>Tên</th>
+                  <th>Trường</th>
+                  <th>Trạng thái</th>
+                  <th style="text-align:center;">Điểm 4 bài gần nhất <small style="display:block; font-weight:500; font-size:8.5px; color:#5b21b6;">(Click xem chi tiết)</small></th>
+                  <th style="width:95px; text-align:center;">Điểm BTVN</th>
+                  <th id="scores-tab-test-th" style="width:95px; text-align:center;" hidden>Điểm Test</th>
+                  <th style="min-width:150px;">Ghi chú buổi học</th>
+                  <th style="min-width:170px;">Ghi chú chung của học sinh (Ghi chú học lực)</th>
+                </tr>
+              </thead>
+              <tbody id="scores-tab-tbody"></tbody>
+            </table>
+          </div>
+        </section>
 
         <!-- Tab 3: Checklist & Xác nhận ca làm -->
         <section id="checklist-view" class="checklist-view" hidden>
@@ -806,24 +856,16 @@
             <div id="end-checklist-items" class="checklist-items end-checklist-items"></div>
             
             <label class="test-required-toggle">
-              <input type="checkbox" id="test-required-toggle" /> Ca này có bài kiểm tra cuối giờ (Test)
+              <input type="checkbox" id="test-required-toggle" /> Ca này có test
             </label>
             
             <div id="test-collection-tools" hidden>
-              <div class="test-collection-toolbar">
-                <div>
-                  <strong>Thu bài kiểm tra cuối giờ</strong>
-                  <small id="test-collection-count">Chưa bắt đầu</small>
-                </div>
-                <button type="button" class="outline-button" id="toggle-test-mode">Bắt đầu thu bài</button>
-              </div>
-              <div id="test-collection-list" class="test-collection-list" hidden></div>
               <div class="handover-box">
-                <label class="field-label">Người nhận / mang bài về chấm
-                  <input id="handover-person" autocomplete="off" placeholder="Nhập tên hoặc mã nhân viên (VD: GV001 - Cô Minh Anh)" />
+                <label class="field-label">Tên trợ giảng cầm bài về chấm
+                  <input id="handover-person" autocomplete="off" placeholder="Nhập tên trợ giảng cầm bài về chấm (VD: Anh Linh - TA001)" />
                 </label>
-                <button type="button" class="primary-button" id="confirm-handover">Xác nhận bàn giao bài</button>
-                <div id="handover-status" class="checklist-log">Chưa xác nhận bàn giao.</div>
+                <button type="button" class="primary-button" id="confirm-handover">Xác nhận cầm bài về</button>
+                <div id="handover-status" class="checklist-log">Chưa xác nhận trợ giảng cầm bài về.</div>
               </div>
             </div>
           </section>
@@ -889,7 +931,6 @@
             </div>
             <div class="student-list-heading-actions">
               <span class="count-pill" id="session-student-total">0 học sinh</span>
-              <button type="button" class="outline-button" id="student-list-manual-score-btn" style="background:#f5f3ff; color:#5b21b6; border-color:#c4b5fd; font-weight:700;">📝 Nhập điểm tay</button>
               <button type="button" class="outline-button" id="google-sheets-sync-btn">⚙ Đồng bộ Google Sheets</button>
               <button type="button" class="primary-button" id="export-attendance-button">Trung tâm báo cáo & Xuất file</button>
             </div>
@@ -933,49 +974,35 @@
 
   <!-- DIALOGS -->
 
-  <!-- HỘP THOẠI NHẬP ĐIỂM TAY NHANH (MANUAL SCORE ENTRY DIALOG) -->
-  <dialog id="manual-score-dialog" class="roster-admin-dialog">
+  <!-- HỘP THOẠI XEM KỸ ĐIỂM HỌC SINH CÁC BUỔI TRƯỚC (STUDENT SCORE HISTORY DIALOG) -->
+  <dialog id="student-score-history-dialog" class="roster-admin-dialog">
     <div class="dialog-form">
-      <button type="button" class="close-button" id="close-manual-score-dialog" aria-label="Đóng">×</button>
-      <div class="eyebrow">NHẬP ĐIỂM NHANH TRONG CA HỌC</div>
-      <h2 id="manual-score-dialog-title">Nhập điểm tay (Danh sách & Tìm kiếm)</h2>
-      <p class="dialog-hint">Tìm nhanh học sinh hoặc nhập điểm liên tiếp trong danh sách (Nhấn <strong>Enter</strong> hoặc mũi tên xuống để nhảy sang học sinh tiếp theo).</p>
+      <button type="button" class="close-button" id="close-score-history-dialog" aria-label="Đóng">×</button>
+      <div class="eyebrow">CHI TIẾT LỊCH SỬ ĐIỂM & HỌC LỰC</div>
+      <h2 id="score-history-dialog-title">Điểm của học sinh Nguyễn Minh Quân - THPT Việt Đức</h2>
 
-      <div class="student-list-tools" style="margin:10px 0 12px;">
-        <label class="student-list-search" style="flex:1;">⌕
-          <input id="manual-score-search" type="search" autocomplete="off" placeholder="Tìm nhanh học sinh theo tên, họ đệm, mã HS hoặc #tag..." />
+      <div class="score-history-learning-box" style="margin:10px 0 14px; padding:10px 12px; background:#f8fbf8; border:1px solid #d5e4d7; border-radius:8px;">
+        <label class="field-label" style="margin:0; font-weight:700; color:#1f4e2d;">Ghi chú học lực:
+          <input id="score-history-learning-note" type="text" placeholder="Nhập ghi chú học lực chung của học sinh..." style="margin-top:5px; background:#fff;" />
         </label>
-        <select id="manual-score-filter" aria-label="Lọc danh sách nhập điểm">
-          <option value="all">Tất cả học sinh (Gồm cả Học bù)</option>
-          <option value="present_only">Chỉ học sinh có mặt / đi muộn</option>
-          <option value="unscored">Học sinh chưa có điểm</option>
-          <option value="makeup">Chỉ học sinh học bù</option>
-        </select>
       </div>
 
       <div class="roster-table-wrap" style="max-height:58vh; overflow-y:auto;">
-        <table class="attendance-report-table" id="manual-score-table">
+        <table class="attendance-report-table" id="score-history-detail-table">
           <thead>
             <tr>
-              <th>Họ đệm</th>
-              <th>Tên</th>
-              <th>Trường / Phân loại</th>
-              <th>Trạng thái</th>
-              <th style="width:115px; text-align:center;">Điểm BTVN (0-10)</th>
-              <th style="width:115px; text-align:center;">Điểm Test (0-10)</th>
-              <th>Ghi chú buổi học</th>
+              <th style="width:90px; text-align:center;">Điểm</th>
+              <th style="width:36%;">Trạng thái (- Ghi chú buổi học)</th>
+              <th>Tên bài học</th>
             </tr>
           </thead>
-          <tbody id="manual-score-tbody"></tbody>
+          <tbody id="score-history-tbody"></tbody>
         </table>
       </div>
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:8px;">
-        <small id="manual-score-status" style="color:#2e6d42; font-weight:700;">Tự động lưu điểm ngay khi nhập.</small>
-        <div style="display:flex; gap:8px;">
-          <button type="button" class="outline-button" id="cancel-manual-score-btn">Đóng</button>
-          <button type="button" class="primary-button" id="save-manual-score-btn">✓ Lưu & Cập nhật bảng điểm</button>
-        </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px;">
+        <small style="color:#5c6f60;">Với điểm BTVN: ghi theo ngày và tên bài học của buổi thu & chấm bài.</small>
+        <button type="button" class="primary-button" id="close-score-history-btn">Đóng</button>
       </div>
     </div>
   </dialog>
@@ -1964,7 +1991,7 @@
         <div class="login-brand">
           <span class="brand-mark">✳</span>
           <div>
-            <strong style="font:800 16px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.2</span></strong>
+            <strong style="font:800 16px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.3</span></strong>
             <small style="display:block; font-size:8px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2031,6 +2058,6 @@
   </section>
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=1.2"></script>
+  <script type="module" src="/src/app.js?v=1.3"></script>
 </body>
 </html>

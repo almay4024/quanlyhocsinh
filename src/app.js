@@ -1,11 +1,11 @@
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.2';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.2';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.3';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.3';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=1.2';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=1.2';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.2';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.2';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.2';
+import { setupFeatures } from './features.js?v=1.3';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=1.3';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.3';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.3';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.3';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -390,7 +390,7 @@ function addStudentTag(id,input){const student=studentById(id),tag=input.value.t
 document.addEventListener('click',e=>{const add=e.target.closest('[data-add-tag]');if(add){const host=add.closest('.selected-student-info'),input=host?.querySelector('[data-tag-input]');addStudentTag(add.dataset.addTag,input);return;}const remove=e.target.closest('[data-remove-tag]');if(remove){const student=studentById(remove.dataset.studentId);if(!student)return;student.tags.splice(Number(remove.dataset.removeTag),1);save();render();refreshStudentInfo();}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('[data-tag-input]')){e.preventDefault();addStudentTag(e.target.dataset.tagInput,e.target);}});
 function sessionStudentIds(){return [...new Set([...allEntries().map(({entry})=>entry.studentId).filter(Boolean),...lateQueue])].filter(id=>studentById(id));}
-function renderChecklistCore(){const itemsHost=$('#checklist-items');if(!itemsHost)return;const completed=checklist.items.filter(item=>item.done).length;$('#checklist-progress-count').textContent=`${completed}/${checklist.items.length}`;itemsHost.innerHTML=checklist.items.map(item=>`<div class="checklist-item ${item.done?'complete':''} ${item.kind==='reminder'?'reminder-checklist-item':''}"><input type="checkbox" data-checklist-item="${escapeHtml(item.id)}" aria-label="Đánh dấu ${escapeHtml(item.label)}" ${item.done?'checked':''}><span class="checklist-checkmark"></span>${item.kind==='reminder'?'<span class="reminder-type-pill">Reminder</span>':''}<span class="checklist-item-copy"><input class="checklist-label-input" data-checklist-label="${escapeHtml(item.id)}" value="${escapeHtml(item.label)}" ${item.kind==='reminder'?'readonly':''} aria-label="Tên công việc"><small>${item.done?`Đã hoàn thành bởi ${escapeHtml(item.doneBy||'Trợ giảng')}${item.doneAt?` · ${new Date(item.doneAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}`:''}`:'Chưa hoàn thành'}</small></span><button type="button" class="checklist-remove" data-remove-checklist-item="${escapeHtml(item.id)}" aria-label="Xóa mục ${escapeHtml(item.label)}">×</button></div>`).join('')||'<div class="empty-list">Chưa có công việc. Thêm các yêu cầu của ca học này.</div>';const endHost=$('#end-checklist-items');if(endHost)endHost.innerHTML=checklist.endItems.map(item=>`<div class="checklist-item ${item.done?'complete':''} ${item.kind==='reminder'?'reminder-checklist-item':''}"><input type="checkbox" data-end-checklist-item="${escapeHtml(item.id)}" ${item.done?'checked':''}><span class="checklist-checkmark"></span>${item.kind==='reminder'?'<span class="reminder-type-pill">Reminder</span>':''}<span class="checklist-item-copy"><input class="checklist-label-input" data-end-checklist-label="${escapeHtml(item.id)}" value="${escapeHtml(item.label)}" ${item.kind==='reminder'?'readonly':''}><small>${item.done?`Đã hoàn thành bởi ${escapeHtml(item.doneBy||'Trợ giảng')}`:'Chưa hoàn thành'}</small></span><button type="button" class="checklist-remove" data-end-checklist-remove="${escapeHtml(item.id)}">×</button></div>`).join('')||'<div class="empty-list">Chưa có công việc cuối giờ.</div>';const totalItems=checklist.items.length+checklist.endItems.length,doneItems=[...checklist.items,...checklist.endItems].filter(item=>item.done).length;$('#checklist-progress-count').textContent=`${doneItems}/${totalItems}`;const started=Boolean(checklist.workStart);$('#shift-start-status').textContent=started?'Đã xác nhận ca':'Chưa bắt đầu';$('#shift-start-status').classList.toggle('done',started);$('#shift-start-log').textContent=started?`Ca làm được xác nhận bởi ${checklist.workStart.name} lúc ${new Date(checklist.workStart.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'Ca làm sẽ được ghi nhận khi hoàn tất mục đầu tiên.';const note=$('#session-note');if(document.activeElement!==note)note.value=checklist.classNote||'';$('#session-note-status').textContent=checklist.noteSavedAt?`Đã lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'';$('#test-required-toggle').checked=checklist.testRequired;$('#test-collection-tools').hidden=!checklist.testRequired;const ids=sessionStudentIds(),submitted=ids.filter(id=>checklist.tests[id]).length;$('#test-collection-count').textContent=ids.length?`${submitted}/${ids.length} học sinh đã nộp bài kiểm tra`:'Chưa có học sinh được ghi tên';$('#toggle-test-mode').textContent=checklist.testCollectionMode?'Kết thúc thu bài':'Bắt đầu thu bài';$('#test-collection-list').hidden=!checklist.testCollectionMode;$('#test-collection-list').innerHTML=ids.length?ids.map(id=>{const student=studentById(id);return `<label class="test-student ${checklist.tests[id]?'submitted':''}"><input type="checkbox" data-test-student="${escapeHtml(id)}" ${checklist.tests[id]?'checked':''}><span>${escapeHtml(student.name)}${renderInlineTags(student)}<small>${escapeHtml(student.school||'')}</small></span><b>${checklist.tests[id]?'Đã nộp':'Chưa nộp'}</b></label>`;}).join(''):'<div class="empty-list">Hãy ghi tên học sinh ở sơ đồ lớp trước khi thu bài kiểm tra.</div>';const handover=checklist.handover;$('#handover-status').textContent=handover?`Đã bàn giao cho ${handover.person} lúc ${new Date(handover.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'Chưa xác nhận bàn giao.';if(document.activeElement!==$('#handover-person'))$('#handover-person').value=handover?.person||'';$('#confirm-handover').textContent=handover?'Cập nhật bàn giao':'Xác nhận bàn giao bài';}
+function renderChecklistCore(){const itemsHost=$('#checklist-items');if(!itemsHost)return;const completed=checklist.items.filter(item=>item.done).length;$('#checklist-progress-count').textContent=`${completed}/${checklist.items.length}`;itemsHost.innerHTML=checklist.items.map(item=>`<div class="checklist-item ${item.done?'complete':''} ${item.kind==='reminder'?'reminder-checklist-item':''}"><input type="checkbox" data-checklist-item="${escapeHtml(item.id)}" aria-label="Đánh dấu ${escapeHtml(item.label)}" ${item.done?'checked':''}><span class="checklist-checkmark"></span>${item.kind==='reminder'?'<span class="reminder-type-pill">Reminder</span>':''}<span class="checklist-item-copy"><input class="checklist-label-input" data-checklist-label="${escapeHtml(item.id)}" value="${escapeHtml(item.label)}" ${item.kind==='reminder'?'readonly':''} aria-label="Tên công việc"><small>${item.done?`Đã hoàn thành bởi ${escapeHtml(item.doneBy||'Trợ giảng')}${item.doneAt?` · ${new Date(item.doneAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}`:''}`:'Chưa hoàn thành'}</small></span><button type="button" class="checklist-remove" data-remove-checklist-item="${escapeHtml(item.id)}" aria-label="Xóa mục ${escapeHtml(item.label)}">×</button></div>`).join('')||'<div class="empty-list">Chưa có công việc. Thêm các yêu cầu của ca học này.</div>';const endHost=$('#end-checklist-items');if(endHost)endHost.innerHTML=checklist.endItems.map(item=>`<div class="checklist-item ${item.done?'complete':''} ${item.kind==='reminder'?'reminder-checklist-item':''}"><input type="checkbox" data-end-checklist-item="${escapeHtml(item.id)}" ${item.done?'checked':''}><span class="checklist-checkmark"></span>${item.kind==='reminder'?'<span class="reminder-type-pill">Reminder</span>':''}<span class="checklist-item-copy"><input class="checklist-label-input" data-end-checklist-label="${escapeHtml(item.id)}" value="${escapeHtml(item.label)}" ${item.kind==='reminder'?'readonly':''}><small>${item.done?`Đã hoàn thành bởi ${escapeHtml(item.doneBy||'Trợ giảng')}`:'Chưa hoàn thành'}</small></span><button type="button" class="checklist-remove" data-end-checklist-remove="${escapeHtml(item.id)}">×</button></div>`).join('')||'<div class="empty-list">Chưa có công việc cuối giờ.</div>';const totalItems=checklist.items.length+checklist.endItems.length,doneItems=[...checklist.items,...checklist.endItems].filter(item=>item.done).length;$('#checklist-progress-count').textContent=`${doneItems}/${totalItems}`;const started=Boolean(checklist.workStart);$('#shift-start-status').textContent=started?'Đã xác nhận ca':'Chưa bắt đầu';$('#shift-start-status').classList.toggle('done',started);$('#shift-start-log').textContent=started?`Ca làm được xác nhận bởi ${checklist.workStart.name} lúc ${new Date(checklist.workStart.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'Ca làm sẽ được ghi nhận khi hoàn tất mục đầu tiên.';const note=$('#session-note');if(document.activeElement!==note)note.value=checklist.classNote||'';$('#session-note-status').textContent=checklist.noteSavedAt?`Đã lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'';if($('#test-required-toggle'))$('#test-required-toggle').checked=Boolean(checklist.testRequired);if($('#scores-tab-test-toggle'))$('#scores-tab-test-toggle').checked=Boolean(checklist.testRequired);if($('#test-collection-tools'))$('#test-collection-tools').hidden=!checklist.testRequired;const handover=checklist.handover;if($('#handover-status'))$('#handover-status').textContent=handover?`Đã xác nhận trợ giảng cầm bài về: ${handover.person} lúc ${new Date(handover.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'Chưa xác nhận trợ giảng cầm bài về.';if($('#handover-person')&&document.activeElement!==$('#handover-person'))$('#handover-person').value=handover?.person||'';if($('#confirm-handover'))$('#confirm-handover').textContent=handover?'Cập nhật người cầm bài':'Xác nhận cầm bài về';}
 function safeHttpUrl(value){try{const url=new URL(String(value||'').trim());return url.protocol==='http:'||url.protocol==='https:'?url.href:'';}catch{return '';}}
 function renderChecklistDetails(){for(const field of document.querySelectorAll('[data-checklist-field]'))if(document.activeElement!==field)field.value=checklist[field.dataset.checklistField]||'';for(const [key,linkId] of [['notebookLink','notebook-link-open'],['homeworkLink','homework-link-open']]){const link=document.getElementById(linkId),safeUrl=safeHttpUrl(checklist[key]);if(link){link.hidden=!safeUrl;if(safeUrl)link.href=safeUrl;}}}
 function renderChecklist(){renderChecklistCore();renderChecklistDetails();}
@@ -401,17 +401,41 @@ $('#add-checklist-item').onclick=()=>{const item={id:`task-${Date.now()}-${Math.
 $('#end-checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-end-checklist-item]');if(input){const item=checklist.endItems.find(row=>row.id===input.dataset.endChecklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');saveChecklist();renderChecklist();return;}const label=e.target.closest('[data-end-checklist-label]');if(!label)return;const item=checklist.endItems.find(row=>row.id===label.dataset.endChecklistLabel);if(item&&label.value.trim()){item.label=label.value.trim();saveChecklist();}else if(item)label.value=item.label;});$('#end-checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-end-checklist-remove]');if(!button)return;const item=checklist.endItems.find(row=>row.id===button.dataset.endChecklistRemove);if(item&&confirm(`Xóa mục “${item.label}” khỏi checklist?`)){checklist.endItems=checklist.endItems.filter(row=>row.id!==item.id);saveChecklist();renderChecklist();}});$('#add-end-checklist-item').onclick=()=>{const item={id:`end-task-${Date.now()}`,label:'Việc mới',done:false};checklist.endItems.push(item);saveChecklist();renderChecklist();const input=$(`[data-end-checklist-label="${item.id}"]`);input?.focus();input?.select();};$('#save-session-note').onclick=()=>{checklist.classNote=$('#session-note').value.trim();checklist.noteSavedAt=Date.now();saveChecklist();addClassActivity(`${currentStaffName()} đã lưu ghi chú chung của buổi học`,'checklist');renderChecklist();toast('Đã lưu ghi chú buổi học.');};
 $('#session-note')?.addEventListener('input',()=>{checklist.classNote=$('#session-note').value;checklist.noteSavedAt=Date.now();saveChecklist();const st=$('#session-note-status');if(st)st.textContent=`Đã tự động lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`;});
 $('#handover-person')?.addEventListener('input',()=>{const person=$('#handover-person').value.trim();checklist.handover=person?{person,at:checklist.handover?.at||Date.now()}:null;saveChecklist();});
-$('#toggle-test-mode').onclick=()=>{checklist.testCollectionMode=!checklist.testCollectionMode;addClassActivity(checklist.testCollectionMode?'Bắt đầu thu bài kiểm tra cuối giờ':'Kết thúc thu bài kiểm tra cuối giờ','handover');saveChecklist();renderChecklist();};
-$('#test-required-toggle').onchange=e=>{checklist.testRequired=e.target.checked;if(!checklist.testRequired)checklist.testCollectionMode=false;addClassActivity(checklist.testRequired?'Đã bật yêu cầu kiểm tra cuối giờ cho ca học':'Đã tắt yêu cầu kiểm tra cuối giờ cho ca học','checklist');saveChecklist();renderChecklist();};
-$('#test-collection-list').addEventListener('change',e=>{const input=e.target.closest('[data-test-student]');if(!input)return;checklist.tests[input.dataset.testStudent]=input.checked;const student=studentById(input.dataset.testStudent);
-    const totalSeated = allEntries().filter(e => e.entry.studentId).length;
-    const collectedTests = Object.values(checklist.tests).filter(Boolean).length;
-    if (totalSeated > 0 && collectedTests >= totalSeated && !checklist._allTestsLogged) {
-      checklist._allTestsLogged = true;
-      addClassActivity(`${currentStaffName()} đã thu đủ ${collectedTests} bài kiểm tra cuối giờ`, 'handover');
-    }saveChecklist();renderChecklist();});
-$('#confirm-handover').onclick=()=>{const person=$('#handover-person').value.trim();if(!person){toast('Nhập tên hoặc mã nhân viên nhận bài.');$('#handover-person').focus();return;}checklist.handover={person,at:Date.now()};addClassActivity(`${currentStaffName()} đã bàn giao bài kiểm tra cho ${person}`,'handover');saveChecklist();renderChecklist();toast(`Đã ghi nhận bàn giao bài cho ${person}.`);};
-function setClassView(view){const chatVisible=view==='chat',checklistVisible=view==='checklist',studentsVisible=view==='students';$('#chat-view').hidden=!chatVisible;$('#seating-view').hidden=chatVisible||checklistVisible||studentsVisible;$('#checklist-view').hidden=!checklistVisible;$('#students-view').hidden=!studentsVisible;$('#chat-view-tab').classList.toggle('active',chatVisible);$('#checklist-view-tab').classList.toggle('active',checklistVisible);$('#students-view-tab').classList.toggle('active',studentsVisible);$('#seating-view-tab').classList.toggle('active',!chatVisible&&!checklistVisible&&!studentsVisible);$('#class-chat-nav').classList.toggle('active',chatVisible);$('#checklist-sidebar-tab').classList.toggle('active',checklistVisible);$('#students-tab').classList.toggle('active',studentsVisible);$('#class-room-nav').classList.toggle('active',!chatVisible&&!checklistVisible&&!studentsVisible);if(chatVisible)renderClassCommunication();if(checklistVisible)renderChecklist();if(studentsVisible)renderStudentList();}
+function handleToggleTestRequired(checked) {
+  checklist.testRequired = Boolean(checked);
+  if ($('#test-required-toggle')) $('#test-required-toggle').checked = checklist.testRequired;
+  if ($('#scores-tab-test-toggle')) $('#scores-tab-test-toggle').checked = checklist.testRequired;
+  addClassActivity(checklist.testRequired ? 'Đã bật: Ca này có test' : 'Đã tắt: Ca này có test', 'checklist');
+  saveChecklist();
+  renderChecklist();
+  if (typeof renderScoresView === 'function') renderScoresView();
+}
+$('#test-required-toggle')?.addEventListener('change', e => handleToggleTestRequired(e.target.checked));
+$('#scores-tab-test-toggle')?.addEventListener('change', e => handleToggleTestRequired(e.target.checked));
+$('#confirm-handover').onclick=()=>{const person=$('#handover-person').value.trim();if(!person){toast('Nhập tên trợ giảng cầm bài về chấm.');$('#handover-person').focus();return;}checklist.handover={person,at:Date.now()};addClassActivity(`Trợ giảng cầm bài test về chấm: ${person}`,'handover');saveChecklist();renderChecklist();toast(`Đã ghi nhận trợ giảng cầm bài về: ${person}.`);};
+function setClassView(view){
+  const chatVisible=view==='chat',scoresVisible=view==='scores',checklistVisible=view==='checklist',studentsVisible=view==='students';
+  const seatingVisible=!chatVisible&&!scoresVisible&&!checklistVisible&&!studentsVisible;
+  $('#chat-view').hidden=!chatVisible;
+  $('#seating-view').hidden=!seatingVisible;
+  if($('#scores-view'))$('#scores-view').hidden=!scoresVisible;
+  $('#checklist-view').hidden=!checklistVisible;
+  $('#students-view').hidden=!studentsVisible;
+  $('#chat-view-tab')?.classList.toggle('active',chatVisible);
+  $('#seating-view-tab')?.classList.toggle('active',seatingVisible);
+  $('#scores-view-tab')?.classList.toggle('active',scoresVisible);
+  $('#checklist-view-tab')?.classList.toggle('active',checklistVisible);
+  $('#students-view-tab')?.classList.toggle('active',studentsVisible);
+  $('#class-chat-nav')?.classList.toggle('active',chatVisible);
+  $('#class-room-nav')?.classList.toggle('active',seatingVisible);
+  $('#scores-sidebar-tab')?.classList.toggle('active',scoresVisible);
+  $('#checklist-sidebar-tab')?.classList.toggle('active',checklistVisible);
+  $('#students-tab')?.classList.toggle('active',studentsVisible);
+  if(chatVisible)renderClassCommunication();
+  if(scoresVisible&&typeof renderScoresView==='function')renderScoresView();
+  if(checklistVisible)renderChecklist();
+  if(studentsVisible)renderStudentList();
+}
 function updateSubtabUrl(subtab) {
   const c = activeClassConfig();
   const sub = isClassHistoryViewMode ? `history/${checklistDate}/${subtab}` : `live/${subtab}`;
@@ -420,6 +444,8 @@ function updateSubtabUrl(subtab) {
 $('#chat-view-tab').onclick=()=>{ setClassView('chat'); updateSubtabUrl('chatlog'); };
 $('#class-chat-nav').onclick=()=>{ setClassView('chat'); updateSubtabUrl('chatlog'); };
 $('#seating-view-tab').onclick=()=>{ setClassView('seating'); updateSubtabUrl('map'); };
+$('#scores-view-tab')?.addEventListener('click', ()=>{ setClassView('scores'); updateSubtabUrl('scores'); });
+$('#scores-sidebar-tab')?.addEventListener('click', ()=>{ setClassView('scores'); updateSubtabUrl('scores'); });
 $('#class-room-nav').onclick=()=>{ setClassView('seating'); updateSubtabUrl('map'); };
 $('#checklist-view-tab').onclick=()=>{ setClassView('checklist'); updateSubtabUrl('checklist'); };
 $('#checklist-sidebar-tab').onclick=()=>{ setClassView('checklist'); updateSubtabUrl('checklist'); };
@@ -601,6 +627,7 @@ function showClassWorkspace(){
   if ($('#chat-class-label')) $('#chat-class-label').textContent = `TRAO ĐỔI TRONG CA · ${(item.code || item.name).toLocaleUpperCase('vi')} (${item.name})`;
   if ($('#checklist-class-label')) $('#checklist-class-label').textContent = `CA ${item.startTime}–${item.endTime} · ${(item.code || item.name).toLocaleUpperCase('vi')} (${item.name})`;
   if ($('#student-list-class-label')) $('#student-list-class-label').textContent = `DANH SÁCH LỚP · ${(item.code || item.name).toLocaleUpperCase('vi')} (${item.name})`;
+  if ($('#scores-class-label')) $('#scores-class-label').textContent = `NHẬP ĐIỂM TRONG CA · ${(item.code || item.name).toLocaleUpperCase('vi')} (${item.name})`;
 
   setClassView('seating');
   render();
@@ -1007,7 +1034,7 @@ function renderClassGeneralView(classId) {
             : '<small style="color:#a8b4aa;">—</small>';
 
           const schoolOrMakeupText = isMakeup
-            ? `Bù từ: ${s.sourceClassName || s.school || 'Lớp khác'}`
+            ? `Học Bù (${s.sourceClassName || s.school || 'T2'})`
             : (s.school || '—');
 
           return `
@@ -1270,7 +1297,7 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
     $('#header-edit-class-btn').onclick = () => openClassConfig(cls.id);
   }
 
-  setClassView(targetView === 'chatlog' ? 'chat' : targetView === 'checklist' ? 'checklist' : targetView === 'students' ? 'students' : 'seating');
+  setClassView(targetView === 'chatlog' ? 'chat' : targetView === 'scores' ? 'scores' : targetView === 'checklist' ? 'checklist' : targetView === 'students' ? 'students' : 'seating');
   render();
   window.__featuresApp?.onClassWorkspaceOpened?.();
 }
@@ -1700,7 +1727,7 @@ function renderStudentList(){
                 : '<small style="color:#a8b4aa;">—</small>';
 
               const schoolLabel = isMakeupRow
-                ? `Học bù từ: ${student.sourceClassName || student.school || 'Lớp khác'}`
+                ? `Học Bù (${student.sourceClassName || student.school || 'T2'})`
                 : (student.school || '—');
 
               return `
@@ -2328,7 +2355,7 @@ function render(){
     const seatedPlace = allEntries().find(place=>place.entry.studentId===s.id);
     return `<div class="student-option roster-option" style="justify-content:space-between;"><span class="student-option-name"><strong>${escapeHtml(fam)} ${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}${renderInlineTags(s)}<small>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'Hồ sơ học sinh'))} · ${attendanceLabel(seatedPlace?.entry.attendance?.status)}</small></span><button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(s.id)}">🗺 Tìm chỗ</button></div>`;
   }).join('')||'<div class="empty-list">Danh sách lớp chưa có hồ sơ.</div>';
-  renderStudentList();renderChecklist();
+  renderStudentList();renderChecklist();if(typeof renderScoresView==='function')renderScoresView();
 }
 
 function collectAisleHomework(aisleIndex) {
@@ -3031,6 +3058,11 @@ document.addEventListener('click', (e) => {
     updateSubtabUrl('map');
     return;
   }
+  if (e.target.closest('#scores-view-tab') || e.target.closest('#scores-sidebar-tab')) {
+    setClassView('scores');
+    updateSubtabUrl('scores');
+    return;
+  }
   if (e.target.closest('#checklist-view-tab') || e.target.closest('#checklist-sidebar-tab')) {
     setClassView('checklist');
     updateSubtabUrl('checklist');
@@ -3154,31 +3186,193 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Manual Score Entry Dialog (#manual-score-dialog)
-function openManualScoreDialog() {
-  const dialog = $('#manual-score-dialog');
-  if (!dialog) return;
-  const curClass = activeClassConfig();
-  const titleEl = $('#manual-score-dialog-title');
-  if (titleEl) {
-    titleEl.textContent = `Nhập điểm tay · ${curClass?.code || curClass?.name || ''} (${checklistDate})`;
-  }
-  if ($('#manual-score-search')) {
-    $('#manual-score-search').value = '';
-    $('#manual-score-search').dispatchEvent(new Event('input'));
-  }
-  if ($('#manual-score-filter')) {
-    $('#manual-score-filter').value = 'all';
-  }
-  renderManualScoreTable();
-  dialog.showModal();
-  setTimeout(() => $('#manual-score-search')?.focus(), 60);
+// ============================================================================
+// v1.3: TAB NHẬP ĐIỂM (#scores-view) & HỘP THOẠI XEM KỸ ĐIỂM HỌC SINH (#student-score-history-dialog)
+// ============================================================================
+
+function formatScoreVN(val) {
+  if (val === null || val === undefined || val === '' || Number.isNaN(Number(val))) return '/';
+  const num = Number(val);
+  return String(num).replace('.', ',');
 }
+
+function formatShortDayMonth(dateStr) {
+  if (!dateStr) return '';
+  const parts = String(dateStr).split('-');
+  if (parts.length === 3) {
+    return `${Number(parts[2])}/${Number(parts[1])}`;
+  }
+  return dateStr;
+}
+
+/**
+ * Trả về danh sách lịch sử điểm chi tiết của học sinh trong lớp:
+ * Mỗi phần tử gồm: { scoreDisplay, statusDisplay, lessonDisplay, date, kind }
+ * Với điểm BTVN: luôn ghi theo ngày và tên bài học của buổi thu & chấm bài.
+ */
+function getStudentScoreHistoryEntries(student, classId = CURRENT_CLASS_ID) {
+  if (!student) return [];
+  const allHistSessions = window.__featuresApp?.loadSessionHistory
+    ? window.__featuresApp.loadSessionHistory()
+    : (typeof sessionHistoryRepo.loadSessionHistory === 'function' ? sessionHistoryRepo.loadSessionHistory() : []);
+  const classSessions = allHistSessions.filter(s => s.classId === classId);
+
+  // Collect all past dates for this class from session history, student sessionNotes, attendanceHistory, and scores
+  const dateSet = new Set();
+  classSessions.forEach(cs => {
+    if (cs.date && cs.date !== checklistDate) dateSet.add(cs.date);
+  });
+  (student.sessionNotes || []).forEach(sn => {
+    if ((sn.classId === classId || !sn.classId) && sn.date && sn.date !== checklistDate) dateSet.add(sn.date);
+  });
+  (student.attendanceHistory || []).forEach(ah => {
+    if ((ah.classId === classId || !ah.classId) && ah.date && ah.date !== checklistDate) dateSet.add(ah.date);
+  });
+  (student.scores || []).forEach(sc => {
+    if ((sc.classId === classId || !sc.classId) && sc.date && sc.date !== checklistDate) dateSet.add(sc.date);
+  });
+
+  const sortedDates = Array.from(dateSet).sort((a, b) => b.localeCompare(a));
+  const entries = [];
+
+  for (const date of sortedDates) {
+    const shortDM = formatShortDayMonth(date);
+    const sess = classSessions.find(cs => cs.date === date);
+    const snap = sess?.studentsSnapshot?.find(s => s.studentId === student.id);
+    const sn = (student.sessionNotes || []).find(n => (n.classId === classId || !n.classId) && n.date === date);
+    const att = (student.attendanceHistory || []).find(h => (h.classId === classId || !h.classId) && h.date === date);
+    const dayScores = (student.scores || []).filter(sc => (sc.classId === classId || !sc.classId) && sc.date === date);
+
+    const testScoreObj = dayScores.find(sc => sc.type && sc.type.toLowerCase() !== 'btvn');
+    const btvnScoreObj = dayScores.find(sc => !sc.type || sc.type.toLowerCase() === 'btvn');
+
+    const lessonTitle = sn?.lessonTitle
+      || sess?.lessonTitle
+      || testScoreObj?.lessonTitle
+      || btvnScoreObj?.lessonTitle
+      || `Buổi học ${shortDM}`;
+
+    const attStatus = snap?.attendance?.status || att?.status || 'present';
+    const isAbsent = attStatus === 'absent' || attStatus === 'absent_excused' || attStatus === 'absent_unexcused';
+    const noteText = (sn?.note ?? snap?.note ?? '').trim();
+
+    // 1. Nếu buổi đó có bài Test -> thêm dòng Test trước (cùng ngày)
+    const testVal = sn?.testScore ?? snap?.testScore ?? testScoreObj?.score;
+    if (testVal !== undefined) {
+      let testStatusText = sn?.attendanceStatusOverride || '';
+      if (!testStatusText) {
+        const baseAtt = isAbsent ? 'Vắng' : attStatus === 'late' ? 'Có đi học (Đi muộn)' : 'Có đi học';
+        testStatusText = noteText && !sn?.homeworkStatusNote ? `${baseAtt} - ${noteText}` : baseAtt;
+      }
+      entries.push({
+        date,
+        kind: 'Test',
+        scoreRaw: testVal,
+        scoreDisplay: formatScoreVN(testVal),
+        statusDisplay: testStatusText,
+        lessonDisplay: `Test ${shortDM}: ${lessonTitle}`
+      });
+    }
+
+    // 2. Dòng BTVN của buổi thu bài (ghi tên bài học của buổi thu & chấm bài hôm đó)
+    const hwVal = sn?.homeworkScore !== undefined
+      ? sn.homeworkScore
+      : (snap?.homework?.score !== undefined ? snap.homework.score : btvnScoreObj?.score);
+    const hwStatus = sn?.homeworkStatus || snap?.homework?.status || (hwVal !== null && hwVal !== undefined ? 'graded' : 'uncollected');
+
+    let btvnStatusText = sn?.homeworkStatusNote || '';
+    if (!btvnStatusText) {
+      let base = 'Có đi học';
+      if (isAbsent) {
+        base = 'Vắng';
+      } else if (hwStatus === 'not_submitted') {
+        base = 'Có đi học (Không làm BTVN)';
+      } else if (attStatus === 'late') {
+        base = 'Có đi học (Đi muộn)';
+      }
+      btvnStatusText = noteText ? `${base} - ${noteText}` : base;
+    }
+
+    entries.push({
+      date,
+      kind: 'BTVN',
+      scoreRaw: hwVal ?? null,
+      scoreDisplay: formatScoreVN(hwVal),
+      statusDisplay: btvnStatusText,
+      lessonDisplay: `BTVN ${shortDM}: ${lessonTitle}`
+    });
+  }
+
+  return entries;
+}
+
+function getRecentFourScoresSummary(student, classId = CURRENT_CLASS_ID) {
+  const historyEntries = getStudentScoreHistoryEntries(student, classId);
+  const recentFour = historyEntries.slice(0, 4).map(e => e.scoreDisplay);
+  while (recentFour.length < 4) {
+    recentFour.push('/');
+  }
+  return recentFour.join('; ');
+}
+
+function openStudentScoreHistoryDialog(studentId) {
+  const student = studentById(studentId);
+  if (!student) return;
+  const dialog = $('#student-score-history-dialog');
+  if (!dialog) return;
+
+  const isMakeup = student.studentType === 'makeup' || !(student.classIds || []).includes(CURRENT_CLASS_ID);
+  const schoolOrMakeup = isMakeup
+    ? `Học Bù (${student.sourceClassName || student.school || 'T2'})`
+    : (student.school || 'Chưa rõ trường');
+
+  const titleEl = $('#score-history-dialog-title');
+  if (titleEl) {
+    titleEl.textContent = `Điểm của học sinh ${student.name} - ${schoolOrMakeup}`;
+  }
+
+  const learningInput = $('#score-history-learning-note');
+  if (learningInput) {
+    learningInput.value = student.learningNotes || '';
+    learningInput.oninput = () => {
+      student.learningNotes = learningInput.value;
+      saveStudentRecords(students, makeupStudents);
+      save();
+      // Sync input in scores tab if open
+      const rowLearningInput = document.querySelector(`[data-learning-note="${CSS.escape(student.id)}"]`);
+      if (rowLearningInput && document.activeElement !== rowLearningInput) {
+        rowLearningInput.value = student.learningNotes;
+      }
+    };
+  }
+
+  const entries = getStudentScoreHistoryEntries(student, CURRENT_CLASS_ID);
+  const tbody = $('#score-history-tbody');
+  if (tbody) {
+    if (!entries.length) {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:18px; color:#87968a;">Chưa có lịch sử điểm các buổi trước cho học sinh này.</td></tr>';
+    } else {
+      tbody.innerHTML = entries.map(item => {
+        const isMissing = item.scoreDisplay === '/';
+        return `<tr>
+          <td style="text-align:center;"><span class="score-history-val ${isMissing ? 'missing' : ''}">${escapeHtml(item.scoreDisplay)}</span></td>
+          <td><strong>${escapeHtml(item.statusDisplay)}</strong></td>
+          <td>${escapeHtml(item.lessonDisplay)}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  dialog.showModal();
+}
+
+$('#close-score-history-dialog')?.addEventListener('click', () => $('#student-score-history-dialog')?.close());
+$('#close-score-history-btn')?.addEventListener('click', () => $('#student-score-history-dialog')?.close());
 
 function applyStudentManualScore(studentId, field, rawValue) {
   const student = studentById(studentId);
   if (!student) return;
-  const cleanVal = String(rawValue ?? '').trim();
+  const cleanVal = String(rawValue ?? '').trim().replace(',', '.');
   const numVal = cleanVal === '' ? null : Math.max(0, Math.min(10, Number(cleanVal)));
   if (cleanVal !== '' && isNaN(numVal)) return;
 
@@ -3215,17 +3409,40 @@ function applyStudentManualScore(studentId, field, rawValue) {
     saveChecklist();
   }
   save();
-  const statusEl = $('#manual-score-status');
+  const statusEl = $('#scores-tab-save-status');
   if (statusEl) {
-    statusEl.textContent = `✓ Đã tự động lưu điểm của ${student.name} lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    statusEl.textContent = `✓ Đã lưu điểm của ${student.name} lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
   }
 }
 
-function renderManualScoreTable() {
-  const tbody = $('#manual-score-tbody');
+function saveStudentLearningNote(studentId, value) {
+  const student = studentById(studentId);
+  if (!student) return;
+  student.learningNotes = value;
+  saveStudentRecords(students, makeupStudents);
+  save();
+  const statusEl = $('#scores-tab-save-status');
+  if (statusEl) {
+    statusEl.textContent = `✓ Đã lưu ghi chú học lực của ${student.name}`;
+  }
+}
+
+function renderScoresView() {
+  const tbody = $('#scores-tab-tbody');
   if (!tbody) return;
-  const query = ($('#manual-score-search')?.value || '').trim();
-  const filter = $('#manual-score-filter')?.value || 'all';
+
+  // Do not wipe DOM if user is actively typing inside #scores-tab-tbody
+  if (document.activeElement && tbody.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') {
+    return;
+  }
+
+  const hasTest = Boolean(checklist.testRequired);
+  if ($('#scores-tab-test-toggle')) $('#scores-tab-test-toggle').checked = hasTest;
+  const testTh = $('#scores-tab-test-th');
+  if (testTh) testTh.hidden = !hasTest;
+
+  const query = ($('#scores-tab-search')?.value || '').trim();
+  const filter = $('#scores-tab-filter')?.value || 'all';
 
   const placements = new Map(allEntries().filter(({ entry }) => entry.studentId).map(place => [place.entry.studentId, place]));
   const lateSet = new Set(lateQueue);
@@ -3237,91 +3454,179 @@ function renderManualScoreTable() {
       || (a.familyName || aParts.familyName).localeCompare(b.familyName || bParts.familyName, 'vi');
   };
 
-  const regularList = [...classStudents()].sort(byGivenName);
-  const makeupList = makeupStudents
-    .filter(m => m.attendingClassId === CURRENT_CLASS_ID || placements.has(m.id) || lateSet.has(m.id))
-    .sort(byGivenName);
+  const regularList = [...classStudents()];
+  const makeupList = makeupStudents.filter(m => m.attendingClassId === CURRENT_CLASS_ID || placements.has(m.id) || lateSet.has(m.id));
+  const combinedStudents = [...regularList, ...makeupList];
 
-  const buildRowItem = (s, isMakeup) => {
+  const buildScoreRowItem = (s) => {
     const place = placements.get(s.id);
     const inLate = lateSet.has(s.id);
+    const attHist = (s.attendanceHistory || []).find(h => h.classId === CURRENT_CLASS_ID && h.date === checklistDate);
     const sessNote = (s.sessionNotes || []).find(n => n.classId === CURRENT_CLASS_ID && n.date === checklistDate);
-    const hw = place?.entry.homework || s.homework || (sessNote?.homeworkStatus ? { status: sessNote.homeworkStatus, score: sessNote.homeworkScore ?? null } : { status: 'uncollected', score: null });
+
+    const attendance = place?.entry.attendance
+      || (inLate ? (s.attendance || { status: 'late', lateMinutes: 10 }) : null)
+      || (attHist ? { status: attHist.status, reason: attHist.reason, lateMinutes: attHist.lateMinutes || attHist.minutesLate || 10 } : null);
+
+    const hw = place?.entry.homework
+      || (inLate && s.homework ? s.homework : null)
+      || (sessNote?.homeworkStatus ? { status: sessNote.homeworkStatus, score: sessNote.homeworkScore ?? null, reason: sessNote.homeworkReason || '' } : null)
+      || { status: 'uncollected', score: null };
+
+    const attStatus = attendance?.status || 'unrecorded';
+    const hwStatus = hw?.status || 'uncollected';
+    const isAttended = Boolean(place || inLate || attStatus === 'present' || attStatus === 'late');
+    const isHwCollected = hwStatus === 'submitted' || hwStatus === 'graded';
+
+    // Priority Group:
+    // 1: Đã điểm danh + Đã thu BTVN
+    // 2: Đã điểm danh - Chưa thu / Không nộp BTVN
+    // 3: Chưa được điểm danh / Vắng mặt
+    const priorityGroup = isAttended ? (isHwCollected ? 1 : 2) : 3;
+
+    const isMakeup = s.studentType === 'makeup' || !(s.classIds || []).includes(CURRENT_CLASS_ID);
+    const schoolDisplay = isMakeup
+      ? `Học Bù (${s.sourceClassName || s.school || 'T2'})`
+      : (s.school || '—');
+
     const hwScore = hw?.score ?? null;
     const testScore = place?.entry.testScore ?? checklist.testScores?.[s.id] ?? s.testScore ?? null;
-    const isPresentOrLate = Boolean(place || inLate || s.attendance?.status === 'present' || s.attendance?.status === 'late');
     const parts = splitStudentName(s.name);
+    const recentFour = getRecentFourScoresSummary(s, CURRENT_CLASS_ID);
+
     return {
       student: s,
       familyName: s.familyName ?? parts.familyName,
       givenName: s.givenName ?? parts.givenName,
-      isMakeup: isMakeup || s.studentType === 'makeup',
-      isPresentOrLate,
+      schoolDisplay,
+      isMakeup,
+      attStatus,
+      attendance,
+      hwStatus,
       hw,
       hwScore,
       testScore,
-      note: sessionNoteFor(s.id) || ''
+      priorityGroup,
+      recentFour,
+      note: sessionNoteFor(s.id) || '',
+      learningNotes: s.learningNotes || ''
     };
   };
 
-  const filterList = (items) => {
-    let res = [...items];
-    if (query) {
-      const matched = new Set(searchStudents(res.map(r => r.student), query).map(s => s.id));
-      res = res.filter(r => matched.has(r.student.id));
-    }
-    if (filter === 'present_only') res = res.filter(r => r.isPresentOrLate);
-    if (filter === 'unscored') res = res.filter(r => (r.hwScore === null || r.hwScore === undefined || r.hwScore === '') && (r.testScore === null || r.testScore === undefined || r.testScore === ''));
-    if (filter === 'makeup') res = res.filter(r => r.isMakeup);
-    return res;
-  };
+  let items = combinedStudents.map(buildScoreRowItem);
 
-  const rows = [
-    ...(filter === 'makeup' ? [] : filterList(regularList.map(s => buildRowItem(s, false)))),
-    ...filterList(makeupList.map(s => buildRowItem(s, true)))
-  ];
+  if (query) {
+    const matchedIds = new Set(searchStudents(items.map(r => r.student), query).map(s => s.id));
+    items = items.filter(r => matchedIds.has(r.student.id));
+  }
+  if (filter === 'group1') items = items.filter(r => r.priorityGroup === 1);
+  if (filter === 'group2') items = items.filter(r => r.priorityGroup === 2);
+  if (filter === 'group3') items = items.filter(r => r.priorityGroup === 3);
+  if (filter === 'makeup') items = items.filter(r => r.isMakeup);
 
-  if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:18px; color:#87968a;">Không có học sinh nào phù hợp với điều kiện lọc.</td></tr>';
+  // Sort strictly by priorityGroup (1 -> 2 -> 3), then alphabetically by Vietnamese givenName
+  items.sort((a, b) => {
+    if (a.priorityGroup !== b.priorityGroup) return a.priorityGroup - b.priorityGroup;
+    return byGivenName(a.student, b.student);
+  });
+
+  const colCount = hasTest ? 9 : 8;
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; padding:18px; color:#87968a;">Không có học sinh nào phù hợp với bộ lọc.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = rows.map(item => {
-    const s = item.student;
-    const stateLabel = item.isPresentOrLate
-      ? '<span class="student-state state-present">Có mặt</span>'
-      : '<span class="student-state state-pending">Chưa điểm danh</span>';
-    const schoolOrMakeup = item.isMakeup
-      ? `Học bù từ: ${s.sourceClassName || s.school || 'Lớp khác'}`
-      : (s.school || '—');
+  const groupLabels = {
+    1: '✓ NHÓM 1: ĐÃ ĐIỂM DANH + ĐÃ THU BTVN',
+    2: '⚠ NHÓM 2: ĐÃ ĐIỂM DANH · CHƯA THU / KHÔNG NỘP BTVN',
+    3: '○ NHÓM 3: CHƯA ĐƯỢC ĐIỂM DANH / VẮNG MẶT'
+  };
 
-    return `<tr class="${item.isMakeup ? 'makeup-row-tr' : ''}">
-      <td>${escapeHtml(item.familyName || '—')}</td>
-      <td>
-        <strong style="color:${item.isMakeup ? '#581c87' : '#214e2d'};">${escapeHtml(item.givenName || s.name)}</strong>
-        ${item.isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}
-        ${renderInlineTags(s)}
-      </td>
-      <td>${escapeHtml(schoolOrMakeup)}</td>
-      <td>${stateLabel}</td>
-      <td style="text-align:center;">
-        <input type="number" min="0" max="10" step="0.25" class="manual-score-input" data-manual-hw-score="${escapeHtml(s.id)}" value="${item.hwScore !== null && item.hwScore !== undefined ? escapeHtml(item.hwScore) : ''}" placeholder="0 - 10" aria-label="Điểm BTVN ${escapeHtml(s.name)}" />
-      </td>
-      <td style="text-align:center;">
-        <input type="number" min="0" max="10" step="0.25" class="manual-score-input" data-manual-test-score="${escapeHtml(s.id)}" value="${item.testScore !== null && item.testScore !== undefined ? escapeHtml(item.testScore) : ''}" placeholder="0 - 10" aria-label="Điểm Test ${escapeHtml(s.name)}" />
-      </td>
-      <td>
-        <input type="text" class="attendance-note-input" data-session-note="${escapeHtml(s.id)}" value="${escapeHtml(item.note)}" placeholder="Ghi chú điểm / nhận xét..." style="width:100%;" />
-      </td>
-    </tr>`;
-  }).join('');
+  let lastGroup = null;
+  const htmlRows = [];
+
+  for (const item of items) {
+    if (item.priorityGroup !== lastGroup) {
+      lastGroup = item.priorityGroup;
+      const groupCount = items.filter(x => x.priorityGroup === lastGroup).length;
+      htmlRows.push(`
+        <tr class="scores-group-divider-row group-${lastGroup}">
+          <td colspan="${colCount}">${groupLabels[lastGroup]} (${groupCount} học sinh)</td>
+        </tr>
+      `);
+    }
+
+    const s = item.student;
+    const attText = item.attStatus === 'present'
+      ? '<span class="student-state state-present">✓ Có mặt</span>'
+      : item.attStatus === 'late'
+        ? `<span class="student-state state-late">⏱ Đi muộn${item.attendance?.lateMinutes ? ` (${item.attendance.lateMinutes}p)` : ''}</span>`
+        : (item.attStatus === 'absent' || item.attStatus === 'absent_excused' || item.attStatus === 'absent_unexcused')
+          ? `<span class="student-state state-missing">× ${item.attStatus === 'absent_excused' ? 'Vắng có phép' : 'Vắng mặt'}</span>`
+          : '<span class="student-state state-pending">Chưa điểm danh</span>';
+
+    const hwText = item.hwStatus === 'graded' || item.hwStatus === 'submitted'
+      ? '<span class="student-state state-collected">Đã thu BTVN</span>'
+      : item.hwStatus === 'not_submitted'
+        ? `<span class="student-state state-missing">Không nộp BTVN${item.hw?.reason ? ` (${escapeHtml(item.hw.reason)})` : ''}</span>`
+        : '<span class="student-state state-pending">Chưa thu BTVN</span>';
+
+    htmlRows.push(`
+      <tr class="${item.isMakeup ? 'makeup-row-tr' : ''}" data-score-row-student="${escapeHtml(s.id)}">
+        <td>${escapeHtml(item.familyName || '—')}</td>
+        <td>
+          <strong style="color:${item.isMakeup ? '#581c87' : '#214e2d'};">${escapeHtml(item.givenName || s.name)}</strong>
+          ${renderInlineTags(s)}
+        </td>
+        <td>
+          ${item.isMakeup
+            ? `<span class="makeup-status-badge" style="margin-left:0;">${escapeHtml(item.schoolDisplay)}</span>`
+            : escapeHtml(item.schoolDisplay)}
+        </td>
+        <td>
+          <div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
+            ${attText}
+            ${item.priorityGroup !== 3 ? hwText : ''}
+          </div>
+        </td>
+        <td style="text-align:center;">
+          <button type="button" class="recent-scores-btn" data-open-score-history="${escapeHtml(s.id)}" title="Click để xem chi tiết điểm các buổi trước của ${escapeHtml(s.name)}">
+            <span>${escapeHtml(item.recentFour)}</span>
+            <small style="font-size:9px; opacity:0.8;">🔍</small>
+          </button>
+        </td>
+        <td style="text-align:center;">
+          <input type="number" min="0" max="10" step="0.25" class="manual-score-input" data-score-tab-hw="${escapeHtml(s.id)}" value="${item.hwScore !== null && item.hwScore !== undefined ? escapeHtml(item.hwScore) : ''}" placeholder="0 - 10" aria-label="Điểm BTVN ${escapeHtml(s.name)}" />
+        </td>
+        ${hasTest ? `
+          <td style="text-align:center;">
+            <input type="number" min="0" max="10" step="0.25" class="manual-score-input" data-score-tab-test="${escapeHtml(s.id)}" value="${item.testScore !== null && item.testScore !== undefined ? escapeHtml(item.testScore) : ''}" placeholder="0 - 10" aria-label="Điểm Test ${escapeHtml(s.name)}" />
+          </td>
+        ` : ''}
+        <td>
+          <input type="text" class="attendance-note-input" data-session-note="${escapeHtml(s.id)}" value="${escapeHtml(item.note)}" placeholder="Ghi chú buổi học..." style="width:100%;" />
+        </td>
+        <td>
+          <input type="text" class="attendance-note-input" data-learning-note="${escapeHtml(s.id)}" value="${escapeHtml(item.learningNotes)}" placeholder="Ghi chú học lực chung..." style="width:100%;" />
+        </td>
+      </tr>
+    `);
+  }
+
+  tbody.innerHTML = htmlRows.join('');
+
+  // Wire click on recent-scores-btn to open detailed score history modal
+  tbody.querySelectorAll('[data-open-score-history]').forEach(btn => {
+    btn.onclick = () => openStudentScoreHistoryDialog(btn.dataset.openScoreHistory);
+  });
 
   // Wire score inputs & Enter/Arrow navigation
-  const wireScoreInputs = (selector, field) => {
+  const wireInputs = (selector, field) => {
     const inputs = [...tbody.querySelectorAll(selector)];
     inputs.forEach((inp, idx) => {
       inp.addEventListener('input', () => {
-        applyStudentManualScore(inp.dataset[field === 'hw' ? 'manualHwScore' : 'manualTestScore'], field, inp.value);
+        const stuId = inp.dataset[field === 'hw' ? 'scoreTabHw' : 'scoreTabTest'];
+        applyStudentManualScore(stuId, field, inp.value);
       });
       inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === 'ArrowDown') {
@@ -3336,35 +3641,26 @@ function renderManualScoreTable() {
       });
     });
   };
-  wireScoreInputs('[data-manual-hw-score]', 'hw');
-  wireScoreInputs('[data-manual-test-score]', 'test');
+  wireInputs('[data-score-tab-hw]', 'hw');
+  if (hasTest) wireInputs('[data-score-tab-test]', 'test');
+
+  // Wire learning notes input
+  tbody.querySelectorAll('[data-learning-note]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      saveStudentLearningNote(inp.dataset.learningNote, inp.value);
+    });
+  });
 }
 
-$('#open-manual-score-btn')?.addEventListener('click', openManualScoreDialog);
-$('#student-list-manual-score-btn')?.addEventListener('click', openManualScoreDialog);
-$('#manual-score-search')?.addEventListener('input', renderManualScoreTable);
-$('#manual-score-filter')?.addEventListener('change', renderManualScoreTable);
-$('#close-manual-score-dialog')?.addEventListener('click', () => {
-  $('#manual-score-dialog')?.close();
-  render();
-});
-$('#cancel-manual-score-btn')?.addEventListener('click', () => {
-  $('#manual-score-dialog')?.close();
-  render();
-});
-$('#save-manual-score-btn')?.addEventListener('click', () => {
-  save();
-  render();
-  $('#manual-score-dialog')?.close();
-  toast('Đã lưu bảng điểm tay và cập nhật vào hồ sơ học sinh.');
-});
+$('#scores-tab-search')?.addEventListener('input', renderScoresView);
+$('#scores-tab-filter')?.addEventListener('change', renderScoresView);
 
 // Universal Clear "×" Button on All Search Inputs
 function initSearchClearButtons() {
   const selectors = [
     '#seating-map-search-input',
     '#student-list-search',
-    '#manual-score-search',
+    '#scores-tab-search',
     '#student-search',
     '#late-search',
     '#master-student-search',
