@@ -17,3 +17,4 @@ user_uploaded_files/
 dist/
 build/
 .realtime-store.json
+.firebase/

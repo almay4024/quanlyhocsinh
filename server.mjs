@@ -183,7 +183,7 @@ const server = createServer(async (req, res) => {
 
 // Lắng nghe trên 0.0.0.0 để iPad, điện thoại cùng mạng Wi-Fi có thể truy cập và đồng bộ real-time
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 Ứng dụng Lớp học vui (v1.0 · Real-time Sync) đang chạy:`);
+  console.log(`\n🚀 Ứng dụng Lớp học vui (v1.1 · Real-time Sync) đang chạy:`);
   console.log(`- Trên máy này:    http://localhost:${PORT}`);
   
   // In địa chỉ IP mạng nội bộ cho iPad / điện thoại

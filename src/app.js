@@ -1,12 +1,202 @@
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.0';
-import { initRealtimeSync, forceSyncNow } from './data/realtime-sync.js?v=1.0';
-import { syncActiveClassSessionRecord, getSessionRecord } from './data/session-history-repository.js?v=1.0';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.1';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.1';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=1.0';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=1.0';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges } from './data/class-catalog-repository.js?v=1.0';
+import { setupFeatures } from './features.js?v=1.1';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=1.1';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.1';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.1';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges } from './data/class-catalog-repository.js?v=1.1';
+
+// Built-in fallback for syncActiveClassSessionRecord so cached modules never break app startup
+function syncActiveClassSessionRecord(classId, date, currentUser, snapshotData) {
+  if (typeof sessionHistoryRepo.syncActiveClassSessionRecord === 'function') {
+    return sessionHistoryRepo.syncActiveClassSessionRecord(classId, date, currentUser, snapshotData);
+  }
+  try {
+    const history = typeof sessionHistoryRepo.loadSessionHistory === 'function'
+      ? sessionHistoryRepo.loadSessionHistory()
+      : JSON.parse(localStorage.getItem('lopvui.session-history.v1') || '[]');
+    let record = history.find(s => s.classId === classId && s.date === date);
+    const now = new Date().toISOString();
+    if (!record) {
+      const hasActivity = (snapshotData.students && snapshotData.students.some(s => s.attendance?.status === 'present' || s.attendance?.status === 'late' || (s.homework?.status && s.homework.status !== 'uncollected') || s.note))
+        || snapshotData.lessonTitle || snapshotData.sessionNote;
+      if (!hasActivity) return null;
+      record = {
+        id: `session-${classId}-${date}`,
+        classId,
+        classCode: snapshotData.classCode || classId,
+        className: snapshotData.className || classId,
+        date,
+        status: 'active',
+        startedAt: now,
+        startedBy: currentUser || { id: 'sys', name: 'Hệ thống', role: 'assistant' }
+      };
+      history.push(record);
+    }
+    Object.assign(record, {
+      className: snapshotData.className || record.className || classId,
+      classCode: snapshotData.classCode || record.classCode || classId,
+      subject: snapshotData.subject || record.subject || '',
+      room: snapshotData.room || record.room || '',
+      grade: snapshotData.grade || record.grade || '',
+      teacherName: snapshotData.teacherName || record.teacherName || '',
+      assistantName: snapshotData.assistantName || record.assistantName || '',
+      lessonTitle: snapshotData.lessonTitle ?? record.lessonTitle ?? '',
+      finalNote: snapshotData.sessionNote ?? record.finalNote ?? '',
+      layout: snapshotData.layout || record.layout || null,
+      deskItems: snapshotData.deskItems || record.deskItems || null,
+      studentsSnapshot: snapshotData.students || record.studentsSnapshot || [],
+      checklistSummary: snapshotData.checklistSummary || record.checklistSummary || [],
+      stats: snapshotData.stats || record.stats || {},
+      updatedAt: now
+    });
+    localStorage.setItem('lopvui.session-history.v1', JSON.stringify(history));
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+// Built-in self-contained Real-time Sync Engine (zero external file dependency)
+const RT_CHANNEL_NAME = 'lopvui_realtime_sync_v11';
+const RT_PREFIX = 'lopvui.';
+const RT_EXCLUDED = new Set(['lopvui.signed-in-account.v1']);
+const RT_CLIENT_ID = `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+let _rtChannel = null;
+let _rtApplyingRemote = false;
+let _rtSyncListeners = new Set();
+let _rtStatusListeners = new Set();
+let _rtDebounceTimer = null;
+let _rtPendingKeys = new Set();
+let _rtLastSyncTime = Date.now();
+let _rtState = 'local';
+
+const _nativeGetItem = Storage.prototype.getItem;
+const _nativeSetItem = Storage.prototype.setItem;
+const _nativeRemoveItem = Storage.prototype.removeItem;
+
+function _shouldSyncKey(key) {
+  return typeof key === 'string' && key.startsWith(RT_PREFIX) && !RT_EXCLUDED.has(key);
+}
+
+function _notifyRtStatus(state = _rtState, ts = Date.now(), detail = '') {
+  _rtState = state;
+  _rtLastSyncTime = ts;
+  _rtStatusListeners.forEach(fn => {
+    try { fn({ state: _rtState, lastSyncTime: _rtLastSyncTime, detail, clientId: RT_CLIENT_ID }); } catch {}
+  });
+}
+
+function _scheduleRtUIRefresh(changedKeys, source = 'remote') {
+  changedKeys.forEach(k => _rtPendingKeys.add(k));
+  _rtLastSyncTime = Date.now();
+  _notifyRtStatus(_rtState, _rtLastSyncTime, source);
+  if (_rtDebounceTimer) clearTimeout(_rtDebounceTimer);
+  _rtDebounceTimer = setTimeout(() => {
+    const keys = Array.from(_rtPendingKeys);
+    _rtPendingKeys.clear();
+    if (!keys.length) return;
+    _rtSyncListeners.forEach(fn => {
+      try { fn(keys, source); } catch (err) { console.warn('RT listener warning:', err); }
+    });
+  }, 80);
+}
+
+function _applyRtRemoteEntries(entries, source = 'remote') {
+  if (!entries || typeof entries !== 'object') return false;
+  const changed = [];
+  _rtApplyingRemote = true;
+  try {
+    for (const [k, v] of Object.entries(entries)) {
+      if (!_shouldSyncKey(k)) continue;
+      const cur = _nativeGetItem.call(window.localStorage, k);
+      if (v === null || v === undefined) {
+        if (cur !== null) {
+          _nativeRemoveItem.call(window.localStorage, k);
+          changed.push(k);
+        }
+      } else {
+        const strVal = String(v);
+        if (cur !== strVal) {
+          _nativeSetItem.call(window.localStorage, k, strVal);
+          changed.push(k);
+        }
+      }
+    }
+  } catch {} finally {
+    _rtApplyingRemote = false;
+  }
+  if (changed.length > 0) {
+    _scheduleRtUIRefresh(changed, source);
+    return true;
+  }
+  return false;
+}
+
+function initRealtimeSync(onSyncCallback) {
+  if (typeof onSyncCallback === 'function') _rtSyncListeners.add(onSyncCallback);
+  if (!window.__lopvuiRtInitV11) {
+    window.__lopvuiRtInitV11 = true;
+    try {
+      Storage.prototype.setItem = function(key, value) {
+        let prev = null;
+        try { prev = _nativeGetItem.call(this, key); } catch {}
+        try { _nativeSetItem.call(this, key, value); } catch { return; }
+        if (this === window.localStorage && _shouldSyncKey(String(key)) && !_rtApplyingRemote) {
+          const strVal = String(value);
+          if (prev !== strVal) {
+            if (_rtChannel) {
+              try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: Date.now(), entries: { [String(key)]: strVal } }); } catch {}
+            }
+            _notifyRtStatus(_rtState, Date.now(), 'local-save');
+          }
+        }
+      };
+      Storage.prototype.removeItem = function(key) {
+        let had = false;
+        try { had = _nativeGetItem.call(this, key) !== null; } catch {}
+        try { _nativeRemoveItem.call(this, key); } catch { return; }
+        if (this === window.localStorage && _shouldSyncKey(String(key)) && !_rtApplyingRemote && had) {
+          if (_rtChannel) {
+            try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: Date.now(), entries: { [String(key)]: null } }); } catch {}
+          }
+          _notifyRtStatus(_rtState, Date.now(), 'local-save');
+        }
+      };
+    } catch {}
+
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        _rtChannel = new BroadcastChannel(RT_CHANNEL_NAME);
+        _rtChannel.onmessage = (event) => {
+          const data = event.data;
+          if (!data || data.clientId === RT_CLIENT_ID) return;
+          if (data.type === 'sync-entries' && data.entries) {
+            _applyRtRemoteEntries(data.entries, 'broadcast-tab');
+          }
+        };
+      } catch {}
+    }
+
+    window.addEventListener('storage', (event) => {
+      if (!event.key || !_shouldSyncKey(event.key) || _rtApplyingRemote) return;
+      _scheduleRtUIRefresh([event.key], 'storage-event');
+    });
+  }
+  return {
+    clientId: RT_CLIENT_ID,
+    forceSyncNow,
+    onStatusChange: (cb) => {
+      _rtStatusListeners.add(cb);
+      cb({ state: _rtState, lastSyncTime: _rtLastSyncTime, clientId: RT_CLIENT_ID });
+    }
+  };
+}
+
+function forceSyncNow(reason = 'manual-click') {
+  _scheduleRtUIRefresh(['*'], reason);
+}
 // Mỗi bàn chứa danh sách học sinh riêng; kéo thả chỉ sắp xếp trong bàn đích.
 const baseLayout=[
   {id:'aisle-1',desks:[{id:'d11',seats:2},{id:'d12',seats:2},{id:'d13',seats:2}]},

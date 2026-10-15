@@ -1,6 +1,6 @@
 // Local repository boundary for master data and class configuration.
 // Replace these localStorage adapters with Firestore collections when the live database is enabled.
-import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=1.0';
+import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=1.1';
 
 const CATALOG_KEY = 'lopvui.class-catalog.v1';
 const MASTER_KEY = 'lopvui.master-data.v1';

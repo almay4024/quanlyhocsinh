@@ -217,3 +217,12 @@ Web App quản lý lớp học thời gian thực (real-time) và ngoại tuyế
 - Loại bỏ sự kiện làm mới DOM đồng bộ khi `window.focus` trong `realtime-sync.js` (tránh việc DOM bị vẽ lại ngay giữa lúc người dùng đang nhấn chuột làm mất sự kiện `click`).
 - Tách biệt khóa phiên đăng nhập (`lopvui.signed-in-account.v1`) khỏi luồng ghi đè từ xa để mỗi tab/thiết bị giữ nguyên tài khoản đang đăng nhập.
 - Đồng bộ trạng thái ẩn/hiện (`hidden` và `style.display`) của `#main-menu-view`, `#class-workspace`, `#class-general-view` và `#login-screen` khi chuyển tab, đổi vai trò hoặc đăng xuất/đăng nhập lại.
+
+
+---
+
+## 🛡️ Phiên bản v1.1 (Tích hợp Bộ đồng bộ Real-time Nội tuyến & Bảo toàn Dữ liệu Local)
+
+### 1. Tích hợp Trực tiếp Bộ máy Real-time vào `src/app.js` (Zero-External-Dependency)
+- Nhúng trực tiếp bộ đồng bộ thời gian thực (`initRealtimeSync`, `forceSyncNow`) và hàm đồng bộ ca học (`syncActiveClassSessionRecord`) ngay bên trong `src/app.js`, loại bỏ hoàn toàn sự phụ thuộc vào file rời bên ngoài để tránh lỗi `Failed to load module script` trên Firebase Hosting.
+- Không bao giờ ghi đè dữ liệu `localStorage` sẵn có trên máy người dùng khi khởi động trang; toàn bộ dữ liệu học sinh, lớp học, nhân sự và lịch sử ca làm trên trình duyệt của bạn được giữ nguyên 100%.
