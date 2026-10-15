@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vs/
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Build and Artifacts
+artifacts/
+user_uploaded_files/
+dist/
+build/
+.realtime-store.json
