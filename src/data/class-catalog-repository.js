@@ -1,6 +1,6 @@
 // Local repository boundary for master data and class configuration.
 // Supports Birth Year (Năm sinh: 2009, 2010, ...) and automatic layout sync from Room Templates.
-import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=1.9';
+import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=2.0';
 
 const CATALOG_KEY = 'lopvui.class-catalog.v1';
 const MASTER_KEY = 'lopvui.master-data.v1';

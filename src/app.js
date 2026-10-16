@@ -1,12 +1,12 @@
 const APP_VERSION = "1.8";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.9';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.9';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.0';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=1.9';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=1.9';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.9';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.9';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.9';
+import { setupFeatures } from './features.js?v=2.0';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=2.0';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
