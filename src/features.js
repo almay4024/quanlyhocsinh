@@ -1,15 +1,15 @@
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.8';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.8';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.9';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.9';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.8';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.9';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -19,7 +19,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=1.8';
+} from './excel-import-export.js?v=1.9';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -30,7 +30,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=1.8';
+} from './data/session-history-repository.js?v=1.9';
 
 export function setupFeatures(ctx) {
   const {
@@ -561,31 +561,31 @@ export function setupFeatures(ctx) {
     if (!list) return;
 
     if (!filtered.length) {
-      list.innerHTML = `<div class="menu-empty"><span>✍</span><strong>Chưa có ca bổ trợ hoặc học bù nào phù hợp</strong><small>Bấm "＋ Ghi nhận ca bổ trợ" để tạo hồ sơ buổi học 1-kèm-1 mới.</small></div>`;
+      list.innerHTML = `<div class="menu-empty"><span></span><strong>Chưa có ca bổ trợ hoặc học bù nào phù hợp</strong><small>Bấm "+ Ghi nhận ca bổ trợ" để tạo hồ sơ buổi học 1-kèm-1 mới.</small></div>`;
       return;
     }
 
     const typeLabels = { giasu: 'Gia sư', makeup: 'Học bù', tutoring: 'Bổ trợ', new: 'Học mới' };
     const hwLabels = {
       completed: '✓ Đã hoàn thành phiếu',
-      assigned_more: '⚡ Giao thêm phiếu về nhà',
-      pending: '⏳ Chưa hoàn thành',
+      assigned_more: ' Giao thêm phiếu về nhà',
+      pending: ' Chưa hoàn thành',
       none: 'Không giao bài tập'
     };
 
     list.innerHTML = filtered.map(item => `
       <article class="tutoring-card">
-        <span class="icon-box ${item.type === 'giasu' ? 'mint' : item.type === 'makeup' ? 'peach' : item.type === 'tutoring' ? 'lilac' : 'mint'}">${item.type === 'giasu' ? '⭐' : '✍'}</span>
+        <span class="icon-box ${item.type === 'giasu' ? 'mint' : item.type === 'makeup' ? 'peach' : item.type === 'tutoring' ? 'lilac' : 'mint'}">${item.type === 'giasu' ? '' : ''}</span>
         <div class="tutoring-card-main">
           <strong>${escapeHtml(item.studentName)} <span class="tutoring-badge ${escapeHtml(item.type)}">${item.type === 'giasu' ? 'Gia sư 1-kèm-1' : escapeHtml(typeLabels[item.type] || item.type)}</span> ${item.studentClass ? `<span class="room-chip">${escapeHtml(item.studentClass)}</span>` : ''}</strong>
-          ${item.previousHomeworkCheck ? `<p style="margin:3px 0; font-size:14.5px; color:#233d31;"><strong>📋 Kiểm tra BTVN buổi trước:</strong> ${escapeHtml(item.previousHomeworkCheck)}</p>` : ''}
+          ${item.previousHomeworkCheck ? `<p style="margin:3px 0; font-size:14.5px; color:#233d31;"><strong> Kiểm tra BTVN buổi trước:</strong> ${escapeHtml(item.previousHomeworkCheck)}</p>` : ''}
           <p><strong>Nội dung kèm:</strong> ${escapeHtml(item.lessonContent)}</p>
           ${item.evaluation ? `<p><strong>Đánh giá:</strong> ${escapeHtml(item.evaluation)} ${item.score ? `· Điểm: <strong style="color:#2f7045;">${item.score}/10</strong>` : ''}</p>` : ''}
         </div>
         <div class="tutoring-card-meta">
-          <span>📅 ${escapeHtml(item.date)} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span>
-          <span>👤 Trợ giảng: <strong>${escapeHtml(item.assistantName)}</strong></span>
-          <span>📝 BTVN: <em>${escapeHtml(hwLabels[item.homeworkStatus] || item.homeworkStatus)}</em></span>
+          <span> ${escapeHtml(item.date)} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span>
+          <span> Trợ giảng: <strong>${escapeHtml(item.assistantName)}</strong></span>
+          <span> BTVN: <em>${escapeHtml(hwLabels[item.homeworkStatus] || item.homeworkStatus)}</em></span>
         </div>
         <div class="tutoring-actions">
           <button type="button" class="outline-button" data-edit-tutoring="${escapeHtml(item.id)}">Sửa</button>
@@ -730,8 +730,20 @@ export function setupFeatures(ctx) {
       $('#tutoring-dialog-title').textContent = 'Chỉnh sửa ca bổ trợ / Học bù / Gia sư';
       $('#tutoring-id').value = item.id;
       $('#tutoring-date').value = item.date;
-      $('#tutoring-start-time').value = item.startTime;
-      $('#tutoring-end-time').value = item.endTime;
+      if (window.__timeHelpers?.setDurationFieldsFromStartEnd) {
+        window.__timeHelpers.setDurationFieldsFromStartEnd({
+          startTime: item.startTime || '15:30',
+          endTime: item.endTime || '16:45',
+          startSel: '#tutoring-start-time',
+          endSel: '#tutoring-end-time',
+          durationSel: '#tutoring-duration-select',
+          customWrapSel: '#tutoring-duration-custom-wrap',
+          customInputSel: '#tutoring-duration-custom'
+        });
+      } else {
+        $('#tutoring-start-time').value = item.startTime;
+        $('#tutoring-end-time').value = item.endTime;
+      }
       assistantSelect.value = item.assistantId || assistantSelect.value;
       $('#tutoring-type-select').value = item.type;
       hiddenId.value = item.studentId || '';
@@ -754,9 +766,22 @@ export function setupFeatures(ctx) {
       $('#tutoring-dialog-title').textContent = 'Ghi nhận ca bổ trợ / Học bù / Gia sư';
       $('#tutoring-id').value = '';
       $('#tutoring-date').value = new Date().toLocaleDateString('sv-SE');
-      $('#tutoring-start-time').value = new Date().toTimeString().slice(0, 5);
-      const end = new Date(Date.now() + 75 * 60000);
-      $('#tutoring-end-time').value = end.toTimeString().slice(0, 5);
+      const now5 = window.__timeHelpers?.roundTimeTo5Minutes ? window.__timeHelpers.roundTimeTo5Minutes(new Date().toTimeString().slice(0, 5)) : new Date().toTimeString().slice(0, 5);
+      const end5 = window.__timeHelpers?.addMinutesToTimeStr ? window.__timeHelpers.addMinutesToTimeStr(now5, 75) : new Date(Date.now() + 75 * 60000).toTimeString().slice(0, 5);
+      if (window.__timeHelpers?.setDurationFieldsFromStartEnd) {
+        window.__timeHelpers.setDurationFieldsFromStartEnd({
+          startTime: now5,
+          endTime: end5,
+          startSel: '#tutoring-start-time',
+          endSel: '#tutoring-end-time',
+          durationSel: '#tutoring-duration-select',
+          customWrapSel: '#tutoring-duration-custom-wrap',
+          customInputSel: '#tutoring-duration-custom'
+        });
+      } else {
+        $('#tutoring-start-time').value = now5;
+        $('#tutoring-end-time').value = end5;
+      }
       $('#tutoring-type-select').value = 'tutoring';
       hiddenId.value = '';
       nameInput.value = '';
@@ -813,7 +838,7 @@ export function setupFeatures(ctx) {
           </div>
           <div class="room-schedule-box" style="margin-top:10px; padding:10px 12px; background:#f5faf6; border-radius:8px; border:1px solid #dbe8dd;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <strong style="font-size:14.5px; color:#23442a;">📅 Các lớp sử dụng phòng này theo lịch (${getClassesInRoom(tpl.roomCode, catalog).length} lớp):</strong>
+              <strong style="font-size:14.5px; color:#23442a;"> Các lớp sử dụng phòng này theo lịch (${getClassesInRoom(tpl.roomCode, catalog).length} lớp):</strong>
             </div>
             ${getClassesInRoom(tpl.roomCode, catalog).length ? `
               <div style="display:grid; gap:5px;">
@@ -900,9 +925,9 @@ export function setupFeatures(ctx) {
         <div class="field-label aisle-field" style="margin:0;">
           <span>Số bàn ở dãy ${i + 1}</span>
           <div class="mobile-number-stepper">
-            <button type="button" class="stepper-btn" data-tpl-aisle-dec="${i}" aria-label="Giảm số bàn dãy ${i + 1}">－</button>
+            <button type="button" class="stepper-btn" data-tpl-aisle-dec="${i}" aria-label="Giảm số bàn dãy ${i + 1}">-</button>
             <input type="text" inputmode="numeric" pattern="[0-9]*" value="${deskCount}" data-tpl-desk-count="${i}" required />
-            <button type="button" class="stepper-btn" data-tpl-aisle-inc="${i}" aria-label="Tăng số bàn dãy ${i + 1}">＋</button>
+            <button type="button" class="stepper-btn" data-tpl-aisle-inc="${i}" aria-label="Tăng số bàn dãy ${i + 1}">+</button>
           </div>
         </div>
         <div style="margin-top:6px;">
@@ -1331,7 +1356,7 @@ export function setupFeatures(ctx) {
 
         <div style="display:grid; gap:12px;">
           <div style="background:#fff; border:1px solid #fecaca; border-radius:8px; padding:12px;">
-            <strong style="color:#991b1b; font-size:14.5px;">❌ 1. Học sinh KHÔNG nộp bài tập về nhà (${missingHW.length} bạn):</strong>
+            <strong style="color:#991b1b; font-size:14.5px;">× 1. Học sinh KHÔNG nộp bài tập về nhà (${missingHW.length} bạn):</strong>
             ${missingHW.length ? `
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
@@ -1343,7 +1368,7 @@ export function setupFeatures(ctx) {
                     const seated = entries.find(p => p.entry.studentId === s.id);
                     const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
                     const reason = reasonMap[seated?.entry.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
-                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
+                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -1351,7 +1376,7 @@ export function setupFeatures(ctx) {
           </div>
 
           <div style="background:#fff; border:1px solid #fed7aa; border-radius:8px; padding:12px;">
-            <strong style="color:#9a3412; font-size:14.5px;">⏰ 2. Học sinh ĐI MUỘN (${lateList.length} bạn):</strong>
+            <strong style="color:#9a3412; font-size:14.5px;"> 2. Học sinh ĐI MUỘN (${lateList.length} bạn):</strong>
             ${lateList.length ? `
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
@@ -1360,7 +1385,7 @@ export function setupFeatures(ctx) {
                 <tbody>
                   ${lateList.map((s) => {
                     const { fam, giv, isMakeup } = getFamGiv(s);
-                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td>${escapeHtml(s.arrivalTime||'—')}</td><td style="color:#c2410c; font-weight:700;">${entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.lateMinutes || entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.minutesLate || s.attendance?.lateMinutes || s.lateMinutes || 10} phút</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
+                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td>${escapeHtml(s.arrivalTime||'—')}</td><td style="color:#c2410c; font-weight:700;">${entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.lateMinutes || entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.minutesLate || s.attendance?.lateMinutes || s.lateMinutes || 10} phút</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -1368,7 +1393,7 @@ export function setupFeatures(ctx) {
           </div>
 
           <div style="background:#fff; border:1px solid #fde047; border-radius:8px; padding:12px;">
-            <strong style="color:#854d0e; font-size:14.5px;">⚠️ 3. Học sinh CÓ ĐIỂM THẤP (< 7.0 điểm) (${lowScores.length} bạn):</strong>
+            <strong style="color:#854d0e; font-size:14.5px;">!️ 3. Học sinh CÓ ĐIỂM THẤP (< 7.0 điểm) (${lowScores.length} bạn):</strong>
             ${lowScores.length ? `
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
@@ -1380,7 +1405,7 @@ export function setupFeatures(ctx) {
                     const seated = entries.find(p => p.entry.studentId === s.id);
                     const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '—';
                     const testScore = s.testScore ?? seated?.entry.testScore ?? '—';
-                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b45309; font-weight:700;">${hwScore}</td><td style="color:#b45309; font-weight:700;">${testScore}</td><td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || 'Cần bám sát')}</td></tr>`;
+                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b45309; font-weight:700;">${hwScore}</td><td style="color:#b45309; font-weight:700;">${testScore}</td><td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || 'Cần bám sát')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -1388,7 +1413,7 @@ export function setupFeatures(ctx) {
           </div>
 
           <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px;">
-            <strong style="color:#374151; font-size:14.5px;">🚫 4. Học sinh VẮNG MẶT (${absentList.length} bạn):</strong>
+            <strong style="color:#374151; font-size:14.5px;"> 4. Học sinh VẮNG MẶT (${absentList.length} bạn):</strong>
             ${absentList.length ? `
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
@@ -1406,7 +1431,7 @@ export function setupFeatures(ctx) {
 
           ${sessionMakeups.length ? `
             <div style="background:#fcfaff; border:1px solid #d8b4fe; border-radius:8px; padding:12px;">
-              <strong style="color:#6b21a8; font-size:14.5px;">🔄 5. Học sinh HỌC BÙ trong buổi (${sessionMakeups.length} bạn):</strong>
+              <strong style="color:#6b21a8; font-size:14.5px;"> 5. Học sinh HỌC BÙ trong buổi (${sessionMakeups.length} bạn):</strong>
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
                   <tr><th>Họ đệm</th><th>Tên</th><th>Mã HS</th><th>Học bù từ lớp</th><th>Trạng thái</th><th>Điểm BTVN / Test</th><th>Ghi chú</th></tr>
@@ -1420,7 +1445,7 @@ export function setupFeatures(ctx) {
                     const stLabel = isLate ? 'Học bù (Đi muộn)' : isPresent ? 'Học bù (Có mặt)' : 'Học bù (Chưa vào bàn)';
                     const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '—';
                     const testScore = s.testScore ?? seated?.entry.testScore ?? '—';
-                    return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge">🔄 Học bù</span></td><td>${escapeHtml(s.studentCode||'—')}</td><td>${escapeHtml(s.sourceClassName||'Lớp khác')}</td><td><strong>${stLabel}</strong></td><td>BTVN: ${hwScore} · Test: ${testScore}</td><td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '')}</td></tr>`;
+                    return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge"> Học bù</span></td><td>${escapeHtml(s.studentCode||'—')}</td><td>${escapeHtml(s.sourceClassName||'Lớp khác')}</td><td><strong>${stLabel}</strong></td><td>BTVN: ${hwScore} · Test: ${testScore}</td><td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -1429,7 +1454,7 @@ export function setupFeatures(ctx) {
 
           ${sessionNote ? `
             <div style="background:#f0fdf4; border-left:4px solid #22c55e; padding:10px 14px; border-radius:6px; font-size:14px; color:#166534;">
-              <strong>📝 Nhận xét & Lưu ý của Trợ giảng trong ca:</strong>
+              <strong> Nhận xét & Lưu ý của Trợ giảng trong ca:</strong>
               <p style="margin:4px 0 0; white-space:pre-wrap;">${escapeHtml(sessionNote)}</p>
             </div>
           ` : ''}
@@ -1479,7 +1504,7 @@ export function setupFeatures(ctx) {
                 return `
                   <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
                     <td>${escapeHtml(fam)}</td>
-                    <td><strong style="color:${isMakeup ? '#581c87' : 'inherit'};">${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td>
+                    <td><strong style="color:${isMakeup ? '#581c87' : 'inherit'};">${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>
                     <td>${escapeHtml(s.studentCode || '—')}</td>
                     <td>${escapeHtml(schoolText)}</td>
                     <td><span class="student-state ${isPresent ? (isLate ? 'state-late' : 'state-present') : 'state-missing'}">${escapeHtml(attStatus)}</span></td>
@@ -1529,7 +1554,7 @@ export function setupFeatures(ctx) {
                 return `
                   <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
                     <td>${escapeHtml(fam)}</td>
-                    <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td>
+                    <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
                     <td><strong class="text-danger">${escapeHtml(reason)}</strong></td>
                     <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
@@ -1561,7 +1586,7 @@ export function setupFeatures(ctx) {
                 return `
                   <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
                     <td>${escapeHtml(fam)}</td>
-                    <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td>
+                    <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
                     <td>${escapeHtml(s.arrivalTime || '—')}</td>
                     <td><strong style="color:#ab5d18;">${s.attendance?.lateMinutes ? `Muộn ${s.attendance.lateMinutes} phút` : 'Đến muộn'}</strong></td>
@@ -1633,7 +1658,7 @@ export function setupFeatures(ctx) {
                 return `
                   <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
                     <td>${escapeHtml(fam)}</td>
-                    <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}</td>
+                    <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
                     <td><span class="student-state ${seated ? 'state-collected' : 'state-pending'}">${seated ? 'Đã thu bài test' : 'Vắng mặt'}</span></td>
                     <td style="text-align:center;">${escapeHtml(seated?.entry.testScore ?? s.testScore ?? '—')}</td>
@@ -2287,14 +2312,14 @@ export function setupFeatures(ctx) {
       const sessionNote = $('#session-note')?.value.trim() || '';
 
       const lines = [
-        `📋 BÁO CÁO CA HỌC - ${currentClass.name} (${currentClass.code || currentClass.id})`,
-        `📅 Ngày: ${date} (${currentClass.startTime} - ${currentClass.endTime}) | Phòng: ${currentClass.room}`,
-        `👨‍🏫 Giáo viên: ${currentClass.teacherName} | 👩‍🏫 Trợ giảng: ${currentClass.assistantName}`,
-        `📖 Bài học: ${lessonTitle}`,
+        ` BÁO CÁO CA HỌC - ${currentClass.name} (${currentClass.code || currentClass.id})`,
+        ` Ngày: ${date} (${currentClass.startTime} - ${currentClass.endTime}) | Phòng: ${currentClass.room}`,
+        ` Giáo viên: ${currentClass.teacherName} |  Trợ giảng: ${currentClass.assistantName}`,
+        ` Bài học: ${lessonTitle}`,
         `----------------------------------------`,
-        `👥 SĨ SỐ: ${presentCount + lateList.length}/${roster.length} (Có mặt: ${presentCount} | Đi muộn: ${lateList.length} | Vắng: ${absentList.length})`,
+        ` SĨ SỐ: ${presentCount + lateList.length}/${roster.length} (Có mặt: ${presentCount} | Đi muộn: ${lateList.length} | Vắng: ${absentList.length})`,
         ``,
-        `❌ KHÔNG NỘP BTVN (${missingHW.length} bạn):`,
+        `× KHÔNG NỘP BTVN (${missingHW.length} bạn):`,
         missingHW.length ? missingHW.map((s, i) => {
           const seated = entries.find(p => p.entry.studentId === s.id);
           const rMap = { not_done: 'Chưa làm', forgot: 'Quên vở', missed_previous: 'Nghỉ buổi trước' };
@@ -2302,24 +2327,24 @@ export function setupFeatures(ctx) {
           return `  ${i+1}. ${s.name} (${s.school || '—'}) - Lý do: ${reason}`;
         }).join('\n') : `  ✓ 100% học sinh nộp bài đầy đủ`,
         ``,
-        `⏰ ĐI MUỘN (${lateList.length} bạn):`,
+        ` ĐI MUỘN (${lateList.length} bạn):`,
         lateList.length ? lateList.map((s, i) => `  ${i+1}. ${s.name} - Giờ đến: ${s.arrivalTime || '—'} (muộn ${s.lateMinutes || 10}p)`).join('\n') : `  ✓ Không có bạn nào đi muộn`,
         ``,
-        `⚠️ ĐIỂM CẦN LƯU Ý (< 7đ) (${lowScores.length} bạn):`,
+        `!️ ĐIỂM CẦN LƯU Ý (< 7đ) (${lowScores.length} bạn):`,
         lowScores.length ? lowScores.map((s, i) => {
           const seated = entries.find(p => p.entry.studentId === s.id);
           const hw = seated?.entry.homework?.score ?? s.homework?.score ?? '—';
           return `  ${i+1}. ${s.name} - Điểm: ${hw}`;
         }).join('\n') : `  ✓ Tất cả bài tập đều đạt từ 7 điểm trở lên`,
         ``,
-        `🚫 VẮNG MẶT (${absentList.length} bạn):`,
+        ` VẮNG MẶT (${absentList.length} bạn):`,
         absentList.length ? absentList.map((s, i) => `  ${i+1}. ${s.name} (SĐT PH: ${s.parentContact?.phone || '—'})`).join('\n') : `  ✓ Đầy đủ sĩ số`,
         ...((ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).length ? [
           ``,
-          `🔄 HỌC BÙ TRONG BUỔI (${(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).length} bạn):`,
+          ` HỌC BÙ TRONG BUỔI (${(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).length} bạn):`,
           ...(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).map((m, i) => `  ${i+1}. ${m.name} (Bù từ: ${m.sourceClassName || 'Lớp khác'})`)
         ] : []),
-        sessionNote ? `\n📝 GHI CHÚ TRỢ GIẢNG:\n${sessionNote}` : ''
+        sessionNote ? `\n GHI CHÚ TRỢ GIẢNG:\n${sessionNote}` : ''
       ];
 
       const reportText = lines.join('\n');
@@ -2668,7 +2693,7 @@ export function setupFeatures(ctx) {
       <div class="staff-detail-sections" style="margin-top:16px; display:grid; gap:14px;">
         <!-- Phần 1: Các ca được phân công định kỳ -->
         <section class="portal-stat-card" style="padding:14px;">
-          <h4 style="margin:0 0 10px; color:#2e4435; font:700 12px Manrope,sans-serif;">📅 Các ca được phân công định kỳ (Lịch cố định hàng tuần)</h4>
+          <h4 style="margin:0 0 10px; color:#2e4435; font:700 12px Manrope,sans-serif;"> Các ca được phân công định kỳ (Lịch cố định hàng tuần)</h4>
           ${assignedRegular.length ? `
             <div class="portal-table-wrap">
               <table class="portal-table">
@@ -2699,7 +2724,7 @@ export function setupFeatures(ctx) {
 
         <!-- Phần 2: Ca học bù / Tăng cường / Điều chỉnh -->
         <section class="portal-stat-card" style="padding:14px;">
-          <h4 style="margin:0 0 10px; color:#2e4435; font:700 12px Manrope,sans-serif;">⚡ Ca học bù / Tăng cường / Lịch điều chỉnh</h4>
+          <h4 style="margin:0 0 10px; color:#2e4435; font:700 12px Manrope,sans-serif;"> Ca học bù / Tăng cường / Lịch điều chỉnh</h4>
           ${assignedSpecial.length ? `
             <div class="portal-table-wrap">
               <table class="portal-table">
@@ -2734,7 +2759,7 @@ export function setupFeatures(ctx) {
 
         <!-- Phần 3: Lịch sử những ca nhân viên đó đã làm -->
         <section class="portal-stat-card" style="padding:14px;">
-          <h4 style="margin:0 0 10px; color:#2e4435; font:700 12px Manrope,sans-serif;">⏱ Lịch sử những ca nhân viên đó đã làm</h4>
+          <h4 style="margin:0 0 10px; color:#2e4435; font:700 12px Manrope,sans-serif;"> Lịch sử những ca nhân viên đó đã làm</h4>
           ${workHistory.length ? `
             <div class="portal-table-wrap">
               <table class="portal-table">
@@ -2882,8 +2907,20 @@ export function setupFeatures(ctx) {
     const tmr = new Date();
     tmr.setDate(tmr.getDate() + 1);
     $('#sched-makeup-date').value = tmr.toISOString().slice(0, 10);
-    $('#sched-makeup-start').value = item.startTime || '15:30';
-    $('#sched-makeup-end').value = item.endTime || '17:00';
+    if (window.__timeHelpers?.setDurationFieldsFromStartEnd) {
+      window.__timeHelpers.setDurationFieldsFromStartEnd({
+        startTime: item.startTime || '15:30',
+        endTime: item.endTime || '17:00',
+        startSel: '#sched-makeup-start',
+        endSel: '#sched-makeup-end',
+        durationSel: '#sched-makeup-duration',
+        customWrapSel: '#sched-makeup-duration-custom-wrap',
+        customInputSel: '#sched-makeup-duration-custom'
+      });
+    } else {
+      $('#sched-makeup-start').value = item.startTime || '15:30';
+      $('#sched-makeup-end').value = item.endTime || '17:00';
+    }
     $('#sched-makeup-room').value = item.room || 'P1-T3-CS1';
     $('#sched-makeup-note').value = '';
 
@@ -3067,19 +3104,19 @@ export function setupFeatures(ctx) {
     }
 
     if (!lessonTitleVal) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">⚠️</span> Chưa điền <strong>Tên bài học hôm nay</strong> (Mục 01).</div>`);
+      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Chưa điền <strong>Tên bài học hôm nay</strong> (Mục 01).</div>`);
     }
     if (!sessionNoteVal) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">⚠️</span> Chưa có <strong>Ghi chú chung buổi học & tình hình lớp</strong> (Mục 02).</div>`);
+      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Chưa có <strong>Ghi chú chung buổi học & tình hình lớp</strong> (Mục 02).</div>`);
     }
     if (!hwAssignmentVal && !getNoHomeworkStatus(classId, date).noHomework) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">⚠️</span> Chưa nhập <strong>Nội dung BTVN giao về nhà</strong> (Mục 04).</div>`);
+      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Chưa nhập <strong>Nội dung BTVN giao về nhà</strong> (Mục 04).</div>`);
     }
     if (isTestReq && !isHandoverDone) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">⚠️</span> Có bài test cuối giờ nhưng <strong>chưa xác nhận người nhận bàn giao bài</strong>.</div>`);
+      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Có bài test cuối giờ nhưng <strong>chưa xác nhận người nhận bàn giao bài</strong>.</div>`);
     }
     if (uncollectedHw > 0) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">⚠️</span> Còn <strong>${uncollectedHw} học sinh</strong> trong bàn chưa thu hoặc chưa chọn lý do không nộp BTVN.</div>`);
+      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Còn <strong>${uncollectedHw} học sinh</strong> trong bàn chưa thu hoặc chưa chọn lý do không nộp BTVN.</div>`);
     }
     if (absentCount > 0) {
       uncompletedHtml.push(`<div><span style="color:#4b5563;">ℹ️</span> Có <strong>${absentCount} học sinh</strong> chưa vào lớp (sẽ tự động ghi nhận Vắng khi đóng ca).</div>`);
@@ -3914,7 +3951,7 @@ export function setupFeatures(ctx) {
 
       const classTabsHtml = classIds.length ? `
         <div style="margin-top:10px;">
-          <small style="color:#556658; font-weight:600;">👉 Bấm vào từng lớp để xem chi tiết tình hình học tập:</small>
+          <small style="color:#556658; font-weight:600;"> Bấm vào từng lớp để xem chi tiết tình hình học tập:</small>
           <div class="student-class-tabs" style="margin-top:4px;">
             ${classIds.map(cid => {
               if (cid === TUTORING_CLASS_ID) {
@@ -3932,7 +3969,7 @@ export function setupFeatures(ctx) {
           <img src="${escapeHtml(student.photoURL)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" class="profile-portrait" id="class-profile-portrait-img" />
           <div style="display:flex; gap:3px;">
             <label class="outline-button" style="padding:3px 7px; font-size:13.5px; cursor:pointer; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
-              📷 Đổi ảnh
+               Đổi ảnh
               <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
             </label>
             <button type="button" id="class-profile-remove-photo-btn" class="text-danger" style="padding:6px 10px; font-size:13.5px; background:none; border:none; cursor:pointer;">Xóa</button>
@@ -3940,9 +3977,9 @@ export function setupFeatures(ctx) {
         </div>
       ` : `
         <div style="display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0;">
-          <div class="profile-portrait profile-portrait-placeholder">📷</div>
+          <div class="profile-portrait profile-portrait-placeholder"></div>
           <label class="primary-button" style="padding:4px 8px; font-size:13.5px; cursor:pointer; font-weight:600;">
-            📷 Tải ảnh chân dung
+             Tải ảnh chân dung
             <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
           </label>
         </div>
@@ -3962,7 +3999,7 @@ export function setupFeatures(ctx) {
 
         bodyHtml = `
           <div style="margin: 12px 0 6px;">
-            <h4 style="margin:0; color:#233d31; font:700 13px Manrope,sans-serif;">📊 Hồ sơ học tập: <span style="color:#7e22ce; font-weight:800;">Lớp Bổ trợ & Gia sư (BOTRO)</span></h4>
+            <h4 style="margin:0; color:#233d31; font:700 13px Manrope,sans-serif;"> Hồ sơ học tập: <span style="color:#7e22ce; font-weight:800;">Lớp Bổ trợ & Gia sư (BOTRO)</span></h4>
             <small style="color:#728375;">Dạy kèm 1-kèm-1, bổ trợ hổng kiến thức & học bù · Đội ngũ Trợ giảng & Gia sư</small>
           </div>
 
@@ -3991,17 +4028,17 @@ export function setupFeatures(ctx) {
 
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:#fcf9ff; border:1px solid #e9d5ff; border-radius:8px; padding:8px 12px; margin:10px 0;">
             <div style="font-size:14px; color:#581c87;">
-              📝 Phiếu BTVN bổ trợ: <strong style="color:#7e22ce;">Đã hoàn thành ${completedHW}/${sessionsForStudent.length} phiếu</strong>
+               Phiếu BTVN bổ trợ: <strong style="color:#7e22ce;">Đã hoàn thành ${completedHW}/${sessionsForStudent.length} phiếu</strong>
             </div>
             <div style="font-size:14px; color:#581c87;">
-              ⭐ Ghi nhận: <strong>Các ca bổ trợ & gia sư được lưu chung 1 lớp quản lý</strong>
+               Ghi nhận: <strong>Các ca bổ trợ & gia sư được lưu chung 1 lớp quản lý</strong>
             </div>
           </div>
 
           <div style="margin-top:14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <h5 style="margin:0; font:700 12px Manrope,sans-serif; color:#233d31;">📅 Lịch sử các ca bổ trợ & gia sư (${sessionsForStudent.length} buổi)</h5>
-              <small style="color:#6a7b6f; font-size:13.5px;">👉 Bấm vào từng buổi để xem chi tiết kiểm tra BTVN và đánh giá</small>
+              <h5 style="margin:0; font:700 12px Manrope,sans-serif; color:#233d31;"> Lịch sử các ca bổ trợ & gia sư (${sessionsForStudent.length} buổi)</h5>
+              <small style="color:#6a7b6f; font-size:13.5px;"> Bấm vào từng buổi để xem chi tiết kiểm tra BTVN và đánh giá</small>
             </div>
             ${sessionsForStudent.length ? `
               <div class="student-session-accordion">
@@ -4009,13 +4046,13 @@ export function setupFeatures(ctx) {
                   const isOpen = idx === 0;
                   const typeLabel = s.type === 'giasu' ? 'Gia sư 1-kèm-1' : s.type === 'tutoring' ? 'Bổ trợ' : s.type === 'makeup' ? 'Học bù' : 'Học mới';
                   const typeClass = s.type === 'giasu' ? 'giasu' : s.type === 'tutoring' ? 'tutoring' : s.type === 'makeup' ? 'makeup' : 'new';
-                  const hwStatusText = s.homeworkStatus === 'completed' ? '✓ Đã xong phiếu' : s.homeworkStatus === 'assigned_more' ? '⚡ Giao thêm phiếu' : 'Chưa xong';
+                  const hwStatusText = s.homeworkStatus === 'completed' ? '✓ Đã xong phiếu' : s.homeworkStatus === 'assigned_more' ? ' Giao thêm phiếu' : 'Chưa xong';
 
                   return `
                     <div class="student-session-item ${isOpen ? 'open' : ''}" data-session-date="${escapeHtml(s.id)}">
                       <div class="student-session-header" data-toggle-session="${escapeHtml(s.id)}">
                         <div class="student-session-title-wrap">
-                          <span class="student-session-date">📅 ${escapeHtml(s.date)} (${escapeHtml(s.startTime)} - ${escapeHtml(s.endTime)})</span>
+                          <span class="student-session-date"> ${escapeHtml(s.date)} (${escapeHtml(s.startTime)} - ${escapeHtml(s.endTime)})</span>
                           <span class="student-session-lesson">${escapeHtml(s.lessonContent)}</span>
                         </div>
                         <div class="student-session-badges">
@@ -4027,7 +4064,7 @@ export function setupFeatures(ctx) {
                       </div>
                       <div class="student-session-details">
                         <div class="session-detail-group">
-                          <h6>📊 Chi tiết ca học & Phụ trách</h6>
+                          <h6> Chi tiết ca học & Phụ trách</h6>
                           <div class="session-detail-row">
                             <span>Phân loại:</span>
                             <strong style="color:#7e22ce;">${escapeHtml(typeLabel)}</strong>
@@ -4047,7 +4084,7 @@ export function setupFeatures(ctx) {
                         </div>
 
                         <div class="session-detail-group">
-                          <h6>📋 Kiểm tra BTVN buổi trước & Bài dạy</h6>
+                          <h6> Kiểm tra BTVN buổi trước & Bài dạy</h6>
                           <div class="session-detail-row" style="background:#fffbeb; padding:6px 8px; border-radius:6px; border:1px solid #fef3c7;">
                             <span style="color:#b45309; font-weight:700;">Kiểm tra BTVN trước:</span>
                             <strong style="color:#1f2937;">${escapeHtml(s.previousHomeworkCheck || 'Đã kiểm tra')}</strong>
@@ -4086,7 +4123,7 @@ export function setupFeatures(ctx) {
           <div style="margin: 12px 0 6px;">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
               <div>
-                <h4 style="margin:0; color:#233d31; font:700 13px Manrope,sans-serif;">📊 Tình hình học tại lớp: <span style="color:#215f33; font-weight:800;">${escapeHtml(targetClass?.code || clsId)}</span></h4>
+                <h4 style="margin:0; color:#233d31; font:700 13px Manrope,sans-serif;"> Tình hình học tại lớp: <span style="color:#215f33; font-weight:800;">${escapeHtml(targetClass?.code || clsId)}</span></h4>
                 <small style="color:#728375;">${escapeHtml(formatBirthYearLabel(targetClass?.grade))} · GV: ${escapeHtml(targetClass?.teacherName || '—')} · TA: ${escapeHtml(targetClass?.assistantName || '—')}</small>
               </div>
             </div>
@@ -4118,18 +4155,18 @@ export function setupFeatures(ctx) {
           <!-- Overview bar for BTVN and Tests -->
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:#fbfdfb; border:1px solid #dce5dd; border-radius:8px; padding:8px 12px; margin:10px 0;">
             <div style="font-size:14px; color:#3b4e40;">
-              📚 BTVN: <strong style="color:#215f33;">Đã nộp ${metrics.hwSubmitted} bài</strong> · <strong style="color:${metrics.hwMissing ? '#c13b30' : '#495f50'};">Chưa nộp ${metrics.hwMissing} bài</strong>
+               BTVN: <strong style="color:#215f33;">Đã nộp ${metrics.hwSubmitted} bài</strong> · <strong style="color:${metrics.hwMissing ? '#c13b30' : '#495f50'};">Chưa nộp ${metrics.hwMissing} bài</strong>
             </div>
             <div style="font-size:14px; color:#3b4e40;">
-              📝 Bài kiểm tra: <strong>${metrics.scores.length} bài</strong> · Điểm TB: <strong style="color:#2563eb;">${metrics.avgScore}</strong>
+               Bài kiểm tra: <strong>${metrics.scores.length} bài</strong> · Điểm TB: <strong style="color:#2563eb;">${metrics.avgScore}</strong>
             </div>
           </div>
 
           <!-- Interactive Session Deep Dive -->
           <div style="margin-top:14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <h5 style="margin:0; font:700 12px Manrope,sans-serif; color:#233d31;">📅 Lịch sử chi tiết từng buổi học (${(metrics.detailedSessions || []).length} buổi)</h5>
-              <small style="color:#6a7b6f; font-size:13.5px;">👉 Bấm vào từng buổi để xem chi tiết học tập & vị trí ngồi</small>
+              <h5 style="margin:0; font:700 12px Manrope,sans-serif; color:#233d31;"> Lịch sử chi tiết từng buổi học (${(metrics.detailedSessions || []).length} buổi)</h5>
+              <small style="color:#6a7b6f; font-size:13.5px;"> Bấm vào từng buổi để xem chi tiết học tập & vị trí ngồi</small>
             </div>
             ${(metrics.detailedSessions && metrics.detailedSessions.length) ? `
               <div class="student-session-accordion">
@@ -4138,7 +4175,7 @@ export function setupFeatures(ctx) {
                   const attBadge = s.attendance.status === 'present'
                     ? '<span class="status-pill done" style="background:#eaf5ec; color:#2e6d42; font-weight:700;">✓ Có mặt</span>'
                     : s.attendance.status === 'late'
-                      ? `<span class="status-pill" style="background:#fef3c7; color:#92400e; font-weight:700;">⏱ Muộn ${s.attendance.minutesLate || 10}p</span>`
+                      ? `<span class="status-pill" style="background:#fef3c7; color:#92400e; font-weight:700;"> Muộn ${s.attendance.minutesLate || 10}p</span>`
                       : '<span class="status-pill" style="background:#fee2e2; color:#991b1b; font-weight:700;">× Vắng mặt</span>';
 
                   const hwBadge = s.homework.status === 'submitted' || s.homework.status === 'graded'
@@ -4155,7 +4192,7 @@ export function setupFeatures(ctx) {
                     <div class="student-session-item ${isOpen ? 'open' : ''}" data-session-date="${escapeHtml(s.date)}">
                       <div class="student-session-header" data-toggle-session="${escapeHtml(s.date)}">
                         <div class="student-session-title-wrap">
-                          <span class="student-session-date">📅 ${escapeHtml(s.shortDate)}</span>
+                          <span class="student-session-date"> ${escapeHtml(s.shortDate)}</span>
                           <span class="student-session-lesson">${escapeHtml(s.lessonTitle)}</span>
                         </div>
                         <div class="student-session-badges">
@@ -4167,7 +4204,7 @@ export function setupFeatures(ctx) {
                       </div>
                       <div class="student-session-details">
                         <div class="session-detail-group">
-                          <h6>📊 Tình hình học tập trong ca</h6>
+                          <h6> Tình hình học tập trong ca</h6>
                           <div class="session-detail-row">
                             <span>Điểm danh:</span>
                             <strong>${s.attendance.status === 'present' ? 'Có mặt đúng giờ' : s.attendance.status === 'late' ? `Đi muộn ${s.attendance.minutesLate || 10} phút${s.attendance.time ? ` (${s.attendance.time})` : ''}` : 'Vắng mặt'}</strong>
@@ -4189,7 +4226,7 @@ export function setupFeatures(ctx) {
                         </div>
 
                         <div class="session-detail-group">
-                          <h6>🪑 Vị trí ngồi & Nhận xét buổi học</h6>
+                          <h6> Vị trí ngồi & Nhận xét buổi học</h6>
                           <div class="session-detail-row">
                             <span>Vị trí chỗ ngồi:</span>
                             <strong>${s.seat.aisle ? `Dãy ${s.seat.aisle} · Bàn ${s.seat.desk} (Ghế ${s.seat.position})` : 'Chưa có vị trí'}</strong>
@@ -4344,6 +4381,89 @@ export function setupFeatures(ctx) {
   // Hook staff detail dialog buttons
   $('#close-staff-detail')?.addEventListener('click', () => $('#staff-detail-dialog')?.close());
   $('#close-staff-detail-btn')?.addEventListener('click', () => $('#staff-detail-dialog')?.close());
+
+
+  // v1.9: Bind Duration & 5-Minute Time Rounding for Tutoring and Schedule Makeup dialogs + Staff Search in Schedule Dialog
+  const bindTimeSync = (params) => {
+    $(params.startSel)?.addEventListener('change', () => window.__timeHelpers?.syncDurationUI?.(params));
+    $(params.startSel)?.addEventListener('blur', () => window.__timeHelpers?.syncDurationUI?.(params));
+    $(params.durationSel)?.addEventListener('change', () => window.__timeHelpers?.syncDurationUI?.(params));
+    $(params.customInputSel)?.addEventListener('input', () => window.__timeHelpers?.syncDurationUI?.(params));
+    $(params.customInputSel)?.addEventListener('change', () => window.__timeHelpers?.syncDurationUI?.(params));
+  };
+  bindTimeSync({
+    startSel: '#tutoring-start-time',
+    endSel: '#tutoring-end-time',
+    durationSel: '#tutoring-duration-select',
+    customWrapSel: '#tutoring-duration-custom-wrap',
+    customInputSel: '#tutoring-duration-custom'
+  });
+  bindTimeSync({
+    startSel: '#sched-makeup-start',
+    endSel: '#sched-makeup-end',
+    durationSel: '#sched-makeup-duration',
+    customWrapSel: '#sched-makeup-duration-custom-wrap',
+    customInputSel: '#sched-makeup-duration-custom'
+  });
+
+  function renderScheduleStaffOptions(kind, query = '') {
+    const isMakeup = kind === 'makeup';
+    const selectedArr = isMakeup ? schedMakeupAssistants : schedNextAssistants;
+    const optionsHost = $(isMakeup ? '#sched-makeup-assistant-options' : '#sched-next-assistant-options');
+    const searchInp = $(isMakeup ? '#sched-makeup-assistant-search' : '#sched-next-assistant-search');
+    if (!optionsHost) return;
+    const master = getMasterData();
+    const pool = (master.employees || []).filter(e => e.role === 'assistant' && !selectedArr.includes(e.id));
+    const q = String(query || '').trim().toLowerCase();
+    const matches = q
+      ? pool.filter(e => `${e.name || ''} ${e.code || ''}`.toLowerCase().includes(q))
+      : pool;
+
+    if (!matches.length) {
+      optionsHost.innerHTML = `<div class="empty-list">${q ? 'Không tìm thấy trợ giảng phù hợp.' : 'Đã chọn hết trợ giảng.'}</div>`;
+      return;
+    }
+    optionsHost.innerHTML = matches.map(emp => `
+      <button type="button" class="student-option staff-search-option" data-sched-ta-id="${escapeHtml(emp.id)}">
+        <span class="student-option-name"><strong>${escapeHtml(emp.name)}</strong> <small>· Mã: ${escapeHtml(emp.code || '—')}</small></span>
+        <span class="student-check">Chọn</span>
+      </button>
+    `).join('');
+    optionsHost.querySelectorAll('[data-sched-ta-id]').forEach(btn => {
+      btn.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const id = btn.dataset.schedTaId;
+        if (id && !selectedArr.includes(id)) {
+          selectedArr.push(id);
+          if (isMakeup) renderSchedMakeupAssistants();
+          else renderSchedNextAssistants();
+        }
+        if (searchInp) {
+          searchInp.value = '';
+          searchInp.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        optionsHost.hidden = true;
+      };
+    });
+  }
+
+  for (const [kind, inpSel, optSel] of [
+    ['makeup', '#sched-makeup-assistant-search', '#sched-makeup-assistant-options'],
+    ['next', '#sched-next-assistant-search', '#sched-next-assistant-options']
+  ]) {
+    const inp = $(inpSel);
+    const opt = $(optSel);
+    if (!inp || !opt) continue;
+    inp.addEventListener('focus', () => {
+      renderScheduleStaffOptions(kind, inp.value);
+      opt.hidden = false;
+    });
+    inp.addEventListener('input', () => {
+      renderScheduleStaffOptions(kind, inp.value);
+      opt.hidden = false;
+    });
+  }
 
   // Hook session schedule dialog buttons
   $('#close-session-schedule')?.addEventListener('click', () => $('#session-schedule-dialog')?.close());

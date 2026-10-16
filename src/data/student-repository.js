@@ -1,5 +1,5 @@
 // Storage boundary for student records. Synchronizes automatically via localStorage + realtime-sync.js.
-const STUDENTS_KEY = 'lopvui.students.v7';
+const STUDENTS_KEY = 'lopvui.students.v8';
 const MAKEUP_KEY = 'lopvui.makeup-students.v1';
 
 const getStorage = () => (typeof localStorage !== 'undefined' ? localStorage : null);
@@ -57,6 +57,10 @@ export const seedStudents = [
       { classId: 'class-math-8a-algebra', date: '2026-09-19', aisle: 1, desk: 1, position: 1 }
     ],
     sessionNotes: [
+      { classId: 'class-math-8a-algebra', date: '2026-10-26', lessonTitle: 'Hình học không gian', attendanceStatusOverride: 'Đi học', homeworkStatus: 'not_submitted', homeworkScore: null, note: 'nói chuyện' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-19', lessonTitle: 'Giao tuyến 2 mặt phẳng', attendanceStatusOverride: 'Vắng', homeworkStatus: 'graded', homeworkScore: 7, note: 'đi học bù t3' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-12', lessonTitle: 'Đường thẳng song song mặt phẳng', attendanceStatusOverride: 'Đi học', homeworkStatus: 'graded', homeworkScore: 5, note: '' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-05', lessonTitle: 'Đại cương hình không gian', attendanceStatusOverride: 'Vắng', homeworkStatus: 'not_submitted', homeworkScore: null, note: '' },
       { classId: 'class-math-8a-algebra', date: '2026-10-14', lessonTitle: 'Hình học: Đường thẳng song song với mặt phẳng', homeworkStatus: 'graded', homeworkScore: 9, note: 'Hăng hái phát biểu' },
       { classId: 'class-math-8a-algebra', date: '2026-10-07', lessonTitle: 'Kiểm tra chuyên đề: Giao tuyến và thiết diện', homeworkStatus: 'uncollected', testScore: 9, note: '' },
       { classId: 'class-math-8a-algebra', date: '2026-09-30', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'not_submitted', homeworkScore: 7, homeworkStatusNote: 'Có đi học (Không làm BTVN) - Đã làm bù BTVN', note: 'Đã làm bù BTVN' },

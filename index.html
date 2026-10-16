@@ -5,17 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Lớp học vui (v1.8) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=1.8" />
+  <link rel="stylesheet" href="/src/styles.css?v=1.9" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span class="brand-mark">✳</span><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.8</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span class="brand-mark"></span><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.8</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
-      <button class="nav-item active" id="work-menu-nav"><span>◷</span> Đi làm</button>
-      <button class="nav-item" id="tutoring-menu-nav"><span>✍</span> Lớp bổ trợ</button>
-      <button class="nav-item" id="management-menu-nav"><span>▤</span> Quản lý</button>
-      <button class="nav-item" id="portal-menu-nav"><span>⏱</span> Chấm công TA</button>
+      <button class="nav-item active" id="work-menu-nav">Đi làm</button>
+      <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
+      <button class="nav-item" id="management-menu-nav">Quản lý</button>
+      <button class="nav-item" id="portal-menu-nav">Chấm công TA</button>
 
       <div class="sidebar-bottom"><div class="online-dot"></div><span>Hệ thống trực tuyến</span><button class="help" id="system-help-btn" title="Hướng dẫn sử dụng">?</button></div>
     </aside>
@@ -30,8 +30,7 @@
             <span class="rt-dot"></span><span>● Đồng bộ Real-time</span>
           </button>
           <div class="notification-anchor">
-            <button type="button" class="bell" id="notification-toggle" aria-label="Mở thông báo" aria-expanded="false">
-              ♧<span id="notification-badge" class="notification-badge" hidden>0</span>
+            <button type="button" class="bell" id="notification-toggle" aria-label="Mở thông báo" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span id="notification-badge" class="notification-badge" hidden>0</span>
             </button>
             <section class="notification-panel" id="notification-panel" aria-label="Thông báo" hidden>
               <div class="notification-heading">
@@ -49,7 +48,7 @@
             <span class="user-name" id="current-user-name">Anh Linh<small id="current-user-role">Trợ giảng</small></span>
             <span class="chevron" title="Đổi vai trò">⇄</span>
           </div>
-          <button type="button" class="logout-button" id="logout-button" title="Đăng xuất khỏi hệ thống">⎋ Đăng xuất</button>
+          <button type="button" class="logout-button" id="logout-button" title="Đăng xuất khỏi hệ thống">Đăng xuất</button>
         </div>
       </header>
 
@@ -102,7 +101,7 @@
               <p>Theo dõi học sinh học bù, bổ trợ kiến thức hổng hoặc học bài mới trước ca.</p>
             </div>
             <div class="management-toolbar-actions">
-              <button type="button" class="primary-button" id="add-tutoring-btn">＋ Ghi nhận ca bổ trợ</button>
+              <button type="button" class="primary-button" id="add-tutoring-btn">+ Ghi nhận ca bổ trợ</button>
             </div>
           </div>
           
@@ -113,12 +112,12 @@
               <small>Ghi nhận trong hệ thống</small>
             </div>
             <div class="summary-card">
-              <div class="summary-top"><span>Gia sư 1-kèm-1</span><div class="icon-box mint" style="background:#f3e8ff; color:#7e22ce;">⭐</div></div>
+              <div class="summary-top"><span>Gia sư 1-kèm-1</span><div class="icon-box mint" style="background:#f3e8ff; color:#7e22ce;"></div></div>
               <strong id="tutoring-giasu-count">0</strong>
               <small>Dạy kèm gia sư cá nhân hóa</small>
             </div>
             <div class="summary-card">
-              <div class="summary-top"><span>Học bù ca chính</span><div class="icon-box mint">◷</div></div>
+              <div class="summary-top"><span>Học bù ca chính</span><div class="icon-box mint"></div></div>
               <strong id="tutoring-makeup-count">0</strong>
               <small>Học sinh vắng học bù</small>
             </div>
@@ -131,7 +130,7 @@
 
           <div class="tutoring-filter-bar">
             <label class="student-list-search">
-              ⌕<input id="tutoring-search" type="search" placeholder="Tìm theo tên học sinh, TA phụ trách hoặc nội dung..." autocomplete="off" />
+              <input id="tutoring-search" type="search" placeholder="Tìm theo tên học sinh, TA phụ trách hoặc nội dung..." autocomplete="off" />
             </label>
             <select id="tutoring-type-filter" aria-label="Lọc theo phân loại">
               <option value="all">Tất cả phân loại</option>
@@ -153,7 +152,7 @@
               <p id="management-scope-note">Quản lý lớp học, mẫu sơ đồ phòng học, danh sách học sinh và nhân sự.</p>
             </div>
             <div class="management-toolbar-actions">
-              <button type="button" class="primary-button" id="add-class-button">＋ Thêm lớp mới</button>
+              <button type="button" class="primary-button" id="add-class-button">+ Thêm lớp mới</button>
             </div>
           </div>
 
@@ -178,7 +177,7 @@
             <div class="management-summary">
               <span id="management-template-count">0 mẫu phòng</span>
               <span>Quản lý phòng học tại trung tâm, thiết lập sơ đồ bàn ghế & vạch phân cách và theo dõi lịch sử dụng phòng</span>
-              <button type="button" class="outline-button" id="add-room-template-btn" style="margin-left:auto;">＋ Thêm phòng học</button>
+              <button type="button" class="outline-button" id="add-room-template-btn" style="margin-left:auto;">+ Thêm phòng học</button>
             </div>
             <div id="room-template-list" class="room-template-list"></div>
           </div>
@@ -190,29 +189,29 @@
               <span>Tổng hợp toàn bộ học sinh, tra cứu hồ sơ đa lớp và thông tin phụ huynh</span>
               <div style="margin-left:auto; display:flex; gap:8px;">
                 <button type="button" class="outline-button" id="export-all-students-csv-btn">Xuất CSV</button>
-                <button type="button" class="primary-button" id="master-import-excel-btn">⬇ Nhập từ Excel / Sheets</button>
+                <button type="button" class="primary-button" id="master-import-excel-btn">Nhập từ Excel / Sheets</button>
               </div>
             </div>
 
             <!-- Master Student KPIs -->
             <div class="staff-metrics-grid">
               <div class="summary-card">
-                <div class="summary-top"><span>Tổng học sinh</span><div class="icon-box mint">👥</div></div>
+                <div class="summary-top"><span>Tổng học sinh</span><div class="icon-box mint"></div></div>
                 <strong id="master-kpi-total">0</strong>
                 <small>Toàn bộ học sinh trung tâm</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Học 1 lớp</span><div class="icon-box lilac">♙</div></div>
+                <div class="summary-top"><span>Học 1 lớp</span><div class="icon-box lilac"></div></div>
                 <strong id="master-kpi-single">0</strong>
                 <small>Theo học 1 môn/lớp</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Học nhiều lớp</span><div class="icon-box peach">✳</div></div>
+                <div class="summary-top"><span>Học nhiều lớp</span><div class="icon-box peach"></div></div>
                 <strong id="master-kpi-multi">0</strong>
                 <small>Theo học từ 2 lớp trở lên</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Học sinh mới</span><div class="icon-box mint">★</div></div>
+                <div class="summary-top"><span>Học sinh mới</span><div class="icon-box mint"></div></div>
                 <strong id="master-kpi-new">0</strong>
                 <small>Gia nhập trong 3 tuần</small>
               </div>
@@ -220,7 +219,7 @@
 
             <!-- Search & Filters -->
             <div class="tutoring-filter-bar" style="margin-top:14px; gap:8px;">
-              <label class="student-list-search">⌕
+              <label class="student-list-search">
                 <input id="master-student-search" type="search" placeholder="Tìm theo tên học sinh, họ đệm, mã HS, trường hoặc SĐT phụ huynh..." autocomplete="off" />
               </label>
               <select id="master-grade-filter" aria-label="Lọc theo năm sinh" style="min-width:140px;">
@@ -249,7 +248,7 @@
                 <button type="button" class="outline-button" id="master-bulk-add-class-btn">Thêm vào lớp</button>
                 <button type="button" class="outline-button" id="master-bulk-move-class-btn">Chuyển lớp</button>
                 <button type="button" class="outline-button text-danger" id="master-bulk-delete-btn">Xóa HS</button>
-                <button type="button" class="outline-button" id="master-bulk-clear-btn" style="color:#666;">✕ Bỏ chọn</button>
+                <button type="button" class="outline-button" id="master-bulk-clear-btn" style="color:#666;">× Bỏ chọn</button>
               </div>
             </div>
 
@@ -280,29 +279,29 @@
               <span>Quản lý thông tin, phân quyền, số điện thoại và các lớp phụ trách của Giáo viên, Trợ giảng, Văn phòng</span>
               <div style="margin-left:auto; display:flex; gap:8px;">
                 <button type="button" class="outline-button" id="export-staff-csv-btn">Xuất CSV</button>
-                <button type="button" class="primary-button" id="add-staff-member-btn">＋ Thêm nhân viên</button>
+                <button type="button" class="primary-button" id="add-staff-member-btn">+ Thêm nhân viên</button>
               </div>
             </div>
 
             <!-- Staff KPIs -->
             <div class="staff-metrics-grid">
               <div class="summary-card">
-                <div class="summary-top"><span>Tổng nhân sự</span><div class="icon-box lilac">👥</div></div>
+                <div class="summary-top"><span>Tổng nhân sự</span><div class="icon-box lilac"></div></div>
                 <strong id="staff-kpi-total">0</strong>
                 <small>Toàn bộ cán bộ nhân viên</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Trợ giảng (TA)</span><div class="icon-box mint">🎓</div></div>
+                <div class="summary-top"><span>Trợ giảng (TA)</span><div class="icon-box mint"></div></div>
                 <strong id="staff-kpi-assistants">0</strong>
                 <small>Hỗ trợ lớp & kèm 1-1</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Giáo viên (GV)</span><div class="icon-box peach">👩‍🏫</div></div>
+                <div class="summary-top"><span>Giáo viên (GV)</span><div class="icon-box peach"></div></div>
                 <strong id="staff-kpi-teachers">0</strong>
                 <small>Giảng dạy chuyên môn</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Văn phòng & Quản lý</span><div class="icon-box lilac">🏢</div></div>
+                <div class="summary-top"><span>Văn phòng & Quản lý</span><div class="icon-box lilac"></div></div>
                 <strong id="staff-kpi-office">0</strong>
                 <small>Vận hành trung tâm</small>
               </div>
@@ -310,7 +309,7 @@
 
             <!-- Filter Bar -->
             <div class="tutoring-filter-bar" style="margin-top:14px;">
-              <label class="student-list-search">⌕
+              <label class="student-list-search">
                 <input id="staff-search-input" type="search" placeholder="Tìm theo tên, mã NV, số điện thoại hoặc email..." autocomplete="off" />
               </label>
               <select id="staff-role-filter" aria-label="Lọc theo vai trò">
@@ -487,7 +486,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
             <div>
               <h3 style="margin:0; font:700 17px Manrope,sans-serif; color:#233d31;">Danh sách học sinh & Theo dõi 4 buổi gần nhất</h3>
-              <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào <strong>Tên học sinh</strong> để xem kỹ toàn bộ lịch sử điểm, trạng thái đi học và tên bài học từng buổi. Ký hiệu điểm danh: <strong>✓</strong> Có mặt · <strong>◷</strong> Đi muộn · <strong>×</strong> Vắng.</p>
+              <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào <strong>Tên học sinh</strong> để xem kỹ toàn bộ lịch sử điểm, trạng thái đi học và tên bài học từng buổi. Ký hiệu điểm danh: <strong>✓</strong> Có mặt · <strong></strong> Đi muộn · <strong>×</strong> Vắng.</p>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
               <button type="button" class="outline-button" id="general-export-roster-btn" style="padding:8px 14px; font-size:14px;">Xuất Excel</button>
@@ -597,7 +596,7 @@
                   <h3>Nhật ký hoạt động</h3>
                   <p>Hệ thống tự ghi nhận các mốc điểm danh, BTVN, checklist và chốt sĩ số.</p>
                 </div>
-                <span class="activity-bot-mark">✦</span>
+                <span class="activity-bot-mark"></span>
               </div>
               <div id="activity-log-list" class="activity-log-list"></div>
             </section>
@@ -638,20 +637,20 @@
             </div>
             <div class="layout-actions">
               <div class="seating-map-search-box" id="seating-map-search-wrap">
-                <label class="student-list-search seating-search-label" title="Tìm nhanh chỗ ngồi của học sinh trên sơ đồ">⌕
+                <label class="student-list-search seating-search-label" title="Tìm nhanh chỗ ngồi của học sinh trên sơ đồ">
                   <input id="seating-map-search-input" type="search" autocomplete="off" placeholder="Tìm chỗ ngồi học sinh..." />
                 </label>
                 <div id="seating-map-search-results" class="seating-map-search-results" hidden></div>
               </div>
               <button type="button" class="outline-button" id="undo-layout-button" disabled title="Hoàn tác thao tác vừa thực hiện trên sơ đồ (Ctrl+Z)">↩ Hoàn tác</button>
               <button type="button" class="outline-button" id="teacher-view-button" title="Chuyển đổi góc nhìn của Giáo viên từ bục giảng (lật ngược trên-dưới và trái-phải)">Góc nhìn Giáo viên</button>
-              <button type="button" class="outline-button late-button" id="late-button">◷ Điểm danh muộn</button>
+              <button type="button" class="outline-button late-button" id="late-button">Điểm danh muộn</button>
               <button type="button" class="outline-button" id="edit-layout">Điều chỉnh layout</button>
             </div>
           </section>
 
           <div class="layout-hint">
-            <span>ⓘ</span> <strong>Thao tác:</strong> Kéo biểu tượng học sinh ở giữa vào bàn, dùng ô tìm kiếm để định vị nhanh chỗ ngồi (vạch phân cách bàn được chỉnh trong nút <strong>Điều chỉnh layout</strong> hoặc <strong>Mẫu phòng học</strong>).
+            <span></span> <strong>Thao tác:</strong> Kéo biểu tượng học sinh ở giữa vào bàn, dùng ô tìm kiếm để định vị nhanh chỗ ngồi (vạch phân cách bàn được chỉnh trong nút <strong>Điều chỉnh layout</strong> hoặc <strong>Mẫu phòng học</strong>).
           </div>
 
           <section class="student-pool-wrap">
@@ -682,7 +681,7 @@
               <span><i class="legend-icon graded">8</i> Đã chấm (điểm)</span>
               <span><i class="legend-icon makeup">BÙ</i> Học sinh học bù</span>
               <span><i class="legend-icon divider-mark">━</i> Vạch phân cách bàn</span>
-              <span><i class="legend-icon warn-uncollected">⚠</i> Quên thu BTVN</span>
+              <span><i class="legend-icon warn-uncollected">!</i> Quên thu BTVN</span>
               <span><i class="legend-icon warn-debt">!</i> Nợ BTVN buổi trước</span>
             </div>
           </section>
@@ -713,7 +712,7 @@
           </div>
 
           <div class="student-list-tools" style="margin:12px 0;">
-            <label class="student-list-search" style="flex:1;">⌕
+            <label class="student-list-search" style="flex:1;">
               <input id="scores-tab-search" type="search" autocomplete="off" placeholder="Tìm nhanh học sinh theo họ đệm, tên, trường hoặc #tag..." />
             </label>
             <select id="scores-tab-filter" aria-label="Lọc danh sách nhập điểm">
@@ -785,7 +784,7 @@
               </div>
               <div class="checklist-heading-actions">
                 <span class="status-pill" id="shift-start-status">Chưa bắt đầu</span>
-                <button type="button" class="outline-button" id="add-checklist-item">＋ Thêm việc</button>
+                <button type="button" class="outline-button" id="add-checklist-item">+ Thêm việc</button>
               </div>
             </div>
             <div id="checklist-items" class="checklist-items"></div>
@@ -823,7 +822,7 @@
             </div>
             <div class="checklist-heading-actions">
               <h4 class="phase-checklist-title">Checklist cuối giờ</h4>
-              <button type="button" class="outline-button" id="add-end-checklist-item">＋ Thêm việc</button>
+              <button type="button" class="outline-button" id="add-end-checklist-item">+ Thêm việc</button>
             </div>
             <div id="end-checklist-items" class="checklist-items end-checklist-items"></div>
             
@@ -913,7 +912,7 @@
           </div>
 
           <div class="student-list-tools">
-            <label class="student-list-search">⌕
+            <label class="student-list-search">
               <input id="student-list-search" type="search" autocomplete="off" placeholder="Tìm theo họ đệm, tên hoặc #tag..." />
             </label>
             <select id="student-list-filter" aria-label="Lọc học sinh">
@@ -986,7 +985,7 @@
       
       <div id="account-switch-list" class="account-switch-list"></div>
       <div style="margin-top:16px; padding-top:12px; border-top:1px solid #edf0ed; display:flex; justify-content:space-between; align-items:center;">
-        <button type="button" class="text-danger" id="dialog-logout-btn" style="font-size:14px; padding:6px 10px; border:1px solid #fad2cf; border-radius:6px; background:#fff8f8; cursor:pointer;">⎋ Đăng xuất tài khoản này</button>
+        <button type="button" class="text-danger" id="dialog-logout-btn" style="font-size:14px; padding:6px 10px; border:1px solid #fad2cf; border-radius:6px; background:#fff8f8; cursor:pointer;">Đăng xuất tài khoản này</button>
       </div>
     </div>
   </dialog>
@@ -1072,8 +1071,8 @@
           <strong id="roster-admin-class-name">Toán 8A</strong> · <span id="roster-admin-count">0 học sinh</span>
         </div>
         <div class="roster-admin-actions">
-          <button type="button" class="outline-button" id="roster-import-btn">⬇ Nhập từ Excel / Google Sheets</button>
-          <button type="button" class="primary-button" id="roster-add-manual-btn">＋ Thêm học sinh</button>
+          <button type="button" class="outline-button" id="roster-import-btn">Nhập từ Excel / Google Sheets</button>
+          <button type="button" class="primary-button" id="roster-add-manual-btn">+ Thêm học sinh</button>
         </div>
       </div>
 
@@ -1260,7 +1259,7 @@
           <input type="hidden" id="tutoring-student-id" />
           <div style="position:relative;">
             <input id="tutoring-student-search-input" type="search" placeholder="Nhập tên, mã học sinh (K09...), trường học để tìm..." autocomplete="off" style="padding-left:32px;" />
-            <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#88988b; font-size:14px; pointer-events:none;">⌕</span>
+            <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#88988b; font-size:14px; pointer-events:none;"></span>
           </div>
           <div id="tutoring-student-search-dropdown" class="tutoring-search-dropdown" hidden></div>
           <div id="tutoring-selected-student-pill" class="selected-student-chip" style="margin-top:6px;" hidden>
@@ -1369,27 +1368,39 @@
           <select id="config-room-template-select" required></select>
         </label>
         <section class="field-label class-config-wide staff-picker">
-          <strong>Giáo viên phụ trách <small>Có thể chọn nhiều người</small></strong>
+          <strong>Giáo viên phụ trách <small>Gõ tên hoặc mã nhân viên để tìm và chọn</small></strong>
           <div id="config-teachers-selected" class="staff-selected-list"></div>
-          <div class="staff-add-row">
+          <div class="staff-search-picker-wrap">
+            <input type="search" id="config-teacher-search" class="staff-search-input" autocomplete="off" placeholder="Tìm giáo viên theo tên hoặc mã NV..." />
+            <div id="config-teacher-options" class="student-options staff-search-options" hidden></div>
+          </div>
+          <div class="staff-add-row" hidden style="display:none!important;">
             <select id="config-teacher-choice" aria-label="Chọn giáo viên"></select>
-            <button type="button" class="outline-button" id="add-config-teacher">＋ Thêm</button>
+            <button type="button" class="outline-button" id="add-config-teacher">+ Thêm</button>
           </div>
         </section>
         <section class="field-label class-config-wide staff-picker">
-          <strong>Trợ giảng phụ trách <small>Có thể chọn nhiều người</small></strong>
+          <strong>Trợ giảng phụ trách <small>Gõ tên hoặc mã nhân viên để tìm và chọn</small></strong>
           <div id="config-assistants-selected" class="staff-selected-list"></div>
-          <div class="staff-add-row">
+          <div class="staff-search-picker-wrap">
+            <input type="search" id="config-assistant-search" class="staff-search-input" autocomplete="off" placeholder="Tìm trợ giảng theo tên hoặc mã NV..." />
+            <div id="config-assistant-options" class="student-options staff-search-options" hidden></div>
+          </div>
+          <div class="staff-add-row" hidden style="display:none!important;">
             <select id="config-assistant-choice" aria-label="Chọn trợ giảng"></select>
-            <button type="button" class="outline-button" id="add-config-assistant">＋ Thêm</button>
+            <button type="button" class="outline-button" id="add-config-assistant">+ Thêm</button>
           </div>
         </section>
         <section class="field-label class-config-wide staff-picker">
-          <strong>Văn phòng phụ trách <small>Chọn nhân viên văn phòng liên hệ quản lý lớp</small></strong>
+          <strong>Văn phòng phụ trách <small>Gõ tên hoặc mã nhân viên văn phòng liên hệ quản lý lớp</small></strong>
           <div id="config-office-selected" class="staff-selected-list"></div>
-          <div class="staff-add-row">
+          <div class="staff-search-picker-wrap">
+            <input type="search" id="config-office-search" class="staff-search-input" autocomplete="off" placeholder="Tìm nhân viên văn phòng theo tên hoặc mã NV..." />
+            <div id="config-office-options" class="student-options staff-search-options" hidden></div>
+          </div>
+          <div class="staff-add-row" hidden style="display:none!important;">
             <select id="config-office-choice" aria-label="Chọn nhân viên văn phòng"></select>
-            <button type="button" class="outline-button" id="add-config-office">＋ Thêm</button>
+            <button type="button" class="outline-button" id="add-config-office">+ Thêm</button>
           </div>
         </section>
         <label class="field-label">Thứ trong tuần
@@ -1404,12 +1415,26 @@
           </select>
         </label>
         <div class="class-config-time-fields">
-          <label class="field-label">Bắt đầu
-            <input id="config-class-start" type="time" required />
+          <label class="field-label">Bắt đầu (làm tròn 5p)
+            <input id="config-class-start" type="time" step="300" required />
           </label>
-          <label class="field-label">Kết thúc
-            <input id="config-class-end" type="time" required />
+          <label class="field-label">Thời gian ca học
+            <select id="config-class-duration">
+              <option value="45">0:45 [45p]</option>
+              <option value="60">1:00 [1g]</option>
+              <option value="75">1:15 [1g15p]</option>
+              <option value="90" selected>1:30 [1g30p]</option>
+              <option value="120">2:00 [2g]</option>
+              <option value="150">2:30 [2g30p]</option>
+              <option value="180">3:00 [3g]</option>
+              <option value="custom">Tùy chỉnh...</option>
+            </select>
           </label>
+          <label class="field-label" id="config-class-duration-custom-wrap" hidden>Thời lượng tùy chỉnh (bội số 5p)
+            <input id="config-class-duration-custom" type="text" placeholder="VD: 1:20 hoặc 80p" />
+          </label>
+          <small id="config-class-time-preview" class="time-range-preview">Ca học: 15:30 – 17:00</small>
+          <input id="config-class-end" type="time" step="300" hidden style="display:none!important;" />
         </div>
         <div hidden style="display:none!important;">
           <input id="config-class-room" />
@@ -1429,7 +1454,7 @@
               <strong>Reminder · nhắc theo mốc</strong>
               <small>Các Reminder thuộc checklist buổi học và tự gửi thông báo theo giờ lớp.</small>
             </div>
-            <button type="button" class="outline-button" id="add-config-notification">＋ Thêm mốc</button>
+            <button type="button" class="outline-button" id="add-config-notification">+ Thêm mốc</button>
           </div>
           <div id="config-notification-list" class="config-notification-list"></div>
         </section>
@@ -1485,56 +1510,78 @@
   </dialog>
 
   <!-- Seat Dialog -->
-  <dialog id="seat-dialog">
-    <div class="dialog-form">
-      <button type="button" class="close-button" id="close-seat" aria-label="Đóng">×</button>
-      <div class="eyebrow">ĐIỂM DANH & BTVN</div>
-      <h2 id="seat-dialog-title">Chỗ ngồi</h2>
-      <p class="dialog-hint" id="seat-dialog-hint">Gắn tên học sinh và ghi nhận trạng thái BTVN.</p>
-      
-      <section id="pick-student-section" class="seat-attendance-section">
-        <div class="eyebrow">ĐIỂM DANH</div>
-        <label class="field-label">Tên học sinh
-          <input id="student-search" type="search" autocomplete="off" placeholder="⌕  Tìm theo tên hoặc #tag..." />
-        </label>
-        <div id="selected-student-info" class="selected-student-info" hidden></div>
-        <div id="student-options" class="student-options" hidden></div>
-      </section>
+  <dialog id="seat-dialog" class="attendance-full-dialog">
+    <div class="dialog-form attendance-dialog-shell">
+      <header class="attendance-dialog-header">
+        <div class="attendance-dialog-title-wrap">
+          <div class="eyebrow">ĐIỂM DANH & BTVN</div>
+          <h2 id="seat-dialog-title">Chỗ ngồi</h2>
+          <p class="dialog-hint" id="seat-dialog-hint">Chọn học sinh và ghi nhận trạng thái BTVN.</p>
+        </div>
+        <button type="button" class="close-button" id="close-seat" aria-label="Đóng">×</button>
+      </header>
 
-      <section id="homework-section" class="seat-homework-section">
-        <div class="attendance-divider"></div>
-        <div class="eyebrow">TRẠNG THÁI BTVN</div>
-        <div class="homework-choice" role="group" aria-label="Chọn trạng thái BTVN">
-          <button type="button" data-homework-choice="uncollected">Chưa thu</button>
-          <button type="button" data-homework-choice="submitted">Đã thu</button>
-          <button type="button" data-homework-choice="not_submitted">Không nộp</button>
-        </div>
-        <select id="homework-status" class="visually-hidden" aria-hidden="true" tabindex="-1">
-          <option value="uncollected">Chưa thu</option>
-          <option value="submitted">Đã thu</option>
-          <option value="not_submitted">Không nộp</option>
-          <option value="graded">Đã chấm điểm</option>
-        </select>
-        <label class="field-label" id="grade-field" hidden style="display:none!important;">Điểm BTVN
-          <input id="homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm nếu đã chấm" />
-        </label>
-        <div id="no-homework-fields" hidden>
-          <label class="field-label">Lý do không nộp
-            <select id="homework-reason">
-              <option value="">Chọn lý do...</option>
-              <option value="not_done">Chưa làm</option>
-              <option value="forgot">Quên</option>
-              <option value="missed_previous">Không đi buổi trước</option>
-            </select>
+      <div class="attendance-dialog-split">
+        <section id="pick-student-section" class="seat-attendance-section attendance-pane">
+          <div class="eyebrow">ĐIỂM DANH</div>
+          <label class="field-label">Tên học sinh
+            <input id="student-search" type="search" autocomplete="off" placeholder="Tìm theo tên hoặc #tag..." />
           </label>
-        </div>
-        <label class="field-label session-general-note-field">Ghi chú chung buổi học
-          <textarea id="seat-general-note" rows="2" placeholder="Ghi chú dùng chung cho điểm danh và BTVN..." disabled></textarea>
-        </label>
-        <button class="primary-button confirm-seat" id="save-homework" type="button">Lưu trạng thái BTVN</button>
-      </section>
-      
-      <button type="button" class="remove-student" id="clear-seat">Bỏ học sinh khỏi chỗ này</button>
+          <div id="student-options" class="student-options" hidden></div>
+          <div id="selected-student-info" class="selected-student-info" hidden></div>
+
+          <div class="new-or-makeup-persistent-wrap">
+            <button type="button" class="student-option new-or-makeup" id="new-or-makeup-choice">+ Học sinh mới / Học bù</button>
+            <div id="identity-kind-host"></div>
+            <div id="identity-form-host"></div>
+          </div>
+        </section>
+
+        <section id="homework-section" class="seat-homework-section homework-pane">
+          <div class="eyebrow">TRẠNG THÁI BTVN</div>
+          <div class="homework-choice" role="group" aria-label="Chọn trạng thái BTVN">
+            <button type="button" data-homework-choice="uncollected">Chưa thu</button>
+            <button type="button" data-homework-choice="submitted">Đã thu</button>
+            <button type="button" data-homework-choice="not_submitted">Không nộp</button>
+          </div>
+          <select id="homework-status" class="visually-hidden" aria-hidden="true" tabindex="-1">
+            <option value="uncollected">Chưa thu</option>
+            <option value="submitted">Đã thu</option>
+            <option value="not_submitted">Không nộp</option>
+            <option value="graded">Đã chấm điểm</option>
+          </select>
+          <label class="field-label" id="grade-field" hidden style="display:none!important;">Điểm BTVN
+            <input id="homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm nếu đã chấm" />
+          </label>
+
+          <div id="no-homework-fields" hidden>
+            <label class="field-label">Lý do
+              <select id="homework-reason">
+                <option value="">Chọn lý do...</option>
+                <option value="not_done">Chưa làm</option>
+                <option value="forgot">Quên</option>
+                <option value="missed_previous">Không đi buổi trước</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="field-label session-general-note-field">Ghi chú chung
+            <textarea id="seat-general-note" rows="2" placeholder="Nhập ghi chú chung buổi học (VD: quên vở trên lớp)..."></textarea>
+          </label>
+
+          <div id="seat-hw-history-section" class="hw-history-panel" hidden>
+            <div class="hw-history-title">Lịch sử BTVN:</div>
+            <div id="seat-hw-history-list" class="hw-history-list"></div>
+          </div>
+        </section>
+      </div>
+
+      <footer class="attendance-dialog-footer">
+        <button type="button" class="remove-student-square-btn" id="clear-seat" title="Xoá dữ liệu đã ghi của học sinh trong buổi này (Reset về chưa điểm danh)" aria-label="Bỏ học sinh và reset trạng thái điểm danh">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>
+        <button class="primary-button confirm-seat" id="save-homework" type="button">Điểm danh & Lưu BTVN</button>
+      </footer>
     </div>
   </dialog>
 
@@ -1555,9 +1602,9 @@
       <div class="field-label">
         <span>Số dãy bàn (1 – 8)</span>
         <div class="mobile-number-stepper">
-          <button type="button" class="stepper-btn" id="col-count-dec" aria-label="Giảm số dãy">－</button>
+          <button type="button" class="stepper-btn" id="col-count-dec" aria-label="Giảm số dãy">-</button>
           <input id="column-count" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Nhập từ 1 đến 8" required />
-          <button type="button" class="stepper-btn" id="col-count-inc" aria-label="Tăng số dãy">＋</button>
+          <button type="button" class="stepper-btn" id="col-count-inc" aria-label="Tăng số dãy">+</button>
         </div>
       </div>
       <div id="aisle-config"></div>
@@ -1571,74 +1618,94 @@
   </dialog>
 
   <!-- Late Arrival Dialog (with auto late minutes calculation) -->
-  <dialog id="late-dialog">
-    <div class="dialog-form">
-      <button type="button" class="close-button" id="close-late" aria-label="Đóng">×</button>
-      <div class="eyebrow">ĐIỂM DANH MUỘN</div>
-      <h2>Học sinh đến muộn</h2>
-      <p class="dialog-hint">Chọn tên và trạng thái BTVN; hệ thống tự tính số phút muộn so với giờ bắt đầu ca.</p>
-      
-      <section id="late-pick-section">
-        <div class="eyebrow">ĐIỂM DANH</div>
-        <label class="field-label">Tên học sinh
-          <input id="late-search" type="search" autocomplete="off" placeholder="⌕  Tìm theo tên hoặc #tag..." />
-        </label>
-        <div id="late-options" class="student-options" hidden></div>
-      </section>
-
-      <section id="late-detail-section" hidden>
-        <div class="history-panel">
-          <div class="history-heading"><strong>Đã lưu trong 4 tuần gần đây</strong></div>
-          <div id="late-history"></div>
+  <dialog id="late-dialog" class="attendance-full-dialog">
+    <div class="dialog-form attendance-dialog-shell">
+      <header class="attendance-dialog-header">
+        <div class="attendance-dialog-title-wrap">
+          <div class="eyebrow">ĐIỂM DANH MUỘN</div>
+          <h2>Học sinh đến muộn</h2>
+          <p class="dialog-hint" id="late-dialog-hint">Chọn tên học sinh và trạng thái BTVN; hệ thống tự tính số phút muộn.</p>
         </div>
+        <button type="button" class="close-button" id="close-late" aria-label="Đóng">×</button>
+      </header>
 
-        <label class="time-toggle">
-          <input type="checkbox" id="save-arrival-time" checked /> Lưu giờ học sinh đến lớp
-        </label>
-        
-        <label class="field-label" id="arrival-time-field">Giờ đến
-          <input type="time" id="arrival-time" />
-        </label>
-
-        <div id="late-calc-box" class="late-calc-box">
-          <span>Giờ ca học: <strong id="late-class-start-label">15:30</strong></span>
-          <span>·</span>
-          <span>Giờ đến: <strong id="late-arrival-display">15:45</strong></span>
-          <span>→</span>
-          <span class="late-minutes-badge" id="late-minutes-badge">Đi muộn 15 phút</span>
-        </div>
-
-        <div class="attendance-divider"></div>
-        <div class="eyebrow">TRẠNG THÁI BTVN</div>
-        <div class="homework-choice" role="group" aria-label="Chọn trạng thái BTVN đi muộn">
-          <button type="button" data-late-homework-choice="uncollected">Chưa thu</button>
-          <button type="button" data-late-homework-choice="submitted">Đã thu</button>
-          <button type="button" data-late-homework-choice="not_submitted">Không nộp</button>
-        </div>
-        <select id="late-homework-status" class="visually-hidden" aria-hidden="true" tabindex="-1">
-          <option value="uncollected">Chưa thu</option>
-          <option value="submitted">Đã thu</option>
-          <option value="not_submitted">Không nộp</option>
-          <option value="graded">Đã chấm điểm</option>
-        </select>
-        <label class="field-label" id="late-grade-field" hidden style="display:none!important;">Điểm BTVN
-          <input id="late-homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm nếu đã chấm" />
-        </label>
-        <div id="late-no-homework-fields" hidden>
-          <label class="field-label">Lý do không nộp
-            <select id="late-homework-reason">
-              <option value="">Chọn lý do...</option>
-              <option value="not_done">Chưa làm</option>
-              <option value="forgot">Quên</option>
-              <option value="missed_previous">Không đi buổi trước</option>
-            </select>
+      <div class="attendance-dialog-split">
+        <section id="late-pick-section" class="seat-attendance-section attendance-pane">
+          <div class="eyebrow">ĐIỂM DANH</div>
+          <label class="field-label">Tên học sinh
+            <input id="late-search" type="search" autocomplete="off" placeholder="Tìm theo tên hoặc #tag..." />
           </label>
-        </div>
-        <label class="field-label session-general-note-field">Ghi chú chung buổi học
-          <textarea id="late-general-note" rows="2" placeholder="Ghi chú dùng chung cho điểm danh và BTVN..."></textarea>
-        </label>
-        <button class="primary-button confirm-seat" type="button" id="save-late">Xác nhận đi muộn & BTVN</button>
-      </section>
+          <div id="late-options" class="student-options" hidden></div>
+
+          <div id="late-detail-section" hidden>
+            <div id="late-history" class="selected-student-info"></div>
+
+            <label class="time-toggle">
+              <input type="checkbox" id="save-arrival-time" checked /> Lưu giờ học sinh đến lớp
+            </label>
+
+            <label class="field-label" id="arrival-time-field">Giờ đến (làm tròn 5p)
+              <input type="time" id="arrival-time" step="300" />
+            </label>
+
+            <div id="late-calc-box" class="late-calc-box">
+              <span>Giờ ca học: <strong id="late-class-start-label">15:30</strong></span>
+              <span>·</span>
+              <span>Giờ đến: <strong id="late-arrival-display">15:45</strong></span>
+              <span>→</span>
+              <span class="late-minutes-badge" id="late-minutes-badge">Đi muộn 15 phút</span>
+            </div>
+          </div>
+
+          <div class="new-or-makeup-persistent-wrap">
+            <button type="button" class="student-option new-or-makeup" id="late-new-or-makeup">+ Học sinh mới / Học bù</button>
+            <div id="late-identity-host"></div>
+          </div>
+        </section>
+
+        <section id="late-homework-panel" class="seat-homework-section homework-pane">
+          <div class="eyebrow">TRẠNG THÁI BTVN</div>
+          <div class="homework-choice" role="group" aria-label="Chọn trạng thái BTVN đi muộn">
+            <button type="button" data-late-homework-choice="uncollected">Chưa thu</button>
+            <button type="button" data-late-homework-choice="submitted">Đã thu</button>
+            <button type="button" data-late-homework-choice="not_submitted">Không nộp</button>
+          </div>
+          <select id="late-homework-status" class="visually-hidden" aria-hidden="true" tabindex="-1">
+            <option value="uncollected">Chưa thu</option>
+            <option value="submitted">Đã thu</option>
+            <option value="not_submitted">Không nộp</option>
+            <option value="graded">Đã chấm điểm</option>
+          </select>
+          <label class="field-label" id="late-grade-field" hidden style="display:none!important;">Điểm BTVN
+            <input id="late-homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm nếu đã chấm" />
+          </label>
+          <div id="late-no-homework-fields" hidden>
+            <label class="field-label">Lý do
+              <select id="late-homework-reason">
+                <option value="">Chọn lý do...</option>
+                <option value="not_done">Chưa làm</option>
+                <option value="forgot">Quên</option>
+                <option value="missed_previous">Không đi buổi trước</option>
+              </select>
+            </label>
+          </div>
+          <label class="field-label session-general-note-field">Ghi chú chung
+            <textarea id="late-general-note" rows="2" placeholder="Nhập ghi chú chung buổi học (VD: quên vở trên lớp)..."></textarea>
+          </label>
+
+          <div id="late-hw-history-section" class="hw-history-panel" hidden>
+            <div class="hw-history-title">Lịch sử BTVN:</div>
+            <div id="late-hw-history-list" class="hw-history-list"></div>
+          </div>
+        </section>
+      </div>
+
+      <footer class="attendance-dialog-footer">
+        <button type="button" class="remove-student-square-btn" id="clear-late-student" title="Xoá dữ liệu đã ghi của học sinh trong buổi này (Reset về chưa điểm danh)" aria-label="Bỏ học sinh và reset trạng thái điểm danh">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>
+        <button class="primary-button confirm-seat" type="button" id="save-late">Điểm danh & Lưu BTVN</button>
+      </footer>
     </div>
   </dialog>
 
@@ -1719,7 +1786,7 @@
             <option value="admin">Admin</option>
           </select>
         </label>
-        <button type="submit" class="primary-button">＋ Thêm nhân viên</button>
+        <button type="submit" class="primary-button">+ Thêm nhân viên</button>
       </fieldset>
     </form>
   </dialog>
@@ -1786,8 +1853,8 @@
       <p class="dialog-hint">Tạo thêm buổi học bù/tăng cường hoặc điều chỉnh nhân sự (thêm/bớt trợ giảng, đổi giáo viên) cho buổi học tiếp theo.</p>
 
       <div class="sub-nav-tabs" role="tablist">
-        <button type="button" class="sub-nav-tab active" id="sched-tab-add-makeup">＋ Thêm buổi học bù / Tăng cường</button>
-        <button type="button" class="sub-nav-tab" id="sched-tab-next-session">⚙ Điều chỉnh buổi tiếp theo</button>
+        <button type="button" class="sub-nav-tab active" id="sched-tab-add-makeup">+ Thêm buổi học bù / Tăng cường</button>
+        <button type="button" class="sub-nav-tab" id="sched-tab-next-session">Điều chỉnh buổi tiếp theo</button>
       </div>
 
       <!-- Tab 1: Thêm buổi học mới (Học bù / Tăng cường) -->
@@ -1821,9 +1888,13 @@
           <section class="field-label class-config-wide staff-picker">
             <strong>Trợ giảng phụ trách buổi này <small>Có thể chọn 1 hoặc nhiều trợ giảng</small></strong>
             <div id="sched-makeup-assistants-selected" class="staff-selected-list"></div>
-            <div class="staff-add-row">
+            <div class="staff-search-picker-wrap">
+              <input type="search" id="sched-makeup-assistant-search" class="staff-search-input" autocomplete="off" placeholder="Tìm trợ giảng theo tên hoặc mã NV..." />
+              <div id="sched-makeup-assistant-options" class="student-options staff-search-options" hidden></div>
+            </div>
+            <div class="staff-add-row" hidden style="display:none!important;">
               <select id="sched-makeup-assistant-choice" aria-label="Chọn trợ giảng"></select>
-              <button type="button" class="outline-button" id="add-sched-makeup-assistant">＋ Thêm TA</button>
+              <button type="button" class="outline-button" id="add-sched-makeup-assistant">+ Thêm TA</button>
             </div>
           </section>
           <label class="field-label class-config-wide">Ghi chú buổi học
@@ -1856,9 +1927,13 @@
           <section class="field-label class-config-wide staff-picker">
             <strong>Danh sách Trợ giảng buổi tiếp theo <small>Thêm hoặc bớt trợ giảng cho ca học này</small></strong>
             <div id="sched-next-assistants-selected" class="staff-selected-list"></div>
-            <div class="staff-add-row">
+            <div class="staff-search-picker-wrap">
+              <input type="search" id="sched-next-assistant-search" class="staff-search-input" autocomplete="off" placeholder="Tìm trợ giảng theo tên hoặc mã NV..." />
+              <div id="sched-next-assistant-options" class="student-options staff-search-options" hidden></div>
+            </div>
+            <div class="staff-add-row" hidden style="display:none!important;">
               <select id="sched-next-assistant-choice" aria-label="Chọn trợ giảng"></select>
-              <button type="button" class="outline-button" id="add-sched-next-assistant">＋ Thêm TA</button>
+              <button type="button" class="outline-button" id="add-sched-next-assistant">+ Thêm TA</button>
             </div>
           </section>
           <label class="field-label class-config-wide">Ghi chú điều chỉnh
@@ -1892,7 +1967,7 @@
 
       <div id="close-session-uncompleted-section" style="margin: 14px 0; padding: 12px 14px; background: #fffbf5; border: 1px solid #f2dfc6; border-radius: 8px;">
         <h4 style="margin: 0 0 8px; color: #a45a16; font-size:14.5px; display: flex; align-items: center; gap: 6px;">
-          <span>⚠️</span> Các mục/nội dung chưa hoàn thành cần rà soát lại trước khi kết ca:
+          <span>!️</span> Các mục/nội dung chưa hoàn thành cần rà soát lại trước khi kết ca:
         </h4>
         <div id="close-session-uncompleted-list" style="display: grid; gap: 8px; font-size:14px; color: #5c4530;"></div>
       </div>
@@ -1947,7 +2022,7 @@
     <div class="login-card">
       <div class="login-header">
         <div class="login-brand">
-          <span class="brand-mark">✳</span>
+          <span class="brand-mark"></span>
           <div>
             <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v1.8</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
@@ -1960,7 +2035,7 @@
       <!-- 4 THẺ VAI TRÒ ĐĂNG NHẬP 1 CHẠM -->
       <div class="login-role-cards-grid">
         <button type="button" class="login-role-card" data-direct-role="assistant" title="Bấm để đăng nhập vai trò Trợ giảng">
-          <div class="login-role-icon assistant">🎓</div>
+          <div class="login-role-icon assistant"></div>
           <strong>Trợ giảng (TA)</strong>
           <p>Điểm danh, thu BTVN trên sơ đồ, quản lý ca làm và lớp bổ trợ.</p>
           <div class="login-role-card-footer">
@@ -1970,7 +2045,7 @@
         </button>
 
         <button type="button" class="login-role-card" data-direct-role="teacher" title="Bấm để đăng nhập vai trò Giáo viên">
-          <div class="login-role-icon teacher">👩‍🏫</div>
+          <div class="login-role-icon teacher"></div>
           <strong>Giáo viên</strong>
           <p>Xem sĩ số lớp, theo dõi bài tập, nhận bài kiểm tra và xuất báo cáo.</p>
           <div class="login-role-card-footer">
@@ -1980,7 +2055,7 @@
         </button>
 
         <button type="button" class="login-role-card" data-direct-role="office" title="Bấm để đăng nhập vai trò Văn phòng">
-          <div class="login-role-icon office">🏢</div>
+          <div class="login-role-icon office"></div>
           <strong>Văn phòng</strong>
           <p>Quản lý mẫu sơ đồ phòng học, danh sách lớp gốc và đối chiếu dữ liệu.</p>
           <div class="login-role-card-footer">
@@ -2044,6 +2119,6 @@
   </div>
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=1.8"></script>
+  <script type="module" src="/src/app.js?v=1.9"></script>
 </body>
 </html>
