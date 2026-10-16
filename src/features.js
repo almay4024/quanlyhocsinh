@@ -1,15 +1,15 @@
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.7';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.7';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=1.8';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.8';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.7';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.8';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -19,7 +19,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=1.7';
+} from './excel-import-export.js?v=1.8';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -30,7 +30,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=1.7';
+} from './data/session-history-repository.js?v=1.8';
 
 export function setupFeatures(ctx) {
   const {
@@ -798,8 +798,10 @@ export function setupFeatures(ctx) {
           </div>
           <p>${escapeHtml(tpl.description || 'Chưa có mô tả.')} · <strong>${aisles} dãy · ${totalDesks} bàn · Sức chứa ~${estCapacity} HS</strong></p>
           <div class="template-layout-preview" aria-label="Sơ đồ mô phỏng">
-            ${desks.map(deskCount => {
-              const divs = Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks.map(Number) : [2];
+            ${desks.map((deskCount, aisleIdx) => {
+              const divs = Array.isArray(tpl.aisleDividers?.[aisleIdx])
+                ? tpl.aisleDividers[aisleIdx].map(Number)
+                : (Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks.map(Number) : [2]);
               return `
                 <div class="template-aisle-preview">
                   ${Array.from({ length: deskCount }, (_, di) => `
@@ -872,34 +874,120 @@ export function setupFeatures(ctx) {
     });
   }
 
+  let draftRoomTplDesks = [3, 3, 2];
+  let draftRoomTplDividers = {};
+
+  function renderRoomTemplateAisleConfig() {
+    const host = $('#room-template-aisle-config');
+    if (!host) return;
+    const count = Math.max(1, Math.min(8, Number($('#room-template-aisles')?.value) || 3));
+    while (draftRoomTplDesks.length < count) draftRoomTplDesks.push(3);
+
+    host.innerHTML = Array.from({ length: count }, (_, i) => {
+      const deskCount = Math.max(1, Math.min(30, Number(draftRoomTplDesks[i]) || 3));
+      draftRoomTplDesks[i] = deskCount;
+      draftRoomTplDividers[i] = draftRoomTplDividers[i] || new Set([2].filter(d => d < deskCount));
+
+      const chipsHtml = deskCount > 1
+        ? Array.from({ length: deskCount - 1 }, (_, di) => {
+            const deskPos = di + 1;
+            const isAct = draftRoomTplDividers[i].has(deskPos);
+            return `<button type="button" class="aisle-divider-chip ${isAct ? 'active' : ''}" data-tpl-aisle-chip="${i}" data-tpl-div-pos="${deskPos}">━ Giữa bàn ${deskPos} & ${deskPos + 1}</button>`;
+          }).join('')
+        : '<small style="color:#87968a; font-size:13.5px;">Cần từ 2 bàn trở lên để đặt vạch ngăn cách</small>';
+
+      return `<div class="aisle-config-card">
+        <div class="field-label aisle-field" style="margin:0;">
+          <span>Số bàn ở dãy ${i + 1}</span>
+          <div class="mobile-number-stepper">
+            <button type="button" class="stepper-btn" data-tpl-aisle-dec="${i}" aria-label="Giảm số bàn dãy ${i + 1}">－</button>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" value="${deskCount}" data-tpl-desk-count="${i}" required />
+            <button type="button" class="stepper-btn" data-tpl-aisle-inc="${i}" aria-label="Tăng số bàn dãy ${i + 1}">＋</button>
+          </div>
+        </div>
+        <div style="margin-top:6px;">
+          <small style="color:#4b6352; font-size:13.5px; font-weight:700;">Vạch ngăn cách bàn (Dãy ${i + 1}):</small>
+          <div class="aisle-divider-chips">${chipsHtml}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Sync hidden legacy fields
+    if ($('#room-template-desks')) $('#room-template-desks').value = draftRoomTplDesks.slice(0, count).join(', ');
+
+    host.querySelectorAll('[data-tpl-aisle-dec]').forEach(btn => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.tplAisleDec);
+        draftRoomTplDesks[idx] = Math.max(1, (draftRoomTplDesks[idx] || 1) - 1);
+        renderRoomTemplateAisleConfig();
+      };
+    });
+    host.querySelectorAll('[data-tpl-aisle-inc]').forEach(btn => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.tplAisleInc);
+        draftRoomTplDesks[idx] = Math.min(30, (draftRoomTplDesks[idx] || 1) + 1);
+        renderRoomTemplateAisleConfig();
+      };
+    });
+    host.querySelectorAll('[data-tpl-desk-count]').forEach(inp => {
+      inp.onchange = () => {
+        const idx = Number(inp.dataset.tplDeskCount);
+        const val = Number(String(inp.value || '').replace(/[^0-9]/g, '')) || 3;
+        draftRoomTplDesks[idx] = Math.max(1, Math.min(30, val));
+        renderRoomTemplateAisleConfig();
+      };
+    });
+    host.querySelectorAll('[data-tpl-aisle-chip]').forEach(chip => {
+      chip.onclick = () => {
+        const aIdx = Number(chip.dataset.tplAisleChip);
+        const pos = Number(chip.dataset.tplDivPos);
+        draftRoomTplDividers[aIdx] = draftRoomTplDividers[aIdx] || new Set();
+        if (draftRoomTplDividers[aIdx].has(pos)) draftRoomTplDividers[aIdx].delete(pos);
+        else draftRoomTplDividers[aIdx].add(pos);
+        chip.classList.toggle('active', draftRoomTplDividers[aIdx].has(pos));
+      };
+    });
+  }
+
+  $('#room-template-aisles')?.addEventListener('input', renderRoomTemplateAisleConfig);
+  $('#room-template-aisles')?.addEventListener('change', renderRoomTemplateAisleConfig);
+
   function openRoomTemplateDialog(editId = null) {
     const dialog = $('#room-template-dialog');
     if (!dialog) return;
 
+    draftRoomTplDividers = {};
     if (editId) {
       const tpl = loadRoomTemplates().find(t => t.id === editId);
       if (!tpl) return;
-      $('#room-template-dialog-title').textContent = 'Chỉnh sửa mẫu phòng học';
+      $('#room-template-dialog-title').textContent = 'Chỉnh sửa phòng học & sơ đồ';
       $('#room-template-id').value = tpl.id;
       $('#room-template-name').value = tpl.name;
       $('#room-template-code').value = tpl.roomCode || '';
       $('#room-template-seats').value = tpl.seatsPerDesk || 2;
-      $('#room-template-aisles').value = tpl.aisles || 3;
-      $('#room-template-desks').value = Array.isArray(tpl.desksPerAisle) ? tpl.desksPerAisle.join(', ') : '3, 3, 2';
-      if ($('#room-template-dividers')) $('#room-template-dividers').value = Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks.join(', ') : '2';
+      const aislesCount = Number(tpl.aisles) || (Array.isArray(tpl.desksPerAisle) ? tpl.desksPerAisle.length : 3);
+      $('#room-template-aisles').value = aislesCount;
+      draftRoomTplDesks = Array.isArray(tpl.desksPerAisle) ? [...tpl.desksPerAisle] : Array.from({ length: aislesCount }, () => 3);
+      for (let i = 0; i < aislesCount; i++) {
+        const rowDivs = Array.isArray(tpl.aisleDividers?.[i])
+          ? tpl.aisleDividers[i]
+          : (Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks : [2]);
+        draftRoomTplDividers[i] = new Set(rowDivs.map(Number).filter(n => n > 0));
+      }
       $('#room-template-desc').value = tpl.description || '';
     } else {
-      $('#room-template-dialog-title').textContent = 'Thêm mẫu phòng học mới';
+      $('#room-template-dialog-title').textContent = 'Thêm phòng học mới';
       $('#room-template-id').value = '';
       $('#room-template-name').value = '';
       $('#room-template-code').value = '';
       $('#room-template-seats').value = '2';
       $('#room-template-aisles').value = '3';
-      $('#room-template-desks').value = '3, 3, 2';
-      if ($('#room-template-dividers')) $('#room-template-dividers').value = '2';
+      draftRoomTplDesks = [3, 3, 2];
+      draftRoomTplDividers = { 0: new Set([2]), 1: new Set([2]), 2: new Set([1]) };
       $('#room-template-desc').value = '';
     }
 
+    renderRoomTemplateAisleConfig();
     dialog.showModal();
   }
 
@@ -907,14 +995,13 @@ export function setupFeatures(ctx) {
     const templates = loadRoomTemplates();
     const configSelect = $('#config-room-template-select');
     if (configSelect) {
-      configSelect.innerHTML = `<option value="">-- Tùy chỉnh (Không dùng mẫu) --</option>` +
-        templates.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');
+      configSelect.innerHTML = templates.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.roomCode ? `${t.roomCode} · ${t.name}` : t.name)} (${t.aisles} dãy · ${(t.desksPerAisle || []).join('-')} bàn)</option>`).join('');
     }
 
     const applySelect = $('#apply-room-template-select');
     if (applySelect) {
-      applySelect.innerHTML = `<option value="">-- Chọn mẫu phòng để áp dụng nhanh --</option>` +
-        templates.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');
+      applySelect.innerHTML = `<option value="">-- Chọn phòng học để áp dụng nhanh --</option>` +
+        templates.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.roomCode ? `${t.roomCode} · ${t.name}` : t.name)}</option>`).join('');
     }
   }
 
@@ -1942,36 +2029,70 @@ export function setupFeatures(ctx) {
       const id = $('#room-template-id').value || `tpl-${Date.now()}`;
       const name = $('#room-template-name').value.trim();
       const roomCode = $('#room-template-code').value.trim();
-      const aisles = Number($('#room-template-aisles').value) || 3;
-      const desksRaw = $('#room-template-desks').value.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0);
+      const aisles = Math.max(1, Math.min(8, Number($('#room-template-aisles').value) || 3));
       const seatsPerDesk = Number($('#room-template-seats').value) || 2;
       const description = $('#room-template-desc').value.trim();
 
-      const dividersRaw = ($('#room-template-dividers')?.value || '2')
-        .split(',')
-        .map(s => Number(s.trim()))
-        .filter(n => !isNaN(n) && n > 0);
+      const desksPerAisle = Array.from({ length: aisles }, (_, i) => Math.max(1, Math.min(30, Number(draftRoomTplDesks[i]) || 3)));
+      const aisleDividers = Array.from({ length: aisles }, (_, i) => {
+        const set = draftRoomTplDividers[i] || new Set();
+        return [...set].map(Number).filter(d => d >= 1 && d < desksPerAisle[i]).sort((a, b) => a - b);
+      });
+
+      const templates = loadRoomTemplates();
+      const idx = templates.findIndex(t => t.id === id);
+      const oldTpl = idx >= 0 ? templates[idx] : null;
+
       const newTpl = {
         id,
         name,
         roomCode,
         aisles,
-        desksPerAisle: desksRaw.length ? desksRaw : [3, 3, 2],
-        dividerAfterDesks: dividersRaw,
+        desksPerAisle,
+        dividerAfterDesks: aisleDividers[0] || [],
+        aisleDividers,
         seatsPerDesk,
         description,
-        createdAt: Date.now()
+        createdAt: oldTpl?.createdAt || Date.now()
       };
 
-      const templates = loadRoomTemplates();
-      const idx = templates.findIndex(t => t.id === id);
       if (idx >= 0) templates[idx] = newTpl;
       else templates.unshift(newTpl);
 
       saveRoomTemplates(templates);
+
+      // Auto-update all classes assigned to this room so class layouts automatically follow room changes!
+      const catalog = getClassCatalog();
+      let updatedClassesCount = 0;
+      catalog.forEach(cls => {
+        const matchesRoom =
+          cls.roomTemplateId === id ||
+          (roomCode && cls.room === roomCode) ||
+          (oldTpl?.roomCode && cls.room === oldTpl.roomCode) ||
+          (oldTpl?.name && cls.room === oldTpl.name) ||
+          cls.room === name;
+        if (matchesRoom) {
+          cls.roomTemplateId = id;
+          cls.room = roomCode || name;
+          cls.defaultLayout = buildLayoutFromTemplate(cls.id, newTpl);
+          localStorage.setItem(`lopvui.layout.v5.${cls.id}.${getChecklistDate()}`, JSON.stringify(cls.defaultLayout));
+          if (cls.id === getCurrentClassId() && ctx.setLayout) {
+            ctx.setLayout(structuredClone(cls.defaultLayout));
+          }
+          updatedClassesCount++;
+        }
+      });
+      if (updatedClassesCount > 0) {
+        saveClassCatalog(catalog);
+        render();
+        renderMainMenu();
+      }
+
       populateRoomTemplateDropdowns();
       $('#room-template-dialog').close();
-      toast(`Đã lưu mẫu phòng học: ${name}`);
+      toast(updatedClassesCount > 0
+        ? `Đã lưu phòng ${roomCode || name} và tự động cập nhật sơ đồ cho ${updatedClassesCount} lớp.`
+        : `Đã lưu phòng học: ${name}`);
       renderRoomTemplatesList();
     };
   }
@@ -2816,31 +2937,28 @@ export function setupFeatures(ctx) {
     const badge = $('#session-status-badge');
     const openBtn = $('#open-session-btn');
     const closeBtn = $('#close-session-btn');
+    const chkClosePanel = $('#checklist-close-session-panel');
 
-    if (!badge || !openBtn || !closeBtn) return;
+    if (openBtn) openBtn.hidden = true;
+    if (closeBtn) closeBtn.hidden = true;
+    if (!badge) return;
 
     if (record && record.status === 'closed') {
       const timeStr = record.closedAt ? new Date(record.closedAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}) : '';
       badge.className = 'session-badge-state closed';
-      badge.textContent = `⏹ Đã đóng ca (${timeStr})`;
+      badge.textContent = `Đã đóng ca${timeStr ? ` (${timeStr})` : ''}`;
       badge.style.display = 'inline-flex';
-      openBtn.hidden = false;
-      openBtn.textContent = '▶ Mở lại ca';
-      closeBtn.hidden = true;
     } else if (record && record.status === 'active') {
       const timeStr = record.startedAt ? new Date(record.startedAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}) : '';
       badge.className = 'session-badge-state live';
-      badge.textContent = `● Đang diễn ra (${timeStr})`;
+      badge.textContent = `● Đang diễn ra${timeStr ? ` (${timeStr})` : ''}`;
       badge.style.display = 'inline-flex';
-      openBtn.hidden = true;
-      closeBtn.hidden = false;
+      if (chkClosePanel) chkClosePanel.hidden = false;
     } else {
-      badge.className = 'session-badge-state pending';
-      badge.textContent = '○ Chưa mở ca';
+      badge.className = 'session-badge-state live';
+      badge.textContent = '● Đang diễn ra';
       badge.style.display = 'inline-flex';
-      openBtn.hidden = false;
-      openBtn.textContent = '▶ Mở lớp';
-      closeBtn.hidden = true;
+      if (chkClosePanel) chkClosePanel.hidden = false;
     }
   }
 
@@ -3668,7 +3786,7 @@ export function setupFeatures(ctx) {
       const classBadges = (s.classIds || []).map(cid => {
         const c = catalog.find(x => x.id === cid);
         const cCode = c ? c.code : cid;
-        return `<span class="student-class-chip" data-open-student-class="${s.id}" data-class-id="${cid}" title="Bấm xem tình hình học lớp ${escapeHtml(cCode)}">🏷 ${escapeHtml(cCode)}</span>`;
+        return `<span class="student-class-chip" data-open-student-class="${s.id}" data-class-id="${cid}" title="Bấm xem tình hình học lớp ${escapeHtml(cCode)}">${escapeHtml(cCode)}</span>`;
       }).join(' ') || '<small style="color:#a8b4aa;">Chưa gán lớp</small>';
 
       return `
@@ -3800,10 +3918,10 @@ export function setupFeatures(ctx) {
           <div class="student-class-tabs" style="margin-top:4px;">
             ${classIds.map(cid => {
               if (cid === TUTORING_CLASS_ID) {
-                return `<button type="button" class="student-class-tab ${cid === currentClassId ? 'active' : ''}" data-switch-class-tab="${cid}" style="font-weight:700; ${cid === currentClassId ? 'background:#f3e8ff; color:#7e22ce; border-color:#c084fc;' : ''}">🏷 BOTRO (Bổ trợ & Gia sư)</button>`;
+                return `<button type="button" class="student-class-tab ${cid === currentClassId ? 'active' : ''}" data-switch-class-tab="${cid}" style="font-weight:700; ${cid === currentClassId ? 'background:#f3e8ff; color:#7e22ce; border-color:#c084fc;' : ''}">BOTRO (Bổ trợ & Gia sư)</button>`;
               }
               const c = catalog.find(x => x.id === cid);
-              return `<button type="button" class="student-class-tab ${cid === currentClassId ? 'active' : ''}" data-switch-class-tab="${cid}" style="font-weight:700;">🏷 ${escapeHtml(c?.code || cid)}</button>`;
+              return `<button type="button" class="student-class-tab ${cid === currentClassId ? 'active' : ''}" data-switch-class-tab="${cid}" style="font-weight:700;">${escapeHtml(c?.code || cid)}</button>`;
             }).join('')}
           </div>
         </div>
@@ -4078,7 +4196,7 @@ export function setupFeatures(ctx) {
                           </div>
                           <div style="margin: 4px 0;">
                             <button type="button" class="outline-button btn-view-seat-map" data-view-seat-class="${escapeHtml(clsId)}" data-view-seat-date="${escapeHtml(s.date)}" data-view-seat-student="${escapeHtml(student.id)}" style="padding:8px 14px; font-size:13.5px; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5; width:100%;">
-                              🗺 Xem vị trí cụ thể trên sơ đồ lớp ↗
+                              Xem vị trí trên sơ đồ lớp ↗
                             </button>
                           </div>
                           ${s.note ? `
@@ -4547,11 +4665,19 @@ export function setupFeatures(ctx) {
     openClassHistoryDialog,
     handleCloseSessionPrompt,
     getSessionRecord,
-    loadSessionHistory
+    loadSessionHistory,
+    loadRoomTemplates,
+    buildLayoutFromTemplate,
+    openNewShiftSession: (classId, date) => {
+      const user = getSignedInAccount();
+      const cls = getClassCatalog().find(c => c.id === classId) || getActiveClassConfig();
+      openClassSession(classId, date, user, cls);
+      updateSessionStateUI();
+    }
   };
 }
 
-// v1.7: Universal backdrop click-to-close for all <dialog> elements (mobile bottom-sheet & desktop modal)
+// v1.8: Universal backdrop click-to-close for all <dialog> elements (mobile bottom-sheet & desktop modal)
 document.addEventListener("click", (e) => {
   if (e.target && e.target.tagName === "DIALOG" && e.target.open) {
     const rect = e.target.getBoundingClientRect();

@@ -1,5 +1,5 @@
 // Repository for Center Rooms and Layouts (Quản lý Phòng học & Sơ đồ tại Trung tâm).
-// Supports desk dividers (vạch phân cách bàn) to help TAs orient physical desks with the seating map.
+// Supports per-aisle desk counts and per-aisle desk dividers (ngăn cách của mỗi dãy có thể khác nhau).
 const ROOM_TEMPLATES_KEY = 'lopvui.room-templates.v1';
 
 export const defaultRoomTemplates = [
@@ -12,6 +12,7 @@ export const defaultRoomTemplates = [
     desksPerAisle: [3, 3, 2],
     seatsPerDesk: 2,
     dividerAfterDesks: [2],
+    aisleDividers: [[2], [2], [1]],
     createdAt: 1728100000000
   },
   {
@@ -23,6 +24,7 @@ export const defaultRoomTemplates = [
     desksPerAisle: [3, 3],
     seatsPerDesk: 2,
     dividerAfterDesks: [2],
+    aisleDividers: [[2], [2]],
     createdAt: 1728100000000
   },
   {
@@ -34,6 +36,7 @@ export const defaultRoomTemplates = [
     desksPerAisle: [3, 3, 3],
     seatsPerDesk: 2,
     dividerAfterDesks: [2],
+    aisleDividers: [[2], [2], [2]],
     createdAt: 1728100000000
   },
   {
@@ -45,6 +48,7 @@ export const defaultRoomTemplates = [
     desksPerAisle: [3, 3, 3],
     seatsPerDesk: 2,
     dividerAfterDesks: [2],
+    aisleDividers: [[2], [2], [2]],
     createdAt: 1728100000000
   },
   {
@@ -56,6 +60,7 @@ export const defaultRoomTemplates = [
     desksPerAisle: [3, 3],
     seatsPerDesk: 2,
     dividerAfterDesks: [2],
+    aisleDividers: [[2], [2]],
     createdAt: 1728100000000
   },
   {
@@ -67,6 +72,7 @@ export const defaultRoomTemplates = [
     desksPerAisle: [4, 4, 3],
     seatsPerDesk: 2,
     dividerAfterDesks: [2],
+    aisleDividers: [[2], [2], [2]],
     createdAt: 1728100000000
   },
   {
@@ -78,9 +84,38 @@ export const defaultRoomTemplates = [
     desksPerAisle: [2, 2],
     seatsPerDesk: 2,
     dividerAfterDesks: [1],
+    aisleDividers: [[1], [1]],
     createdAt: 1728100000000
   }
 ];
+
+export function normalizeTemplateDividers(tpl) {
+  const aislesCount = Number(tpl.aisles) || (Array.isArray(tpl.desksPerAisle) ? tpl.desksPerAisle.length : 3);
+  const desksPerAisle = Array.isArray(tpl.desksPerAisle) && tpl.desksPerAisle.length
+    ? tpl.desksPerAisle.map(n => Math.max(1, Number(n) || 1))
+    : Array.from({ length: aislesCount }, () => 3);
+  const fallbackDivs = Array.isArray(tpl.dividerAfterDesks)
+    ? tpl.dividerAfterDesks.map(Number).filter(n => n > 0)
+    : [2];
+
+  const aisleDividers = Array.from({ length: desksPerAisle.length }, (_, rowIdx) => {
+    const deskCount = desksPerAisle[rowIdx];
+    const rawRow = Array.isArray(tpl.aisleDividers?.[rowIdx])
+      ? tpl.aisleDividers[rowIdx]
+      : fallbackDivs;
+    return rawRow
+      .map(Number)
+      .filter(d => d >= 1 && d < deskCount);
+  });
+
+  return {
+    ...tpl,
+    aisles: desksPerAisle.length,
+    desksPerAisle,
+    dividerAfterDesks: aisleDividers[0] || fallbackDivs,
+    aisleDividers
+  };
+}
 
 export function loadRoomTemplates(storage = localStorage) {
   try {
@@ -92,37 +127,37 @@ export function loadRoomTemplates(storage = localStorage) {
           saved.push(d);
         }
       }
-      return saved.map(tpl => ({
-        ...tpl,
-        dividerAfterDesks: Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks : [2]
-      }));
+      return saved.map(normalizeTemplateDividers);
     }
   } catch {}
+  const seeded = defaultRoomTemplates.map(normalizeTemplateDividers);
   try {
-    storage.setItem(ROOM_TEMPLATES_KEY, JSON.stringify(defaultRoomTemplates));
+    storage.setItem(ROOM_TEMPLATES_KEY, JSON.stringify(seeded));
   } catch {}
-  return structuredClone(defaultRoomTemplates);
+  return structuredClone(seeded);
 }
 
 export function saveRoomTemplates(templates, storage = localStorage) {
   try {
-    storage.setItem(ROOM_TEMPLATES_KEY, JSON.stringify(templates));
+    const normalized = (templates || []).map(normalizeTemplateDividers);
+    storage.setItem(ROOM_TEMPLATES_KEY, JSON.stringify(normalized));
   } catch {}
 }
 
 export function buildLayoutFromTemplate(classId, template) {
-  const counts = Array.isArray(template.desksPerAisle)
-    ? template.desksPerAisle
-    : Array.from({ length: Number(template.aisles) || 3 }, () => 3);
-  const dividers = Array.isArray(template.dividerAfterDesks) ? template.dividerAfterDesks.map(Number) : [];
+  const norm = normalizeTemplateDividers(template || {});
+  const counts = norm.desksPerAisle;
   return counts.map((count, row) => {
     const numDesks = Number(count) || 1;
+    const rowDividers = Array.isArray(norm.aisleDividers?.[row])
+      ? norm.aisleDividers[row].map(Number)
+      : (Array.isArray(norm.dividerAfterDesks) ? norm.dividerAfterDesks.map(Number) : []);
     return {
       id: `${classId}-aisle-${row + 1}`,
       desks: Array.from({ length: numDesks }, (_, desk) => ({
         id: `${classId}-desk-${row + 1}-${desk + 1}`,
-        seats: Number(template.seatsPerDesk) || 2,
-        dividerAfter: desk < numDesks - 1 && dividers.includes(desk + 1)
+        seats: Number(norm.seatsPerDesk) || 2,
+        dividerAfter: desk < numDesks - 1 && rowDividers.includes(desk + 1)
       }))
     };
   });

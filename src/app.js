@@ -1,12 +1,12 @@
-const APP_VERSION = "1.7";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.7';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.7';
+const APP_VERSION = "1.8";
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=1.8';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=1.8';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=1.7';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=1.7';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.7';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.7';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.7';
+import { setupFeatures } from './features.js?v=1.8';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=1.8';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=1.8';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=1.8';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=1.8';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -229,12 +229,12 @@ function updateSeatingEditBtn() {
   if (!btn) return;
   btn.classList.toggle('active', isSeatingEditMode);
   if (isSeatingEditMode) {
-    btn.textContent = '✏️ Sửa sơ đồ: ĐANG BẬT';
+    btn.textContent = 'Sửa sơ đồ: BẬT';
     btn.style.background = '#eaf5ec';
     btn.style.color = '#1f5f33';
     btn.style.borderColor = '#86c292';
   } else {
-    btn.textContent = '🔒 Sửa sơ đồ: ĐÃ KHÓA';
+    btn.textContent = 'Sửa sơ đồ: TẮT';
     btn.style.background = '#f9fafb';
     btn.style.color = '#6b7280';
     btn.style.borderColor = '#d1d5db';
@@ -546,7 +546,7 @@ function renderMainMenu(){
         <button type="button" class="primary-button" data-enter-class="${escapeHtml(item.id)}" data-session-date="${date.toLocaleDateString('sv-SE')}">Vào lớp</button>
       </article>`;
     }).join('') || '<div class="menu-empty">Chưa có lớp học nào trong hệ thống.</div>';
-  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-heading"><div><div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><strong>${escapeHtml(item.name)}</strong><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span></div><span>${escapeHtml(item.subject||'Chưa có môn học')}</span></div><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span></div><div class="managed-class-details"><span><small>Mã lớp & Năm sinh</small><strong>${escapeHtml(item.code||item.id)}</strong> (${escapeHtml(formatBirthYearInline(item.grade))})</span><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist mặc định</small>${item.defaultChecklist.startItems.length} đầu giờ · ${item.defaultChecklist.endItems.length} cuối giờ</span><span><small>Nhắc theo lịch</small>${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions"><button type="button" class="primary-button" data-enter-live-class="${escapeHtml(item.id)}" data-session-date="${occurrenceDate(item).toLocaleDateString('sv-SE')}" style="padding:7px 12px; font-weight:700;">▶ Vào lớp (Mở ca)</button><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}" style="font-weight:700; color:#215732; background:#f2f8f3; border-color:#9dc7a5;">📋 Tổng quan & Lịch sử</button><button type="button" class="outline-button" data-roster-class="${escapeHtml(item.id)}">👥 DS gốc</button><button type="button" class="outline-button" data-edit-class="${escapeHtml(item.id)}">⚙ Sửa lớp</button><button type="button" class="outline-button" data-edit-session="${escapeHtml(item.id)}">📅 Đổi lịch buổi</button><button type="button" class="text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';if($('#add-class-button'))$('#add-class-button').hidden=!(role==='office'||role==='admin');if($('#manage-employees-button'))$('#manage-employees-button').hidden=role!=='admin';}
+  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-heading"><div><div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><strong>${escapeHtml(item.name)}</strong><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span></div><span>${escapeHtml(item.subject||'Chưa có môn học')}</span></div><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span></div><div class="managed-class-details"><span><small>Mã lớp & Năm sinh</small><strong>${escapeHtml(item.code||item.id)}</strong> (${escapeHtml(formatBirthYearInline(item.grade))})</span><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist mặc định</small>${item.defaultChecklist.startItems.length} đầu giờ · ${item.defaultChecklist.endItems.length} cuối giờ</span><span><small>Nhắc theo lịch</small>${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions"><button type="button" class="primary-button" data-enter-live-class="${escapeHtml(item.id)}" data-session-date="${occurrenceDate(item).toLocaleDateString('sv-SE')}" style="padding:7px 12px; font-weight:700;">Vào lớp (Mở ca)</button><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}" style="font-weight:700; color:#215732; background:#f2f8f3; border-color:#9dc7a5;">Tổng quan & Lịch sử</button><button type="button" class="outline-button" data-roster-class="${escapeHtml(item.id)}">Danh sách gốc</button><button type="button" class="outline-button" data-edit-class="${escapeHtml(item.id)}">Sửa lớp</button><button type="button" class="outline-button" data-edit-session="${escapeHtml(item.id)}">Đổi lịch buổi</button><button type="button" class="text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';if($('#add-class-button'))$('#add-class-button').hidden=!(role==='office'||role==='admin');if($('#manage-employees-button'))$('#manage-employees-button').hidden=role!=='admin';}
 function setMainMenuPanel(panel){
   try {
     if (location.pathname !== '/' && location.pathname !== '/class') {
@@ -898,17 +898,17 @@ function renderClassGeneralView(classId, preferredTab = null) {
         const dFormatted = new Date(`${s.date}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
         const staff = s.closedBy?.name || s.startedBy?.name || s.assistantName || 'Trợ giảng';
         const hasTestBadge = s.hasTest || (s.studentsSnapshot || []).some(st => st.testScore !== null && st.testScore !== undefined)
-          ? '<span class="room-chip" style="background:#f5f3ff; color:#5b21b6; font-weight:700; font-size:15.5px;">📝 Có bài Test</span>'
+          ? '<span class="room-chip" style="background:#f5f3ff; color:#5b21b6; font-weight:700; font-size:13px;">Có bài Test</span>'
           : '';
         const hasBtvnBadge = (s.hasBtvn !== false && !s.noHomework)
-          ? '<span class="room-chip" style="background:#f0fdf4; color:#166534; font-weight:700; font-size:15.5px;">📚 Thu BTVN</span>'
-          : '<span class="room-chip" style="background:#f3f4f6; color:#4b5563; font-size:15.5px;">Không có BTVN</span>';
+          ? '<span class="room-chip" style="background:#f0fdf4; color:#166534; font-weight:700; font-size:13px;">Thu BTVN</span>'
+          : '<span class="room-chip" style="background:#f3f4f6; color:#4b5563; font-size:13px;">Không có BTVN</span>';
 
         return `
           <div class="portal-stat-card general-session-card" data-open-session-card="${escapeHtml(s.date)}" style="padding:13px 16px; background:#fff; border:1px solid #dce5dd; border-radius:9px; cursor:pointer;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
               <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                <strong style="color:#21442a; font-size:15.5px;">📅 ${escapeHtml(dFormatted)}</strong>
+                <strong style="color:#21442a; font-size:15.5px;">${escapeHtml(dFormatted)}</strong>
                 <span class="room-chip" style="font-size:15.5px; background:${isClosed ? '#eaf5ec' : '#fef3c7'}; color:${isClosed ? '#2e6d42' : '#92400e'}; font-weight:700;">
                   ${isClosed ? '✓ Đã đóng ca' : '● Đang mở'}
                 </span>
@@ -917,10 +917,10 @@ function renderClassGeneralView(classId, preferredTab = null) {
               </div>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 <button type="button" class="outline-button" data-score-history-date="${escapeHtml(s.date)}" style="padding:8px 14px; font-size:13.5px; background:#f5f3ff; color:#5b21b6; border-color:#c4b5fd; font-weight:700;">
-                  ✎ Nhập / Xem điểm buổi này
+                  Nhập / Xem điểm
                 </button>
                 <button type="button" class="primary-button" data-view-history-date="${escapeHtml(s.date)}" style="padding:8px 14px; font-size:13.5px; background:#2e6d42; font-weight:700;">
-                  👁 Xem lại sơ đồ & ca học
+                  ${isClosed ? 'Xem lại ca học' : 'Vào ca trực (Live)'}
                 </button>
               </div>
             </div>
@@ -942,20 +942,39 @@ function renderClassGeneralView(classId, preferredTab = null) {
       listEl.querySelectorAll('[data-score-history-date]').forEach(btn => {
         btn.onclick = (e) => {
           e.stopPropagation();
-          enterClass(cls.id, btn.dataset.scoreHistoryDate, false, 'scores');
+          const d = btn.dataset.scoreHistoryDate;
+          const sess = classSessions.find(x => x.date === d);
+          const isClosed = Boolean(sess && sess.status === 'closed');
+          enterClass(cls.id, d, isClosed, 'scores');
           updateSubtabUrl('scores');
         };
       });
       listEl.querySelectorAll('[data-view-history-date]').forEach(btn => {
         btn.onclick = (e) => {
           e.stopPropagation();
-          navigateTo(`class/${cls.code || cls.id}/history/${btn.dataset.viewHistoryDate}/map`);
+          const d = btn.dataset.viewHistoryDate;
+          const sess = classSessions.find(x => x.date === d);
+          const isClosed = Boolean(sess && sess.status === 'closed');
+          if (!isClosed) {
+            enterClass(cls.id, d, false, 'seating');
+            updateSubtabUrl('map');
+          } else {
+            navigateTo(`class/${cls.code || cls.id}/history/${d}/map`);
+          }
         };
       });
       listEl.querySelectorAll('[data-open-session-card]').forEach(card => {
         card.onclick = (e) => {
           if (e.target.closest('button')) return;
-          navigateTo(`class/${cls.code || cls.id}/history/${card.dataset.openSessionCard}/map`);
+          const d = card.dataset.openSessionCard;
+          const sess = classSessions.find(x => x.date === d);
+          const isClosed = Boolean(sess && sess.status === 'closed');
+          if (!isClosed) {
+            enterClass(cls.id, d, false, 'seating');
+            updateSubtabUrl('map');
+          } else {
+            navigateTo(`class/${cls.code || cls.id}/history/${d}/map`);
+          }
         };
       });
     }
@@ -1108,9 +1127,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
         return `
           <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
             <td>
-              <button type="button" class="student-name-history-btn" data-open-general-score-history="${escapeHtml(s.id)}" style="text-decoration:none; color:#395140;" title="Bấm để xem kỹ lịch sử điểm & chuyên cần của ${escapeHtml(s.name)}">
-                ${escapeHtml(fam || '—')}
-              </button>
+              <button type="button" class="student-name-history-btn" data-open-general-score-history="${escapeHtml(s.id)}" style="text-decoration:none; color:${isMakeup ? '#6d28d9' : '#395140'}; font-weight:${isMakeup ? '700' : '500'};" title="Bấm để xem kỹ lịch sử điểm & chuyên cần của ${escapeHtml(s.name)}">${escapeHtml(fam || '—')}</button>
             </td>
             <td>
               <button type="button" class="student-name-history-btn" data-open-general-score-history="${escapeHtml(s.id)}" title="Bấm để xem kỹ lịch sử điểm & chuyên cần của ${escapeHtml(s.name)}">
@@ -1119,7 +1136,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
               ${renderInlineTags(s)}
             </td>
             <td>
-              ${isMakeup ? `<span class="makeup-status-badge" style="margin-left:0;">${escapeHtml(schoolText)}</span>` : escapeHtml(schoolText)}
+              ${isMakeup ? `<span class="makeup-school-tag">${escapeHtml(schoolText)}</span>` : escapeHtml(schoolText)}
             </td>
             ${timelineCellsHtml}
             <td>
@@ -1146,6 +1163,19 @@ function renderClassGeneralView(classId, preferredTab = null) {
   // Setup general view buttons
   if ($('#general-enter-live-btn')) {
     $('#general-enter-live-btn').onclick = () => {
+      const todayIso = new Date().toLocaleDateString('sv-SE');
+      const rec = window.__featuresApp?.getSessionRecord ? window.__featuresApp.getSessionRecord(cls.id, todayIso) : null;
+      if (!rec || rec.status === 'closed') {
+        // Initialize fresh session with default room layout and default checklist
+        const defaultLay = structuredClone(cls.defaultLayout || baseLayout);
+        localStorage.setItem(`lopvui.layout.v5.${cls.id}.${todayIso}`, JSON.stringify(defaultLay));
+        localStorage.setItem(`lopvui.desk-items.v7.${cls.id}.${todayIso}`, JSON.stringify({}));
+        localStorage.setItem(`lopvui.late-queue.v6.${cls.id}.${todayIso}`, JSON.stringify([]));
+        localStorage.setItem(`lopvui.attendance-notes.v1.${cls.id}.${todayIso}`, JSON.stringify({}));
+        localStorage.removeItem(`lopvui.finalized-session.v1.${cls.id}.${todayIso}`);
+        localStorage.removeItem(`lopvui.checklist.v1.${cls.id}.${todayIso}`);
+        window.__featuresApp?.openNewShiftSession?.(cls.id, todayIso);
+      }
       navigateTo(`class/${cls.code || cls.id}/live/map`);
     };
   }
@@ -1190,7 +1220,8 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
   const histBanner = $('#history-session-banner');
   const histRecord = window.__featuresApp?.getSessionRecord ? window.__featuresApp.getSessionRecord(CURRENT_CLASS_ID, checklistDate) : null;
 
-  if (isClassHistoryViewMode || (histRecord && histRecord.status === 'closed' && checklistDate !== new Date().toLocaleDateString('sv-SE'))) {
+  const isActuallyClosed = Boolean(histRecord && histRecord.status === 'closed');
+  if (isClassHistoryViewMode && isActuallyClosed) {
     isClassHistoryViewMode = true;
     if (histBanner) {
       histBanner.hidden = false;
@@ -1203,14 +1234,15 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
       badge.className = 'session-badge-state closed';
       badge.innerHTML = '● Đã đóng ca (Lịch sử)';
     }
-    if ($('#close-session-btn')) $('#close-session-btn').hidden = true;
-    if ($('#open-session-btn')) $('#open-session-btn').hidden = true;
+    if ($('#checklist-close-session-panel')) $('#checklist-close-session-panel').hidden = true;
   } else {
     isClassHistoryViewMode = false;
     if (histBanner) histBanner.hidden = true;
-    if ($('#close-session-btn')) $('#close-session-btn').hidden = false;
+    if ($('#checklist-close-session-panel')) $('#checklist-close-session-panel').hidden = false;
     window.__featuresApp?.updateSessionStateUI?.();
   }
+  if ($('#close-session-btn')) $('#close-session-btn').hidden = true;
+  if ($('#open-session-btn')) $('#open-session-btn').hidden = true;
 
   // Setup banner navigation buttons
   if ($('#history-back-general-btn')) {
@@ -1462,17 +1494,22 @@ function openClassConfig(id=''){
   $('#config-class-weekday').value=String(item?.weekday??1);
   $('#config-class-start').value=item?.startTime||'15:30';
   $('#config-class-end').value=item?.endTime||'17:00';
-  $('#config-class-room').value=item?.room||'';
-  const counts=item?layoutCounts(item):[3,3,2];
-  $('#config-layout-aisles').value=counts.length;
-  $('#config-layout-desks').value=counts.join(', ');
-  if($('#config-layout-dividers')){
-    const divIndices = [];
-    (item?.defaultLayout?.[0]?.desks || []).forEach((d, idx) => {
-      if (d.dividerAfter) divIndices.push(idx + 1);
-    });
-    $('#config-layout-dividers').value = divIndices.length ? divIndices.join(', ') : '2';
+
+  // Populate & select Room from Room Templates list
+  const roomSelect = $('#config-room-template-select');
+  const templates = window.__featuresApp?.loadRoomTemplates ? window.__featuresApp.loadRoomTemplates() : [];
+  if (roomSelect && templates.length) {
+    roomSelect.innerHTML = templates.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.roomCode ? `${t.roomCode} · ${t.name}` : t.name)} (${t.aisles} dãy · ${(t.desksPerAisle || []).join('-')} bàn)</option>`).join('');
+    const matched = templates.find(t =>
+      (item?.roomTemplateId && t.id === item.roomTemplateId) ||
+      (item?.room && (t.roomCode === item.room || t.name === item.room))
+    ) || templates[0];
+    roomSelect.value = matched.id;
+    if ($('#config-class-room')) $('#config-class-room').value = matched.roomCode || matched.name;
+    if ($('#config-layout-aisles')) $('#config-layout-aisles').value = matched.aisles || 3;
+    if ($('#config-layout-desks')) $('#config-layout-desks').value = (matched.desksPerAisle || [3,3,2]).join(', ');
   }
+
   $('#config-start-checklist').value=(item?.defaultChecklist.startItems||[]).join('\n');
   $('#config-end-checklist').value=(item?.defaultChecklist.endItems||[]).join('\n');
   renderConfigNotifications(item?.defaultNotifications||[]);
@@ -1482,7 +1519,72 @@ $('#add-class-button').onclick=()=>openClassConfig();$('#close-class-config').on
 function addSelectedEmployee(role){const select=role==='teacher'?$('#config-teacher-choice'):role==='office'?$('#config-office-choice'):$('#config-assistant-choice'),ids=role==='teacher'?selectedTeacherIds:role==='office'?selectedOfficeIds:selectedAssistantIds;if(select.value&&!ids.includes(select.value))ids.push(select.value);select.value='';renderStaffSelection();renderEmployeeOptions(select,role,ids);}
 $('#add-config-teacher').onclick=()=>addSelectedEmployee('teacher');$('#add-config-assistant').onclick=()=>addSelectedEmployee('assistant');$('#add-config-office').onclick=()=>addSelectedEmployee('office');document.querySelector('.staff-picker').parentElement.addEventListener('click',event=>{const button=event.target.closest('[data-remove-staff]');if(!button)return;const ids=button.dataset.staffRole==='teacher'?selectedTeacherIds:button.dataset.staffRole==='office'?selectedOfficeIds:selectedAssistantIds;const index=ids.indexOf(button.dataset.removeStaff);if(index>=0)ids.splice(index,1);renderStaffSelection();renderEmployeeOptions(button.dataset.staffRole==='teacher'?$('#config-teacher-choice'):button.dataset.staffRole==='office'?$('#config-office-choice'):$('#config-assistant-choice'),button.dataset.staffRole,ids);});
 $('#add-config-notification').onclick=()=>{const rules=readConfigNotifications();rules.push({id:`rule-${Date.now()}`,anchor:'start',offsetMinutes:0,title:'Thông báo mới',body:''});renderConfigNotifications(rules);};$('#config-notification-list').addEventListener('click',event=>{const remove=event.target.closest('[data-remove-notification]');if(!remove)return;const rules=readConfigNotifications();rules.splice(Number(remove.dataset.removeNotification),1);renderConfigNotifications(rules);});
-$('#class-config-form').addEventListener('submit',event=>{event.preventDefault();const id=$('#config-class-id').value||`class-${Date.now().toString(36)}`,counts=$('#config-layout-desks').value.split(',').map(value=>Math.max(1,Math.min(30,Number(value.trim())||1))),aisles=Math.max(1,Math.min(8,Number($('#config-layout-aisles').value)||counts.length)),teacherIds=[...selectedTeacherIds],assistantIds=[...selectedAssistantIds],officeIds=[...selectedOfficeIds];if(!teacherIds.length||!assistantIds.length){toast('Chọn ít nhất một giáo viên và một trợ giảng phụ trách lớp.');return;}while(counts.length<aisles)counts.push(2);counts.length=aisles;const subject=masterData.subjects.find(item=>item.id===$('#config-class-subject').value),teachers=masterData.employees.filter(item=>teacherIds.includes(item.id)),assistants=masterData.employees.filter(item=>assistantIds.includes(item.id)),startItems=$('#config-start-checklist').value.split('\n').map(value=>value.trim()).filter(Boolean),endItems=$('#config-end-checklist').value.split('\n').map(value=>value.trim()).filter(Boolean),old=classCatalog.find(item=>item.id===id),code=($('#config-class-code')?.value||'').trim().toUpperCase(),grade=normalizeGradeToBirthYear(($('#config-class-grade')?.value||'2013').trim()),dividerSet=new Set(String($('#config-layout-dividers')?.value||'2').split(',').map(v=>Number(v.trim())).filter(n=>n>0)),classInfo={id,code,grade,name:$('#config-class-name').value.trim(),subjectId:subject?.id||'',subject:subject?.name||'',teacherIds,teacherId:teacherIds[0]||'',teacherName:teachers.map(item=>item.name).join(', '),assistantIds,officeIds,assistantName:assistants.map(item=>item.name).join(', '),weekday:Number($('#config-class-weekday').value),startTime:$('#config-class-start').value,endTime:$('#config-class-end').value,room:$('#config-class-room').value.trim(),defaultLayout:counts.map((count,row)=>({id:`${id}-aisle-${row+1}`,desks:Array.from({length:count},(_,desk)=>({id:`${id}-desk-${row+1}-${desk+1}`,seats:2,dividerAfter:dividerSet.has(desk+1)&&desk<count-1}))})),defaultChecklist:{startItems,endItems},defaultNotifications:readConfigNotifications()};if(old)classCatalog=classCatalog.map(item=>item.id===id?classInfo:item);else classCatalog.push(classInfo);saveClassCatalog(classCatalog);$('#class-config-dialog').close();renderMainMenu();if($('#class-general-view')&&!$('#class-general-view').hidden){renderClassGeneralView(classInfo.id);}if($('#class-workspace')&&!$('#class-workspace').hidden){showClassWorkspace();}toast(old?'Đã cập nhật cấu hình lớp.':'Đã thêm lớp học.');});
+$('#class-config-form').addEventListener('submit',event=>{
+  event.preventDefault();
+  const id=$('#config-class-id').value||`class-${Date.now().toString(36)}`,
+        teacherIds=[...selectedTeacherIds],
+        assistantIds=[...selectedAssistantIds],
+        officeIds=[...selectedOfficeIds];
+  if(!teacherIds.length||!assistantIds.length){
+    toast('Chọn ít nhất một giáo viên và một trợ giảng phụ trách lớp.');
+    return;
+  }
+  const templates = window.__featuresApp?.loadRoomTemplates ? window.__featuresApp.loadRoomTemplates() : [];
+  const selectedTplId = $('#config-room-template-select')?.value;
+  const selectedTpl = templates.find(t => t.id === selectedTplId) || templates[0];
+  const roomName = selectedTpl ? (selectedTpl.roomCode || selectedTpl.name) : ($('#config-class-room')?.value?.trim() || 'P1-T3-CS1');
+  const autoLayout = (selectedTpl && window.__featuresApp?.buildLayoutFromTemplate)
+    ? window.__featuresApp.buildLayoutFromTemplate(id, selectedTpl)
+    : structuredClone(baseLayout);
+
+  const subject=masterData.subjects.find(item=>item.id===$('#config-class-subject').value),
+        teachers=masterData.employees.filter(item=>teacherIds.includes(item.id)),
+        assistants=masterData.employees.filter(item=>assistantIds.includes(item.id)),
+        startItems=$('#config-start-checklist').value.split('\n').map(value=>value.trim()).filter(Boolean),
+        endItems=$('#config-end-checklist').value.split('\n').map(value=>value.trim()).filter(Boolean),
+        old=classCatalog.find(item=>item.id===id),
+        code=($('#config-class-code')?.value||'').trim().toUpperCase(),
+        grade=normalizeGradeToBirthYear(($('#config-class-grade')?.value||'2013').trim()),
+        classInfo={
+          id,
+          code,
+          grade,
+          name:$('#config-class-name').value.trim(),
+          subjectId:subject?.id||'',
+          subject:subject?.name||'',
+          teacherIds,
+          teacherId:teacherIds[0]||'',
+          teacherName:teachers.map(item=>item.name).join(', '),
+          assistantIds,
+          officeIds,
+          assistantName:assistants.map(item=>item.name).join(', '),
+          weekday:Number($('#config-class-weekday').value),
+          startTime:$('#config-class-start').value,
+          endTime:$('#config-class-end').value,
+          room:roomName,
+          roomTemplateId:selectedTpl?.id||'',
+          defaultLayout:autoLayout,
+          defaultChecklist:{startItems,endItems},
+          defaultNotifications:readConfigNotifications()
+        };
+  if(old)classCatalog=classCatalog.map(item=>item.id===id?classInfo:item);
+  else classCatalog.push(classInfo);
+  saveClassCatalog(classCatalog);
+
+  // Auto-update active session layout if room changed
+  if (id === CURRENT_CLASS_ID) {
+    configClass = classInfo;
+    layout = structuredClone(autoLayout);
+    for (const { desk } of desks()) deskItems[desk.id] ??= [];
+    localStorage.setItem(`lopvui.layout.v5.${CURRENT_CLASS_ID}.${checklistDate}`, JSON.stringify(layout));
+  }
+
+  $('#class-config-dialog').close();
+  renderMainMenu();
+  if($('#class-general-view')&&!$('#class-general-view').hidden){renderClassGeneralView(classInfo.id);}
+  if($('#class-workspace')&&!$('#class-workspace').hidden){showClassWorkspace();}
+  toast(old?'Đã cập nhật cấu hình lớp và đồng bộ sơ đồ theo phòng học.':'Đã thêm lớp học.');
+});
 // initial query will run after setupFeatures
 let liveClassSortKey = 'name';
 let liveClassSortOrder = 'asc';
@@ -1609,12 +1711,12 @@ function renderStudentList(){
           <span>Đã chọn <strong id="live-student-bulk-count">${selectedLiveClassStudentIds.size}</strong> học sinh:</span>
         </div>
         <div class="bulk-actions-buttons">
-          <button type="button" class="outline-button" id="live-bulk-add-tag">🏷 Thêm tag</button>
-          <button type="button" class="outline-button" id="live-bulk-remove-tag">🏷 Xóa tag</button>
-          <button type="button" class="outline-button" id="live-bulk-add-class">➕ Thêm vào lớp khác</button>
-          <button type="button" class="outline-button" id="live-bulk-move-class">🔄 Chuyển lớp</button>
-          <button type="button" class="outline-button text-danger" id="live-bulk-remove-class">✕ Bỏ khỏi lớp</button>
-          <button type="button" class="outline-button" id="live-bulk-clear">✕ Bỏ chọn</button>
+          <button type="button" class="outline-button" id="live-bulk-add-tag">Thêm tag</button>
+          <button type="button" class="outline-button" id="live-bulk-remove-tag">Xóa tag</button>
+          <button type="button" class="outline-button" id="live-bulk-add-class">Thêm vào lớp khác</button>
+          <button type="button" class="outline-button" id="live-bulk-move-class">Chuyển lớp</button>
+          <button type="button" class="outline-button text-danger" id="live-bulk-remove-class">Bỏ khỏi lớp</button>
+          <button type="button" class="outline-button" id="live-bulk-clear">Bỏ chọn</button>
         </div>
       </div>
     `;
@@ -1625,16 +1727,15 @@ function renderStudentList(){
         <table class="attendance-report-table" style="font-size:14px;">
           <thead>
             <tr>
-              <th style="width:30px; text-align:center;"><input type="checkbox" id="live-student-select-all" ${visibleRegular.length && visibleRegular.every(i => selectedLiveClassStudentIds.has(i.student.id)) ? 'checked' : ''} title="Chọn tất cả" /></th>
+              <th style="width:36px; text-align:center;"><input type="checkbox" id="live-student-select-all" ${visible.length && visible.every(i => selectedLiveClassStudentIds.has(i.student.id)) ? 'checked' : ''} title="Chọn tất cả" /></th>
               <th class="sortable-th ${sortClass('family')}" data-live-sort="family">Họ đệm <span class="sort-icon">${sortIcon('family')}</span></th>
               <th class="sortable-th ${sortClass('name')}" data-live-sort="name">Tên <span class="sort-icon">${sortIcon('name')}</span></th>
-              <th class="sortable-th ${sortClass('school')}" data-live-sort="school">Trường / Phân loại <span class="sort-icon">${sortIcon('school')}</span></th>
+              <th class="sortable-th ${sortClass('school')}" data-live-sort="school">Trường <span class="sort-icon">${sortIcon('school')}</span></th>
               <th class="sortable-th ${sortClass('seat')}" data-live-sort="seat">Vị trí ngồi <span class="sort-icon">${sortIcon('seat')}</span></th>
-              <th class="sortable-th ${sortClass('attendance')}" data-live-sort="attendance">Tình trạng điểm danh <span class="sort-icon">${sortIcon('attendance')}</span></th>
-              <th class="sortable-th ${sortClass('homework')}" data-live-sort="homework">Tình trạng BTVN <span class="sort-icon">${sortIcon('homework')}</span></th>
-              <th style="width:85px; text-align:center;" class="sortable-th ${sortClass('score')}" data-live-sort="score">Điểm số <span class="sort-icon">${sortIcon('score')}</span></th>
-              <th class="sortable-th ${sortClass('note')}" data-live-sort="note">Ghi chú chung trong buổi <span class="sort-icon">${sortIcon('note')}</span></th>
-              <th style="width:125px; text-align:center;">Thao tác</th>
+              <th class="sortable-th ${sortClass('attendance')}" data-live-sort="attendance">Trạng thái điểm danh <span class="sort-icon">${sortIcon('attendance')}</span></th>
+              <th class="sortable-th ${sortClass('homework')}" data-live-sort="homework">Trạng thái BTVN <span class="sort-icon">${sortIcon('homework')}</span></th>
+              <th class="sortable-th ${sortClass('note')}" data-live-sort="note">Ghi chú buổi học <span class="sort-icon">${sortIcon('note')}</span></th>
+              <th style="width:110px; text-align:center;">Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -1671,33 +1772,30 @@ function renderStudentList(){
               return `
                 <tr class="${isMakeupRow ? 'makeup-row-tr' : ''}">
                   <td style="text-align:center;">
-                    ${!isMakeupRow ? `<input type="checkbox" class="live-student-cb" data-student-id="${escapeHtml(student.id)}" ${selectedLiveClassStudentIds.has(student.id) ? 'checked' : ''} />` : '<span title="Học sinh học bù">🔄</span>'}
+                    <input type="checkbox" class="live-student-cb" data-student-id="${escapeHtml(student.id)}" ${selectedLiveClassStudentIds.has(student.id) ? 'checked' : ''} />
                   </td>
                   <td>
-                    <button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:#395140;">
+                    <button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${isMakeupRow ? '#6d28d9' : '#395140'}; font-weight:${isMakeupRow ? '700' : '500'};">
                       ${escapeHtml(familyName || '—')}
                     </button>
                   </td>
                   <td>
                     <button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;">
-                      <strong style="color:${isMakeupRow ? '#581c87' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>
-                      ${makeupStatePill}
+                      <strong style="color:${isMakeupRow ? '#6d28d9' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>
                       ${renderInlineTags(student)}
                     </button>
                   </td>
-                  <td>${escapeHtml(schoolLabel)}</td>
+                  <td>${isMakeupRow ? `<span class="makeup-school-tag">${escapeHtml(schoolLabel)}</span>` : escapeHtml(schoolLabel)}</td>
                   <td>
-                    <span class="room-chip" style="font-size:15.5px;">${escapeHtml(seat)}</span>
+                    <span class="room-chip">${escapeHtml(seat)}</span>
                   </td>
-                  <td>${statusBadge}${isMakeupRow ? ' <span class="makeup-status-badge">Học bù</span>' : ''}</td>
+                  <td>${statusBadge}</td>
                   <td>${hwBadge}</td>
-                  <td style="text-align:center;">${scoreCell}</td>
                   <td>
                     <input class="attendance-note-input" data-session-note="${escapeHtml(student.id)}" aria-label="Ghi chú chung cho ${escapeHtml(student.name)}" placeholder="Nhập ghi chú buổi học..." value="${escapeHtml(note)}" style="width:100%; min-width:130px;" />
                   </td>
                   <td style="text-align:center; white-space:nowrap;">
-                    <button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(student.id)}" title="Mở sơ đồ lớp và tìm nhanh chỗ ngồi học sinh này">🗺 Tìm chỗ</button>
-                    
+                    <button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(student.id)}" title="Mở sơ đồ lớp và tìm nhanh chỗ ngồi học sinh này">Tìm chỗ</button>
                   </td>
                 </tr>
               `;
@@ -1736,7 +1834,7 @@ function renderStudentList(){
   const selectAllLive = host.querySelector('#live-student-select-all');
   if (selectAllLive) {
     selectAllLive.onchange = () => {
-      if (selectAllLive.checked) visibleRegular.forEach(item => selectedLiveClassStudentIds.add(item.student.id));
+      if (selectAllLive.checked) visible.forEach(item => selectedLiveClassStudentIds.add(item.student.id));
       else selectedLiveClassStudentIds.clear();
       renderStudentList();
     };
@@ -1822,7 +1920,10 @@ function renderStudentList(){
     if (!confirm(`Xác nhận bỏ ${selectedLiveClassStudentIds.size} học sinh đã chọn khỏi lớp này?`)) return;
     selectedLiveClassStudentIds.forEach(id => {
       const s = studentById(id);
-      if (s) s.classIds = (s.classIds || []).filter(cid => cid !== CURRENT_CLASS_ID);
+      if (s) {
+        s.classIds = (s.classIds || []).filter(cid => cid !== CURRENT_CLASS_ID);
+        if (s.attendingClassId === CURRENT_CLASS_ID) s.attendingClassId = null;
+      }
     });
     selectedLiveClassStudentIds.clear();
     save();
@@ -2186,15 +2287,15 @@ function render(){
 
   classroom.innerHTML=displayLayout.map((aisle,ci)=>{
     const maxOccupants=Math.max(1,...aisle.desks.map(d=>(deskItems[d.id]||[]).length)),
-          aisleWidth=Math.max(210,32+maxOccupants*112),
-          studentWidth=Math.floor((aisleWidth-28-(maxOccupants-1)*6)/maxOccupants);
+          aisleWidth=Math.max(220,(isSeatingEditMode?54:24)+maxOccupants*116),
+          studentWidth=Math.floor((aisleWidth-(isSeatingEditMode?54:24)-(maxOccupants-1)*6)/maxOccupants);
     const origAisleIdx = isTeacherView ? (layout.length - 1 - ci) : ci;
     const sideLabel = isTeacherView ? (ci < displayLayout.length / 2 ? ' (Tay phải GV)' : ' (Tay trái GV)') : '';
 
     return `<div class="desk-row" style="--aisle-width:${aisleWidth}px;--max-occupants:${maxOccupants};--student-width:${studentWidth}px">
       <div class="row-label">
         <span>DÃY ${origAisleIdx+1}${sideLabel}</span>
-        <button type="button" class="row-collect-hw-btn" data-collect-aisle="${origAisleIdx}" title="Thu BTVN cả dãy ${origAisleIdx+1}">📥 Thu BTVN</button>
+        <button type="button" class="row-collect-hw-btn" data-collect-aisle="${origAisleIdx}" title="Thu BTVN cả dãy ${origAisleIdx+1}">Thu BTVN</button>
       </div>
       <div class="desks">${aisle.desks.map((desk, di)=>{
         const list=deskItems[desk.id]||[];
@@ -2214,7 +2315,7 @@ function render(){
           const isDebtWarn = Boolean(!isNoHwActive && prevHistory?.homework && prevHistory.homework.status === 'not_submitted');
           const warnClass = isUncollectedWarn ? 'seat-uncollected-warn' : (isDebtWarn ? 'seat-debt-warn' : '');
           const warnTag = isUncollectedWarn ? '<span class="seat-warning-tag warn-uncollected" title="Chưa thu BTVN buổi này">⚠</span>' : (isDebtWarn ? '<span class="seat-warning-tag warn-debt" title="Nợ BTVN buổi trước">!</span>' : '');
-          const makeupBadgeHtml = isMakeupStudent ? '<span class="makeup-seat-badge" title="Học sinh học bù">🔄 BÙ</span>' : '';
+          const makeupBadgeHtml = isMakeupStudent ? '<span class="makeup-seat-badge" title="Học sinh học bù">BÙ</span>' : '';
           const isSearchMatch = Boolean(mapSearchQuery && student && normalizeSearchText(`${student.name} ${student.studentCode || ''} ${(student.tags || []).join(' ')}`).includes(mapSearchQuery));
           return `<button class="seat occupied seat-token ${student?'seat-named':'seat-anonymous'} ${isMakeupStudent?'seat-makeup':''} ${att?.status==='late'?'attendance-late':''} ${warnClass} ${isSearchMatch?'seat-search-match':''}" data-entry-index="${origIndex}" data-desk-id="${desk.id}" data-student-id="${escapeHtml(student?.id||'')}" aria-label="${student?`${student.name}${isMakeupStudent?' (Học bù)':''}; BTVN ${homeworkLabel(hw?.status)}; ${attendanceLabel(att?.status)}`:'Biểu tượng học sinh chưa ghi tên'}">${student?'':`<span class="seat-symbol">${studentIcon}</span>`}${student?`<span class="seat-name">${makeupBadgeHtml}${escapeHtml(student.name)}${renderInlineTags(student)}${warnTag}<span class="homework-mark ${homeworkClass(hw?.status)}" title="${homeworkLabel(hw?.status)}">${homeworkSymbol(hw)}</span></span>`:hw?.status&&hw.status!=='uncollected'?`<span class="homework-mark ${homeworkClass(hw.status)}" title="${homeworkLabel(hw.status)}">${homeworkSymbol(hw)}</span>`:''}</button>`;
         }).join('') : '<span class="seat-empty-text">Bàn trống</span>';
@@ -2233,10 +2334,7 @@ function render(){
           const upperNum = origDividerDeskIdx + 1;
           const lowerNum = origDividerDeskIdx + 2;
           if (hasDivider) {
-            dividerHtml = `<div class="desk-divider-readonly" aria-label="Vạch phân cách bàn ${upperNum} và bàn ${lowerNum}">
-              <span class="divider-bar"></span>
-              <span class="divider-pill">━ BÀN ${upperNum} / BÀN ${lowerNum} ━</span>
-            </div>`;
+            dividerHtml = `<div class="desk-divider-readonly" role="separator" aria-label="Vạch ngăn cách bàn"><span class="divider-line"></span></div>`;
           }
         }
 
@@ -2277,7 +2375,7 @@ function render(){
     const s=studentById(id);
     if(!s)return '';
     const isMakeup = s.studentType === 'makeup' || !(s.classIds || []).includes(CURRENT_CLASS_ID);
-    return `<button type="button" class="late-token ${isMakeup ? 'late-makeup' : ''}" data-late-key="${id}" aria-label="${s.name}; kéo vào bàn"><span>◷</span><span class="late-name">${isMakeup ? '<span class="makeup-seat-badge">🔄 BÙ</span>' : ''}${escapeHtml(s.name)}</span><small>${s.arrivalTime||'đến muộn'}</small></button>`;
+    return `<button type="button" class="late-token ${isMakeup ? 'late-makeup' : ''}" data-late-key="${id}" aria-label="${s.name}; kéo vào bàn"><span>◷</span><span class="late-name">${isMakeup ? '<span class="makeup-seat-badge">BÙ</span>' : ''}${escapeHtml(s.name)}</span><small>${s.arrivalTime||'đến muộn'}</small></button>`;
   }).join('')||'<span class="late-empty">Học sinh đến muộn sẽ chờ tại đây. Kéo vào chỗ ngồi khi sẵn sàng (kể cả khi đã khóa sửa sơ đồ).</span>';
   const allRosterAndMakeup = [...classStudents(), ...makeupStudents.filter(m => m.attendingClassId === CURRENT_CLASS_ID)];
   $('#roster-list').innerHTML=allRosterAndMakeup.map(s=>{
@@ -2286,7 +2384,7 @@ function render(){
     const giv = s.givenName ?? parts.givenName;
     const isMakeup = s.studentType === 'makeup';
     const seatedPlace = allEntries().find(place=>place.entry.studentId===s.id);
-    return `<div class="student-option roster-option" style="justify-content:space-between;"><span class="student-option-name"><strong>${escapeHtml(fam)} ${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}${renderInlineTags(s)}<small>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'Hồ sơ học sinh'))} · ${attendanceLabel(seatedPlace?.entry.attendance?.status)}</small></span><button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(s.id)}">🗺 Tìm chỗ</button></div>`;
+    return `<div class="student-option roster-option" style="justify-content:space-between;"><span class="student-option-name"><strong>${escapeHtml(fam)} ${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-school-tag">Học bù</span>' : ''}${renderInlineTags(s)}<small>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'Hồ sơ học sinh'))} · ${attendanceLabel(seatedPlace?.entry.attendance?.status)}</small></span><button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(s.id)}">Tìm chỗ</button></div>`;
   }).join('')||'<div class="empty-list">Danh sách lớp chưa có hồ sơ.</div>';
   renderStudentList();renderChecklist();if(typeof renderScoresView==='function')renderScoresView();
 }
@@ -2337,7 +2435,7 @@ if (teacherViewBtn) {
     teacherViewBtn.style.background = isTeacherView ? '#233d31' : '';
     teacherViewBtn.style.color = isTeacherView ? '#fff' : '';
     teacherViewBtn.style.borderColor = isTeacherView ? '#233d31' : '';
-    teacherViewBtn.textContent = isTeacherView ? '👨‍🏫 Góc nhìn GV (Bật)' : '👨‍🏫 Góc nhìn Giáo viên';
+    teacherViewBtn.textContent = isTeacherView ? 'Góc nhìn GV (Bật)' : 'Góc nhìn Giáo viên';
     render();
     toast(isTeacherView ? 'Đã bật góc nhìn Giáo viên (bục giảng nhìn xuống).' : 'Đã quay lại góc nhìn Trợ giảng.');
   };
@@ -2358,7 +2456,7 @@ function growLayoutIfNeeded(){if(!layout.length)layout.push({id:`aisle-${Date.no
 function findSpot(deskId,index){return {deskId,index};}
 function currentEntry(){return activeSpot?deskItems[activeSpot.deskId]?.[activeSpot.index]:null;}
 function setHomeworkFields(home={status:'uncollected'}){$('#homework-status').value=home.status||'uncollected';$('#homework-score').value=home.score??'';$('#homework-reason').value=home.reason||'';toggleHomeworkFields($('#homework-status').value,'homework');document.querySelectorAll('[data-homework-choice]').forEach(button=>button.classList.toggle('selected',button.dataset.homeworkChoice===($('#homework-status').value==='graded'?'submitted':$('#homework-status').value)));}
-function toggleHomeworkFields(status,prefix){const reasonFields=$(`#${prefix==='homework'?'no-homework-fields':'late-no-homework-fields'}`);if(reasonFields)reasonFields.hidden=status!=='not_submitted';const gradeField=$(`#${prefix==='homework'?'grade-field':'late-grade-field'}`);if(gradeField)gradeField.hidden=!(status==='submitted'||status==='graded');}
+function toggleHomeworkFields(status,prefix){const reasonFields=$(`#${prefix==='homework'?'no-homework-fields':'late-no-homework-fields'}`);if(reasonFields)reasonFields.hidden=status!=='not_submitted';const gradeField=$(`#${prefix==='homework'?'grade-field':'late-grade-field'}`);if(gradeField)gradeField.hidden=true;}
 function showAttendance(att={}){$('#attendance-status').value=att.status||'present';}
 function identityPicker(query=''){const used=assignedIds();if(currentEntry()?.studentId)used.delete(currentEntry().studentId);const matches=searchStudents([...classStudents(),...makeupStudents.filter(student=>student.attendingClassId===CURRENT_CLASS_ID)],query,{excludeIds:used});$('#student-options').innerHTML=`${matches.map(s=>`<button type="button" class="student-option" data-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${studentSearchMeta(s)}</span><span class="student-check">Chọn</span></button>`).join('')||`<div class="empty-list">${query.trim()?'Chưa có hồ sơ phù hợp.':'Nhập tên để tìm học sinh trong danh sách.'}</div>`}<button type="button" class="student-option new-or-makeup" id="new-or-makeup-choice">＋ Học sinh mới / Học bù</button><div id="identity-kind-host"></div><div id="identity-form-host"></div>`;$('#student-options').querySelectorAll('[data-student]').forEach(b=>b.onclick=()=>assignStudent(b.dataset.student));$('#new-or-makeup-choice').onclick=()=>{$('#identity-kind-host').innerHTML='<div class="identity-actions"><button type="button" class="outline-button" id="new-student-choice">Học sinh mới</button><button type="button" class="outline-button" id="makeup-student-choice">Học bù</button></div>';$('#new-student-choice').onclick=()=>showIdentityForm('new');$('#makeup-student-choice').onclick=()=>showIdentityForm('makeup');};}
 function showIdentityForm(kind){const makeup=kind==='makeup';$('#identity-form-host').innerHTML=`<div class="identity-form"><strong>${makeup?'Thông tin học sinh học bù':'Thông tin học sinh mới'}</strong><label class="field-label">Họ và tên<input id="identity-name" placeholder="Ví dụ: Nguyễn Minh Anh" /></label><label class="field-label">${makeup?'Học bù lớp':'Trường'}<input id="identity-school" placeholder="${makeup?'Ví dụ: Toán 8B':'Tên trường'}" /></label>${makeup?'':'<label class="field-label">Tên phụ huynh<input id="identity-parent-name" placeholder="Không bắt buộc" /></label><label class="field-label">Số điện thoại phụ huynh<input id="identity-parent-phone" type="tel" placeholder="Không bắt buộc" /></label>'}<button type="button" class="primary-button confirm-seat" id="save-identity">Xác nhận</button></div>`;$('#save-identity').onclick=()=>{const name=$('#identity-name').value.trim(),school=$('#identity-school').value.trim(),parentContact={name:$('#identity-parent-name')?.value.trim()||'',phone:$('#identity-parent-phone')?.value.trim()||''};if(!name||!school){toast('Vui lòng điền họ tên và trường/lớp học bù.');return;}const student=createStudentProfile({name,school,kind:makeup?'makeup':'regular',parentContact});if(makeup)makeupStudents.push(student);else students.push(student);save();assignStudent(student.id);};}
@@ -3044,7 +3142,7 @@ function renderSeatingMapSearchResults() {
     return `<button type="button" class="seating-search-result-item" data-locate-seat-student="${escapeHtml(s.id)}">
       <div>
         <strong style="color:${isMakeup ? '#581c87' : '#1e3a29'};">${escapeHtml(s.name)}</strong>
-        ${isMakeup ? '<span class="makeup-status-badge">🔄 Học bù</span>' : ''}
+        ${isMakeup ? '<span class="makeup-school-tag">Học bù</span>' : ''}
         <small style="display:block; color:#6c7d70; font-size:13.5px;">${escapeHtml(s.studentCode || s.school || s.sourceClassName || '')}</small>
       </div>
       <span class="room-chip" style="font-size:15.5px; font-weight:700; color:${seatColor};">${escapeHtml(seatLabel)}</span>
@@ -3492,14 +3590,14 @@ function renderScoresView() {
 
     htmlRows.push(`
       <tr class="${item.isMakeup ? 'makeup-row-tr' : ''}" data-score-row-student="${escapeHtml(s.id)}">
-        <td>${escapeHtml(item.familyName || '—')}</td>
+        <td style="color:${item.isMakeup ? '#6d28d9' : 'inherit'}; font-weight:${item.isMakeup ? '700' : '500'};">${escapeHtml(item.familyName || '—')}</td>
         <td>
-          <strong style="color:${item.isMakeup ? '#581c87' : '#214e2d'};">${escapeHtml(item.givenName || s.name)}</strong>
+          <strong style="color:${item.isMakeup ? '#6d28d9' : '#214e2d'};">${escapeHtml(item.givenName || s.name)}</strong>
           ${renderInlineTags(s)}
         </td>
         <td>
           ${item.isMakeup
-            ? `<span class="makeup-status-badge" style="margin-left:0;">${escapeHtml(item.schoolDisplay)}</span>`
+            ? `<span class="makeup-school-tag">${escapeHtml(item.schoolDisplay)}</span>`
             : escapeHtml(item.schoolDisplay)}
         </td>
         <td>
@@ -3509,10 +3607,7 @@ function renderScoresView() {
           </div>
         </td>
         <td style="text-align:center;">
-          <button type="button" class="recent-scores-btn" data-open-score-history="${escapeHtml(s.id)}" title="Click để xem chi tiết điểm các buổi trước của ${escapeHtml(s.name)}">
-            <span>${escapeHtml(item.recentFour)}</span>
-            <small style="font-size:13.5px; opacity:0.8;">🔍</small>
-          </button>
+          <button type="button" class="recent-scores-btn" data-open-score-history="${escapeHtml(s.id)}" title="Click để xem chi tiết điểm các buổi trước của ${escapeHtml(s.name)}"><span>${escapeHtml(item.recentFour)}</span></button>
         </td>
         <td style="text-align:center;">
           <input type="number" min="0" max="10" step="0.25" class="manual-score-input" data-score-tab-hw="${escapeHtml(s.id)}" value="${item.hwScore !== null && item.hwScore !== undefined ? escapeHtml(item.hwScore) : ''}" placeholder="0 - 10" aria-label="Điểm BTVN ${escapeHtml(s.name)}" />

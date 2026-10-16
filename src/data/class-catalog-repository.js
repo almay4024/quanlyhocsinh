@@ -1,6 +1,6 @@
 // Local repository boundary for master data and class configuration.
-// Supports Birth Year (Năm sinh: 2009, 2010, ...) and Desk Dividers.
-import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=1.7';
+// Supports Birth Year (Năm sinh: 2009, 2010, ...) and automatic layout sync from Room Templates.
+import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=1.8';
 
 const CATALOG_KEY = 'lopvui.class-catalog.v1';
 const MASTER_KEY = 'lopvui.master-data.v1';
@@ -85,6 +85,7 @@ export const seedClasses = [
     startTime: '15:30',
     endTime: '17:00',
     room: 'P1-T3-CS1',
+    roomTemplateId: 'room-p1-t3-cs1',
     defaultLayout: makeDesks('class-math-8a-algebra', [3, 3, 2], [2]),
     defaultChecklist: {
       startItems: ['Lau bảng', 'Bật đèn và kiểm tra quạt/điều hòa', 'Chuẩn bị tài liệu và bài tập', 'Kiểm tra bàn ghế, cửa sổ và phòng học'],
@@ -109,6 +110,7 @@ export const seedClasses = [
     startTime: '18:00',
     endTime: '19:30',
     room: 'P2-T2-CS1',
+    roomTemplateId: 'room-p2-t2-cs1',
     defaultLayout: makeDesks('class-english-7b', [3, 3], [2]),
     defaultChecklist: {
       startItems: ['Bật máy chiếu', 'Phát phiếu bài tập', 'Kiểm tra loa và bảng'],
@@ -133,6 +135,7 @@ export const seedClasses = [
     startTime: '16:00',
     endTime: '17:30',
     room: 'P1-T1-CS2',
+    roomTemplateId: 'room-p1-t1-cs2',
     defaultLayout: makeDesks('class-math-9c', [3, 3, 3], [2]),
     defaultChecklist: {
       startItems: ['Lau bảng', 'Chuẩn bị compa và thước', 'Kiểm tra phòng học'],
@@ -157,6 +160,7 @@ export const seedClasses = [
     startTime: '17:30',
     endTime: '19:00',
     room: 'P3-T2-CS1',
+    roomTemplateId: 'room-p3-t2-cs1',
     defaultLayout: makeDesks('class-math-10a', [3, 3, 3], [2]),
     defaultChecklist: {
       startItems: ['Lau bảng', 'Bật máy chiếu và quạt', 'Phát tài liệu hình học'],
@@ -181,6 +185,7 @@ export const seedClasses = [
     startTime: '18:00',
     endTime: '19:30',
     room: 'P2-T1-CS1',
+    roomTemplateId: 'room-p2-t1-cs1',
     defaultLayout: makeDesks('class-physics-11b', [3, 3], [2]),
     defaultChecklist: {
       startItems: ['Chuẩn bị thiết bị thí nghiệm', 'Kiểm tra máy chiếu'],
@@ -205,6 +210,7 @@ export const seedClasses = [
     startTime: '19:00',
     endTime: '21:00',
     room: 'P1-T4-CS1',
+    roomTemplateId: 'room-p1-t4-cs1',
     defaultLayout: makeDesks('class-math-12-exam', [4, 4, 3], [2]),
     defaultChecklist: {
       startItems: ['Phát đề thi thử khảo sát', 'Bật máy chiếu và bấm giờ'],
@@ -214,28 +220,33 @@ export const seedClasses = [
   }
 ];
 
-function resolveClass(classInfo, masters) {
+function resolveClass(classInfo, masters, storage = localStorage) {
   const seed = seedClasses.find(item => item.id === classInfo.id);
   const subject = masters.subjects.find(item => item.id === classInfo.subjectId || item.name === classInfo.subject);
   const code = (classInfo.code && String(classInfo.code).trim()) ? String(classInfo.code).trim().toUpperCase() : (seed?.code || '');
   const grade = normalizeGradeToBirthYear(classInfo.grade || seed?.grade, `${classInfo.name || ''} ${code}`);
-  const room = classInfo.room || seed?.room || 'P1-T3-CS1';
+  let room = classInfo.room || seed?.room || 'P1-T3-CS1';
+  let roomTemplateId = classInfo.roomTemplateId || seed?.roomTemplateId || '';
 
-  let defaultLayout = (Array.isArray(classInfo.defaultLayout) && classInfo.defaultLayout.length)
-    ? classInfo.defaultLayout
-    : (seed?.defaultLayout || null);
+  // Always auto-sync defaultLayout from the assigned Room Template when a matching room exists
+  let defaultLayout = null;
+  try {
+    const roomTpls = loadRoomTemplates(storage);
+    const matchedRoom = roomTpls.find(r =>
+      (roomTemplateId && r.id === roomTemplateId) ||
+      (room && (r.roomCode === room || r.name === room))
+    );
+    if (matchedRoom) {
+      roomTemplateId = matchedRoom.id;
+      room = matchedRoom.roomCode || matchedRoom.name;
+      defaultLayout = buildLayoutFromTemplate(classInfo.id || 'class', matchedRoom);
+    }
+  } catch {}
 
   if (!defaultLayout || !defaultLayout.length) {
-    try {
-      const roomTpls = loadRoomTemplates();
-      const matchedRoom = roomTpls.find(r => r.roomCode === room || r.name === room);
-      if (matchedRoom) {
-        defaultLayout = buildLayoutFromTemplate(classInfo.id || 'class', matchedRoom);
-      }
-    } catch {}
-  }
-  if (!defaultLayout || !defaultLayout.length) {
-    defaultLayout = makeDesks(classInfo.id || 'class', [3, 3, 2], [2]);
+    defaultLayout = (Array.isArray(classInfo.defaultLayout) && classInfo.defaultLayout.length)
+      ? classInfo.defaultLayout
+      : (seed?.defaultLayout || makeDesks(classInfo.id || 'class', [3, 3, 2], [2]));
   }
 
   const oldTeacherNames = String(classInfo.teacherName || '').split(',').map(value => value.trim()).filter(Boolean);
@@ -259,6 +270,7 @@ function resolveClass(classInfo, masters) {
     code,
     grade,
     room,
+    roomTemplateId,
     defaultLayout,
     subjectId: subject?.id || masters.subjects[0]?.id || '',
     subject: subject?.name || classInfo.subject || '',
@@ -308,10 +320,10 @@ export function loadClassCatalog(storage = localStorage, masters = loadMasterDat
     } catch {}
   }
 
-  const resolved = saved.map(item => resolveClass(item, masters));
+  const resolved = saved.map(item => resolveClass(item, masters, storage));
   for (const s of seedClasses) {
     if (!resolved.some(r => r.id === s.id)) {
-      resolved.push(resolveClass(s, masters));
+      resolved.push(resolveClass(s, masters, storage));
     }
   }
 
