@@ -5191,7 +5191,6 @@ input[type="time"]::-webkit-date-and-time-value {
   display: none !important;
 }
 
-.classroom,
 @media (max-width: 768px) {
   .classroom {
     display: flex !important;
@@ -5238,7 +5237,6 @@ input[type="time"]::-webkit-date-and-time-value {
   border-radius: 999px !important;
 }
 
-.desk-row,
 @media (max-width: 768px) {
   .desk-row {
     flex: 0 0 var(--aisle-width, 190px) !important;
@@ -5761,4 +5759,305 @@ input[type="time"]::-webkit-date-and-time-value {
     justify-content: center !important;
     text-align: center !important;
   }
+}
+
+
+/* =========================================================
+   v2.4 IPAD & MOBILE LAYOUT FIXES
+   1. Fix Tutoring & Make-up Card (.tutoring-card) 1-char vertical column bug by removing legacy 42px grid column
+   2. Fix Seating Chart (.classroom, .desk-row) right overflow on 3 aisles & empty right space on 2 aisles
+   3. Fix Left Sidebar (.sidebar) disappearing on scroll & remove top scroll blur on iPad Safari via independent 100dvh scroll shell
+   4. Hide empty .brand-mark square next to "Lớp học vui"
+   ========================================================= */
+
+/* 4a: Remove empty green square (.brand-mark) next to "Lớp học vui" */
+.brand-mark {
+  display: none !important;
+}
+
+/* 1: Fix Tutoring Card (.tutoring-card) full-width flex layout on all viewports (iPad, Desktop, Mobile) */
+.tutoring-card,
+.tutoring-card.tutoring-card-clean {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: none !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  padding: 16px 18px !important;
+  box-sizing: border-box !important;
+}
+
+.tutoring-card-main,
+.tutoring-card.tutoring-card-clean .tutoring-card-main {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 5px !important;
+}
+
+.tutoring-card-header-line,
+.tutoring-card.tutoring-card-clean .tutoring-card-header-line {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-wrap: wrap !important;
+  gap: 8px 12px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-bottom: 2px !important;
+}
+
+.tutoring-student-title,
+.tutoring-card-main strong.tutoring-student-title {
+  font-size: 1.02rem !important;
+  font-weight: 800 !important;
+  color: #1e3a29 !important;
+  line-height: 1.35 !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  margin: 0 !important;
+}
+
+.tutoring-card-badges {
+  display: inline-flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+
+.tutoring-card .tutoring-detail-line,
+.tutoring-card.tutoring-card-clean .tutoring-detail-line {
+  width: 100% !important;
+  min-width: 0 !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  line-height: 1.48 !important;
+  color: #334155 !important;
+  margin: 2px 0 0 !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+}
+
+.tutoring-card .tutoring-detail-line strong,
+.tutoring-card.tutoring-card-clean .tutoring-detail-line strong {
+  display: inline !important;
+  font-size: 0.88rem !important;
+  font-weight: 700 !important;
+  color: #1e1b4b !important;
+}
+
+.tutoring-card-meta,
+.tutoring-card.tutoring-card-clean .tutoring-card-meta {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 6px 18px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  font-size: 0.85rem !important;
+  color: #4b5e50 !important;
+  padding-top: 4px !important;
+}
+
+/* 2: Fix Seating Chart (.classroom-wrap, .classroom, .desk-row) overflow on 3 aisles & empty space on 2 aisles */
+#seating-view,
+.classroom-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.classroom {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 4px 4px 12px !important;
+  box-sizing: border-box !important;
+  scrollbar-width: auto !important;
+}
+
+.classroom > .desk-row {
+  flex: 1 1 var(--aisle-width, 210px) !important;
+  width: auto !important;
+  min-width: var(--aisle-width, 200px) !important;
+  max-width: 380px !important;
+  box-sizing: border-box !important;
+}
+
+/* Safe auto-margin centering: centers 1-2 aisles nicely while keeping left edge scrollable when 3+ aisles overflow */
+.classroom > .desk-row:first-child {
+  margin-left: auto !important;
+}
+
+.classroom > .desk-row:last-child {
+  margin-right: auto !important;
+}
+
+.desk-row .desk-seats {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.desk-row .desk-seats > .seat.seat-token {
+  flex: 1 1 0 !important;
+  min-width: 48px !important;
+  max-width: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 38px !important;
+  padding: 4px 4px !important;
+  box-sizing: border-box !important;
+}
+
+/* 3 & 4c: Independent 100dvh App Shell so Left Sidebar never scrolls away & iPadOS Safari never blurs the top edge on scroll */
+html,
+body {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #f6f8f5 !important;
+}
+
+.app-shell {
+  display: flex !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  min-height: 100dvh !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+@media (min-width: 1025px) {
+  .app-shell {
+    flex-direction: row !important;
+    align-items: stretch !important;
+  }
+
+  .sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    position: sticky !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: auto !important;
+    inset: auto !important;
+    width: 264px !important;
+    min-width: 264px !important;
+    max-width: 264px !important;
+    flex: 0 0 264px !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 26px 18px !important;
+    background: #ffffff !important;
+    border-right: 1px solid #e9ece8 !important;
+    z-index: 150 !important;
+    box-sizing: border-box !important;
+  }
+
+  .sidebar .nav-label,
+  .sidebar .nav-item,
+  .sidebar .brand {
+    flex-shrink: 0 !important;
+  }
+
+  .sidebar .sidebar-bottom {
+    margin-top: auto !important;
+    flex-shrink: 0 !important;
+  }
+
+  .main-content {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+    width: auto !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 0 32px 56px !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .app-shell {
+    flex-direction: column !important;
+  }
+
+  .sidebar {
+    display: none !important;
+  }
+
+  .main-content {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 0 18px 44px !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .main-content {
+    padding: 0 12px 40px !important;
+  }
+}
+
+/* Remove any blur/backdrop-filter on topbar and keep it crisp & opaque */
+.topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 120 !important;
+  background: #f6f8f5 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+  border-bottom: 1px solid #dce6dd !important;
 }

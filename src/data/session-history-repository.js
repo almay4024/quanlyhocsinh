@@ -410,7 +410,7 @@ export function getNoHomeworkStatus(classId, date, storage = (typeof localStorag
     return {
       noHomework: overrides[key].noHomework,
       isAutoChecked: false,
-      reason: 'manual'
+      reason: 'Đã chọn thủ công'
     };
   }
 

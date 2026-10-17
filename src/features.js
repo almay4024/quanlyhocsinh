@@ -1,16 +1,16 @@
-import { matchesAcronymOrText } from './student-search.js?v=2.3';
+import { matchesAcronymOrText } from './student-search.js?v=2.4';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.3';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.3';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.4';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.4';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.3';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.4';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -20,7 +20,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=2.3';
+} from './excel-import-export.js?v=2.4';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -31,7 +31,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=2.3';
+} from './data/session-history-repository.js?v=2.4';
 
 export function setupFeatures(ctx) {
   const {
@@ -3406,7 +3406,7 @@ export function setupFeatures(ctx) {
 
     if (hint) {
       if (status.noHomework) {
-        hint.textContent = status.reason;
+        hint.textContent = (status.reason === 'manual' || !status.reason) ? 'Đã chọn thủ công' : status.reason;
         hint.style.display = 'block';
       } else {
         hint.textContent = 'Bình thường (có thu BTVN)';

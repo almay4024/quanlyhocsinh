@@ -1,12 +1,12 @@
-const APP_VERSION = "1.8";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.3';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.3';
+const APP_VERSION = "2.4";
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.4';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.4';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=2.3';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=2.3';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.3';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.3';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.3';
+import { setupFeatures } from './features.js?v=2.4';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=2.4';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.4';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.4';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.4';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -2929,7 +2929,18 @@ window.openStudentSessionProfile = openStudentSessionProfile;
 
 function render(){
   const isNoHwActive = Boolean(window.__featuresApp?.isNoHomeworkSession?.());
-  for(const {desk} of desks())deskItems[desk.id]??=[];
+  const seenSeatedIds = new Set();
+  for(const {desk} of desks()){
+    deskItems[desk.id]??=[];
+    deskItems[desk.id] = deskItems[desk.id].filter(item => {
+      if (!item || !item.studentId) return true;
+      const stu = studentById(item.studentId);
+      if (!stu) return false;
+      if (seenSeatedIds.has(item.studentId)) return false;
+      seenSeatedIds.add(item.studentId);
+      return true;
+    });
+  }
   const occupants=allEntries();
 
   const classroomWrap = document.querySelector('.classroom-wrap');
@@ -2962,8 +2973,10 @@ function render(){
 
   classroom.innerHTML=displayLayout.map((aisle,ci)=>{
     const maxOccupants=Math.max(1,...aisle.desks.map(d=>(deskItems[d.id]||[]).length)),
-          aisleWidth=Math.max(220,(isSeatingEditMode?54:24)+maxOccupants*116),
-          studentWidth=Math.floor((aisleWidth-(isSeatingEditMode?54:24)-(maxOccupants-1)*6)/maxOccupants);
+          perSeatWidth = maxOccupants >= 3 ? 74 : (maxOccupants === 2 ? 96 : 148),
+          minAisleBase = maxOccupants >= 3 ? 236 : (maxOccupants === 2 ? 208 : 176),
+          aisleWidth=Math.max(minAisleBase,(isSeatingEditMode?34:14)+maxOccupants*perSeatWidth),
+          studentWidth=Math.floor((aisleWidth-(isSeatingEditMode?34:14)-(maxOccupants-1)*4)/maxOccupants);
     const origAisleIdx = isTeacherView ? (layout.length - 1 - ci) : ci;
     const sideLabel = isTeacherView ? (ci < displayLayout.length / 2 ? ' (Tay phải GV)' : ' (Tay trái GV)') : '';
 
@@ -3022,12 +3035,26 @@ function render(){
     };
   });
 
-  const named=occupants.filter(x=>x.entry.studentId),attended=named.filter(x=>x.entry.attendance||studentById(x.entry.studentId)?.attendance).length;
-  const homeworkCounts={uncollected:0,not_submitted:0,submitted:0,graded:0};occupants.forEach(({entry})=>{const status=(entry.homework||studentById(entry.studentId)?.homework)?.status||'uncollected';homeworkCounts[status]=(homeworkCounts[status]||0)+1;});
-  const rosterTotal = classStudents().length;
-  $('#attendance-count').textContent=`${attended} / ${occupants.length}`;
-  const countSub = $('#attendance-count-sub'); if (countSub) countSub.textContent = `đã điểm danh / vào chỗ (sĩ số ${rosterTotal})`;
-  $('#remaining-count').textContent=`${occupants.length-attended} học sinh vào chỗ chưa điểm danh`;
+  const named=occupants.filter(x=>x.entry.studentId && studentById(x.entry.studentId)),attended=named.filter(x=>x.entry.attendance||studentById(x.entry.studentId)?.attendance).length;
+  const homeworkCounts={uncollected:0,not_submitted:0,submitted:0,graded:0};named.forEach(({entry})=>{const status=(entry.homework||studentById(entry.studentId)?.homework)?.status||'uncollected';homeworkCounts[status]=(homeworkCounts[status]||0)+1;});
+  const rosterList = classStudents();
+  const rosterIds = new Set(rosterList.map(s => s.id));
+  const rosterTotal = rosterList.length;
+  const extraMakeupIds = new Set([
+    ...named.map(x => x.entry.studentId).filter(id => id && !rosterIds.has(id)),
+    ...lateQueue.filter(id => id && !rosterIds.has(id))
+  ]);
+  const makeupInSessionCount = extraMakeupIds.size;
+  const effectiveSessionTotal = rosterTotal + makeupInSessionCount;
+  const attendanceDenominator = effectiveSessionTotal > 0 ? effectiveSessionTotal : named.length;
+  $('#attendance-count').textContent=`${attended} / ${attendanceDenominator}`;
+  const countSub = $('#attendance-count-sub');
+  if (countSub) {
+    countSub.textContent = makeupInSessionCount > 0
+      ? `đã điểm danh · ${named.length}/${attendanceDenominator} vào chỗ (sĩ số ${rosterTotal} + ${makeupInSessionCount} bù)`
+      : `đã điểm danh · ${named.length}/${rosterTotal} vào chỗ (sĩ số ${rosterTotal})`;
+  }
+  $('#remaining-count').textContent=`${Math.max(0, named.length - attended)} học sinh vào chỗ chưa điểm danh`;
   const roomTplPill = $('#room-template-pill'); if (roomTplPill) roomTplPill.textContent = configClass?.room || 'Phòng học';
   const rosterListForAuto = classStudents();
   const allRosterMarked = rosterListForAuto.length > 0 && rosterListForAuto.every(stu => {
@@ -3360,6 +3387,20 @@ function assignStudent(id){
   pushSeatingUndo();
   const entry=currentEntry();
   if(!entry)return;
+  if (id) {
+    for (const { desk } of desks()) {
+      const list = deskItems[desk.id] || [];
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i] !== entry && list[i]?.studentId === id) {
+          list.splice(i, 1);
+          if (activeSpot && activeSpot.deskId === desk.id && i < activeSpot.index) {
+            activeSpot.index = Math.max(0, activeSpot.index - 1);
+          }
+        }
+      }
+    }
+    lateQueue = lateQueue.filter(lid => lid !== id);
+  }
   entry.studentId=id;
   selectedStudentId=id;
   const person=studentById(id);
