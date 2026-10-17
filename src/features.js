@@ -1,15 +1,16 @@
+import { matchesAcronymOrText } from './student-search.js?v=2.1';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.0';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.0';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.1';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.1';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.0';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.1';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -19,7 +20,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=2.0';
+} from './excel-import-export.js?v=2.1';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -30,7 +31,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=2.0';
+} from './data/session-history-repository.js?v=2.1';
 
 export function setupFeatures(ctx) {
   const {
@@ -371,7 +372,7 @@ export function setupFeatures(ctx) {
       if (roleFilter !== 'all' && e.role !== roleFilter) return false;
       if (search) {
         const text = `${e.name} ${e.code} ${e.phone || ''} ${e.email || ''}`.toLowerCase();
-        if (!text.includes(search)) return false;
+        if (!matchesAcronymOrText(text, search)) return false;
       }
       return true;
     });
@@ -419,7 +420,7 @@ export function setupFeatures(ctx) {
           <td><span class="staff-role-badge ${escapeHtml(emp.role)}">${escapeHtml(roleLabels[emp.role] || emp.role)}</span></td>
           <td>${escapeHtml(emp.phone || '—')}</td>
           <td>${escapeHtml(emp.email || '—')}</td>
-          <td>${assignedBadges}</td>
+          <td class="col-allow-wrap">${assignedBadges}</td>
           <td style="text-align:center; white-space:nowrap;">
             
             <button type="button" class="outline-button" data-edit-staff="${escapeHtml(emp.id)}" style="padding:7px 12px; font-size:13.5px; margin-left:4px;">Sửa</button>
@@ -551,8 +552,8 @@ export function setupFeatures(ctx) {
     const filtered = sessions.filter(s => {
       if (typeFilter !== 'all' && s.type !== typeFilter) return false;
       if (query) {
-        const matchText = `${s.studentName} ${s.assistantName} ${s.lessonContent} ${s.studentClass || ''}`.toLowerCase();
-        if (!matchText.includes(query)) return false;
+        const matchText = `${s.studentName} ${s.assistantName} ${s.lessonContent} ${s.studentClass || ''}`;
+        if (!matchesAcronymOrText(matchText, query)) return false;
       }
       return true;
     }).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.startTime).localeCompare(String(a.startTime)));
@@ -573,9 +574,11 @@ export function setupFeatures(ctx) {
       none: 'Không giao bài tập'
     };
 
-    list.innerHTML = filtered.map(item => `
+    list.innerHTML = filtered.map(item => {
+      const stuInitial = (splitVietnameseName(item.studentName || '').givenName || item.studentName || 'H').trim().charAt(0).toUpperCase();
+      return `
       <article class="tutoring-card">
-        <span class="icon-box ${item.type === 'giasu' ? 'mint' : item.type === 'makeup' ? 'peach' : item.type === 'tutoring' ? 'lilac' : 'mint'}">${item.type === 'giasu' ? '' : ''}</span>
+        <span class="icon-box tutoring-avatar-box ${item.type === 'giasu' ? 'mint' : item.type === 'makeup' ? 'peach' : item.type === 'tutoring' ? 'lilac' : 'mint'}">${escapeHtml(stuInitial)}</span>
         <div class="tutoring-card-main">
           <strong>${escapeHtml(item.studentName)} <span class="tutoring-badge ${escapeHtml(item.type)}">${item.type === 'giasu' ? 'Gia sư 1-kèm-1' : escapeHtml(typeLabels[item.type] || item.type)}</span> ${item.studentClass ? `<span class="room-chip">${escapeHtml(item.studentClass)}</span>` : ''}</strong>
           ${item.previousHomeworkCheck ? `<p style="margin:3px 0; font-size:14.5px; color:#233d31;"><strong> Kiểm tra BTVN buổi trước:</strong> ${escapeHtml(item.previousHomeworkCheck)}</p>` : ''}
@@ -592,7 +595,8 @@ export function setupFeatures(ctx) {
           <button type="button" class="text-danger" data-delete-tutoring="${escapeHtml(item.id)}">Xóa</button>
         </div>
       </article>
-    `).join('');
+    `;
+    }).join('');
 
     list.querySelectorAll('[data-edit-tutoring]').forEach(btn => {
       btn.onclick = () => openTutoringDialog(btn.dataset.editTutoring);
@@ -664,14 +668,11 @@ export function setupFeatures(ctx) {
         }
 
         const matches = allStudents.filter(s => {
-          const matchName = s.name.toLowerCase().includes(q);
-          const matchCode = (s.studentCode || '').toLowerCase().includes(q);
-          const matchSchool = (s.school || '').toLowerCase().includes(q);
-          const matchClasses = (s.classIds || []).some(cid => {
+          const classText = (s.classIds || []).map(cid => {
             const c = catalog.find(x => x.id === cid);
-            return (c?.code || '').toLowerCase().includes(q) || (c?.name || '').toLowerCase().includes(q);
-          });
-          return matchName || matchCode || matchSchool || matchClasses;
+            return `${c?.code || ''} ${c?.name || ''}`;
+          }).join(' ');
+          return matchesAcronymOrText(`${s.name} ${s.studentCode || ''} ${s.school || ''} ${classText}`, q);
         }).slice(0, 8);
 
         if (!matches.length) {
@@ -817,11 +818,11 @@ export function setupFeatures(ctx) {
 
       return `
         <article class="room-template-card">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div class="room-template-card-top">
             <strong>${escapeHtml(tpl.name)}</strong>
             <span class="room-chip">${escapeHtml(tpl.roomCode || 'Mẫu')}</span>
           </div>
-          <p>${escapeHtml(tpl.description || 'Chưa có mô tả.')} · <strong>${aisles} dãy · ${totalDesks} bàn · Sức chứa ~${estCapacity} HS</strong></p>
+          <p class="room-template-card-desc">${escapeHtml(tpl.description || 'Chưa có mô tả.')} · <strong>${aisles} dãy · ${totalDesks} bàn · Sức chứa ~${estCapacity} HS</strong></p>
           <div class="template-layout-preview" aria-label="Sơ đồ mô phỏng">
             ${desks.map((deskCount, aisleIdx) => {
               const divs = Array.isArray(tpl.aisleDividers?.[aisleIdx])
@@ -843,7 +844,7 @@ export function setupFeatures(ctx) {
             ${getClassesInRoom(tpl.roomCode, catalog).length ? `
               <div style="display:grid; gap:5px;">
                 ${getClassesInRoom(tpl.roomCode, catalog).map(c => `
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:14px; padding:5px 8px; background:#fff; border-radius:5px; border:1px solid #e1ebe2;">
+                  <div class="room-schedule-row-item">
                     <div>
                       <strong style="color:#215f33; font-size:14.5px;">${escapeHtml(c.code || c.id)}</strong> <span class="room-chip" style="font-size:12.5px; padding:6px 10px;">${escapeHtml(formatBirthYearLabel(c.grade))}</span>
                       <small style="display:block; color:#68786b; font-size:12.5px;">GV: ${escapeHtml(c.teacherName || '—')} · TA: ${escapeHtml(c.assistantName || '—')}</small>
@@ -1741,12 +1742,33 @@ export function setupFeatures(ctx) {
     };
 
     const monthInput = $('#portal-month-input');
+    const monthVnSelect = $('#portal-month-vn-select');
     const now = new Date();
     const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     if (monthInput && !monthInput.value) {
       monthInput.value = currentMonthStr;
     }
-    const selectedMonth = monthInput?.value || currentMonthStr;
+    if (monthVnSelect && !monthVnSelect.options.length) {
+      const monthOpts = [];
+      for (let y = now.getFullYear() - 1; y <= now.getFullYear() + 1; y++) {
+        for (let m = 1; m <= 12; m++) {
+          const val = `${y}-${String(m).padStart(2, '0')}`;
+          const label = `Tháng ${String(m).padStart(2, '0')}/${y}`;
+          monthOpts.push(`<option value="${val}">${label}</option>`);
+        }
+      }
+      monthVnSelect.innerHTML = monthOpts.join('');
+      monthVnSelect.value = monthInput?.value || currentMonthStr;
+      monthVnSelect.addEventListener('change', () => {
+        if (monthInput) monthInput.value = monthVnSelect.value;
+        renderTAPortal();
+      });
+    }
+    if (monthVnSelect && monthInput && monthVnSelect.value !== monthInput.value && monthInput.value) {
+      monthVnSelect.value = monthInput.value;
+    }
+    const selectedMonth = monthVnSelect?.value || monthInput?.value || currentMonthStr;
+    if (monthInput) monthInput.value = selectedMonth;
 
     // Profile card
     const nameParts = emp.name.split(' ').filter(Boolean);
@@ -1817,7 +1839,9 @@ export function setupFeatures(ctx) {
     if (!tbody) return;
 
     if (!confirmedShifts.length) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:18px; color:#879389;">Chưa có dữ liệu chấm công cho tháng ${escapeHtml(selectedMonth)}.</td></tr>`;
+      const [ymYear, ymMonth] = String(selectedMonth).split('-');
+      const vnMonthLabel = ymMonth && ymYear ? `Tháng ${ymMonth}/${ymYear}` : selectedMonth;
+      tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7" class="table-empty-cell"><div class="table-empty-sticky-msg">Chưa có dữ liệu chấm công cho ${escapeHtml(vnMonthLabel)}.</div></td></tr>`;
       return;
     }
 
@@ -2215,18 +2239,34 @@ export function setupFeatures(ctx) {
     };
   }
 
+  function populateImportDefaultClassSelect(preferredClassId = '') {
+    const defaultClassSelect = $('#import-default-class-select');
+    if (!defaultClassSelect) return;
+    const catalog = getClassCatalog();
+    defaultClassSelect.innerHTML =
+      `<option value="">-- Không gán lớp mặc định (Chỉ lấy theo cột Mã lớp trong file) --</option>` +
+      catalog.map(c =>
+        `<option value="${escapeHtml(c.id)}">[${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)} - ${escapeHtml(formatBirthYearLabel(c.grade))} (${escapeHtml(c.subject || '')})</option>`
+      ).join('');
+    if (preferredClassId && catalog.some(c => c.id === preferredClassId)) {
+      defaultClassSelect.value = preferredClassId;
+    } else {
+      defaultClassSelect.value = '';
+    }
+  }
+
   // Import from Excel / Google Sheets
   const rosterImportBtn = $('#roster-import-btn');
   if (rosterImportBtn) {
     rosterImportBtn.onclick = () => {
       parsedImportData = [];
+      parsedRawRows = [];
       $('#import-paste-textarea').value = '';
+      if ($('#import-file-input')) $('#import-file-input').value = '';
       if ($('#import-preview-wrap')) $('#import-preview-wrap').hidden = true;
       if ($('#column-mapping-section')) $('#column-mapping-section').hidden = true;
       if ($('#confirm-import-btn')) $('#confirm-import-btn').disabled = true;
-      if ($('#import-default-class-select') && activeRosterClassId) {
-        $('#import-default-class-select').value = activeRosterClassId;
-      }
+      populateImportDefaultClassSelect(activeRosterClassId || getCurrentClassId());
       $('#import-roster-dialog').showModal();
     };
   }
@@ -2235,10 +2275,15 @@ export function setupFeatures(ctx) {
   if (masterImportBtn) {
     masterImportBtn.onclick = () => {
       parsedImportData = [];
+      parsedRawRows = [];
       $('#import-paste-textarea').value = '';
+      if ($('#import-file-input')) $('#import-file-input').value = '';
       if ($('#import-preview-wrap')) $('#import-preview-wrap').hidden = true;
       if ($('#column-mapping-section')) $('#column-mapping-section').hidden = true;
       if ($('#confirm-import-btn')) $('#confirm-import-btn').disabled = true;
+      const filterClassVal = $('#master-class-filter')?.value;
+      const preselectClass = (filterClassVal && filterClassVal !== 'all') ? filterClassVal : '';
+      populateImportDefaultClassSelect(preselectClass);
       $('#import-roster-dialog').showModal();
     };
   }
@@ -3398,14 +3443,29 @@ export function setupFeatures(ctx) {
     const previewWrap = $('#import-preview-wrap');
     const hasHeaderCheckbox = $('#import-has-header');
     const defaultClassSelect = $('#import-default-class-select');
+    const radioSingle = $('#name-mode-single');
+    const radioSplit = $('#name-mode-split');
+    const singleWrap = $('#single-name-col-wrap');
+    const familyWrap = $('#family-name-col-wrap');
+    const givenWrap = $('#given-name-col-wrap');
 
-    // Populate default class select
-    const catalog = getClassCatalog();
-    if (defaultClassSelect) {
-      defaultClassSelect.innerHTML = catalog.map(c => 
-        `<option value="${c.id}">[${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)} - ${escapeHtml(formatBirthYearLabel(c.grade))} (${escapeHtml(c.subject || '')})</option>`
-      ).join('');
-    }
+    populateImportDefaultClassSelect(activeRosterClassId || '');
+
+    const readCurrentMappingConfig = () => ({
+      hasHeader: hasHeaderCheckbox?.checked ?? true,
+      nameMode: radioSplit?.checked ? 'split' : 'single',
+      codeCol: Number($('#map-col-code')?.value ?? -1),
+      fullNameCol: Number($('#map-col-fullname')?.value ?? -1),
+      familyNameCol: Number($('#map-col-familyname')?.value ?? -1),
+      givenNameCol: Number($('#map-col-givenname')?.value ?? -1),
+      schoolCol: Number($('#map-col-school')?.value ?? -1),
+      classCol1: Number($('#map-col-class1')?.value ?? -1),
+      classCol2: Number($('#map-col-class2')?.value ?? -1),
+      classCol3: Number($('#map-col-class3')?.value ?? -1),
+      phoneCol: Number($('#map-col-phone')?.value ?? -1),
+      parentNameCol: Number($('#map-col-parent')?.value ?? -1),
+      defaultClassId: defaultClassSelect ? defaultClassSelect.value : (activeRosterClassId || '')
+    });
 
     fileInput?.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
@@ -3438,7 +3498,7 @@ export function setupFeatures(ctx) {
       const colOptionsHtml = (includeNone = true) => {
         let opts = includeNone ? '<option value="-1">-- Không có / Bỏ qua --</option>' : '';
         sampleRow.forEach((cell, idx) => {
-          opts += `<option value="${idx}">Cột ${idx + 1}: "${escapeHtml(cell.slice(0, 30))}"</option>`;
+          opts += `<option value="${idx}">Cột ${idx + 1}: "${escapeHtml(String(cell || '').slice(0, 32))}"</option>`;
         });
         return opts;
       };
@@ -3449,32 +3509,46 @@ export function setupFeatures(ctx) {
       ];
       selects.forEach(sel => {
         const el = $(sel);
-        if (el) el.innerHTML = colOptionsHtml(sel !== '#map-col-fullname' && sel !== '#map-col-givenname');
+        if (el) {
+          el.innerHTML = colOptionsHtml(sel !== '#map-col-fullname' && sel !== '#map-col-givenname');
+          if (sel !== '#map-col-fullname' && sel !== '#map-col-givenname') {
+            el.value = '-1';
+          }
+        }
       });
 
-      // Auto-detect mappings from sample row
-      sampleRow.forEach((cell, idx) => {
-        const lower = cell.toLowerCase();
-        if (lower.includes('mã') || lower.includes('code')) { if ($('#map-col-code')) $('#map-col-code').value = idx; }
-        else if (lower.includes('họ và tên') || (lower.includes('tên') && !lower.includes('trường') && !lower.includes('phụ huynh'))) { if ($('#map-col-fullname')) $('#map-col-fullname').value = idx; }
-        else if (lower.includes('họ')) { if ($('#map-col-familyname')) $('#map-col-familyname').value = idx; }
-        else if (lower.includes('tên')) { if ($('#map-col-givenname')) $('#map-col-givenname').value = idx; }
-        else if (lower.includes('trường') || lower.includes('school')) { if ($('#map-col-school')) $('#map-col-school').value = idx; }
-        else if (lower.includes('mã lớp 1') || lower.includes('lớp 1') || lower.includes('mã lớp') || (lower.includes('lớp') && !lower.includes('2') && !lower.includes('3'))) { if ($('#map-col-class1')) $('#map-col-class1').value = idx; }
-        else if (lower.includes('mã lớp 2') || lower.includes('lớp 2')) { if ($('#map-col-class2')) $('#map-col-class2').value = idx; }
-        else if (lower.includes('mã lớp 3') || lower.includes('lớp 3')) { if ($('#map-col-class3')) $('#map-col-class3').value = idx; }
-        else if (lower.includes('sđt') || lower.includes('phone') || lower.includes('điện thoại')) { if ($('#map-col-phone')) $('#map-col-phone').value = idx; }
-        else if (lower.includes('phụ huynh') || lower.includes('mẹ') || lower.includes('bố')) { if ($('#map-col-parent')) $('#map-col-parent').value = idx; }
-      });
+      // Use accurate autoDetectColumnMapping so STT column is never mapped and "Mã lớp" is never confused with "Mã HS"
+      const detected = autoDetectColumnMapping(rows);
+      if (hasHeaderCheckbox) hasHeaderCheckbox.checked = Boolean(detected.hasHeader);
 
-      toast(`Đã đọc ${rows.length} dòng và ${sampleRow.length} cột dữ liệu.`);
+      if (detected.nameMode === 'split') {
+        if (radioSplit) radioSplit.checked = true;
+        if (radioSingle) radioSingle.checked = false;
+        if (singleWrap) singleWrap.hidden = true;
+        if (familyWrap) familyWrap.hidden = false;
+        if (givenWrap) givenWrap.hidden = false;
+      } else {
+        if (radioSingle) radioSingle.checked = true;
+        if (radioSplit) radioSplit.checked = false;
+        if (singleWrap) singleWrap.hidden = false;
+        if (familyWrap) familyWrap.hidden = true;
+        if (givenWrap) givenWrap.hidden = true;
+      }
+
+      if ($('#map-col-code')) $('#map-col-code').value = String(detected.codeCol);
+      if ($('#map-col-fullname') && detected.fullNameCol >= 0) $('#map-col-fullname').value = String(detected.fullNameCol);
+      if ($('#map-col-familyname')) $('#map-col-familyname').value = String(detected.familyNameCol);
+      if ($('#map-col-givenname') && detected.givenNameCol >= 0) $('#map-col-givenname').value = String(detected.givenNameCol);
+      if ($('#map-col-school')) $('#map-col-school').value = String(detected.schoolCol);
+      if ($('#map-col-class1')) $('#map-col-class1').value = String(detected.classCol1);
+      if ($('#map-col-class2')) $('#map-col-class2').value = String(detected.classCol2);
+      if ($('#map-col-class3')) $('#map-col-class3').value = String(detected.classCol3);
+      if ($('#map-col-phone')) $('#map-col-phone').value = String(detected.phoneCol);
+      if ($('#map-col-parent')) $('#map-col-parent').value = String(detected.parentNameCol);
+
+      // Automatically trigger preview right after detecting columns
+      previewBtn?.click();
     });
-
-    const radioSingle = $('#name-mode-single');
-    const radioSplit = $('#name-mode-split');
-    const singleWrap = $('#single-name-col-wrap');
-    const familyWrap = $('#family-name-col-wrap');
-    const givenWrap = $('#given-name-col-wrap');
 
     radioSingle?.addEventListener('change', () => {
       if (singleWrap) singleWrap.hidden = false;
@@ -3488,25 +3562,16 @@ export function setupFeatures(ctx) {
       if (givenWrap) givenWrap.hidden = false;
     });
 
+    defaultClassSelect?.addEventListener('change', () => {
+      if (parsedRawRows.length && previewWrap && !previewWrap.hidden) {
+        previewBtn?.click();
+      }
+    });
+
     previewBtn?.addEventListener('click', () => {
       if (!parsedRawRows.length) return;
-
-      const mapping = {
-        hasHeader: hasHeaderCheckbox?.checked ?? true,
-        nameMode: radioSplit?.checked ? 'split' : 'single',
-        codeCol: Number($('#map-col-code')?.value ?? -1),
-        fullNameCol: Number($('#map-col-fullname')?.value ?? 0),
-        familyNameCol: Number($('#map-col-familyname')?.value ?? -1),
-        givenNameCol: Number($('#map-col-givenname')?.value ?? -1),
-        schoolCol: Number($('#map-col-school')?.value ?? -1),
-        classCol1: Number($('#map-col-class1')?.value ?? -1),
-        classCol2: Number($('#map-col-class2')?.value ?? -1),
-        classCol3: Number($('#map-col-class3')?.value ?? -1),
-        phoneCol: Number($('#map-col-phone')?.value ?? -1),
-        parentNameCol: Number($('#map-col-parent')?.value ?? -1),
-        defaultClassId: defaultClassSelect?.value || activeRosterClassId || getCurrentClassId()
-      };
-
+      const catalog = getClassCatalog();
+      const mapping = readCurrentMappingConfig();
       parsedImportData = mapCustomColumns(parsedRawRows, mapping, catalog);
 
       if (!parsedImportData.length) {
@@ -3523,7 +3588,7 @@ export function setupFeatures(ctx) {
         tbody.innerHTML = parsedImportData.slice(0, 15).map((item, idx) => {
           const classNames = (item.classIds || []).map(cid => {
             const c = catalog.find(x => x.id === cid);
-            return c ? `[${c.code || c.id}] ${c.name} (K${c.grade || ''})` : cid;
+            return c ? `[${c.code || c.id}] ${c.name}` : cid;
           }).join(', ');
 
           return `
@@ -3533,7 +3598,7 @@ export function setupFeatures(ctx) {
               <td>${escapeHtml(item.familyName || '—')}</td>
               <td><strong>${escapeHtml(item.givenName || '—')}</strong></td>
               <td>${escapeHtml(item.school || '—')}</td>
-              <td><span class="room-chip">${escapeHtml(classNames || '—')}</span></td>
+              <td class="col-allow-wrap"><span class="room-chip">${escapeHtml(classNames || 'Chưa gán lớp')}</span></td>
               <td>${escapeHtml(item.parentContact?.phone || '—')}</td>
             </tr>
           `;
@@ -3545,6 +3610,9 @@ export function setupFeatures(ctx) {
     });
 
     confirmBtn?.addEventListener('click', () => {
+      if (parsedRawRows.length) {
+        parsedImportData = mapCustomColumns(parsedRawRows, readCurrentMappingConfig(), getClassCatalog());
+      }
       if (!parsedImportData.length) return;
 
       const currentStudents = getStudents();
@@ -3554,9 +3622,9 @@ export function setupFeatures(ctx) {
       let updatedCount = 0;
 
       parsedImportData.forEach(item => {
-        const existing = currentStudents.find(s => 
-          (item.studentCode && s.studentCode === item.studentCode) ||
-          (s.name.trim().toLowerCase() === item.name.trim().toLowerCase() && (!item.school || s.school?.toLowerCase() === item.school?.toLowerCase()))
+        const existing = currentStudents.find(s =>
+          (item.studentCode && s.studentCode && s.studentCode.toLowerCase() === item.studentCode.toLowerCase()) ||
+          (s.name.trim().toLowerCase() === item.name.trim().toLowerCase() && (!item.school || (s.school || '').toLowerCase() === item.school.toLowerCase()))
         );
 
         if (existing) {
@@ -3564,9 +3632,16 @@ export function setupFeatures(ctx) {
           existing.givenName = item.givenName || existing.givenName;
           existing.school = item.school || existing.school;
           if (item.studentCode) existing.studentCode = item.studentCode;
-          if (item.parentContact?.phone) existing.parentContact = item.parentContact;
-          const merged = new Set([...(existing.classIds || []), ...(item.classIds || [])]);
-          existing.classIds = [...merged];
+          if (item.parentContact?.phone || item.parentContact?.name) {
+            existing.parentContact = {
+              name: item.parentContact?.name || existing.parentContact?.name || '',
+              phone: item.parentContact?.phone || existing.parentContact?.phone || ''
+            };
+          }
+          if (item.classIds && item.classIds.length) {
+            const merged = new Set([...(existing.classIds || []), ...item.classIds]);
+            existing.classIds = [...merged];
+          }
           updatedCount++;
         } else {
           const newStudent = createStudentProfile({
@@ -3576,7 +3651,7 @@ export function setupFeatures(ctx) {
             studentCode: item.studentCode,
             school: item.school,
             parentContact: item.parentContact,
-            classIds: item.classIds,
+            classIds: item.classIds || [],
             kind: 'regular'
           });
           currentStudents.push(newStudent);
@@ -3752,8 +3827,8 @@ export function setupFeatures(ctx) {
         if (!hasMatchingGrade) return false;
       }
       if (searchQuery) {
-        const full = `${s.name} ${s.studentCode || ''} ${s.school || ''} ${s.parentContact?.phone || ''} ${s.parentContact?.name || ''}`.toLowerCase();
-        if (!full.includes(searchQuery)) return false;
+        const full = `${s.name} ${s.familyName || ''} ${s.givenName || ''} ${s.studentCode || ''} ${s.school || ''} ${s.parentContact?.phone || ''} ${s.parentContact?.name || ''}`;
+        if (!matchesAcronymOrText(full, searchQuery)) return false;
       }
       return true;
     });
@@ -3830,9 +3905,9 @@ export function setupFeatures(ctx) {
         <tr>
           <td style="text-align:center;"><input type="checkbox" class="master-student-cb" data-student-id="${escapeHtml(s.id)}" ${selectedMasterStudentIds.has(s.id) ? 'checked' : ''} /></td>
           <td><strong>${escapeHtml(s.studentCode || '—')}</strong></td>
-          <td>${escapeHtml(fam || '—')}</td>
-          <td>
-            <strong>${escapeHtml(giv || s.name)}</strong>
+          <td style="cursor:pointer;" data-view-student-detail="${s.id}" title="Bấm mở Hồ sơ thông tin chung">${escapeHtml(fam || '—')}</td>
+          <td style="cursor:pointer;" data-view-student-detail="${s.id}" title="Bấm mở Hồ sơ thông tin chung">
+            <strong style="color:#1b522c; text-decoration:underline;">${escapeHtml(giv || s.name)}</strong>
             ${s.isNew || (s.tags && s.tags.includes('Mới')) ? '<span class="student-tag new-tag">MỚI</span>' : ''}
           </td>
           <td>${escapeHtml(s.school || '—')}</td>
@@ -3840,7 +3915,7 @@ export function setupFeatures(ctx) {
             <div>${escapeHtml(s.parentContact?.name || 'Phụ huynh')}</div>
             <small style="color:#56785f; font-weight:600;">${escapeHtml(s.parentContact?.phone || '—')}</small>
           </td>
-          <td>
+          <td class="col-allow-wrap">
             <div style="display:flex; flex-wrap:wrap; gap:4px;">
               ${classBadges}
             </div>
@@ -3881,7 +3956,11 @@ export function setupFeatures(ctx) {
 
     tbody.querySelectorAll('[data-view-student-detail]').forEach(btn => {
       btn.onclick = () => {
-        openStudentClassProfile(btn.dataset.viewStudentDetail);
+        if (ctx.openStudentProfile) {
+          ctx.openStudentProfile(btn.dataset.viewStudentDetail, { from: 'directory' });
+        } else {
+          openStudentClassProfile(btn.dataset.viewStudentDetail);
+        }
       };
     });
   }
@@ -4231,8 +4310,11 @@ export function setupFeatures(ctx) {
                             <span>Vị trí chỗ ngồi:</span>
                             <strong>${s.seat.aisle ? `Dãy ${s.seat.aisle} · Bàn ${s.seat.desk} (Ghế ${s.seat.position})` : 'Chưa có vị trí'}</strong>
                           </div>
-                          <div style="margin: 4px 0;">
-                            <button type="button" class="outline-button btn-view-seat-map" data-view-seat-class="${escapeHtml(clsId)}" data-view-seat-date="${escapeHtml(s.date)}" data-view-seat-student="${escapeHtml(student.id)}" style="padding:8px 14px; font-size:13.5px; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5; width:100%;">
+                          <div style="display:flex; flex-wrap:wrap; gap:8px; margin: 6px 0;">
+                            <button type="button" class="primary-button btn-open-session-profile" data-session-prof-class="${escapeHtml(clsId)}" data-session-prof-date="${escapeHtml(s.date)}" data-session-prof-student="${escapeHtml(student.id)}" style="flex:1 1 180px; padding:8px 12px; font-size:13.5px; font-weight:700;">
+                              Chỉnh sửa dữ liệu buổi học này
+                            </button>
+                            <button type="button" class="outline-button btn-view-seat-map" data-view-seat-class="${escapeHtml(clsId)}" data-view-seat-date="${escapeHtml(s.date)}" data-view-seat-student="${escapeHtml(student.id)}" style="flex:1 1 180px; padding:8px 12px; font-size:13.5px; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
                               Xem vị trí trên sơ đồ lớp ↗
                             </button>
                           </div>
@@ -4260,14 +4342,23 @@ export function setupFeatures(ctx) {
       const html = `
         <div class="student-profile-header" style="align-items:flex-start; gap:16px;">
           ${portraitHtml}
-          <div style="flex:1;">
-            <h3 style="margin:0 0 4px; font:800 16px Manrope,sans-serif; color:#233d31;">${escapeHtml(student.name)} ${student.isNew ? '<span class="student-tag new-tag">MỚI</span>' : ''}</h3>
+          <div style="flex:1; min-width:0;">
+            <h3 style="margin:0 0 4px; font:800 16.5px Manrope,sans-serif; color:#233d31;">${escapeHtml(student.name)} ${student.isNew ? '<span class="student-tag new-tag">MỚI</span>' : ''}</h3>
             <p style="margin:2px 0; font-size:14px; color:#5c6b60;">Mã HS: <strong>${escapeHtml(student.studentCode || '—')}</strong> · Trường: <strong>${escapeHtml(student.school || '—')}</strong></p>
-            <p style="margin:2px 0; font-size:14px; color:#5c6b60;">Phụ huynh: <strong>${escapeHtml(student.parentContact?.name || '—')}</strong> (SĐT: <strong>${escapeHtml(student.parentContact?.phone || '—')}</strong>)</p>
+            <p style="margin:2px 0; font-size:14px; color:#5c6b60;">Phụ huynh: <strong>${escapeHtml(student.parentContact?.name || '—')}</strong> · SĐT: <strong>${escapeHtml(student.parentContact?.phone || '—')}</strong></p>
+            ${student.officeNotes ? `<p style="margin:2px 0; font-size:13.5px; color:#4b5563;">Ghi chú văn phòng: <em>${escapeHtml(student.officeNotes)}</em></p>` : ''}
           </div>
         </div>
 
         ${classTabsHtml}
+
+        <div class="class-learning-note-box" style="margin:12px 0; padding:12px 14px; background:#f8fbf8; border:1px solid #d5e2d7; border-radius:10px;">
+          <label class="field-label" style="margin:0;">
+            <strong>Ghi chú học tập (Ghi chú học lực) riêng tại lớp ${escapeHtml(targetClass?.code || targetClass?.name || currentClassId)}</strong>
+            <textarea id="class-profile-learning-note-input" rows="2" placeholder="Nhập ghi chú học lực, thái độ học tập riêng của học sinh tại lớp này..." style="margin-top:6px; width:100%;">${escapeHtml((student.classLearningNotes && student.classLearningNotes[currentClassId]) ?? student.learningNotes ?? '')}</textarea>
+          </label>
+          <small style="color:#2e6d42; font-weight:700; display:block; margin-top:4px;">Tự động lưu khi nhập</small>
+        </div>
 
         ${bodyHtml}
       `;
@@ -4277,6 +4368,34 @@ export function setupFeatures(ctx) {
       // Wire tabs
       $('#student-class-profile-content').querySelectorAll('[data-switch-class-tab]').forEach(btn => {
         btn.onclick = () => renderContent(btn.dataset.switchClassTab);
+      });
+
+      // Wire class-specific learning note auto-save
+      const classLearnNoteInp = $('#class-profile-learning-note-input');
+      if (classLearnNoteInp) {
+        classLearnNoteInp.addEventListener('input', () => {
+          student.classLearningNotes = student.classLearningNotes || {};
+          student.classLearningNotes[currentClassId] = classLearnNoteInp.value;
+          student.learningNotes = classLearnNoteInp.value;
+          const allStu = getStudents();
+          const sIdx = allStu.findIndex(s => s.id === student.id);
+          if (sIdx >= 0) {
+            allStu[sIdx].classLearningNotes = student.classLearningNotes;
+            allStu[sIdx].learningNotes = student.learningNotes;
+          }
+          saveStudentRecords(allStu, ctx.getMakeupStudents ? ctx.getMakeupStudents() : []);
+        });
+      }
+
+      // Wire button to open Kiểu 3 (Session-level Student Profile with Inline Edit)
+      $('#student-class-profile-content').querySelectorAll('.btn-open-session-profile').forEach(btn => {
+        btn.onclick = (ev) => {
+          ev.stopPropagation();
+          dialog.close();
+          if (window.openStudentSessionProfile) {
+            window.openStudentSessionProfile(btn.dataset.sessionProfStudent, btn.dataset.sessionProfClass, btn.dataset.sessionProfDate);
+          }
+        };
       });
 
       // Wire accordion toggle

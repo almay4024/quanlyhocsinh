@@ -4571,3 +4571,599 @@ body,
     padding: 8px 12px !important;
   }
 }
+
+
+/* ==========================================================================
+   v2.1 COMPREHENSIVE FUNCTIONAL, TABLE, PROFILE & MOBILE UI/UX REFINEMENTS
+   - Data tables: strict white-space: nowrap on short columns; wrap only on .col-allow-wrap (Classes & Notes)
+   - 3-Tier Student Profile dialogs (Read-only General Profile with "Sửa" unlock + Office Notes; Class Profile with Class Learning Note; Inline-Editable Session Profile)
+   - Room Template Card anti-clipping & Portal Vietnamese Month Selector ("Tháng 10/2026") + Sticky Empty State
+   - Time Input & Duration Selector gap + left-alignment fix (.class-config-time-fields)
+   - Safe Area Status Bar protection on mobile (.topbar)
+   - Managed Class Card 2-Column Details Grid + Bottom 2 Main Buttons + Top-Right '⋯' More Menu
+   - Reminder Sub-cards (.reminder-subcard) with top-right '×' button, 100% width Title/Content & Sticky Footer
+   - Mobile Seating Map fitting 2–3 aisles side-by-side + Tap-to-assign ("Chạm để xếp chỗ")
+   ========================================================================== */
+
+/* 1. Data Tables: No Text Wrapping on short columns; allow wrapping ONLY on .col-allow-wrap */
+.attendance-report-table th,
+.attendance-report-table td,
+.portal-table th,
+.portal-table td,
+#master-student-table th,
+#master-student-table td,
+#staff-table th,
+#staff-table td,
+#scores-tab-table th,
+#scores-tab-table td,
+#general-roster-table th,
+#general-roster-table td,
+#roster-table th,
+#roster-table td,
+#import-preview-table th,
+#import-preview-table td {
+  white-space: nowrap !important;
+}
+
+.attendance-report-table th.col-allow-wrap,
+.attendance-report-table td.col-allow-wrap,
+.portal-table th.col-allow-wrap,
+.portal-table td.col-allow-wrap,
+#master-student-table td.col-allow-wrap,
+#staff-table td.col-allow-wrap,
+#general-roster-table td.col-allow-wrap,
+#import-preview-table td.col-allow-wrap {
+  white-space: normal !important;
+  min-width: 180px !important;
+  max-width: 340px !important;
+  line-height: 1.45 !important;
+}
+
+/* Sticky centered Empty State inside wide scrollable tables (#portal-table, etc.) */
+.portal-table-wrap,
+.attendance-table-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  box-sizing: border-box !important;
+}
+
+.table-empty-cell {
+  padding: 20px 12px !important;
+  text-align: left !important;
+}
+
+.table-empty-sticky-msg {
+  position: sticky !important;
+  left: 12px !important;
+  width: min(100%, calc(100vw - 64px)) !important;
+  margin: 0 auto !important;
+  text-align: center !important;
+  color: #647467 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  white-space: normal !important;
+}
+
+/* 2. 3-Tier Student Profile Dialogs (Kiểu 1, Kiểu 2, Kiểu 3) */
+.profile-dialog-top-bar {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding-right: 52px !important;
+  margin-bottom: 10px !important;
+}
+
+.profile-dialog-top-bar h2 {
+  margin: 2px 0 0 !important;
+  padding-right: 0 !important;
+}
+
+.profile-unlock-edit-btn {
+  min-height: 36px !important;
+  padding: 6px 16px !important;
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+}
+
+#student-profile-dialog .profile-edit-grid input:disabled,
+#student-profile-dialog .profile-edit-grid textarea:disabled,
+#student-profile-dialog .profile-edit-grid select:disabled {
+  background: #f4f7f5 !important;
+  color: #1e3a29 !important;
+  border-color: #dce6dd !important;
+  opacity: 1 !important;
+  cursor: default !important;
+}
+
+.session-profile-general-box {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 14px 16px !important;
+  background: #f8fbf8 !important;
+  border: 1px solid #d5e2d7 !important;
+  border-radius: 12px !important;
+  margin-bottom: 16px !important;
+}
+
+.session-profile-inline-editor {
+  padding: 14px 16px !important;
+  background: #ffffff !important;
+  border: 1.5px solid #cbd8cd !important;
+  border-radius: 12px !important;
+}
+
+/* 3. Room Template Cards Anti-Clipping on Mobile & Desktop */
+.room-template-list {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)) !important;
+  gap: 16px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.room-template-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  padding: 16px !important;
+  border-radius: 12px !important;
+}
+
+.room-template-card-top {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+.room-template-card-top > strong {
+  flex: 1 1 180px !important;
+  min-width: 0 !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+}
+
+.room-template-card-desc {
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  line-height: 1.45 !important;
+}
+
+.room-schedule-row-item {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 13.5px !important;
+  padding: 8px 10px !important;
+  background: #ffffff !important;
+  border-radius: 6px !important;
+  border: 1px solid #e1ebe2 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.room-template-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  width: 100% !important;
+  margin-top: 12px !important;
+  box-sizing: border-box !important;
+}
+
+.room-template-actions > button {
+  flex: 1 1 auto !important;
+  min-width: 90px !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+/* 4. Time Input & Duration Selector Gap + Left Alignment Fix (.class-config-time-fields) */
+.class-config-time-fields {
+  grid-column: 1 / -1 !important;
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)) !important;
+  gap: 14px !important;
+  align-items: start !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.class-config-time-fields > .field-label {
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+input[type="time"],
+#config-class-start,
+#sched-makeup-start,
+#tutoring-start-time,
+#arrival-time {
+  text-align: left !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  display: block !important;
+}
+
+input[type="time"]::-webkit-date-and-time-value {
+  text-align: left !important;
+}
+
+/* 5. Safe Area Status Bar Protection & Clean Opaque Sticky Topbar */
+.topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 120 !important;
+  background: #f6f8f5 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  border-bottom: 1px solid #dce6dd !important;
+}
+
+/* 6. Portal "Tháng đối chiếu" Layout ("Tháng 10/2026" + 100% width title on top, horizontal controls below) */
+.portal-header-toolbar {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 12px !important;
+  width: 100% !important;
+}
+
+.portal-header-copy {
+  width: 100% !important;
+}
+
+.portal-controls-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  width: 100% !important;
+  padding: 12px 14px !important;
+  background: #ffffff !important;
+  border: 1px solid #dce6dd !important;
+  border-radius: 10px !important;
+  box-sizing: border-box !important;
+}
+
+.portal-month-label {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #233d31 !important;
+  white-space: nowrap !important;
+}
+
+.portal-month-vn-select {
+  min-height: 40px !important;
+  padding: 6px 12px !important;
+  border-radius: 8px !important;
+  border: 1px solid #cbd8cd !important;
+  background: #f8fbf8 !important;
+  color: #1e3a29 !important;
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+}
+
+.portal-export-btns {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+/* 7. Tutoring Avatar Initial & Filter Bar */
+.tutoring-avatar-box {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  flex-shrink: 0 !important;
+}
+
+.tutoring-filter-bar {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  width: 100% !important;
+}
+
+.tutoring-filter-bar .student-list-search {
+  flex: 1 1 240px !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+.tutoring-filter-bar select {
+  flex: 1 1 160px !important;
+  min-width: 0 !important;
+}
+
+/* 8. Managed Class Card: 2-Column Grid + Bottom 2 Main Buttons + Top-Right '⋯' More Menu */
+.managed-class-heading {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+}
+
+.managed-class-heading-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
+}
+
+.card-more-menu-wrap {
+  position: relative !important;
+  display: inline-flex !important;
+}
+
+.card-more-toggle-btn {
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  padding: 0 !important;
+  border-radius: 8px !important;
+  font-size: 20px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.card-more-dropdown {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  right: 0 !important;
+  min-width: 180px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd8cd !important;
+  border-radius: 10px !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16) !important;
+  padding: 6px !important;
+  z-index: 65 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+.card-more-item {
+  width: 100% !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+  padding: 9px 12px !important;
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 7px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #233d31 !important;
+  cursor: pointer !important;
+}
+
+.card-more-item:hover {
+  background: #f0f7f1 !important;
+}
+
+.card-more-item.text-danger {
+  color: #b91c1c !important;
+}
+
+.card-more-item.text-danger:hover {
+  background: #fef2f2 !important;
+}
+
+.managed-class-details.managed-class-grid-2col {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px 14px !important;
+}
+
+.managed-class-details.managed-class-grid-2col > span {
+  min-width: 0 !important;
+  overflow-wrap: break-word !important;
+}
+
+.managed-class-actions.managed-class-primary-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+}
+
+.managed-class-actions.managed-class-primary-actions > button {
+  width: 100% !important;
+  min-width: 0 !important;
+  justify-content: center !important;
+  font-weight: 700 !important;
+}
+
+/* 9. Reminder Sub-cards (.reminder-subcard) & Sticky Footer in #class-config-dialog */
+.config-notification-row.reminder-subcard {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  padding: 14px !important;
+  background: #f5f8f5 !important;
+  border: 1px solid #d5e2d7 !important;
+  border-radius: 12px !important;
+  position: relative !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.reminder-subcard-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  padding-bottom: 6px !important;
+  border-bottom: 1px dashed #d5e2d7 !important;
+}
+
+.reminder-subcard-title {
+  font-size: 13.5px !important;
+  font-weight: 800 !important;
+  color: #215732 !important;
+}
+
+.reminder-subcard .remove-config-notification {
+  position: static !important;
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  border-radius: 8px !important;
+  border: 1px solid #f5c2c0 !important;
+  background: #fff5f5 !important;
+  color: #b91c1c !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+}
+
+.reminder-subcard-grid2 {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+}
+
+.reminder-full-row {
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+.reminder-full-row input {
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.class-config-actions {
+  position: sticky !important;
+  bottom: 0 !important;
+  background: #ffffff !important;
+  padding: 12px 0 4px !important;
+  margin-top: 14px !important;
+  border-top: 1px solid #dce6dd !important;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 10px !important;
+  z-index: 25 !important;
+}
+
+.class-config-actions > button {
+  width: 100% !important;
+  justify-content: center !important;
+}
+
+/* 10. Mobile Seating Map (Fit 2–3 Aisles Side-by-Side) & Tap-to-Assign Styling */
+.desk.desk-tap-target {
+  outline: 2px dashed #4f46e5 !important;
+  background: #f5f3ff !important;
+  cursor: pointer !important;
+}
+
+.pool-token.tap-assign-active,
+.late-token.tap-assign-active {
+  outline: 2.5px solid #4f46e5 !important;
+  background: #eef2ff !important;
+}
+
+@media (max-width: 768px) {
+  .classroom {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    padding: 2px 2px 10px !important;
+    scrollbar-width: thin !important;
+  }
+
+  .classroom::-webkit-scrollbar {
+    height: 6px !important;
+    display: block !important;
+  }
+
+  .classroom::-webkit-scrollbar-thumb {
+    background: #94a898 !important;
+    border-radius: 999px !important;
+  }
+
+  .desk-row {
+    flex: 1 1 calc(33.333% - 6px) !important;
+    width: auto !important;
+    min-width: 108px !important;
+    max-width: none !important;
+  }
+
+  .row-label {
+    font-size: 11.5px !important;
+    flex-wrap: wrap !important;
+    gap: 3px !important;
+    padding: 2px 0 !important;
+  }
+
+  .row-collect-hw-btn {
+    font-size: 11px !important;
+    padding: 3px 6px !important;
+    min-height: 24px !important;
+    border-radius: 5px !important;
+  }
+
+  .desk-row .desk-seats {
+    grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)) !important;
+    gap: 2px !important;
+  }
+
+  .desk-row .seat-token .seat-name {
+    font-size: 11.5px !important;
+    line-height: 1.15 !important;
+  }
+
+  .desk-add-compact-btn {
+    width: 22px !important;
+    min-width: 22px !important;
+    max-width: 22px !important;
+    flex: 0 0 22px !important;
+    font-size: 14px !important;
+  }
+}

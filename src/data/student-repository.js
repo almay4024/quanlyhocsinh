@@ -1,5 +1,5 @@
 // Storage boundary for student records. Synchronizes automatically via localStorage + realtime-sync.js.
-const STUDENTS_KEY = 'lopvui.students.v8';
+const STUDENTS_KEY = 'lopvui.students.v9';
 const MAKEUP_KEY = 'lopvui.makeup-students.v1';
 
 const getStorage = () => (typeof localStorage !== 'undefined' ? localStorage : null);
@@ -22,6 +22,40 @@ const splitName = student => {
 };
 
 export const seedStudents = [
+  {
+    id: 'stu-seed-07',
+    name: 'Mạc Duy Phú',
+    familyName: 'Mạc Duy',
+    givenName: 'Phú',
+    studentCode: 'K09.3088',
+    school: 'THPT Việt Đức',
+    classIds: ['class-math-8a-algebra'],
+    parentContact: { name: 'Mạc Văn Bình', phone: '0919888777' },
+    officeNotes: 'Đã đóng học phí quý 4. Phụ huynh nhờ nhắc con mang đủ vở hình học.',
+    learningNotes: 'Tiếp thu nhanh phần đại số, cần rèn thêm trình bày bài hình.',
+    classLearningNotes: {
+      'class-math-8a-algebra': 'Tiếp thu nhanh phần đại số, cần rèn thêm trình bày bài hình.'
+    },
+    scores: [
+      { classId: 'class-math-8a-algebra', type: 'BTVN', score: 8.5, date: '2026-10-14', lessonTitle: 'Hình học: Đường thẳng song song với mặt phẳng' },
+      { classId: 'class-math-8a-algebra', type: 'Test', score: 8.0, date: '2026-10-07', lessonTitle: 'Kiểm tra chuyên đề: Giao tuyến và thiết diện' }
+    ],
+    attendanceHistory: [
+      { classId: 'class-math-8a-algebra', date: '2026-10-14', status: 'present' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-07', status: 'present' }
+    ],
+    seatingHistory: [
+      { classId: 'class-math-8a-algebra', date: '2026-10-14', aisle: 1, desk: 3, position: 1 }
+    ],
+    sessionNotes: [
+      { classId: 'class-math-8a-algebra', date: '2026-10-26', lessonTitle: 'Hình học không gian', attendanceStatusOverride: 'Đi học', homeworkStatus: 'not_submitted', homeworkScore: null, note: 'nói chuyện' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-19', lessonTitle: 'Giao tuyến 2 mặt phẳng', attendanceStatusOverride: 'Vắng', homeworkStatus: 'graded', homeworkScore: 7, note: 'đi học bù t3' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-12', lessonTitle: 'Đường thẳng song song mặt phẳng', attendanceStatusOverride: 'Đi học', homeworkStatus: 'graded', homeworkScore: 5, note: '' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-05', lessonTitle: 'Đại cương hình không gian', attendanceStatusOverride: 'Vắng', homeworkStatus: 'not_submitted', homeworkScore: null, note: '' }
+    ],
+    tags: [],
+    isNew: false
+  },
   {
     id: 'stu-seed-01',
     name: 'Nguyễn Minh Quân',

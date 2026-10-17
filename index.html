@@ -2,10 +2,10 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Lớp học vui (v1.8) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=2.0" />
+  <link rel="stylesheet" href="/src/styles.css?v=2.1" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -107,22 +107,22 @@
           
           <div class="tutoring-metrics-grid">
             <div class="summary-card">
-              <div class="summary-top"><span>Tổng ca bổ trợ</span><div class="icon-box lilac">✍</div></div>
+              <div class="summary-top"><span>Tổng ca bổ trợ</span><div class="icon-box lilac"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div></div>
               <strong id="tutoring-total-count">0</strong>
               <small>Ghi nhận trong hệ thống</small>
             </div>
             <div class="summary-card">
-              <div class="summary-top"><span>Gia sư 1-kèm-1</span><div class="icon-box mint" style="background:#f3e8ff; color:#7e22ce;"></div></div>
+              <div class="summary-top"><span>Gia sư 1-kèm-1</span><div class="icon-box mint" style="background:#f3e8ff; color:#7e22ce;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div></div>
               <strong id="tutoring-giasu-count">0</strong>
               <small>Dạy kèm gia sư cá nhân hóa</small>
             </div>
             <div class="summary-card">
-              <div class="summary-top"><span>Học bù ca chính</span><div class="icon-box mint"></div></div>
+              <div class="summary-top"><span>Học bù ca chính</span><div class="icon-box mint"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div></div>
               <strong id="tutoring-makeup-count">0</strong>
               <small>Học sinh vắng học bù</small>
             </div>
             <div class="summary-card">
-              <div class="summary-top"><span>Đã hoàn thành BTVN</span><div class="icon-box peach">✓</div></div>
+              <div class="summary-top"><span>Đã hoàn thành BTVN</span><div class="icon-box peach"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></div></div>
               <strong id="tutoring-completed-hw-count">0</strong>
               <small>Phiếu BTVN bổ trợ xong</small>
             </div>
@@ -130,7 +130,7 @@
 
           <div class="tutoring-filter-bar">
             <label class="student-list-search">
-              <input id="tutoring-search" type="search" placeholder="Tìm theo tên học sinh, TA phụ trách hoặc nội dung..." autocomplete="off" />
+              <input id="tutoring-search" type="search" placeholder="Tìm học sinh, trợ giảng, nội dung..." autocomplete="off" />
             </label>
             <select id="tutoring-type-filter" aria-label="Lọc theo phân loại">
               <option value="all">Tất cả phân loại</option>
@@ -344,17 +344,21 @@
 
         <!-- 4. Chấm công TA Panel -->
         <section id="portal-menu-panel" class="menu-panel" hidden>
-          <div class="management-toolbar">
-            <div>
+          <div class="management-toolbar portal-header-toolbar">
+            <div class="portal-header-copy">
               <h2>Trang cá nhân & Đối chiếu Chấm công</h2>
               <p>Thống kê số ca làm việc thành công trong tháng dựa trên log xác nhận ở Checklist đầu ca.</p>
             </div>
-            <div class="management-toolbar-actions">
-              <label class="field-label-inline">Tháng đối chiếu:
-                <input type="month" id="portal-month-input" />
+            <div class="portal-controls-row">
+              <label class="portal-month-label" for="portal-month-vn-select">
+                <span>Tháng đối chiếu:</span>
+                <select id="portal-month-vn-select" class="portal-month-vn-select" aria-label="Chọn tháng đối chiếu"></select>
+                <input type="month" id="portal-month-input" hidden style="display:none!important;" />
               </label>
-              <button type="button" class="outline-button" id="export-timesheet-btn">In bảng chấm công (A4)</button>
-              <button type="button" class="outline-button" id="export-timesheet-csv-btn">Xuất CSV</button>
+              <div class="portal-export-btns">
+                <button type="button" class="outline-button" id="export-timesheet-btn">In bảng chấm công (A4)</button>
+                <button type="button" class="outline-button" id="export-timesheet-csv-btn">Xuất CSV</button>
+              </div>
             </div>
           </div>
 
@@ -1470,11 +1474,16 @@
   <!-- Student Profile Dialog -->
   <dialog id="student-profile-dialog" class="student-profile-dialog" aria-labelledby="student-profile-title">
     <button type="button" class="close-button" id="close-student-profile" aria-label="Đóng hồ sơ">×</button>
-    <div class="eyebrow">HỒ SƠ HỌC SINH</div>
-    <h2 id="student-profile-title">Thông tin học sinh</h2>
+    <div class="profile-dialog-top-bar">
+      <div>
+        <div class="eyebrow">HỒ SƠ THÔNG TIN CHUNG</div>
+        <h2 id="student-profile-title">Thông tin cá nhân học sinh</h2>
+      </div>
+      <button type="button" class="outline-button profile-unlock-edit-btn" id="unlock-student-profile-btn">Sửa</button>
+    </div>
     <div id="student-profile-content"></div>
-    <div class="student-profile-actions">
-      
+    <div class="student-profile-actions" id="student-profile-actions-bar" hidden>
+      <button type="button" class="outline-button" id="cancel-student-profile-edit-btn">Hủy sửa</button>
       <button type="button" class="primary-button" id="save-student-profile">Lưu thay đổi</button>
     </div>
   </dialog>
@@ -1550,8 +1559,8 @@
             <option value="not_submitted">Không nộp</option>
             <option value="graded">Đã chấm điểm</option>
           </select>
-          <label class="field-label" id="grade-field" hidden style="display:none!important;">Điểm BTVN
-            <input id="homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm nếu đã chấm" />
+          <label class="field-label" id="grade-field">Điểm BTVN (0 – 10)
+            <input id="homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm BTVN trực tiếp (nếu đã chấm)..." />
           </label>
 
           <div id="no-homework-fields" hidden>
@@ -1676,8 +1685,8 @@
             <option value="not_submitted">Không nộp</option>
             <option value="graded">Đã chấm điểm</option>
           </select>
-          <label class="field-label" id="late-grade-field" hidden style="display:none!important;">Điểm BTVN
-            <input id="late-homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm nếu đã chấm" />
+          <label class="field-label" id="late-grade-field">Điểm BTVN (0 – 10)
+            <input id="late-homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm BTVN trực tiếp (nếu đã chấm)..." />
           </label>
           <div id="late-no-homework-fields" hidden>
             <label class="field-label">Lý do
@@ -2008,12 +2017,22 @@
   <!-- HỘP THOẠI HỒ SƠ HỌC SINH CHUYÊN SÂU THEO TỪNG LỚP (STUDENT CLASS PROFILE DIALOG) -->
   <dialog id="student-class-profile-dialog" class="student-profile-dialog" aria-labelledby="student-class-profile-title">
     <button type="button" class="close-button" id="close-student-class-profile" aria-label="Đóng">×</button>
-    <div class="eyebrow">HỒ SƠ HỌC SINH THEO LỚP</div>
-    <h2 id="student-class-profile-title">Chi tiết học sinh trong lớp</h2>
+    <div class="eyebrow">HỒ SƠ HỌC SINH TRONG LỚP</div>
+    <h2 id="student-class-profile-title">Hồ sơ học sinh theo lớp</h2>
     <div id="student-class-profile-content"></div>
     <div class="student-profile-actions">
-      
-      <button type="button" class="primary-button" id="edit-student-master-btn">Sửa thông tin học sinh</button>
+      <button type="button" class="outline-button" id="edit-student-master-btn">Xem / Sửa hồ sơ thông tin chung</button>
+    </div>
+  </dialog>
+
+  <dialog id="student-session-profile-dialog" class="student-profile-dialog" aria-labelledby="student-session-profile-title">
+    <button type="button" class="close-button" id="close-student-session-profile" aria-label="Đóng">×</button>
+    <div class="eyebrow" id="student-session-profile-eyebrow">HỒ SƠ HỌC SINH TRONG BUỔI HỌC</div>
+    <h2 id="student-session-profile-title">Chi tiết học sinh trong buổi học</h2>
+    <div id="student-session-profile-content"></div>
+    <div class="student-profile-actions">
+      <button type="button" class="outline-button" id="session-profile-open-class-btn">Xem hồ sơ trong lớp</button>
+      <button type="button" class="primary-button" id="save-student-session-profile-btn">Lưu & Đóng</button>
     </div>
   </dialog>
 
@@ -2119,6 +2138,6 @@
   </div>
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=2.0"></script>
+  <script type="module" src="/src/app.js?v=2.1"></script>
 </body>
 </html>

@@ -1,12 +1,12 @@
 const APP_VERSION = "1.8";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.0';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.0';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.1';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.1';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=2.0';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=2.0';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.0';
+import { setupFeatures } from './features.js?v=2.1';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=2.1';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.1';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.1';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.1';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -385,7 +385,7 @@ scheduleDefaultNotifications();
 function studentTagList(student){return [...(student?.tags||[])];}
 function studentSearchMeta(student){const tags=studentTagList(student);return `<small>${escapeHtml(student.studentType==='makeup'?`Học bù · ${student.sourceClassName||'chưa rõ lớp'}`:student.school||'Hồ sơ đã lưu')}</small>${tags.length?`<span class="student-tag-row">${tags.map(tag=>`<span class="student-tag ${tag==='Mới'?'new-tag':''}">${escapeHtml(tag)}</span>`).join('')}</span>`:''}`;}
 function renderInlineTags(student){return studentTagList(student).map(tag=>`<span class="student-tag-inline ${tag==='Mới'?'new-tag':''}">${escapeHtml(tag)}</span>`).join('');}
-function renderStudentInfo(selector,student){const host=$(selector);if(!host)return;if(!student){host.hidden=true;host.innerHTML='';return;}const storedTags=student.tags||[],allTags=studentTagList(student);host.hidden=false;host.innerHTML=`<div class="selected-student-summary"><button type="button" class="student-profile-name" data-profile-name="${escapeHtml(student.id)}">${escapeHtml(student.name)}</button><small>${escapeHtml(student.studentType==='makeup'?`Học bù · ${student.sourceClassName||'chưa rõ lớp'}`:student.school||'Chưa cập nhật trường/lớp')}</small></div><div class="student-tag-row">${allTags.map(tag=>{const storedIndex=storedTags.indexOf(tag),removable=storedIndex>=0;return `<span class="student-tag ${tag==='Mới'?'new-tag':''}">${escapeHtml(tag)}${removable?`<button type="button" aria-label="Xóa tag ${escapeHtml(tag)}" data-remove-tag="${storedIndex}" data-student-id="${escapeHtml(student.id)}">×</button>`:''}</span>`;}).join('')}</div><div class="student-tag-editor"><input type="text" data-tag-input="${escapeHtml(student.id)}" placeholder="Thêm tag, ví dụ: Cần chú ý" /><button type="button" data-add-tag="${escapeHtml(student.id)}">Thêm tag</button></div>`;host.querySelector('[data-profile-name]')?.addEventListener('click',()=>openStudentProfile(student.id));}
+function renderStudentInfo(selector,student){const host=$(selector);if(!host)return;if(!student){host.hidden=true;host.innerHTML='';return;}const storedTags=student.tags||[],allTags=studentTagList(student);host.hidden=false;host.innerHTML=`<div class="selected-student-summary"><button type="button" class="student-profile-name" data-profile-name="${escapeHtml(student.id)}">${escapeHtml(student.name)}</button><small>${escapeHtml(student.studentType==='makeup'?`Học bù · ${student.sourceClassName||'chưa rõ lớp'}`:student.school||'Chưa cập nhật trường/lớp')}</small></div><div class="student-tag-row">${allTags.map(tag=>{const storedIndex=storedTags.indexOf(tag),removable=storedIndex>=0;return `<span class="student-tag ${tag==='Mới'?'new-tag':''}">${escapeHtml(tag)}${removable?`<button type="button" aria-label="Xóa tag ${escapeHtml(tag)}" data-remove-tag="${storedIndex}" data-student-id="${escapeHtml(student.id)}">×</button>`:''}</span>`;}).join('')}</div><div class="student-tag-editor"><input type="text" data-tag-input="${escapeHtml(student.id)}" placeholder="Thêm tag, ví dụ: Cần chú ý" /><button type="button" data-add-tag="${escapeHtml(student.id)}">Thêm tag</button></div>`;host.querySelector('[data-profile-name]')?.addEventListener('click',()=>{ openStudentSessionProfile(student.id, CURRENT_CLASS_ID, checklistDate); });}
 function refreshStudentInfo(){renderStudentInfo('#selected-student-info',selectedStudentId?studentById(selectedStudentId):null);renderStudentInfo('#late-selected-student-info',selectedLateId?studentById(selectedLateId):null);}
 function addStudentTag(id,input){const student=studentById(id),tag=input.value.trim();if(!student||!tag)return;student.tags=student.tags||[];if(student.tags.some(item=>normalizeSearchText(item)===normalizeSearchText(tag))){toast('Tag này đã có trong hồ sơ.');return;}student.tags.push(tag);save();render();refreshStudentInfo();}
 document.addEventListener('click',e=>{const add=e.target.closest('[data-add-tag]');if(add){const host=add.closest('.selected-student-info'),input=host?.querySelector('[data-tag-input]');addStudentTag(add.dataset.addTag,input);return;}const remove=e.target.closest('[data-remove-tag]');if(remove){const student=studentById(remove.dataset.studentId);if(!student)return;student.tags.splice(Number(remove.dataset.removeTag),1);save();render();refreshStudentInfo();}});
@@ -547,7 +547,7 @@ function renderMainMenu(){
         <button type="button" class="primary-button" data-enter-class="${escapeHtml(item.id)}" data-session-date="${date.toLocaleDateString('sv-SE')}">Vào lớp</button>
       </article>`;
     }).join('') || '<div class="menu-empty">Chưa có lớp học nào trong hệ thống.</div>';
-  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-heading"><div><div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><strong>${escapeHtml(item.name)}</strong><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span></div><span>${escapeHtml(item.subject||'Chưa có môn học')}</span></div><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span></div><div class="managed-class-details"><span><small>Mã lớp & Năm sinh</small><strong>${escapeHtml(item.code||item.id)}</strong> (${escapeHtml(formatBirthYearInline(item.grade))})</span><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist mặc định</small>${item.defaultChecklist.startItems.length} đầu giờ · ${item.defaultChecklist.endItems.length} cuối giờ</span><span><small>Nhắc theo lịch</small>${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions"><button type="button" class="primary-button" data-enter-live-class="${escapeHtml(item.id)}" data-session-date="${occurrenceDate(item).toLocaleDateString('sv-SE')}" style="padding:7px 12px; font-weight:700;">Vào lớp (Mở ca)</button><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}" style="font-weight:700; color:#215732; background:#f2f8f3; border-color:#9dc7a5;">Tổng quan & Lịch sử</button><button type="button" class="outline-button" data-roster-class="${escapeHtml(item.id)}">Danh sách gốc</button><button type="button" class="outline-button" data-edit-class="${escapeHtml(item.id)}">Sửa lớp</button><button type="button" class="outline-button" data-edit-session="${escapeHtml(item.id)}">Đổi lịch buổi</button><button type="button" class="text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';if($('#add-class-button'))$('#add-class-button').hidden=!(role==='office'||role==='admin');if($('#manage-employees-button'))$('#manage-employees-button').hidden=role!=='admin';}
+  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-heading"><div><div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><strong>${escapeHtml(item.name)}</strong><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span></div><span>${escapeHtml(item.subject||'Chưa có môn học')}</span></div><div class="managed-class-heading-right"><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span><div class="card-more-menu-wrap"><button type="button" class="outline-button card-more-toggle-btn" data-toggle-card-more="${escapeHtml(item.id)}" aria-label="Tùy chọn quản lý lớp" title="Tùy chọn quản trị lớp">⋯</button><div class="card-more-dropdown" hidden><button type="button" class="card-more-item" data-roster-class="${escapeHtml(item.id)}">Danh sách gốc</button><button type="button" class="card-more-item" data-edit-class="${escapeHtml(item.id)}">Sửa lớp</button><button type="button" class="card-more-item" data-edit-session="${escapeHtml(item.id)}">Đổi lịch buổi</button><button type="button" class="card-more-item text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></div></div></div><div class="managed-class-details managed-class-grid-2col"><span><small>Mã lớp & Năm sinh</small><strong>${escapeHtml(item.code||item.id)}</strong> (${escapeHtml(formatBirthYearInline(item.grade))})</span><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist mặc định</small>${item.defaultChecklist.startItems.length} đầu giờ · ${item.defaultChecklist.endItems.length} cuối giờ</span><span><small>Nhắc theo lịch</small>${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions managed-class-primary-actions"><button type="button" class="primary-button" data-enter-live-class="${escapeHtml(item.id)}" data-session-date="${occurrenceDate(item).toLocaleDateString('sv-SE')}">Vào lớp (Mở ca)</button><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}">Tổng quan & Lịch sử</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';if($('#add-class-button'))$('#add-class-button').hidden=!(role==='office'||role==='admin');if($('#manage-employees-button'))$('#manage-employees-button').hidden=role!=='admin';}
 function setMainMenuPanel(panel){
   try {
     if (location.pathname !== '/' && location.pathname !== '/class') {
@@ -1140,7 +1140,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
               ${isMakeup ? `<span class="makeup-school-tag">${escapeHtml(schoolText)}</span>` : escapeHtml(schoolText)}
             </td>
             ${timelineCellsHtml}
-            <td>
+            <td class="col-allow-wrap">
               <input type="text" class="attendance-note-input" data-general-learning-note="${escapeHtml(s.id)}" value="${escapeHtml(s.learningNotes || '')}" placeholder="Nhập ghi chú học lực..." style="width:100%;" />
             </td>
           </tr>
@@ -1149,7 +1149,11 @@ function renderClassGeneralView(classId, preferredTab = null) {
 
       rosterTbody.querySelectorAll('[data-open-general-score-history]').forEach(el => {
         el.onclick = () => {
-          openStudentScoreHistoryDialog(el.dataset.openGeneralScoreHistory, cls.id, true);
+          if (el.classList.contains('student-name-history-btn') && window.__featuresApp?.openStudentClassProfile) {
+            window.__featuresApp.openStudentClassProfile(el.dataset.openGeneralScoreHistory, cls.id);
+          } else {
+            openStudentScoreHistoryDialog(el.dataset.openGeneralScoreHistory, cls.id, true);
+          }
         };
       });
 
@@ -1714,7 +1718,7 @@ function renderStaffSelection(){for(const [ids,hostId,role] of [[selectedTeacher
 function renderEmployeeOptions(select,role,selected){const available=masterData.employees.filter(employee=>employee.role===role&&!selected.includes(employee.id));select.innerHTML='<option value="">Chọn nhân viên…</option>'+available.map(employee=>`<option value="${escapeHtml(employee.id)}">${escapeHtml(employee.name)} · ${escapeHtml(employee.code)}</option>`).join('');}
 function renderMasterDataChoices(item){$('#config-class-subject').innerHTML=masterData.subjects.map(subject=>`<option value="${escapeHtml(subject.id)}">${escapeHtml(subject.name)}</option>`).join('');if(item?.subjectId)$('#config-class-subject').value=item.subjectId;selectedTeacherIds=item?.teacherIds?.slice()||(item?.teacherId?[item.teacherId]:[]);selectedAssistantIds=item?.assistantIds?.slice()||((selectedRole()==='assistant'?[currentEmployeeId]:[]));selectedOfficeIds=item?.officeIds?.slice()||((selectedRole()==='office'?[currentEmployeeId]:[]));renderStaffSelection();renderEmployeeOptions($('#config-teacher-choice'),'teacher',selectedTeacherIds);renderEmployeeOptions($('#config-assistant-choice'),'assistant',selectedAssistantIds);renderEmployeeOptions($('#config-office-choice'),'office',selectedOfficeIds);}
 function readConfigNotifications(){return [...document.querySelectorAll('.config-notification-row')].map(row=>({id:row.dataset.ruleId||`rule-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,anchor:row.querySelector('[data-rule-anchor]').value,offsetMinutes:Number(row.querySelector('[data-rule-offset]').value)||0,title:row.querySelector('[data-rule-title]').value.trim(),body:row.querySelector('[data-rule-body]').value.trim()})).filter(rule=>rule.title||rule.body);}
-function renderConfigNotifications(rules){$('#config-notification-list').innerHTML=rules.map((rule,index)=>`<div class="config-notification-row" data-rule-id="${escapeHtml(rule.id||`notice-${index+1}`)}"><label class="field-label">Mốc<select data-rule-anchor aria-label="Mốc tính thông báo"><option value="start" ${rule.anchor==='start'?'selected':''}>Giờ bắt đầu</option><option value="end" ${rule.anchor==='end'?'selected':''}>Giờ kết thúc</option></select></label><label class="field-label">Lệch phút<input data-rule-offset type="number" value="${Number(rule.offsetMinutes)||0}" aria-label="Số phút lệch mốc" /></label><label class="field-label">Tiêu đề<input data-rule-title required value="${escapeHtml(rule.title||'')}" placeholder="Ví dụ: Thu BTVN" /></label><label class="field-label">Nội dung<input data-rule-body value="${escapeHtml(rule.body||'')}" placeholder="Việc cần nhắc" /></label><button type="button" class="remove-config-notification" data-remove-notification="${index}" aria-label="Xóa mốc">×</button></div>`).join('')||'<div class="notification-config-empty">Chưa có mốc thông báo. Thêm mốc nếu lớp cần nhắc tự động.</div>';}
+function renderConfigNotifications(rules){$('#config-notification-list').innerHTML=rules.map((rule,index)=>`<div class="config-notification-row reminder-subcard" data-rule-id="${escapeHtml(rule.id||`notice-${index+1}`)}"><div class="reminder-subcard-header"><span class="reminder-subcard-title">Mốc nhắc nhở #${index+1}</span><button type="button" class="remove-config-notification" data-remove-notification="${index}" aria-label="Xóa mốc nhắc nhở" title="Xóa mốc nhắc nhở này">×</button></div><div class="reminder-subcard-grid2"><label class="field-label">Mốc thời gian<select data-rule-anchor aria-label="Mốc tính thông báo"><option value="start" ${rule.anchor==='start'?'selected':''}>Giờ bắt đầu</option><option value="end" ${rule.anchor==='end'?'selected':''}>Giờ kết thúc</option></select></label><label class="field-label">Lệch phút (âm = trước, dương = sau)<input data-rule-offset type="number" value="${Number(rule.offsetMinutes)||0}" aria-label="Số phút lệch mốc" /></label></div><label class="field-label reminder-full-row">Tiêu đề nhắc nhở<input data-rule-title required value="${escapeHtml(rule.title||'')}" placeholder="Ví dụ: Thu BTVN đầu giờ" /></label><label class="field-label reminder-full-row">Nội dung chi tiết<input data-rule-body value="${escapeHtml(rule.body||'')}" placeholder="Nhập trọn vẹn nội dung cần nhắc (VD: Kiểm tra phòng và bật điều hòa)..." /></label></div>`).join('')||'<div class="notification-config-empty">Chưa có mốc thông báo. Thêm mốc nếu lớp cần nhắc tự động.</div>';}
 function openClassConfig(id=''){
   const item=classCatalog.find(row=>row.id===id);
   $('#class-config-title').textContent=item?'Chỉnh sửa lớp':'Thêm lớp học';
@@ -2034,7 +2038,7 @@ function renderStudentList(){
                   </td>
                   <td>${statusBadge}</td>
                   <td>${hwBadge}</td>
-                  <td>
+                  <td class="col-allow-wrap">
                     <input class="attendance-note-input" data-session-note="${escapeHtml(student.id)}" aria-label="Ghi chú chung cho ${escapeHtml(student.name)}" placeholder="Nhập ghi chú buổi học..." value="${escapeHtml(note)}" style="width:100%; min-width:130px;" />
                   </td>
                   <td style="text-align:center; white-space:nowrap;">
@@ -2251,6 +2255,32 @@ $('#export-attendance-button').onclick=()=>{renderAttendanceExport();$('#attenda
 document.addEventListener('input',event=>{const input=event.target.closest('[data-session-note]');if(!input)return;saveSessionNote(input.dataset.sessionNote,input.value);});
 $('#close-attendance-export').onclick=()=>$('#attendance-export-dialog').close();if($('#close-attendance-export-secondary'))$('#close-attendance-export-secondary').onclick=()=>$('#attendance-export-dialog').close();$('#print-attendance-export').onclick=()=>window.print();
 function profileDate(item){return item.date||new Date(item.timestamp||Date.now()).toLocaleDateString('vi-VN');}
+let isGeneralProfileEditMode = false;
+
+function setGeneralStudentProfileEditMode(editable = false) {
+  isGeneralProfileEditMode = Boolean(editable);
+  const dlg = $('#student-profile-dialog');
+  if (!dlg) return;
+  const unlockBtn = $('#unlock-student-profile-btn');
+  const actionsBar = $('#student-profile-actions-bar');
+  if (unlockBtn) {
+    unlockBtn.textContent = isGeneralProfileEditMode ? 'Đang sửa' : 'Sửa';
+    unlockBtn.classList.toggle('active', isGeneralProfileEditMode);
+    unlockBtn.hidden = isGeneralProfileEditMode;
+  }
+  if (actionsBar) {
+    actionsBar.hidden = !isGeneralProfileEditMode;
+  }
+  dlg.querySelectorAll('.profile-edit-grid input, .profile-edit-grid textarea, .profile-edit-grid select, #profile-btn-add-class, [data-remove-class-chip], #profile-upload-portrait-label, #profile-remove-photo-btn').forEach(el => {
+    if (el.tagName === 'LABEL') {
+      el.style.pointerEvents = isGeneralProfileEditMode ? '' : 'none';
+      el.style.opacity = isGeneralProfileEditMode ? '1' : '0.6';
+    } else {
+      el.disabled = !isGeneralProfileEditMode;
+    }
+  });
+}
+
 function openStudentProfile(id, origin = null){
   const student=studentById(id);if(!student)return;activeProfileId=id;
   if(origin) previousStudentProfileOrigin = origin;
@@ -2259,24 +2289,24 @@ function openStudentProfile(id, origin = null){
     const c=classCatalog.find(x=>x.id===classId);
     return c?`${c.code||c.name}`:classId;
   }).join(', ')||(student.studentType==='makeup'?`Học bù · ${student.sourceClassName||'chưa rõ lớp'}`:'Chưa gắn lớp');
-  
+
   const classBadges=(student.classIds||[]).map(classId=>{
     const c=classCatalog.find(x=>x.id===classId);
-    return `<span class="profile-chip" data-open-class-drilldown="${escapeHtml(classId)}" style="cursor:pointer; font-weight:700; color:#367950;" title="Bấm xem chi tiết học sinh tại lớp này">${escapeHtml(c?.code||classId)} ↗</span>`;
+    return `<span class="profile-chip" data-open-class-drilldown="${escapeHtml(classId)}" style="cursor:pointer; font-weight:700; color:#367950;" title="Bấm để mở Hồ sơ học sinh trong Lớp (Kiểu 2)">${escapeHtml(c?.code||classId)} ↗</span>`;
   }).join('')||`<span class="profile-chip">${escapeHtml(student.studentType==='makeup'?`Học bù · ${student.sourceClassName||'chưa rõ lớp'}`:'Chưa ghi nhận lớp')}</span>`;
-  
+
   const tags=student.tags||[],tagBadges=tags.map(tag=>`<span class="profile-chip profile-tag-chip">${escapeHtml(tag)}</span>`).join('')||'<small>Chưa gắn tag</small>';
   const photo = student.photoURL;
-  const attendance=student.attendanceHistory||student.history||[],seats=student.seatingHistory||[],scores=student.scores||[],generalNotes=[...(student.sessionNotes||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))),notes=Array.isArray(student.notes)?student.notes.join('\n'):student.notes||'';
-  
+  const officeNoteVal = student.officeNotes ?? '';
+
   const portraitBlock = photo ? `
     <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
       <button type="button" id="student-photo-expand" class="profile-avatar-button" style="border:none; background:none; padding:0; cursor:pointer;" aria-label="Mở ảnh ${escapeHtml(student.name)} cỡ lớn">
         <img class="profile-portrait" id="profile-portrait-preview" src="${escapeHtml(photo)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" />
       </button>
       <div style="display:flex; gap:4px; margin-top:2px;">
-        <label class="primary-button" style="padding:4px 8px; font-size:13.5px; cursor:pointer; font-weight:600;">
-           Đổi ảnh
+        <label id="profile-upload-portrait-label" class="primary-button" style="padding:4px 8px; font-size:13.5px; cursor:pointer; font-weight:600;">
+          Đổi ảnh
           <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
         </label>
         <button type="button" id="profile-remove-photo-btn" class="outline-button text-danger" style="padding:7px 12px; font-size:13.5px;">Xóa</button>
@@ -2284,9 +2314,9 @@ function openStudentProfile(id, origin = null){
     </div>
   ` : `
     <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
-      <div id="profile-portrait-preview" class="profile-portrait profile-portrait-placeholder"></div>
-      <label class="primary-button" style="padding:5px 9px; font-size:14px; cursor:pointer; font-weight:600;">
-         Tải ảnh chân dung
+      <div id="profile-portrait-preview" class="profile-portrait profile-portrait-placeholder">${escapeHtml((givenName || student.name || 'H').charAt(0).toUpperCase())}</div>
+      <label id="profile-upload-portrait-label" class="primary-button" style="padding:5px 9px; font-size:14px; cursor:pointer; font-weight:600;">
+        Tải ảnh chân dung
         <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
       </label>
     </div>
@@ -2299,7 +2329,40 @@ function openStudentProfile(id, origin = null){
 
   let enrolledClassIds = [...(student.classIds || [])];
 
-  $('#student-profile-content').innerHTML=`<div class="profile-header">${portraitBlock}<div><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.studentType==='makeup'?`Học sinh học bù từ ${student.sourceClassName||'lớp chưa rõ'}`:student.school||'Chưa có trường')}</small><small>${escapeHtml(classes)}</small></div></div><div class="profile-membership-grid"><section class="profile-data-group"><h3>Các lớp đang học (Bấm để xem chi tiết theo lớp)</h3><div class="profile-chip-list">${classBadges}</div></section><section class="profile-data-group"><h3>Tag đã gắn</h3><div class="profile-chip-list">${tagBadges}</div></section></div><div class="profile-edit-grid"><label class="field-label">Họ và tên đệm<input id="profile-family-name" value="${escapeHtml(familyName)}" /></label><label class="field-label">Tên<input id="profile-given-name" value="${escapeHtml(givenName)}" /></label><label class="field-label">Trường<input id="profile-school" value="${escapeHtml(student.school||'')}" /></label><label class="field-label">Mã học sinh<input id="profile-code" value="${escapeHtml(student.studentCode||'')}" placeholder="Ví dụ: K09.3049" style="text-transform:uppercase;" /></label><label class="field-label">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" /></label><label class="field-label">Số điện thoại phụ huynh<input id="profile-parent-phone" type="tel" value="${escapeHtml(student.parentContact?.phone||'')}" /></label><div class="field-label profile-wide"><span>Các lớp đang theo học:</span><div id="profile-enrolled-classes-wrap" style="margin-top:6px; padding:10px; background:#fbfdfb; border:1px solid #dce5dd; border-radius:8px;"></div></div><label class="field-label profile-wide">Tag phân loại (phân tách bằng dấu phẩy)<input id="profile-tags" value="${escapeHtml(tags.join(', '))}" placeholder="Ví dụ: Mới, Cần chú ý, HS Giỏi, Mục tiêu 9+" /></label><label class="field-label profile-wide">Ghi chú chung học lực & thông tin học sinh<textarea id="profile-learning-notes" rows="3" placeholder="Ghi chú về học lực, nề nếp, đặc điểm của học sinh...">${escapeHtml(student.learningNotes||notes)}</textarea></label><label class="field-label profile-wide">Link ảnh chân dung (hoặc tải trực tiếp ở trên)<input id="profile-photo-url" value="${escapeHtml(student.photoURL||'')}" placeholder="https://... hoặc data:image/..." /></label></div>`;
+  $('#student-profile-content').innerHTML=`
+    <div class="profile-header">
+      ${portraitBlock}
+      <div>
+        <strong>${escapeHtml(student.name)}</strong>
+        <small>${escapeHtml(student.studentType==='makeup'?`Học sinh học bù từ ${student.sourceClassName||'lớp chưa rõ'}`:student.school||'Chưa có trường')}</small>
+        <small>Các lớp: ${escapeHtml(classes)}</small>
+      </div>
+    </div>
+    <div class="profile-membership-grid">
+      <section class="profile-data-group">
+        <h3>Các lớp đang học (Bấm để mở Hồ sơ trong Lớp)</h3>
+        <div class="profile-chip-list">${classBadges}</div>
+      </section>
+      <section class="profile-data-group">
+        <h3>Tag đã gắn</h3>
+        <div class="profile-chip-list">${tagBadges}</div>
+      </section>
+    </div>
+    <div class="profile-edit-grid">
+      <label class="field-label">Họ và tên đệm<input id="profile-family-name" value="${escapeHtml(familyName)}" /></label>
+      <label class="field-label">Tên<input id="profile-given-name" value="${escapeHtml(givenName)}" /></label>
+      <label class="field-label">Trường học<input id="profile-school" value="${escapeHtml(student.school||'')}" /></label>
+      <label class="field-label">Mã học sinh<input id="profile-code" value="${escapeHtml(student.studentCode||'')}" placeholder="Ví dụ: K09.3049" style="text-transform:uppercase;" /></label>
+      <label class="field-label">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" /></label>
+      <label class="field-label">Số điện thoại phụ huynh<input id="profile-parent-phone" type="tel" value="${escapeHtml(student.parentContact?.phone||'')}" /></label>
+      <div class="field-label profile-wide">
+        <span>Các lớp đang theo học:</span>
+        <div id="profile-enrolled-classes-wrap" style="margin-top:6px; padding:10px; background:#fbfdfb; border:1px solid #dce5dd; border-radius:8px;"></div>
+      </div>
+      <label class="field-label profile-wide">Tag phân loại (phân tách bằng dấu phẩy)<input id="profile-tags" value="${escapeHtml(tags.join(', '))}" placeholder="Ví dụ: Mới, Cần chú ý, HS Giỏi, Mục tiêu 9+" /></label>
+      <label class="field-label profile-wide">Ghi chú văn phòng<textarea id="profile-office-notes" rows="3" placeholder="Ghi chú hành chính / học phí / liên hệ phụ huynh của văn phòng...">${escapeHtml(officeNoteVal)}</textarea></label>
+      <label class="field-label profile-wide">Link ảnh chân dung (hoặc tải trực tiếp ở trên)<input id="profile-photo-url" value="${escapeHtml(student.photoURL||'')}" placeholder="https://... hoặc data:image/..." /></label>
+    </div>`;
 
   function renderEnrolledClassesUI() {
     const wrap = $('#profile-enrolled-classes-wrap');
@@ -2309,9 +2372,9 @@ function openStudentProfile(id, origin = null){
       const c = allAvailableClasses.find(x => x.id === cid) || { id: cid, code: cid, name: cid };
       return `
         <span class="profile-class-chip" data-class-chip="${escapeHtml(cid)}">
-           <strong>${escapeHtml(c.code || c.name)}</strong>
+          <strong>${escapeHtml(c.code || c.name)}</strong>
           <small style="color:#56695b; font-weight:400;">(${escapeHtml(c.grade ? formatBirthYearInline(c.grade) : c.name)})</small>
-          <button type="button" data-remove-class-chip="${escapeHtml(cid)}" title="Xóa lớp này khỏi học sinh">×</button>
+          <button type="button" data-remove-class-chip="${escapeHtml(cid)}" title="Xóa lớp này khỏi học sinh" ${isGeneralProfileEditMode ? '' : 'disabled'}>×</button>
         </span>
       `;
     }).join('') || '<small style="color:#8a998c; font-style:italic;">Chưa gắn lớp nào</small>';
@@ -2322,11 +2385,11 @@ function openStudentProfile(id, origin = null){
     `).join('');
 
     const pickerHtml = availableToAdd.length ? `
-      <div style="display:inline-flex; align-items:center; gap:6px; margin-top:8px;">
-        <select id="profile-class-to-add-select" style="padding:4px 8px; font-size:14.5px; border:1px solid #cbd8cd; border-radius:6px; background:#fff; outline:none;">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:8px;">
+        <select id="profile-class-to-add-select" style="padding:6px 10px; font-size:14px; border:1px solid #cbd8cd; border-radius:6px; background:#fff; outline:none; flex:1 1 180px;" ${isGeneralProfileEditMode ? '' : 'disabled'}>
           ${addOptionsHtml}
         </select>
-        <button type="button" id="profile-btn-add-class" class="primary-button" style="padding:8px 14px; font-size:14px; font-weight:700;">+ Thêm lớp</button>
+        <button type="button" id="profile-btn-add-class" class="primary-button" style="padding:8px 14px; font-size:14px; font-weight:700;" ${isGeneralProfileEditMode ? '' : 'disabled'}>+ Thêm lớp</button>
       </div>
     ` : '<small style="color:#5b7760; font-weight:600; display:block; margin-top:6px;">(Đã gắn tất cả các lớp)</small>';
 
@@ -2340,6 +2403,7 @@ function openStudentProfile(id, origin = null){
     wrap.querySelectorAll('[data-remove-class-chip]').forEach(btn => {
       btn.onclick = (e) => {
         e.preventDefault();
+        if (!isGeneralProfileEditMode) return;
         const cid = btn.dataset.removeClassChip;
         enrolledClassIds = enrolledClassIds.filter(id => id !== cid);
         renderEnrolledClassesUI();
@@ -2350,6 +2414,7 @@ function openStudentProfile(id, origin = null){
     if (addBtn) {
       addBtn.onclick = (e) => {
         e.preventDefault();
+        if (!isGeneralProfileEditMode) return;
         const select = wrap.querySelector('#profile-class-to-add-select');
         const selectedClassId = select?.value;
         if (selectedClassId && !enrolledClassIds.includes(selectedClassId)) {
@@ -2361,6 +2426,19 @@ function openStudentProfile(id, origin = null){
   }
 
   renderEnrolledClassesUI();
+  setGeneralStudentProfileEditMode(false);
+
+  if ($('#unlock-student-profile-btn')) {
+    $('#unlock-student-profile-btn').onclick = () => {
+      setGeneralStudentProfileEditMode(true);
+      $('#profile-family-name')?.focus();
+    };
+  }
+  if ($('#cancel-student-profile-edit-btn')) {
+    $('#cancel-student-profile-edit-btn').onclick = () => {
+      openStudentProfile(student.id, origin);
+    };
+  }
 
   const uploadInput = $('#profile-upload-portrait-input');
   if (uploadInput) {
@@ -2388,6 +2466,7 @@ function openStudentProfile(id, origin = null){
   const removePhotoBtn = $('#profile-remove-photo-btn');
   if (removePhotoBtn) {
     removePhotoBtn.onclick = () => {
+      if (!isGeneralProfileEditMode) return;
       if (!confirm('Bạn có chắc muốn xóa ảnh chân dung này?')) return;
       student.photoURL = null;
       saveStudentRecords(students, makeupStudents);
@@ -2398,17 +2477,28 @@ function openStudentProfile(id, origin = null){
     };
   }
 
+  $('#student-profile-content').querySelector('#student-photo-expand')?.addEventListener('click',()=>{
+    const cleanUrl=safeHttpUrl($('#profile-photo-url')?.value||student.photoURL||'');
+    if(!cleanUrl)return;
+    $('#student-photo-full').src=cleanUrl;
+    $('#student-photo-caption').textContent=student.name;
+    $('#student-photo-dialog').showModal();
+  });
+
+  $('#student-profile-content').querySelectorAll('[data-open-class-drilldown]').forEach(chip => {
+    chip.onclick = () => {
+      const targetClassId = chip.dataset.openClassDrilldown;
+      $('#student-profile-dialog').close();
+      if (window.__featuresApp?.openStudentClassProfile) {
+        window.__featuresApp.openStudentClassProfile(student.id, targetClassId);
+      }
+    };
+  });
+
   $('#student-profile-dialog').showModal();
 }
-function openStudentPhoto(id){const student=studentById(id),photo=safeHttpUrl(student?.photoURL);if(!student||!photo){toast('Học sinh chưa có ảnh đại diện.');return;}$('#student-photo-full').src=photo;$('#student-photo-full').alt=`Ảnh ${student.name}`;$('#student-photo-caption').textContent=student.name;$('#student-photo-dialog').showModal();}
-$('#student-profile-content').addEventListener('click',e=>{
-  const drilldown = e.target.closest('[data-open-class-drilldown]');
-  if (drilldown && window.__featuresApp?.openStudentClassProfile) {
-    $('#student-profile-dialog')?.close();
-    window.__featuresApp.openStudentClassProfile(activeProfileId, drilldown.dataset.openClassDrilldown);
-    return;
-  }if(e.target.closest('#student-photo-expand'))openStudentPhoto(activeProfileId);});$('#student-list-items').addEventListener('click',e=>{const row=e.target.closest('[data-open-student-profile]');if(row)openStudentProfile(row.dataset.openStudentProfile);});$('#makeup-list-items')?.addEventListener('click',e=>{const row=e.target.closest('[data-open-student-profile]');if(row)openStudentProfile(row.dataset.openStudentProfile);});
-const closeStudentProfile=()=>{
+
+const closeStudentProfile = () => {
   $('#student-profile-dialog').close();
   const origin = previousStudentProfileOrigin;
   previousStudentProfileOrigin = null;
@@ -2417,7 +2507,10 @@ const closeStudentProfile=()=>{
       window.__featuresApp.openStudentClassProfile(activeProfileId, origin.classId);
     }
   } else if (origin?.from === 'directory') {
-    $('#student-directory-dialog')?.showModal();
+    if (window.__featuresApp?.renderMasterStudentDirectory) {
+      window.__featuresApp.renderMasterStudentDirectory();
+      $('#student-directory-dialog')?.showModal();
+    }
   }
 };
 $('#close-student-profile').onclick=closeStudentProfile;
@@ -2469,33 +2562,300 @@ $('#save-student-profile').onclick=()=>{
 
   student.tags = [...new Set($('#profile-tags').value.split(',').map(tag=>tag.trim()).filter(Boolean))];
   student.photoURL = photo || null;
-  student.learningNotes = $('#profile-learning-notes').value.trim();
+  if ($('#profile-office-notes')) {
+    student.officeNotes = $('#profile-office-notes').value.trim();
+  }
 
   saveStudentRecords(students, makeupStudents);
   save();
   render();
-  $('#student-profile-dialog').close();
+  setGeneralStudentProfileEditMode(false);
+  toast('Đã lưu thông tin chung của học sinh.');
+};
 
-  const origin = previousStudentProfileOrigin;
-  previousStudentProfileOrigin = null;
+// =========================================================================
+// KIỂU 3: HỒ SƠ HỌC SINH TRONG BUỔI HỌC (SESSION-LEVEL STUDENT PROFILE)
+// Cho phép chỉnh sửa trực tiếp (Inline Edit) Điểm danh, Vị trí ngồi, BTVN, Điểm BTVN, Điểm Test, Ghi chú buổi học
+// =========================================================================
+let activeSessionProfileCtx = null;
 
-  if (origin?.from === 'class-profile') {
-    if (window.__featuresApp?.openStudentClassProfile) {
-      window.__featuresApp.openStudentClassProfile(student.id, origin.classId);
-    }
-  } else if (origin?.from === 'directory') {
-    if (window.__featuresApp?.renderMasterStudentDirectory) {
-      window.__featuresApp.renderMasterStudentDirectory();
-      $('#student-directory-dialog')?.showModal();
-    }
-  } else if (origin?.from === 'class-general') {
-    if (renderClassGeneralView) {
-      renderClassGeneralView(origin.classId);
-    }
+function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessionDate = checklistDate) {
+  const student = studentById(studentId);
+  if (!student) return;
+  const targetClassId = classId || CURRENT_CLASS_ID;
+  const targetDate = sessionDate || checklistDate;
+  const cls = resolveClass(targetClassId) || activeClassConfig();
+  const isCurrentLiveSession = (targetClassId === CURRENT_CLASS_ID && targetDate === checklistDate);
+
+  activeSessionProfileCtx = { studentId, classId: targetClassId, sessionDate: targetDate };
+
+  const dlg = $('#student-session-profile-dialog');
+  if (!dlg) return;
+
+  const dateFormatted = new Date(`${targetDate}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+  $('#student-session-profile-eyebrow').textContent = `HỒ SƠ HỌC SINH TRONG BUỔI HỌC · ${cls?.code || cls?.name || ''}`;
+  $('#student-session-profile-title').textContent = `${student.name} · Buổi ${dateFormatted}`;
+
+  const placements = isCurrentLiveSession
+    ? new Map(allEntries().filter(({ entry }) => entry.studentId).map(p => [p.entry.studentId, p]))
+    : new Map();
+  const place = placements.get(student.id);
+  const inLate = isCurrentLiveSession && lateQueue.includes(student.id);
+
+  const attHist = (student.attendanceHistory || []).find(h => h.classId === targetClassId && h.date === targetDate);
+  const sessNoteObj = (student.sessionNotes || []).find(n => n.classId === targetClassId && n.date === targetDate);
+  const btvnScoreObj = (student.scores || []).find(sc => sc.classId === targetClassId && sc.date === targetDate && (!sc.type || sc.type === 'BTVN'));
+  const testScoreObj = (student.scores || []).find(sc => sc.classId === targetClassId && sc.date === targetDate && sc.type && sc.type !== 'BTVN');
+
+  const curAttStatus = place?.entry.attendance?.status
+    || (inLate ? 'late' : null)
+    || attHist?.status
+    || 'unmarked';
+  const curLateMins = place?.entry.attendance?.lateMinutes
+    || attHist?.lateMinutes
+    || attHist?.minutesLate
+    || 10;
+
+  const curHwStatus = place?.entry.homework?.status
+    || sessNoteObj?.homeworkStatus
+    || attHist?.homework?.status
+    || 'uncollected';
+  const curHwReason = place?.entry.homework?.reason
+    || sessNoteObj?.homeworkReason
+    || '';
+  const curHwScore = place?.entry.homework?.score
+    ?? sessNoteObj?.homeworkScore
+    ?? btvnScoreObj?.score
+    ?? '';
+  const curTestScore = place?.entry.testScore
+    ?? (isCurrentLiveSession ? checklist.testScores?.[student.id] : null)
+    ?? sessNoteObj?.testScore
+    ?? testScoreObj?.score
+    ?? '';
+  const curNote = (isCurrentLiveSession ? sessionNoteFor(student.id) : '') || sessNoteObj?.note || '';
+
+  const allDesksList = isCurrentLiveSession ? desks() : [];
+  let currentDeskId = place?.deskId || '';
+  if (!isCurrentLiveSession) {
+    const sh = (student.seatingHistory || []).find(h => h.classId === targetClassId && h.date === targetDate);
+    if (sh) currentDeskId = `aisle-${sh.aisle}-desk-${sh.desk}`;
   }
 
-  toast('Đã lưu thông tin học sinh.');
-};
+  const deskOptionsHtml = isCurrentLiveSession
+    ? `<option value="">-- Chưa xếp bàn / Khu vực chờ --</option>` +
+      allDesksList.map(d => `<option value="${escapeHtml(d.desk.id)}" ${d.desk.id === currentDeskId ? 'selected' : ''}>Dãy ${d.ci + 1} · Bàn ${d.di + 1}</option>`).join('')
+    : `<option value="${escapeHtml(currentDeskId)}">${currentDeskId ? escapeHtml(currentDeskId) : 'Theo lịch sử buổi học'}</option>`;
+
+  const parts = splitStudentName(student.name);
+  const initial = (student.givenName || parts.givenName || student.name || 'H').charAt(0).toUpperCase();
+
+  $('#student-session-profile-content').innerHTML = `
+    <div class="session-profile-general-box">
+      <div class="profile-portrait profile-portrait-placeholder" style="width:52px; height:52px; font-size:20px; flex-shrink:0;">
+        ${student.photoURL ? `<img src="${escapeHtml(student.photoURL)}" alt="${escapeHtml(student.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : escapeHtml(initial)}
+      </div>
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <strong style="font-size:16.5px; color:#1e3a29;">${escapeHtml(student.name)}</strong>
+          <span class="room-chip">Mã HS: ${escapeHtml(student.studentCode || '—')}</span>
+          <span class="room-chip" style="background:#eef2ff; color:#4338ca;">${escapeHtml(student.school || 'Chưa rõ trường')}</span>
+        </div>
+        <p style="margin:4px 0 0; font-size:13.5px; color:#526656;">
+          Phụ huynh: <strong>${escapeHtml(student.parentContact?.name || '—')}</strong> · SĐT: <strong>${escapeHtml(student.parentContact?.phone || '—')}</strong>
+          ${student.officeNotes ? ` · Ghi chú VP: <em>${escapeHtml(student.officeNotes)}</em>` : ''}
+        </p>
+      </div>
+    </div>
+
+    <div class="session-profile-inline-editor">
+      <div class="eyebrow" style="margin-bottom:8px;">DỮ LIỆU TRONG BUỔI HỌC (CHỈNH SỬA TRỰC TIẾP - INLINE EDIT)</div>
+      <div class="profile-edit-grid">
+        <label class="field-label">Trạng thái Điểm danh
+          <select id="sess-prof-att-status">
+            <option value="unmarked" ${curAttStatus === 'unmarked' ? 'selected' : ''}>Chưa điểm danh</option>
+            <option value="present" ${curAttStatus === 'present' ? 'selected' : ''}>Có mặt đúng giờ</option>
+            <option value="late" ${curAttStatus === 'late' ? 'selected' : ''}>Đi muộn</option>
+            <option value="absent_excused" ${curAttStatus === 'absent_excused' ? 'selected' : ''}>Vắng có phép</option>
+            <option value="absent_unexcused" ${curAttStatus === 'absent_unexcused' || curAttStatus === 'absent' ? 'selected' : ''}>Vắng không phép</option>
+          </select>
+        </label>
+
+        <label class="field-label" id="sess-prof-late-mins-wrap" ${curAttStatus === 'late' ? '' : 'hidden'}>Số phút đi muộn
+          <input type="number" id="sess-prof-late-mins" min="0" max="180" step="5" value="${Number(curLateMins) || 10}" />
+        </label>
+
+        <label class="field-label">Vị trí chỗ ngồi trong buổi
+          <select id="sess-prof-seat-select" ${isCurrentLiveSession ? '' : 'disabled'}>
+            ${deskOptionsHtml}
+          </select>
+        </label>
+
+        <label class="field-label">Trạng thái nộp BTVN
+          <select id="sess-prof-hw-status">
+            <option value="uncollected" ${curHwStatus === 'uncollected' ? 'selected' : ''}>Chưa thu</option>
+            <option value="submitted" ${curHwStatus === 'submitted' ? 'selected' : ''}>Đã thu</option>
+            <option value="graded" ${curHwStatus === 'graded' ? 'selected' : ''}>Đã chấm điểm</option>
+            <option value="not_submitted" ${curHwStatus === 'not_submitted' ? 'selected' : ''}>Không nộp</option>
+          </select>
+        </label>
+
+        <label class="field-label" id="sess-prof-hw-reason-wrap" ${curHwStatus === 'not_submitted' ? '' : 'hidden'}>Lý do không nộp BTVN
+          <select id="sess-prof-hw-reason">
+            <option value="">Chọn lý do...</option>
+            <option value="not_done" ${curHwReason === 'not_done' || curHwReason === 'Chưa làm' ? 'selected' : ''}>Chưa làm</option>
+            <option value="forgot" ${curHwReason === 'forgot' || curHwReason === 'Quên' || curHwReason === 'Quên vở' ? 'selected' : ''}>Quên vở</option>
+            <option value="missed_previous" ${curHwReason === 'missed_previous' ? 'selected' : ''}>Nghỉ buổi trước</option>
+          </select>
+        </label>
+
+        <label class="field-label">Điểm BTVN (0 – 10)
+          <input type="number" id="sess-prof-hw-score" min="0" max="10" step="0.25" placeholder="Nhập điểm BTVN..." value="${escapeHtml(curHwScore)}" />
+        </label>
+
+        <label class="field-label">Điểm Test (0 – 10)
+          <input type="number" id="sess-prof-test-score" min="0" max="10" step="0.25" placeholder="Nhập điểm Test..." value="${escapeHtml(curTestScore)}" />
+        </label>
+
+        <label class="field-label profile-wide">Ghi chú trong buổi học
+          <textarea id="sess-prof-note" rows="2" placeholder="Nhập ghi chú buổi học cho học sinh này...">${escapeHtml(curNote)}</textarea>
+        </label>
+      </div>
+      <small id="sess-prof-autosave-hint" style="display:block; margin-top:8px; color:#2e6d42; font-weight:700;">Mọi thay đổi được lưu trực tiếp vào dữ liệu buổi học.</small>
+    </div>
+  `;
+
+  const applyInlineSessionChanges = () => {
+    const newAttStatus = $('#sess-prof-att-status')?.value || 'unmarked';
+    const newLateMins = Number($('#sess-prof-late-mins')?.value) || 0;
+    const newDeskId = $('#sess-prof-seat-select')?.value || '';
+    let newHwStatus = $('#sess-prof-hw-status')?.value || 'uncollected';
+    const newHwReason = $('#sess-prof-hw-reason')?.value || '';
+    const rawHwScore = $('#sess-prof-hw-score')?.value?.trim() ?? '';
+    const rawTestScore = $('#sess-prof-test-score')?.value?.trim() ?? '';
+    const newNote = $('#sess-prof-note')?.value?.trim() ?? '';
+
+    if ($('#sess-prof-late-mins-wrap')) $('#sess-prof-late-mins-wrap').hidden = (newAttStatus !== 'late');
+    if ($('#sess-prof-hw-reason-wrap')) $('#sess-prof-hw-reason-wrap').hidden = (newHwStatus !== 'not_submitted');
+
+    const numHwScore = rawHwScore !== '' ? Number(rawHwScore) : null;
+    const numTestScore = rawTestScore !== '' ? Number(rawTestScore) : null;
+    if (numHwScore !== null && (newHwStatus === 'uncollected' || newHwStatus === 'submitted')) {
+      newHwStatus = 'graded';
+      if ($('#sess-prof-hw-status')) $('#sess-prof-hw-status').value = 'graded';
+    }
+
+    const hwObj = {
+      status: newHwStatus,
+      score: numHwScore,
+      reason: newHwStatus === 'not_submitted' ? newHwReason : null,
+      note: newNote
+    };
+    const attObj = newAttStatus === 'unmarked'
+      ? null
+      : { status: newAttStatus, lateMinutes: newAttStatus === 'late' ? newLateMins : 0, minutesLate: newAttStatus === 'late' ? newLateMins : 0 };
+
+    if (isCurrentLiveSession) {
+      const existingPlace = allEntries().find(p => p.entry.studentId === student.id);
+      if (newDeskId && (!existingPlace || existingPlace.deskId !== newDeskId)) {
+        if (existingPlace) {
+          deskItems[existingPlace.deskId] = (deskItems[existingPlace.deskId] || []).filter(e => e.studentId !== student.id);
+        }
+        deskItems[newDeskId] = deskItems[newDeskId] || [];
+        deskItems[newDeskId].push({ studentId: student.id, attendance: attObj, homework: hwObj, testScore: numTestScore });
+        lateQueue = lateQueue.filter(id => id !== student.id);
+      } else if (!newDeskId && existingPlace) {
+        deskItems[existingPlace.deskId] = (deskItems[existingPlace.deskId] || []).filter(e => e.studentId !== student.id);
+      }
+
+      const activePlace = allEntries().find(p => p.entry.studentId === student.id);
+      if (activePlace) {
+        activePlace.entry.attendance = attObj;
+        activePlace.entry.homework = hwObj;
+        activePlace.entry.testScore = numTestScore;
+      }
+
+      student.attendance = attObj;
+      student.homework = hwObj;
+      student.testScore = numTestScore;
+      if (checklist) {
+        checklist.testScores = checklist.testScores || {};
+        if (numTestScore !== null) checklist.testScores[student.id] = numTestScore;
+        else delete checklist.testScores[student.id];
+      }
+      saveSessionNote(student.id, newNote);
+    }
+
+    student.attendanceHistory = Array.isArray(student.attendanceHistory) ? student.attendanceHistory : [];
+    const ahIdx = student.attendanceHistory.findIndex(h => h.classId === targetClassId && h.date === targetDate);
+    if (attObj) {
+      const entry = { classId: targetClassId, date: targetDate, status: attObj.status, lateMinutes: attObj.lateMinutes || 0, minutesLate: attObj.lateMinutes || 0, homework: hwObj, timestamp: Date.now() };
+      if (ahIdx >= 0) student.attendanceHistory[ahIdx] = entry;
+      else student.attendanceHistory.unshift(entry);
+    } else if (ahIdx >= 0) {
+      student.attendanceHistory.splice(ahIdx, 1);
+    }
+    student.history = student.attendanceHistory;
+
+    student.sessionNotes = Array.isArray(student.sessionNotes) ? student.sessionNotes : [];
+    const snIdx = student.sessionNotes.findIndex(n => n.classId === targetClassId && n.date === targetDate);
+    const snEntry = {
+      ...(snIdx >= 0 ? student.sessionNotes[snIdx] : {}),
+      classId: targetClassId,
+      date: targetDate,
+      homeworkStatus: hwObj.status,
+      homeworkScore: numHwScore,
+      homeworkReason: hwObj.reason || '',
+      testScore: numTestScore,
+      note: newNote
+    };
+    if (snIdx >= 0) student.sessionNotes[snIdx] = snEntry;
+    else student.sessionNotes.unshift(snEntry);
+
+    student.scores = Array.isArray(student.scores) ? student.scores : [];
+    student.scores = student.scores.filter(sc => !(sc.classId === targetClassId && sc.date === targetDate));
+    if (numHwScore !== null) {
+      student.scores.unshift({ classId: targetClassId, date: targetDate, type: 'BTVN', score: numHwScore });
+    }
+    if (numTestScore !== null) {
+      student.scores.unshift({ classId: targetClassId, date: targetDate, type: 'Test', score: numTestScore });
+    }
+
+    saveStudentRecords(students, makeupStudents);
+    save();
+    render();
+  };
+
+  $('#student-session-profile-content').querySelectorAll('input, select, textarea').forEach(el => {
+    el.addEventListener('change', applyInlineSessionChanges);
+    if (el.tagName === 'TEXTAREA' || el.type === 'number') {
+      el.addEventListener('input', applyInlineSessionChanges);
+    }
+  });
+
+  if ($('#close-student-session-profile')) {
+    $('#close-student-session-profile').onclick = () => dlg.close();
+  }
+  if ($('#save-student-session-profile-btn')) {
+    $('#save-student-session-profile-btn').onclick = () => {
+      applyInlineSessionChanges();
+      dlg.close();
+      toast(`Đã lưu dữ liệu buổi học của ${student.name}.`);
+    };
+  }
+  if ($('#session-profile-open-class-btn')) {
+    $('#session-profile-open-class-btn').onclick = () => {
+      applyInlineSessionChanges();
+      dlg.close();
+      if (window.__featuresApp?.openStudentClassProfile) {
+        window.__featuresApp.openStudentClassProfile(student.id, targetClassId);
+      }
+    };
+  }
+
+  dlg.showModal();
+}
+window.openStudentSessionProfile = openStudentSessionProfile;
+
 function render(){
   const isNoHwActive = Boolean(window.__featuresApp?.isNoHomeworkSession?.());
   for(const {desk} of desks())deskItems[desk.id]??=[];
@@ -2543,9 +2903,7 @@ function render(){
       <div class="desks">${aisle.desks.map((desk, di)=>{
         const list=deskItems[desk.id]||[];
         const displayList = isTeacherView ? [...list].reverse() : list;
-        const addBtnHtml = isSeatingEditMode 
-          ? `<button type="button" class="desk-add-compact-btn" data-add-to-desk="${desk.id}" title="Thêm học sinh vào bàn này">+</button>`
-          : '';
+        const addBtnHtml = `<button type="button" class="desk-add-compact-btn ${isSeatingEditMode ? 'edit-active' : 'tap-assign-btn'}" data-add-to-desk="${desk.id}" title="Chạm để chọn học sinh vào bàn này">+</button>`;
 
         const seatsHtml = displayList.length ? displayList.map((entry,idx)=>{
           const origIndex = isTeacherView ? (list.length - 1 - idx) : idx;
@@ -2559,7 +2917,7 @@ function render(){
           const warnClass = isUncollectedWarn ? 'seat-uncollected-warn' : (isDebtWarn ? 'seat-debt-warn' : '');
           const warnTag = isUncollectedWarn ? '<span class="seat-warning-tag warn-uncollected" title="Chưa thu BTVN buổi này">!</span>' : (isDebtWarn ? '<span class="seat-warning-tag warn-debt" title="Nợ BTVN buổi trước">!</span>' : '');
           const makeupBadgeHtml = isMakeupStudent ? '<span class="makeup-seat-badge" title="Học sinh học bù">BÙ</span>' : '';
-          const isSearchMatch = Boolean(mapSearchQuery && student && normalizeSearchText(`${student.name} ${student.studentCode || ''} ${(student.tags || []).join(' ')}`).includes(mapSearchQuery));
+          const isSearchMatch = Boolean(mapSearchQuery && student && matchesAcronymOrText(`${student.name} ${student.studentCode || ''} ${(student.tags || []).join(' ')}`, mapSearchQuery));
           return `<button class="seat occupied seat-token ${student?'seat-named':'seat-anonymous'} ${isMakeupStudent?'seat-makeup':''} ${att?.status==='late'?'attendance-late':''} ${warnClass} ${isSearchMatch?'seat-search-match':''}" data-entry-index="${origIndex}" data-desk-id="${desk.id}" data-student-id="${escapeHtml(student?.id||'')}" aria-label="${student?`${student.name}${isMakeupStudent?' (Học bù)':''}; BTVN ${homeworkLabel(hw?.status)}; ${attendanceLabel(att?.status)}`:'Biểu tượng học sinh chưa ghi tên'}">${student?'':`<span class="seat-symbol">${studentIcon}</span>`}${student?`<span class="seat-name">${makeupBadgeHtml}${escapeHtml(student.name)}${renderInlineTags(student)}${warnTag}<span class="homework-mark ${homeworkClass(hw?.status)}" title="${homeworkLabel(hw?.status)}">${homeworkSymbol(hw)}</span></span>`:hw?.status&&hw.status!=='uncollected'?`<span class="homework-mark ${homeworkClass(hw.status)}" title="${homeworkLabel(hw.status)}">${homeworkSymbol(hw)}</span>`:''}</button>`;
         }).join('') : '<span class="seat-empty-text">Bàn trống</span>';
 
@@ -2860,15 +3218,9 @@ function toggleHomeworkFields(status,prefix){
   const reasonFields=$(`#${isSeat?'no-homework-fields':'late-no-homework-fields'}`);
   if(reasonFields)reasonFields.hidden=status!=='not_submitted';
   const gradeField=$(`#${isSeat?'grade-field':'late-grade-field'}`);
-  if(gradeField)gradeField.hidden=true;
+  if(gradeField)gradeField.hidden=(status==='not_submitted');
   renderHomeworkHistoryPanel(prefix);
-  if (status === 'not_submitted') {
-    const hasStu = isSeat ? Boolean(selectedStudentId || currentEntry()?.studentId) : Boolean(selectedLateId);
-    if (!hasStu) {
-      const searchEl = $(isSeat ? '#student-search' : '#late-search');
-      searchEl?.focus();
-    }
-  }
+  // Phần 1.3: Không tự động chuyển con trỏ (auto-focus) về ô search khi bấm "Không nộp"
 }
 
 function showAttendance(att={}){if($('#attendance-status'))$('#attendance-status').value=att.status||'present';}
@@ -2904,7 +3256,21 @@ function showIdentityForm(kind='new'){
 
 if ($('#new-or-makeup-choice')) {
   $('#new-or-makeup-choice').onclick = () => {
-    showIdentityForm('new');
+    const formHost = $('#identity-form-host');
+    const kindHost = $('#identity-kind-host');
+    const btn = $('#new-or-makeup-choice');
+    const isOpen = Boolean(formHost && formHost.innerHTML.trim());
+    if (isOpen) {
+      if (kindHost) kindHost.innerHTML = '';
+      if (formHost) formHost.innerHTML = '';
+      btn.classList.remove('active');
+      btn.textContent = '+ Học sinh mới / Học bù';
+      $('#student-search')?.focus();
+    } else {
+      btn.classList.add('active');
+      btn.textContent = '× Đóng nhập Học sinh mới / Học bù';
+      showIdentityForm('new');
+    }
   };
 }
 
@@ -2931,6 +3297,7 @@ function assignStudent(id){
   $('#student-options').hidden=true;
   $('#identity-kind-host').innerHTML='';
   $('#identity-form-host').innerHTML='';
+  if ($('#new-or-makeup-choice')) { $('#new-or-makeup-choice').classList.remove('active'); $('#new-or-makeup-choice').textContent = '+ Học sinh mới / Học bù'; }
   renderStudentInfo('#selected-student-info',person);
   renderHomeworkHistoryPanel('homework');
   $('#seat-dialog-hint').textContent=`Đã chọn ${person.name}. Kiểm tra điểm danh và trạng thái BTVN.`;
@@ -2955,6 +3322,7 @@ function openStudent(deskId,index){
   $('#student-options').hidden=true;
   $('#identity-kind-host').innerHTML='';
   $('#identity-form-host').innerHTML='';
+  if ($('#new-or-makeup-choice')) { $('#new-or-makeup-choice').classList.remove('active'); $('#new-or-makeup-choice').textContent = '+ Học sinh mới / Học bù'; }
   renderStudentInfo('#selected-student-info',studentById(selectedStudentId));
   setHomeworkFields(entry.homework||studentById(selectedStudentId)?.homework||{status:'uncollected'});
   renderHomeworkHistoryPanel('homework');
@@ -3090,7 +3458,7 @@ classroom.addEventListener('click',e=>{
   const token=e.target.closest('[data-entry-index]');
   if(token){openStudent(token.dataset.deskId,Number(token.dataset.entryIndex));return;}
   const add=e.target.closest('[data-add-to-desk]');
-  if(add){if(!isSeatingEditMode)return;addAnonymousToDesk(add.dataset.addToDesk,(deskItems[add.dataset.addToDesk]||[]).length,false);}
+  if(add){addAnonymousToDesk(add.dataset.addToDesk,(deskItems[add.dataset.addToDesk]||[]).length,true);return;}
 });
 
 // Track divider state inside #layout-dialog before saving
@@ -3462,7 +3830,19 @@ function showLateIdentityForm(kind='new'){
 
 if ($('#late-new-or-makeup')) {
   $('#late-new-or-makeup').onclick = () => {
-    showLateIdentityForm('new');
+    const hostEl = $('#late-identity-host');
+    const btn = $('#late-new-or-makeup');
+    const isOpen = Boolean(hostEl && hostEl.innerHTML.trim());
+    if (isOpen) {
+      hostEl.innerHTML = '';
+      btn.classList.remove('active');
+      btn.textContent = '+ Học sinh mới / Học bù';
+      $('#late-search')?.focus();
+    } else {
+      btn.classList.add('active');
+      btn.textContent = '× Đóng nhập Học sinh mới / Học bù';
+      showLateIdentityForm('new');
+    }
   };
 }
 
@@ -3484,6 +3864,7 @@ function selectLateStudent(id){
   noteField.dataset.sessionNote=id;
   $('#late-options').hidden=true;
   $('#late-identity-host').innerHTML='';
+  if ($('#late-new-or-makeup')) { $('#late-new-or-makeup').classList.remove('active'); $('#late-new-or-makeup').textContent = '+ Học sinh mới / Học bù'; }
   $('#late-detail-section').hidden=false;
   const tags=studentTagList(student);
   $('#late-history').innerHTML=`<div class="late-profile-meta"><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.school||'Chưa cập nhật trường/lớp')}</small>${tags.map(tag=>`<span class="student-tag ${tag==='Mới'?'new-tag':''}">${escapeHtml(tag)}</span>`).join('')}</div>`;
@@ -3505,6 +3886,7 @@ $('#late-button').onclick=()=>{
   $('#late-detail-section').hidden=true;
   $('#late-options').hidden=true;
   $('#late-identity-host').innerHTML='';
+  if ($('#late-new-or-makeup')) { $('#late-new-or-makeup').classList.remove('active'); $('#late-new-or-makeup').textContent = '+ Học sinh mới / Học bù'; }
   $('#save-arrival-time').checked=true;
   $('#arrival-time-field').hidden=false;
   selectedLateId=null;
@@ -3666,8 +4048,8 @@ const features = setupFeatures({
   saveClassSessionChanges: (changes) => saveClassSessionChanges(changes),
   occurrenceDate: (cls) => occurrenceDate(cls),
   sessionChangeKey: (classId, date) => sessionChangeKey(classId, date),
-  enterClass: (classId, date) => enterClass(classId, date),
-  openStudentProfile: (id) => openStudentProfile(id),
+  enterClass: (classId, date, isHistoryMode, targetView) => enterClass(classId, date, isHistoryMode, targetView),
+  openStudentProfile: (id, origin) => openStudentProfile(id, origin),
   desks: () => desks(),
   getLayout: () => layout,
   getDeskItems: () => deskItems,
@@ -4480,4 +4862,85 @@ document.querySelectorAll('dialog').forEach(dlg => {
       }
     }
   });
+});
+
+
+// v2.1: Tap-to-assign ("Chạm để xếp chỗ") on Seating Map & Managed Class Card '⋯' More Menu
+let tapAssignSource = null;
+
+function setTapAssignSource(source = null) {
+  tapAssignSource = source;
+  document.querySelectorAll('.pool-token, .late-token').forEach(el => el.classList.remove('tap-assign-active'));
+  document.querySelectorAll('.desk[data-desk-id]').forEach(el => el.classList.toggle('desk-tap-target', Boolean(source)));
+  const poolCountEl = $('#pool-count');
+  if (poolCountEl) {
+    if (source?.type === 'late') {
+      const stu = studentById(source.studentId);
+      poolCountEl.innerHTML = `<strong style="color:#4f46e5;">Đang chọn xếp chỗ cho ${escapeHtml(stu?.name || 'học sinh')} — Chạm vào bàn bất kỳ bên dưới để đặt vào bàn</strong>`;
+    } else if (source?.type === 'pool') {
+      poolCountEl.innerHTML = `<strong style="color:#4f46e5;">Đang chọn thêm học sinh — Chạm vào bàn bất kỳ bên dưới để xếp chỗ & chọn tên</strong>`;
+    } else {
+      poolCountEl.textContent = 'Chạm vào nút + trên bàn để chọn học sinh, hoặc chạm vào đây rồi chạm vào bàn bất kỳ';
+    }
+  }
+}
+
+document.addEventListener('click', (e) => {
+  // 1. Handle Managed Class Card '⋯' More Options menu
+  const moreToggle = e.target.closest('[data-toggle-card-more]');
+  if (moreToggle) {
+    e.preventDefault();
+    e.stopPropagation();
+    const wrap = moreToggle.closest('.card-more-menu-wrap');
+    const menu = wrap?.querySelector('.card-more-dropdown');
+    const wasHidden = menu ? menu.hidden : true;
+    document.querySelectorAll('.card-more-dropdown').forEach(m => { m.hidden = true; });
+    if (menu) menu.hidden = !wasHidden;
+    return;
+  }
+  if (!e.target.closest('.card-more-menu-wrap')) {
+    document.querySelectorAll('.card-more-dropdown').forEach(m => { m.hidden = true; });
+  } else if (e.target.closest('.card-more-item')) {
+    document.querySelectorAll('.card-more-dropdown').forEach(m => { m.hidden = true; });
+  }
+
+  // 2. Tap-to-assign: Tapping a late student token toggles selection for tap-to-assign
+  const lateToken = e.target.closest('[data-late-key]');
+  if (lateToken && !suppressClick) {
+    const stuId = lateToken.dataset.lateKey;
+    if (tapAssignSource?.type === 'late' && tapAssignSource.studentId === stuId) {
+      setTapAssignSource(null);
+    } else {
+      setTapAssignSource({ type: 'late', studentId: stuId });
+      lateToken.classList.add('tap-assign-active');
+      toast('Hãy chạm vào bàn bất kỳ trên sơ đồ để xếp chỗ cho học sinh.');
+    }
+    return;
+  }
+
+  // 3. Tap-to-assign: If tapAssignSource is active and user taps a desk, assign immediately!
+  const tappedDesk = e.target.closest('.desk[data-desk-id]');
+  if (tappedDesk && tapAssignSource && !e.target.closest('[data-entry-index]')) {
+    e.preventDefault();
+    e.stopPropagation();
+    const deskId = tappedDesk.dataset.deskId;
+    const list = deskItems[deskId] || (deskItems[deskId] = []);
+    if (tapAssignSource.type === 'late') {
+      const person = studentById(tapAssignSource.studentId);
+      if (person) {
+        const entry = {
+          studentId: person.id,
+          homework: person.homework || { status: 'uncollected' },
+          attendance: person.attendance || { status: 'late', lateMinutes: 10 }
+        };
+        insertIntoDesk(entry, deskId, list.length, { type: 'late', studentId: person.id });
+        toast(`Đã xếp ${person.name} vào bàn.`);
+      }
+      setTapAssignSource(null);
+    } else if (tapAssignSource.type === 'pool') {
+      setTapAssignSource(null);
+      addAnonymousToDesk(deskId, list.length, true);
+    }
+    return;
+  }
 });
