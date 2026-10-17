@@ -1,16 +1,16 @@
-import { matchesAcronymOrText } from './student-search.js?v=2.2';
+import { matchesAcronymOrText } from './student-search.js?v=2.3';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.2';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.2';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.3';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.3';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.2';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.3';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -20,7 +20,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=2.2';
+} from './excel-import-export.js?v=2.3';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -31,7 +31,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=2.2';
+} from './data/session-history-repository.js?v=2.3';
 
 export function setupFeatures(ctx) {
   const {
@@ -574,29 +574,31 @@ export function setupFeatures(ctx) {
       none: 'Không giao bài tập'
     };
 
-    list.innerHTML = filtered.map(item => {
-      const stuInitial = (splitVietnameseName(item.studentName || '').givenName || item.studentName || 'H').trim().charAt(0).toUpperCase();
-      return `
-      <article class="tutoring-card">
-        <span class="icon-box tutoring-avatar-box ${item.type === 'giasu' ? 'mint' : item.type === 'makeup' ? 'peach' : item.type === 'tutoring' ? 'lilac' : 'mint'}">${escapeHtml(stuInitial)}</span>
+    list.innerHTML = filtered.map(item => `
+      <article class="tutoring-card tutoring-card-clean">
         <div class="tutoring-card-main">
-          <strong>${escapeHtml(item.studentName)} <span class="tutoring-badge ${escapeHtml(item.type)}">${item.type === 'giasu' ? 'Gia sư 1-kèm-1' : escapeHtml(typeLabels[item.type] || item.type)}</span> ${item.studentClass ? `<span class="room-chip">${escapeHtml(item.studentClass)}</span>` : ''}</strong>
-          ${item.previousHomeworkCheck ? `<p style="margin:3px 0; font-size:14.5px; color:#233d31;"><strong> Kiểm tra BTVN buổi trước:</strong> ${escapeHtml(item.previousHomeworkCheck)}</p>` : ''}
-          <p><strong>Nội dung kèm:</strong> ${escapeHtml(item.lessonContent)}</p>
-          ${item.evaluation ? `<p><strong>Đánh giá:</strong> ${escapeHtml(item.evaluation)} ${item.score ? `· Điểm: <strong style="color:#2f7045;">${item.score}/10</strong>` : ''}</p>` : ''}
+          <div class="tutoring-card-header-line">
+            <strong class="tutoring-student-title">${escapeHtml(item.studentName)}</strong>
+            <div class="tutoring-card-badges">
+              <span class="tutoring-badge ${escapeHtml(item.type)}">${item.type === 'giasu' ? 'Gia sư 1-kèm-1' : escapeHtml(typeLabels[item.type] || item.type)}</span>
+              ${item.studentClass ? `<span class="room-chip">${escapeHtml(item.studentClass)}</span>` : ''}
+            </div>
+          </div>
+          ${item.previousHomeworkCheck ? `<p class="tutoring-detail-line"><strong>Kiểm tra BTVN buổi trước:</strong> ${escapeHtml(item.previousHomeworkCheck)}</p>` : ''}
+          <p class="tutoring-detail-line"><strong>Nội dung kèm:</strong> ${escapeHtml(item.lessonContent)}</p>
+          ${item.evaluation ? `<p class="tutoring-detail-line"><strong>Đánh giá:</strong> ${escapeHtml(item.evaluation)} ${item.score ? `· Điểm: <strong style="color:#2f7045;">${item.score}/10</strong>` : ''}</p>` : ''}
         </div>
         <div class="tutoring-card-meta">
-          <span> ${escapeHtml(item.date)} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span>
-          <span> Trợ giảng: <strong>${escapeHtml(item.assistantName)}</strong></span>
-          <span> BTVN: <em>${escapeHtml(hwLabels[item.homeworkStatus] || item.homeworkStatus)}</em></span>
+          <span>${escapeHtml(item.date)} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span>
+          <span>Trợ giảng: <strong>${escapeHtml(item.assistantName)}</strong></span>
+          <span>BTVN: <em>${escapeHtml(hwLabels[item.homeworkStatus] || item.homeworkStatus)}</em></span>
         </div>
-        <div class="tutoring-actions">
+        <div class="tutoring-actions tutoring-actions-divided">
           <button type="button" class="outline-button" data-edit-tutoring="${escapeHtml(item.id)}">Sửa</button>
           <button type="button" class="text-danger" data-delete-tutoring="${escapeHtml(item.id)}">Xóa</button>
         </div>
       </article>
-    `;
-    }).join('');
+    `).join('');
 
     list.querySelectorAll('[data-edit-tutoring]').forEach(btn => {
       btn.onclick = () => openTutoringDialog(btn.dataset.editTutoring);
@@ -820,7 +822,16 @@ export function setupFeatures(ctx) {
         <article class="room-template-card">
           <div class="room-template-card-top">
             <strong>${escapeHtml(tpl.name)}</strong>
-            <span class="room-chip">${escapeHtml(tpl.roomCode || 'Mẫu')}</span>
+            <div class="managed-class-heading-right">
+              <span class="room-chip">${escapeHtml(tpl.roomCode || 'Mẫu')}</span>
+              <div class="card-more-menu-wrap">
+                <button type="button" class="outline-button card-more-toggle-btn" data-toggle-card-more="tpl-${escapeHtml(tpl.id)}" aria-label="Tùy chọn phòng học" title="Tùy chọn phòng học">⋯</button>
+                <div class="card-more-dropdown" hidden>
+                  <button type="button" class="card-more-item" data-edit-template="${escapeHtml(tpl.id)}">Sửa phòng</button>
+                  <button type="button" class="card-more-item text-danger" data-delete-template="${escapeHtml(tpl.id)}">Xóa phòng</button>
+                </div>
+              </div>
+            </div>
           </div>
           <p class="room-template-card-desc">${escapeHtml(tpl.description || 'Chưa có mô tả.')} · <strong>${aisles} dãy · ${totalDesks} bàn · Sức chứa ~${estCapacity} HS</strong></p>
           <div class="template-layout-preview" aria-label="Sơ đồ mô phỏng">
@@ -860,9 +871,7 @@ export function setupFeatures(ctx) {
             ` : '<p style="margin:2px 0 0; font-size:13.5px; color:#87968a; font-style:italic;">Chưa có lớp nào xếp lịch học tại phòng này.</p>'}
           </div>
           <div class="room-template-actions" style="margin-top:10px;">
-            <button type="button" class="outline-button" data-apply-template="${escapeHtml(tpl.id)}">Áp dụng sơ đồ vào lớp đang mở</button>
-            <button type="button" class="outline-button" data-edit-template="${escapeHtml(tpl.id)}">Sửa phòng</button>
-            <button type="button" class="text-danger" data-delete-template="${escapeHtml(tpl.id)}">Xóa</button>
+            <button type="button" class="primary-button room-apply-full-btn" data-apply-template="${escapeHtml(tpl.id)}">Áp dụng sơ đồ vào lớp đang mở</button>
           </div>
         </article>
       `;

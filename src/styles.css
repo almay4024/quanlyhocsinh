@@ -5563,3 +5563,202 @@ input[type="time"]::-webkit-date-and-time-value {
   text-align: left !important;
   pointer-events: none !important;
 }
+
+
+/* =========================================================
+   v2.3 MOBILE UI & SESSION PROFILE FIXES
+   ========================================================= */
+
+/* 2c-1: Ensure .card-more-dropdown[hidden] is strictly hidden (overrides display: flex !important) */
+.card-more-dropdown[hidden],
+.card-more-menu-wrap .card-more-dropdown[hidden] {
+  display: none !important;
+}
+
+/* 2a: Scores View group divider row font-size & sticky wrapping on Mobile */
+#scores-tab-table tr.scores-group-divider-row td {
+  font-size: 0.78rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em !important;
+  padding: 8px 12px !important;
+  white-space: normal !important;
+  line-height: 1.35 !important;
+}
+
+.scores-group-sticky-label {
+  display: block !important;
+  position: sticky !important;
+  left: 10px !important;
+  max-width: calc(100vw - 52px) !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  line-height: 1.35 !important;
+}
+
+@media (max-width: 767px) {
+  #scores-tab-table tr.scores-group-divider-row td {
+    font-size: 0.72rem !important;
+    padding: 7px 10px !important;
+  }
+  .scores-group-sticky-label {
+    font-size: 0.72rem !important;
+    max-width: calc(100vw - 48px) !important;
+  }
+}
+
+/* 2b: Checklist 03. Cuối giờ & Bàn giao subheader layout (left title, right + Thêm việc button) */
+.checklist-end-subheader,
+.checklist-custom-Adder-bar.checklist-end-subheader {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  gap: 10px !important;
+  margin-top: 12px !important;
+  margin-bottom: 8px !important;
+}
+
+.checklist-end-subheader-title {
+  margin: 0 !important;
+  text-align: left !important;
+  font-size: 0.86rem !important;
+  font-weight: 800 !important;
+  color: #312e81 !important;
+  flex: 1 1 auto !important;
+}
+
+.checklist-end-subheader #toggle-end-checklist-adder-btn {
+  flex: 0 0 auto !important;
+  margin-left: auto !important;
+  white-space: nowrap !important;
+}
+
+/* 2c: Managed Class Card 2-row fixed header */
+.managed-class-card .managed-class-top.managed-class-header-stack {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+.managed-class-header-row1 {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+.managed-class-header-row1 .managed-class-name {
+  margin: 0 !important;
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  color: #1e1b4b !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.managed-class-row1-right {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex: 0 0 auto !important;
+}
+
+.managed-class-header-row2 {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  width: 100% !important;
+}
+
+/* 2d: Tutoring & Make-up Card clean header, unified font-size, and bottom divider */
+.tutoring-card.tutoring-card-clean .tutoring-card-top {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+.tutoring-card.tutoring-card-clean .tutoring-student-info {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+
+.tutoring-card.tutoring-card-clean .tutoring-student-name-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+
+.tutoring-card.tutoring-card-clean .tutoring-detail-line {
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  line-height: 1.45 !important;
+  color: #334155 !important;
+  margin-top: 6px !important;
+}
+
+.tutoring-card.tutoring-card-clean .tutoring-detail-line strong {
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  color: #1e1b4b !important;
+}
+
+.tutoring-card.tutoring-card-clean .tutoring-actions.tutoring-actions-divided {
+  border-top: 1px solid rgba(99, 102, 241, 0.16) !important;
+  padding-top: 10px !important;
+  margin-top: 10px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+/* 2e: Room Template Card single full-width apply button & + Thêm phòng học button on mobile */
+.room-template-actions.room-template-actions-single {
+  display: flex !important;
+  width: 100% !important;
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+  border-top: 1px solid rgba(99, 102, 241, 0.14) !important;
+}
+
+.room-template-actions.room-template-actions-single .room-apply-full-btn {
+  width: 100% !important;
+  flex: 1 1 100% !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+@media (max-width: 767px) {
+  #room-template-manager-section > .section-header .header-actions {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+  #room-template-manager-section #add-room-template-btn {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+}
