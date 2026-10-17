@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Lớp học vui (v1.8) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=2.1" />
+  <link rel="stylesheet" href="/src/styles.css?v=2.2" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -286,22 +286,22 @@
             <!-- Staff KPIs -->
             <div class="staff-metrics-grid">
               <div class="summary-card">
-                <div class="summary-top"><span>Tổng nhân sự</span><div class="icon-box lilac"></div></div>
+                <div class="summary-top"><span>Tổng nhân sự</span></div>
                 <strong id="staff-kpi-total">0</strong>
                 <small>Toàn bộ cán bộ nhân viên</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Trợ giảng (TA)</span><div class="icon-box mint"></div></div>
+                <div class="summary-top"><span>Trợ giảng (TA)</span></div>
                 <strong id="staff-kpi-assistants">0</strong>
                 <small>Hỗ trợ lớp & kèm 1-1</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Giáo viên (GV)</span><div class="icon-box peach"></div></div>
+                <div class="summary-top"><span>Giáo viên (GV)</span></div>
                 <strong id="staff-kpi-teachers">0</strong>
                 <small>Giảng dạy chuyên môn</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Văn phòng & Quản lý</span><div class="icon-box lilac"></div></div>
+                <div class="summary-top"><span>Văn phòng & Quản lý</span></div>
                 <strong id="staff-kpi-office">0</strong>
                 <small>Vận hành trung tâm</small>
               </div>
@@ -550,7 +550,7 @@
           </div>
           <div class="session-badge-wrap">
             <span id="session-status-badge" class="session-badge-state live">● Đang diễn ra</span>
-            <span id="finalized-indicator-badge" class="finalized-badge" hidden>✓ Đã chốt sĩ số</span>
+            <span id="finalized-indicator-badge" class="finalized-badge" hidden style="display:none!important;">✓ Đã chốt sĩ số</span>
             <div class="session-control-actions">
               <button type="button" class="outline-button btn-session-action" id="header-class-general-btn" title="Về trang quản lý chung của lớp">Quản lý chung</button>
               <button type="button" class="outline-button btn-session-action" id="header-edit-class-btn" title="Cài đặt thông tin lớp">Cài đặt lớp</button>
@@ -690,7 +690,7 @@
             </div>
           </section>
 
-          <section class="bottom-actions">
+          <section class="bottom-actions" hidden style="display:none!important;">
             <div>
               <strong id="remaining-count">0 học sinh đã vào chỗ chưa điểm danh</strong>
               <small id="bottom-status-note">Nhấn "Chốt sĩ số" sau 15 phút đầu giờ để hệ thống tự động quét học sinh vắng mặt.</small>
@@ -1874,12 +1874,26 @@
             <input type="date" id="sched-makeup-date" required />
           </label>
           <div class="class-config-time-fields">
-            <label class="field-label">Bắt đầu
-              <input type="time" id="sched-makeup-start" required />
+            <label class="field-label">Bắt đầu (làm tròn 5p)
+              <input type="time" id="sched-makeup-start" step="300" required />
             </label>
-            <label class="field-label">Kết thúc
-              <input type="time" id="sched-makeup-end" required />
+            <label class="field-label">Thời gian ca học
+              <select id="sched-makeup-duration">
+                <option value="45">0:45 [45p]</option>
+                <option value="60">1:00 [1g]</option>
+                <option value="75">1:15 [1g15p]</option>
+                <option value="90" selected>1:30 [1g30p]</option>
+                <option value="120">2:00 [2g]</option>
+                <option value="150">2:30 [2g30p]</option>
+                <option value="180">3:00 [3g]</option>
+                <option value="custom">Tùy chỉnh...</option>
+              </select>
             </label>
+            <label class="field-label" id="sched-makeup-duration-custom-wrap" hidden>Thời lượng tùy chỉnh
+              <input id="sched-makeup-duration-custom" type="text" placeholder="VD: 1:20 hoặc 80p" />
+            </label>
+            <small id="sched-makeup-time-preview" class="time-range-preview">Ca học: 15:30 – 17:00</small>
+            <input type="time" id="sched-makeup-end" step="300" hidden style="display:none!important;" />
           </div>
           <label class="field-label">Phòng học
             <input id="sched-makeup-room" required placeholder="P1-T3-CS1" />
@@ -2138,6 +2152,6 @@
   </div>
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=2.1"></script>
+  <script type="module" src="/src/app.js?v=2.2"></script>
 </body>
 </html>

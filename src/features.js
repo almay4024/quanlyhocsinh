@@ -1,16 +1,16 @@
-import { matchesAcronymOrText } from './student-search.js?v=2.1';
+import { matchesAcronymOrText } from './student-search.js?v=2.2';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.1';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.1';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.2';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.2';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.1';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.2';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -20,7 +20,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=2.1';
+} from './excel-import-export.js?v=2.2';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -31,7 +31,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=2.1';
+} from './data/session-history-repository.js?v=2.2';
 
 export function setupFeatures(ctx) {
   const {
@@ -2960,7 +2960,8 @@ export function setupFeatures(ctx) {
         endSel: '#sched-makeup-end',
         durationSel: '#sched-makeup-duration',
         customWrapSel: '#sched-makeup-duration-custom-wrap',
-        customInputSel: '#sched-makeup-duration-custom'
+        customInputSel: '#sched-makeup-duration-custom',
+        previewSel: '#sched-makeup-time-preview'
       });
     } else {
       $('#sched-makeup-start').value = item.startTime || '15:30';
@@ -4522,7 +4523,8 @@ export function setupFeatures(ctx) {
     endSel: '#sched-makeup-end',
     durationSel: '#sched-makeup-duration',
     customWrapSel: '#sched-makeup-duration-custom-wrap',
-    customInputSel: '#sched-makeup-duration-custom'
+    customInputSel: '#sched-makeup-duration-custom',
+    previewSel: '#sched-makeup-time-preview'
   });
 
   function renderScheduleStaffOptions(kind, query = '') {

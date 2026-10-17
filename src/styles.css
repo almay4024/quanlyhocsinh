@@ -5167,3 +5167,399 @@ input[type="time"]::-webkit-date-and-time-value {
     font-size: 14px !important;
   }
 }
+
+
+/* ==========================================================================
+   v2.2 COMPREHENSIVE LOGIC, SEATING, CHECKLIST, IPAD & MOBILE UI REFINEMENTS
+   1. Remove manual Finalize Attendance button & badge (auto-completed on attendance)
+   2. Seating Chart: hide '+' when Edit mode is OFF; never wrap seats in the same desk onto multiple vertical rows; enable smooth horizontal scrollbar
+   3. Larger Student Name & Tag input in Attendance menu; show BTVN score when not_submitted/absent and hide when uncollected
+   4. Remove empty icon boxes in Staff KPIs & Shift Cards
+   5. Fix Class Header status badge spacing, Checklist multi-line wrapping & top padding, History Session Banner vertical layout, Scores group divider row border
+   6. Fix iPad Staff Table right-edge clipping, Room Template Card vertical stretching (align-items: start), Vietnamese DD/MM/YYYY date input display, and Read-only General Student Profile deduplication
+   ========================================================================== */
+
+/* 1. Hide manual Finalize Attendance button & badge */
+#finalized-indicator-badge,
+#finalize-button,
+.bottom-actions {
+  display: none !important;
+}
+
+/* 2. Seating Chart: Hide '+' when Edit mode is OFF & Keep all students in the same desk on 1 horizontal row */
+.classroom-wrap:not(.seating-edit-mode-on) .desk-add-compact-btn {
+  display: none !important;
+}
+
+.classroom,
+@media (max-width: 768px) {
+  .classroom {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 4px 4px 12px !important;
+    scrollbar-width: auto !important;
+  }
+}
+
+.classroom {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 4px 4px 12px !important;
+  scrollbar-width: auto !important;
+}
+
+.classroom::-webkit-scrollbar {
+  height: 8px !important;
+  display: block !important;
+}
+
+.classroom::-webkit-scrollbar-track {
+  background: #edf3ee !important;
+  border-radius: 999px !important;
+}
+
+.classroom::-webkit-scrollbar-thumb {
+  background: #89a18d !important;
+  border-radius: 999px !important;
+}
+
+.desk-row,
+@media (max-width: 768px) {
+  .desk-row {
+    flex: 0 0 var(--aisle-width, 190px) !important;
+    width: var(--aisle-width, 190px) !important;
+    min-width: var(--aisle-width, 190px) !important;
+    max-width: none !important;
+  }
+}
+
+.desk-row {
+  flex: 0 0 var(--aisle-width, 190px) !important;
+  width: var(--aisle-width, 190px) !important;
+  min-width: var(--aisle-width, 190px) !important;
+  max-width: none !important;
+}
+
+/* Strictly keep all seats inside a desk on a single horizontal row (NEVER wrap vertically) */
+.desk-row .desk-seats {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.desk-row .desk-seats > .seat.seat-token {
+  flex: 1 1 0 !important;
+  min-width: 62px !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 38px !important;
+  padding: 4px 5px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* 3. Larger Student Name & Tag Editor in Attendance Menu (#seat-dialog & #late-dialog) */
+#selected-student-info .student-profile-name,
+#late-history .late-profile-meta strong {
+  font-size: 19px !important;
+  font-weight: 800 !important;
+  color: #1b4d2a !important;
+  line-height: 1.35 !important;
+  padding: 2px 0 !important;
+}
+
+#selected-student-info .selected-student-summary small,
+#late-history .late-profile-meta small {
+  font-size: 14px !important;
+  color: #4b5e50 !important;
+}
+
+.student-tag-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  margin: 8px 0 !important;
+}
+
+.student-tag {
+  font-size: 13.5px !important;
+  padding: 5px 11px !important;
+  border-radius: 7px !important;
+  font-weight: 700 !important;
+}
+
+.student-tag-editor {
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  margin-top: 8px !important;
+  width: 100% !important;
+}
+
+.student-tag-editor input {
+  flex: 1 1 auto !important;
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 8px 14px !important;
+  font-size: 15px !important;
+  border-radius: 9px !important;
+  border: 1.5px solid #cbd8cd !important;
+  box-sizing: border-box !important;
+}
+
+.student-tag-editor button {
+  flex: 0 0 auto !important;
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 0 18px !important;
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+  border-radius: 9px !important;
+  white-space: nowrap !important;
+}
+
+.student-option .student-option-name {
+  font-size: 15.5px !important;
+  font-weight: 700 !important;
+}
+
+/* 4. Shift Cards without empty left icon box */
+.shift-card {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 14px !important;
+  align-items: center !important;
+}
+
+.shift-card-icon {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .shift-card {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* 5. Class Header Status Badge Spacing (#session-status-badge vs .session-control-actions) */
+.session-badge-wrap {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-end !important;
+  gap: 12px !important;
+}
+
+#session-status-badge {
+  margin-bottom: 4px !important;
+  display: inline-flex !important;
+}
+
+.session-control-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  margin-top: 2px !important;
+}
+
+@media (max-width: 768px) {
+  .session-badge-wrap {
+    align-items: flex-start !important;
+    width: 100% !important;
+    gap: 12px !important;
+  }
+}
+
+/* 6. Checklist & Reminder Multi-line Wrapping + Top Padding Fix */
+.checklist-items {
+  padding-top: 8px !important;
+  overflow: visible !important;
+}
+
+.checklist-item {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 10px !important;
+  padding: 12px 10px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.checklist-item-copy {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  overflow: visible !important;
+}
+
+.checklist-label-wrap-text,
+.checklist-label-textarea,
+.checklist-item input.checklist-label-input {
+  width: 100% !important;
+  min-width: 0 !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+  line-height: 1.45 !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: #1e3a29 !important;
+  border: 0 !important;
+  background: transparent !important;
+  resize: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-family: inherit !important;
+}
+
+/* 7. History Session Banner (#history-session-banner) Vertical Layout */
+#history-session-banner.history-session-banner {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 12px !important;
+  padding: 14px 16px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+#history-session-banner .history-banner-info {
+  width: 100% !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 6px 10px !important;
+  white-space: normal !important;
+  line-height: 1.45 !important;
+}
+
+#history-session-banner .history-banner-actions {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+}
+
+#history-session-banner .history-banner-actions > button {
+  width: 100% !important;
+  min-width: 0 !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+}
+
+/* 8. Scores Group Divider Row Bottom Border & Padding Fix */
+.scores-group-divider-row td {
+  padding: 11px 14px !important;
+  line-height: 1.5 !important;
+  height: auto !important;
+  border-top: 1.5px solid #b7d4be !important;
+  border-bottom: 2px solid #94bfa0 !important;
+  background: #eaf5ec !important;
+  color: #1b4d2a !important;
+  font-size: 13.5px !important;
+  font-weight: 800 !important;
+  white-space: normal !important;
+}
+
+#scores-view .attendance-table-wrap {
+  padding-bottom: 18px !important;
+}
+
+/* 9. Staff Table (#staff-table) Right-Edge & Action Buttons Anti-Clipping on iPad */
+#mgmt-panel-staff .portal-table-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  padding-bottom: 6px !important;
+  box-sizing: border-box !important;
+}
+
+#staff-table th,
+#staff-table td {
+  padding: 10px 10px !important;
+}
+
+#staff-table th:last-child,
+#staff-table td:last-child {
+  min-width: 140px !important;
+  padding-right: 16px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+}
+
+/* 10. Room Template Cards on 2-Column iPad Grid: Prevent Vertical Stretching */
+.room-template-list {
+  align-items: start !important;
+}
+
+.room-template-card {
+  height: auto !important;
+  align-self: start !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+}
+
+/* 11. Vietnamese Date Input Wrapper (.vn-date-field-wrap) Left-Aligned DD/MM/YYYY */
+.vn-date-field-wrap {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  min-height: 44px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd8cd !important;
+  border-radius: 9px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+.vn-date-field-wrap > input[type="date"] {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  opacity: 0 !important;
+  cursor: pointer !important;
+  z-index: 2 !important;
+  margin: 0 !important;
+  border: 0 !important;
+}
+
+.vn-date-display-text {
+  display: block !important;
+  width: 100% !important;
+  padding: 10px 13px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: #1e3a29 !important;
+  text-align: left !important;
+  pointer-events: none !important;
+}

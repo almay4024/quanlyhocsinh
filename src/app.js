@@ -1,12 +1,12 @@
 const APP_VERSION = "1.8";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.1';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.1';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.2';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.2';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=2.1';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=2.1';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.1';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.1';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.1';
+import { setupFeatures } from './features.js?v=2.2';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=2.2';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.2';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.2';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.2';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -391,25 +391,62 @@ function addStudentTag(id,input){const student=studentById(id),tag=input.value.t
 document.addEventListener('click',e=>{const add=e.target.closest('[data-add-tag]');if(add){const host=add.closest('.selected-student-info'),input=host?.querySelector('[data-tag-input]');addStudentTag(add.dataset.addTag,input);return;}const remove=e.target.closest('[data-remove-tag]');if(remove){const student=studentById(remove.dataset.studentId);if(!student)return;student.tags.splice(Number(remove.dataset.removeTag),1);save();render();refreshStudentInfo();}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('[data-tag-input]')){e.preventDefault();addStudentTag(e.target.dataset.tagInput,e.target);}});
 function sessionStudentIds(){return [...new Set([...allEntries().map(({entry})=>entry.studentId).filter(Boolean),...lateQueue])].filter(id=>studentById(id));}
-function renderChecklistCore(){const itemsHost=$('#checklist-items');if(!itemsHost)return;const completed=checklist.items.filter(item=>item.done).length;$('#checklist-progress-count').textContent=`${completed}/${checklist.items.length}`;itemsHost.innerHTML=checklist.items.map(item=>`<div class="checklist-item ${item.done?'complete':''} ${item.kind==='reminder'?'reminder-checklist-item':''}"><input type="checkbox" data-checklist-item="${escapeHtml(item.id)}" aria-label="Đánh dấu ${escapeHtml(item.label)}" ${item.done?'checked':''}><span class="checklist-checkmark"></span>${item.kind==='reminder'?'<span class="reminder-type-pill">Reminder</span>':''}<span class="checklist-item-copy"><input class="checklist-label-input" data-checklist-label="${escapeHtml(item.id)}" value="${escapeHtml(item.label)}" ${item.kind==='reminder'?'readonly':''} aria-label="Tên công việc"><small>${item.done?`Đã hoàn thành bởi ${escapeHtml(item.doneBy||'Trợ giảng')}${item.doneAt?` · ${new Date(item.doneAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}`:''}`:'Chưa hoàn thành'}</small></span><button type="button" class="checklist-remove" data-remove-checklist-item="${escapeHtml(item.id)}" aria-label="Xóa mục ${escapeHtml(item.label)}">×</button></div>`).join('')||'<div class="empty-list">Chưa có công việc. Thêm các yêu cầu của ca học này.</div>';const endHost=$('#end-checklist-items');if(endHost)endHost.innerHTML=checklist.endItems.map(item=>`<div class="checklist-item ${item.done?'complete':''} ${item.kind==='reminder'?'reminder-checklist-item':''}"><input type="checkbox" data-end-checklist-item="${escapeHtml(item.id)}" ${item.done?'checked':''}><span class="checklist-checkmark"></span>${item.kind==='reminder'?'<span class="reminder-type-pill">Reminder</span>':''}<span class="checklist-item-copy"><input class="checklist-label-input" data-end-checklist-label="${escapeHtml(item.id)}" value="${escapeHtml(item.label)}" ${item.kind==='reminder'?'readonly':''}><small>${item.done?`Đã hoàn thành bởi ${escapeHtml(item.doneBy||'Trợ giảng')}`:'Chưa hoàn thành'}</small></span><button type="button" class="checklist-remove" data-end-checklist-remove="${escapeHtml(item.id)}">×</button></div>`).join('')||'<div class="empty-list">Chưa có công việc cuối giờ.</div>';const totalItems=checklist.items.length+checklist.endItems.length,doneItems=[...checklist.items,...checklist.endItems].filter(item=>item.done).length;$('#checklist-progress-count').textContent=`${doneItems}/${totalItems}`;const started=Boolean(checklist.workStart);$('#shift-start-status').textContent=started?'Đã xác nhận ca':'Chưa bắt đầu';$('#shift-start-status').classList.toggle('done',started);$('#shift-start-log').textContent=started?`Ca làm được xác nhận bởi ${checklist.workStart.name} lúc ${new Date(checklist.workStart.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'Ca làm sẽ được ghi nhận khi hoàn tất mục đầu tiên.';const note=$('#session-note');if(document.activeElement!==note)note.value=checklist.classNote||'';$('#session-note-status').textContent=checklist.noteSavedAt?`Đã lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'';if($('#test-required-toggle'))$('#test-required-toggle').checked=Boolean(checklist.testRequired);if($('#scores-tab-test-toggle'))$('#scores-tab-test-toggle').checked=Boolean(checklist.testRequired);if($('#test-collection-tools'))$('#test-collection-tools').hidden=!checklist.testRequired;const handover=checklist.handover;if($('#handover-status'))$('#handover-status').textContent=handover?`Đã xác nhận trợ giảng cầm bài về: ${handover.person} lúc ${new Date(handover.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'Chưa xác nhận trợ giảng cầm bài về.';if($('#handover-person')&&document.activeElement!==$('#handover-person'))$('#handover-person').value=handover?.person||'';if($('#confirm-handover'))$('#confirm-handover').textContent=handover?'Cập nhật người cầm bài':'Xác nhận cầm bài về';}
-function safeHttpUrl(value){try{const url=new URL(String(value||'').trim());return url.protocol==='http:'||url.protocol==='https:'?url.href:'';}catch{return '';}}
-function renderChecklistDetails(){for(const field of document.querySelectorAll('[data-checklist-field]'))if(document.activeElement!==field)field.value=checklist[field.dataset.checklistField]||'';for(const [key,linkId] of [['notebookLink','notebook-link-open'],['homeworkLink','homework-link-open']]){const link=document.getElementById(linkId),safeUrl=safeHttpUrl(checklist[key]);if(link){link.hidden=!safeUrl;if(safeUrl)link.href=safeUrl;}}}
-function renderChecklist(){renderChecklistCore();renderChecklistDetails();}
-document.querySelectorAll('[data-checklist-field]').forEach(field=>field.addEventListener('input',()=>{const key=field.dataset.checklistField;checklist[key]=field.value;saveChecklist();const status=key==='lessonTitle'?$('#lesson-title-status'):$('#homework-details-status');if(status)status.textContent='Đã lưu';if(key==='notebookLink'||key==='homeworkLink')renderChecklistDetails();}));$('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-item]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;if(checklist.items[0]?.id===item.id&&input.checked&&!checklist.workStart)checklist.workStart={name:currentStaffName(),at:Date.now()};addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');if(checklist.items.length&&checklist.items.every(entry=>entry.done)){createClassNotification('Checklist setup đã xong','Tất cả công việc chuẩn bị đầu giờ đã được hoàn thành.','checklist',`setup-done-${checklistDate}`);addClassActivity(`${currentStaffName()} đã hoàn thành toàn bộ checklist setup đầu giờ`,'checklist');}saveChecklist();renderChecklist();});
-$('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-label]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistLabel);if(!item)return;const label=input.value.trim();if(!label){input.value=item.label;toast('Tên công việc không được để trống.');return;}item.label=label;saveChecklist();});
-$('#checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-remove-checklist-item]');if(!button)return;checklist.items=checklist.items.filter(item=>item.id!==button.dataset.removeChecklistItem);saveChecklist();renderChecklist();});
-$('#add-checklist-item').onclick=()=>{const item={id:`task-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,label:'Việc mới',done:false};checklist.items.push(item);saveChecklist();renderChecklist();const input=$(`[data-checklist-label="${item.id}"]`);input?.focus();input?.select();};
-$('#end-checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-end-checklist-item]');if(input){const item=checklist.endItems.find(row=>row.id===input.dataset.endChecklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');saveChecklist();renderChecklist();return;}const label=e.target.closest('[data-end-checklist-label]');if(!label)return;const item=checklist.endItems.find(row=>row.id===label.dataset.endChecklistLabel);if(item&&label.value.trim()){item.label=label.value.trim();saveChecklist();}else if(item)label.value=item.label;});$('#end-checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-end-checklist-remove]');if(!button)return;const item=checklist.endItems.find(row=>row.id===button.dataset.endChecklistRemove);if(item&&confirm(`Xóa mục “${item.label}” khỏi checklist?`)){checklist.endItems=checklist.endItems.filter(row=>row.id!==item.id);saveChecklist();renderChecklist();}});$('#add-end-checklist-item').onclick=()=>{const item={id:`end-task-${Date.now()}`,label:'Việc mới',done:false};checklist.endItems.push(item);saveChecklist();renderChecklist();const input=$(`[data-end-checklist-label="${item.id}"]`);input?.focus();input?.select();};$('#save-session-note').onclick=()=>{checklist.classNote=$('#session-note').value.trim();checklist.noteSavedAt=Date.now();saveChecklist();addClassActivity(`${currentStaffName()} đã lưu ghi chú chung của buổi học`,'checklist');renderChecklist();toast('Đã lưu ghi chú buổi học.');};
-$('#session-note')?.addEventListener('input',()=>{checklist.classNote=$('#session-note').value;checklist.noteSavedAt=Date.now();saveChecklist();const st=$('#session-note-status');if(st)st.textContent=`Đã tự động lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`;});
-$('#handover-person')?.addEventListener('input',()=>{const person=$('#handover-person').value.trim();checklist.handover=person?{person,at:checklist.handover?.at||Date.now()}:null;saveChecklist();});
-function handleToggleTestRequired(checked) {
-  checklist.testRequired = Boolean(checked);
-  if ($('#test-required-toggle')) $('#test-required-toggle').checked = checklist.testRequired;
-  if ($('#scores-tab-test-toggle')) $('#scores-tab-test-toggle').checked = checklist.testRequired;
-  addClassActivity(checklist.testRequired ? 'Đã bật: Ca này có test' : 'Đã tắt: Ca này có test', 'checklist');
-  saveChecklist();
-  renderChecklist();
-  if (typeof renderScoresView === 'function') renderScoresView();
+function renderChecklistCore(){
+  const itemsHost=$('#checklist-items');
+  if(!itemsHost)return;
+  const completed=checklist.items.filter(item=>item.done).length;
+  $('#checklist-progress-count').textContent=`${completed}/${checklist.items.length}`;
+  const renderItemRow = (item, isEnd = false) => {
+    const cbAttr = isEnd ? `data-end-checklist-item="${escapeHtml(item.id)}"` : `data-checklist-item="${escapeHtml(item.id)}"`;
+    const lblAttr = isEnd ? `data-end-checklist-label="${escapeHtml(item.id)}"` : `data-checklist-label="${escapeHtml(item.id)}"`;
+    const rmAttr = isEnd ? `data-end-checklist-remove="${escapeHtml(item.id)}"` : `data-remove-checklist-item="${escapeHtml(item.id)}"`;
+    const doneSub = item.done
+      ? `Đã hoàn thành bởi ${escapeHtml(item.doneBy||'Trợ giảng')}${item.doneAt?` · ${new Date(item.doneAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}`:''}`
+      : 'Chưa hoàn thành';
+    const labelHtml = item.kind === 'reminder'
+      ? `<div class="checklist-label-wrap-text" role="text">${escapeHtml(item.label)}</div>`
+      : `<textarea rows="1" class="checklist-label-input checklist-label-textarea" ${lblAttr} aria-label="Tên công việc">${escapeHtml(item.label)}</textarea>`;
+    return `<div class="checklist-item ${item.done?'complete':''} ${item.kind==='reminder'?'reminder-checklist-item':''}">
+      <input type="checkbox" ${cbAttr} aria-label="Đánh dấu ${escapeHtml(item.label)}" ${item.done?'checked':''}>
+      <span class="checklist-checkmark"></span>
+      ${item.kind==='reminder'?'<span class="reminder-type-pill">Reminder</span>':''}
+      <span class="checklist-item-copy">
+        ${labelHtml}
+        <small>${doneSub}</small>
+      </span>
+      <button type="button" class="checklist-remove" ${rmAttr} aria-label="Xóa mục ${escapeHtml(item.label)}">×</button>
+    </div>`;
+  };
+  itemsHost.innerHTML=checklist.items.map(item=>renderItemRow(item, false)).join('')||'<div class="empty-list">Chưa có công việc. Thêm các yêu cầu của ca học này.</div>';
+  const endHost=$('#end-checklist-items');
+  if(endHost)endHost.innerHTML=checklist.endItems.map(item=>renderItemRow(item, true)).join('')||'<div class="empty-list">Chưa có công việc cuối giờ.</div>';
+
+  // Auto-resize checklist textareas so multi-line tasks show 100% of their text without truncation
+  document.querySelectorAll('.checklist-label-textarea').forEach(ta => {
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.max(26, ta.scrollHeight)}px`;
+    ta.addEventListener('input', () => {
+      ta.style.height = 'auto';
+      ta.style.height = `${Math.max(26, ta.scrollHeight)}px`;
+    });
+  });
+
+  const totalItems=checklist.items.length+checklist.endItems.length,doneItems=[...checklist.items,...checklist.endItems].filter(item=>item.done).length;
+  $('#checklist-progress-count').textContent=`${doneItems}/${totalItems}`;
+  const started=Boolean(checklist.workStart);
+  $('#shift-start-status').textContent=started?'Đã xác nhận ca':'Chưa bắt đầu';
+  $('#shift-start-status').classList.toggle('done',started);
+  $('#shift-start-log').textContent=started?`Ca làm được xác nhận bởi ${checklist.workStart.name} lúc ${new Date(checklist.workStart.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'Ca làm sẽ được ghi nhận khi hoàn tất mục đầu tiên.';
+  const note=$('#session-note');
+  if(document.activeElement!==note)note.value=checklist.classNote||'';
+  $('#session-note-status').textContent=checklist.noteSavedAt?`Đã lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'';
+  if($('#test-required-toggle'))$('#test-required-toggle').checked=Boolean(checklist.testRequired);
+  if($('#scores-tab-test-toggle'))$('#scores-tab-test-toggle').checked=Boolean(checklist.testRequired);
+  if($('#test-collection-tools'))$('#test-collection-tools').hidden=!checklist.testRequired;
+  const handover=checklist.handover;
+  if($('#handover-status'))$('#handover-status').textContent=handover?`Đã xác nhận trợ giảng cầm bài về: ${handover.person} lúc ${new Date(handover.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'Chưa xác nhận trợ giảng cầm bài về.';
+  if($('#handover-person')&&document.activeElement!==$('#handover-person'))$('#handover-person').value=handover?.person||'';
+  if($('#confirm-handover'))$('#confirm-handover').textContent=handover?'Cập nhật người cầm bài':'Xác nhận cầm bài về';
 }
 $('#test-required-toggle')?.addEventListener('change', e => handleToggleTestRequired(e.target.checked));
 $('#scores-tab-test-toggle')?.addEventListener('change', e => handleToggleTestRequired(e.target.checked));
@@ -516,7 +553,7 @@ function renderMainMenu(){
   });
 
   $('#ongoing-shift-list').innerHTML=todayShifts.map(item=>scheduleCard(item,today,getSessionChange(item.id,today))).join('')
-    ||`<div class="menu-empty compact-empty"><span></span><strong>Hôm nay (${today.toLocaleDateString('vi-VN')}) không có ca cố định theo lịch</strong><small>Bạn có thể bấm vào các lớp phụ trách bên dưới để xem lịch sử hoặc mở ca mới.</small></div>`;
+    ||`<div class="menu-empty compact-empty"><strong style="display:block; margin-bottom:4px;">Hôm nay (${today.toLocaleDateString('vi-VN')}) không có ca cố định theo lịch.</strong><small style="display:block;">Bạn có thể bấm vào các lớp phụ trách bên dưới để xem lịch sử hoặc mở ca mới.</small></div>`;
 
   $('#upcoming-shift-list').innerHTML=myClasses.map(item=>{
     const nextDate=occurrenceDate(item);
@@ -2271,13 +2308,19 @@ function setGeneralStudentProfileEditMode(editable = false) {
   if (actionsBar) {
     actionsBar.hidden = !isGeneralProfileEditMode;
   }
-  dlg.querySelectorAll('.profile-edit-grid input, .profile-edit-grid textarea, .profile-edit-grid select, #profile-btn-add-class, [data-remove-class-chip], #profile-upload-portrait-label, #profile-remove-photo-btn').forEach(el => {
+  dlg.querySelectorAll('.profile-edit-grid input, .profile-edit-grid textarea, .profile-edit-grid select, #profile-upload-portrait-label, #profile-remove-photo-btn').forEach(el => {
     if (el.tagName === 'LABEL') {
-      el.style.pointerEvents = isGeneralProfileEditMode ? '' : 'none';
-      el.style.opacity = isGeneralProfileEditMode ? '1' : '0.6';
+      el.hidden = !isGeneralProfileEditMode;
     } else {
       el.disabled = !isGeneralProfileEditMode;
     }
+  });
+  // Hide/show class add picker & remove '×' buttons & tag editor input according to edit mode
+  dlg.querySelectorAll('[data-remove-class-chip], #profile-class-picker-row, #profile-tag-input-wrap, #profile-photo-url-wrap').forEach(el => {
+    el.hidden = !isGeneralProfileEditMode;
+  });
+  dlg.querySelectorAll('#profile-tag-readonly-chips').forEach(el => {
+    el.hidden = isGeneralProfileEditMode;
   });
 }
 
@@ -2285,17 +2328,8 @@ function openStudentProfile(id, origin = null){
   const student=studentById(id);if(!student)return;activeProfileId=id;
   if(origin) previousStudentProfileOrigin = origin;
   const parts=splitStudentName(student.name),familyName=student.familyName??parts.familyName,givenName=student.givenName??parts.givenName;
-  const classes=(student.classIds||[]).map(classId=>{
-    const c=classCatalog.find(x=>x.id===classId);
-    return c?`${c.code||c.name}`:classId;
-  }).join(', ')||(student.studentType==='makeup'?`Học bù · ${student.sourceClassName||'chưa rõ lớp'}`:'Chưa gắn lớp');
-
-  const classBadges=(student.classIds||[]).map(classId=>{
-    const c=classCatalog.find(x=>x.id===classId);
-    return `<span class="profile-chip" data-open-class-drilldown="${escapeHtml(classId)}" style="cursor:pointer; font-weight:700; color:#367950;" title="Bấm để mở Hồ sơ học sinh trong Lớp (Kiểu 2)">${escapeHtml(c?.code||classId)} ↗</span>`;
-  }).join('')||`<span class="profile-chip">${escapeHtml(student.studentType==='makeup'?`Học bù · ${student.sourceClassName||'chưa rõ lớp'}`:'Chưa ghi nhận lớp')}</span>`;
-
-  const tags=student.tags||[],tagBadges=tags.map(tag=>`<span class="profile-chip profile-tag-chip">${escapeHtml(tag)}</span>`).join('')||'<small>Chưa gắn tag</small>';
+  const tags=student.tags||[];
+  const tagBadges=tags.map(tag=>`<span class="profile-chip profile-tag-chip">${escapeHtml(tag)}</span>`).join('')||'<small style="color:#8a998c; font-style:italic;">Chưa gắn tag</small>';
   const photo = student.photoURL;
   const officeNoteVal = student.officeNotes ?? '';
 
@@ -2305,17 +2339,17 @@ function openStudentProfile(id, origin = null){
         <img class="profile-portrait" id="profile-portrait-preview" src="${escapeHtml(photo)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" />
       </button>
       <div style="display:flex; gap:4px; margin-top:2px;">
-        <label id="profile-upload-portrait-label" class="primary-button" style="padding:4px 8px; font-size:13.5px; cursor:pointer; font-weight:600;">
+        <label id="profile-upload-portrait-label" class="primary-button" style="padding:4px 8px; font-size:13.5px; cursor:pointer; font-weight:600;" hidden>
           Đổi ảnh
           <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
         </label>
-        <button type="button" id="profile-remove-photo-btn" class="outline-button text-danger" style="padding:7px 12px; font-size:13.5px;">Xóa</button>
+        <button type="button" id="profile-remove-photo-btn" class="outline-button text-danger" style="padding:7px 12px; font-size:13.5px;" hidden>Xóa</button>
       </div>
     </div>
   ` : `
     <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
       <div id="profile-portrait-preview" class="profile-portrait profile-portrait-placeholder">${escapeHtml((givenName || student.name || 'H').charAt(0).toUpperCase())}</div>
-      <label id="profile-upload-portrait-label" class="primary-button" style="padding:5px 9px; font-size:14px; cursor:pointer; font-weight:600;">
+      <label id="profile-upload-portrait-label" class="primary-button" style="padding:5px 9px; font-size:14px; cursor:pointer; font-weight:600;" hidden>
         Tải ảnh chân dung
         <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
       </label>
@@ -2329,24 +2363,15 @@ function openStudentProfile(id, origin = null){
 
   let enrolledClassIds = [...(student.classIds || [])];
 
+  // Single unified layout without duplicating "Các lớp đang theo học" or "Tag"
   $('#student-profile-content').innerHTML=`
     <div class="profile-header">
       ${portraitBlock}
       <div>
         <strong>${escapeHtml(student.name)}</strong>
-        <small>${escapeHtml(student.studentType==='makeup'?`Học sinh học bù từ ${student.sourceClassName||'lớp chưa rõ'}`:student.school||'Chưa có trường')}</small>
-        <small>Các lớp: ${escapeHtml(classes)}</small>
+        <small>${escapeHtml(student.studentType==='makeup'?`Học sinh học bù từ ${student.sourceClassName||'lớp chưa rõ'}`:student.school||'Chưa cập nhật trường học')}</small>
+        <small>Mã HS: <strong>${escapeHtml(student.studentCode || '—')}</strong></small>
       </div>
-    </div>
-    <div class="profile-membership-grid">
-      <section class="profile-data-group">
-        <h3>Các lớp đang học (Bấm để mở Hồ sơ trong Lớp)</h3>
-        <div class="profile-chip-list">${classBadges}</div>
-      </section>
-      <section class="profile-data-group">
-        <h3>Tag đã gắn</h3>
-        <div class="profile-chip-list">${tagBadges}</div>
-      </section>
     </div>
     <div class="profile-edit-grid">
       <label class="field-label">Họ và tên đệm<input id="profile-family-name" value="${escapeHtml(familyName)}" /></label>
@@ -2355,13 +2380,27 @@ function openStudentProfile(id, origin = null){
       <label class="field-label">Mã học sinh<input id="profile-code" value="${escapeHtml(student.studentCode||'')}" placeholder="Ví dụ: K09.3049" style="text-transform:uppercase;" /></label>
       <label class="field-label">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" /></label>
       <label class="field-label">Số điện thoại phụ huynh<input id="profile-parent-phone" type="tel" value="${escapeHtml(student.parentContact?.phone||'')}" /></label>
+
       <div class="field-label profile-wide">
-        <span>Các lớp đang theo học:</span>
-        <div id="profile-enrolled-classes-wrap" style="margin-top:6px; padding:10px; background:#fbfdfb; border:1px solid #dce5dd; border-radius:8px;"></div>
+        <span>Các lớp đang theo học <small style="font-weight:500; color:#5b7760;">(Bấm vào lớp để mở Hồ sơ học sinh trong Lớp)</small></span>
+        <div id="profile-enrolled-classes-wrap" style="margin-top:6px; padding:10px 12px; background:#fbfdfb; border:1px solid #dce5dd; border-radius:8px;"></div>
       </div>
-      <label class="field-label profile-wide">Tag phân loại (phân tách bằng dấu phẩy)<input id="profile-tags" value="${escapeHtml(tags.join(', '))}" placeholder="Ví dụ: Mới, Cần chú ý, HS Giỏi, Mục tiêu 9+" /></label>
-      <label class="field-label profile-wide">Ghi chú văn phòng<textarea id="profile-office-notes" rows="3" placeholder="Ghi chú hành chính / học phí / liên hệ phụ huynh của văn phòng...">${escapeHtml(officeNoteVal)}</textarea></label>
-      <label class="field-label profile-wide">Link ảnh chân dung (hoặc tải trực tiếp ở trên)<input id="profile-photo-url" value="${escapeHtml(student.photoURL||'')}" placeholder="https://... hoặc data:image/..." /></label>
+
+      <div class="field-label profile-wide">
+        <span>Tag phân loại</span>
+        <div id="profile-tag-readonly-chips" class="profile-chip-list" style="margin-top:6px;">${tagBadges}</div>
+        <div id="profile-tag-input-wrap" style="margin-top:6px;" hidden>
+          <input id="profile-tags" value="${escapeHtml(tags.join(', '))}" placeholder="Ví dụ: Mới, Cần chú ý, HS Giỏi, Mục tiêu 9+" />
+        </div>
+      </div>
+
+      <label class="field-label profile-wide">Ghi chú văn phòng
+        <textarea id="profile-office-notes" rows="3" placeholder="Ghi chú hành chính / học phí / liên hệ phụ huynh của văn phòng...">${escapeHtml(officeNoteVal)}</textarea>
+      </label>
+
+      <label class="field-label profile-wide" id="profile-photo-url-wrap" hidden>Link ảnh chân dung
+        <input id="profile-photo-url" value="${escapeHtml(student.photoURL||'')}" placeholder="https://... hoặc data:image/..." />
+      </label>
     </div>`;
 
   function renderEnrolledClassesUI() {
@@ -2372,9 +2411,8 @@ function openStudentProfile(id, origin = null){
       const c = allAvailableClasses.find(x => x.id === cid) || { id: cid, code: cid, name: cid };
       return `
         <span class="profile-class-chip" data-class-chip="${escapeHtml(cid)}">
-          <strong>${escapeHtml(c.code || c.name)}</strong>
-          <small style="color:#56695b; font-weight:400;">(${escapeHtml(c.grade ? formatBirthYearInline(c.grade) : c.name)})</small>
-          <button type="button" data-remove-class-chip="${escapeHtml(cid)}" title="Xóa lớp này khỏi học sinh" ${isGeneralProfileEditMode ? '' : 'disabled'}>×</button>
+          <button type="button" data-open-class-drilldown="${escapeHtml(cid)}" style="border:0; background:transparent; padding:0; font:inherit; color:#1f5f33; font-weight:800; cursor:pointer;" title="Bấm để mở Hồ sơ học sinh trong Lớp">${escapeHtml(c.code || c.name)} <small style="color:#56695b; font-weight:500;">(${escapeHtml(c.grade ? formatBirthYearInline(c.grade) : c.name)})</small> ↗</button>
+          <button type="button" data-remove-class-chip="${escapeHtml(cid)}" title="Xóa lớp này khỏi học sinh" ${isGeneralProfileEditMode ? '' : 'hidden'}>×</button>
         </span>
       `;
     }).join('') || '<small style="color:#8a998c; font-style:italic;">Chưa gắn lớp nào</small>';
@@ -2385,20 +2423,31 @@ function openStudentProfile(id, origin = null){
     `).join('');
 
     const pickerHtml = availableToAdd.length ? `
-      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:8px;">
-        <select id="profile-class-to-add-select" style="padding:6px 10px; font-size:14px; border:1px solid #cbd8cd; border-radius:6px; background:#fff; outline:none; flex:1 1 180px;" ${isGeneralProfileEditMode ? '' : 'disabled'}>
+      <div id="profile-class-picker-row" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px;" ${isGeneralProfileEditMode ? '' : 'hidden'}>
+        <select id="profile-class-to-add-select" style="padding:7px 10px; font-size:14px; border:1px solid #cbd8cd; border-radius:6px; background:#fff; outline:none; flex:1 1 180px;">
           ${addOptionsHtml}
         </select>
-        <button type="button" id="profile-btn-add-class" class="primary-button" style="padding:8px 14px; font-size:14px; font-weight:700;" ${isGeneralProfileEditMode ? '' : 'disabled'}>+ Thêm lớp</button>
+        <button type="button" id="profile-btn-add-class" class="primary-button" style="padding:8px 14px; font-size:14px; font-weight:700;">+ Thêm lớp</button>
       </div>
-    ` : '<small style="color:#5b7760; font-weight:600; display:block; margin-top:6px;">(Đã gắn tất cả các lớp)</small>';
+    ` : `<small id="profile-class-picker-row" style="color:#5b7760; font-weight:600; display:block; margin-top:6px;" ${isGeneralProfileEditMode ? '' : 'hidden'}>(Đã gắn tất cả các lớp)</small>`;
 
     wrap.innerHTML = `
-      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:4px;">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
         ${chipsHtml}
       </div>
       ${pickerHtml}
     `;
+
+    wrap.querySelectorAll('[data-open-class-drilldown]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const targetClassId = btn.dataset.openClassDrilldown;
+        $('#student-profile-dialog').close();
+        if (window.__featuresApp?.openStudentClassProfile) {
+          window.__featuresApp.openStudentClassProfile(student.id, targetClassId);
+        }
+      };
+    });
 
     wrap.querySelectorAll('[data-remove-class-chip]').forEach(btn => {
       btn.onclick = (e) => {
@@ -2431,6 +2480,7 @@ function openStudentProfile(id, origin = null){
   if ($('#unlock-student-profile-btn')) {
     $('#unlock-student-profile-btn').onclick = () => {
       setGeneralStudentProfileEditMode(true);
+      renderEnrolledClassesUI();
       $('#profile-family-name')?.focus();
     };
   }
@@ -2483,16 +2533,6 @@ function openStudentProfile(id, origin = null){
     $('#student-photo-full').src=cleanUrl;
     $('#student-photo-caption').textContent=student.name;
     $('#student-photo-dialog').showModal();
-  });
-
-  $('#student-profile-content').querySelectorAll('[data-open-class-drilldown]').forEach(chip => {
-    chip.onclick = () => {
-      const targetClassId = chip.dataset.openClassDrilldown;
-      $('#student-profile-dialog').close();
-      if (window.__featuresApp?.openStudentClassProfile) {
-        window.__featuresApp.openStudentClassProfile(student.id, targetClassId);
-      }
-    };
   });
 
   $('#student-profile-dialog').showModal();
@@ -2569,7 +2609,7 @@ $('#save-student-profile').onclick=()=>{
   saveStudentRecords(students, makeupStudents);
   save();
   render();
-  setGeneralStudentProfileEditMode(false);
+  openStudentProfile(student.id, previousStudentProfileOrigin);
   toast('Đã lưu thông tin chung của học sinh.');
 };
 
@@ -2864,6 +2904,7 @@ function render(){
   const classroomWrap = document.querySelector('.classroom-wrap');
   if (classroomWrap) {
     classroomWrap.classList.toggle('teacher-view-wrap', isTeacherView);
+    classroomWrap.classList.toggle('seating-edit-mode-on', isSeatingEditMode);
     const boardLabel = classroomWrap.querySelector('.board-label');
     if (boardLabel) {
       boardLabel.innerHTML = isTeacherView 
@@ -2903,7 +2944,7 @@ function render(){
       <div class="desks">${aisle.desks.map((desk, di)=>{
         const list=deskItems[desk.id]||[];
         const displayList = isTeacherView ? [...list].reverse() : list;
-        const addBtnHtml = `<button type="button" class="desk-add-compact-btn ${isSeatingEditMode ? 'edit-active' : 'tap-assign-btn'}" data-add-to-desk="${desk.id}" title="Chạm để chọn học sinh vào bàn này">+</button>`;
+        const addBtnHtml = isSeatingEditMode ? `<button type="button" class="desk-add-compact-btn edit-active" data-add-to-desk="${desk.id}" title="Thêm vị trí ngồi vào bàn này">+</button>` : '';
 
         const seatsHtml = displayList.length ? displayList.map((entry,idx)=>{
           const origIndex = isTeacherView ? (list.length - 1 - idx) : idx;
@@ -2957,8 +2998,18 @@ function render(){
   const countSub = $('#attendance-count-sub'); if (countSub) countSub.textContent = `đã điểm danh / vào chỗ (sĩ số ${rosterTotal})`;
   $('#remaining-count').textContent=`${occupants.length-attended} học sinh vào chỗ chưa điểm danh`;
   const roomTplPill = $('#room-template-pill'); if (roomTplPill) roomTplPill.textContent = configClass?.room || 'Phòng học';
-  const isFin = Boolean(localStorage.getItem(`lopvui.finalized-session.v1.${CURRENT_CLASS_ID}.${checklistDate}`));
-  const finalizedBadge = $('#finalized-indicator-badge'); if (finalizedBadge) finalizedBadge.hidden = !isFin;
+  const rosterListForAuto = classStudents();
+  const allRosterMarked = rosterListForAuto.length > 0 && rosterListForAuto.every(stu => {
+    const seated = occupants.find(o => o.entry.studentId === stu.id);
+    const attSt = seated?.entry.attendance?.status || (lateQueue.includes(stu.id) ? 'late' : null) || (stu.attendanceHistory || []).find(h => h.classId === CURRENT_CLASS_ID && h.date === checklistDate)?.status;
+    return Boolean(attSt);
+  });
+  if (allRosterMarked) {
+    localStorage.setItem(`lopvui.finalized-session.v1.${CURRENT_CLASS_ID}.${checklistDate}`, JSON.stringify({ autoCompleted: true, updatedAt: Date.now() }));
+  } else {
+    localStorage.removeItem(`lopvui.finalized-session.v1.${CURRENT_CLASS_ID}.${checklistDate}`);
+  }
+  const finalizedBadge = $('#finalized-indicator-badge'); if (finalizedBadge) finalizedBadge.hidden = true;
   if (isNoHwActive) {
     $('#homework-count').textContent = '0';
     $('#homework-count-detail').textContent = 'Ca học này không có BTVN (Tự động/Đã chọn)';
@@ -3218,9 +3269,9 @@ function toggleHomeworkFields(status,prefix){
   const reasonFields=$(`#${isSeat?'no-homework-fields':'late-no-homework-fields'}`);
   if(reasonFields)reasonFields.hidden=status!=='not_submitted';
   const gradeField=$(`#${isSeat?'grade-field':'late-grade-field'}`);
-  if(gradeField)gradeField.hidden=(status==='not_submitted');
+  // Ẩn ô nhập điểm BTVN khi ở trạng thái "Chưa thu" ('uncollected'); hiện khi "Đã thu", "Đã chấm" hoặc "Không nộp"
+  if(gradeField)gradeField.hidden=(status==='uncollected');
   renderHomeworkHistoryPanel(prefix);
-  // Phần 1.3: Không tự động chuyển con trỏ (auto-focus) về ô search khi bấm "Không nộp"
 }
 
 function showAttendance(att={}){if($('#attendance-status'))$('#attendance-status').value=att.status||'present';}
@@ -3458,7 +3509,7 @@ classroom.addEventListener('click',e=>{
   const token=e.target.closest('[data-entry-index]');
   if(token){openStudent(token.dataset.deskId,Number(token.dataset.entryIndex));return;}
   const add=e.target.closest('[data-add-to-desk]');
-  if(add){addAnonymousToDesk(add.dataset.addToDesk,(deskItems[add.dataset.addToDesk]||[]).length,true);return;}
+  if(add){if(!isSeatingEditMode)return;addAnonymousToDesk(add.dataset.addToDesk,(deskItems[add.dataset.addToDesk]||[]).length,false);return;}
 });
 
 // Track divider state inside #layout-dialog before saving
@@ -4699,10 +4750,16 @@ function renderScoresView() {
 
     htmlRows.push(`
       <tr class="${item.isMakeup ? 'makeup-row-tr' : ''}" data-score-row-student="${escapeHtml(s.id)}">
-        <td style="color:${item.isMakeup ? '#6d28d9' : 'inherit'}; font-weight:${item.isMakeup ? '700' : '500'};">${escapeHtml(item.familyName || '—')}</td>
         <td>
-          <strong style="color:${item.isMakeup ? '#6d28d9' : '#214e2d'};">${escapeHtml(item.givenName || s.name)}</strong>
-          ${renderInlineTags(s)}
+          <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${item.isMakeup ? '#6d28d9' : '#395140'}; font-weight:${item.isMakeup ? '700' : '600'};" title="Bấm mở Hồ sơ học sinh trong buổi học">
+            ${escapeHtml(item.familyName || '—')}
+          </button>
+        </td>
+        <td>
+          <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;" title="Bấm mở Hồ sơ học sinh trong buổi học">
+            <strong style="color:${item.isMakeup ? '#6d28d9' : '#214e2d'}; text-decoration:underline; text-underline-offset:2px;">${escapeHtml(item.givenName || s.name)}</strong>
+            ${renderInlineTags(s)}
+          </button>
         </td>
         <td>
           ${item.isMakeup
@@ -4886,6 +4943,15 @@ function setTapAssignSource(source = null) {
 }
 
 document.addEventListener('click', (e) => {
+  // 0. Open Session-level Student Profile (Kiểu 3) when clicking student name in #students-view or #scores-view
+  const openSessProfBtn = e.target.closest('[data-open-student-profile]');
+  if (openSessProfBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    openStudentSessionProfile(openSessProfBtn.dataset.openStudentProfile, CURRENT_CLASS_ID, checklistDate);
+    return;
+  }
+
   // 1. Handle Managed Class Card '⋯' More Options menu
   const moreToggle = e.target.closest('[data-toggle-card-more]');
   if (moreToggle) {
@@ -4944,3 +5010,58 @@ document.addEventListener('click', (e) => {
     return;
   }
 });
+
+
+function initVietnameseDateInputs() {
+  const dateSelectors = [
+    '#sched-makeup-date',
+    '#sched-next-date',
+    '#session-change-date',
+    '#session-makeup-date',
+    '#tutoring-date'
+  ];
+  const formatDateVN = (isoStr) => {
+    const m = String(isoStr || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return isoStr || 'Chọn ngày...';
+    return `${m[3]}/${m[2]}/${m[1]}`;
+  };
+  dateSelectors.forEach(sel => {
+    const input = document.querySelector(sel);
+    if (!input || input.dataset.vnDateEnhanced === '1') return;
+    input.dataset.vnDateEnhanced = '1';
+    const parent = input.parentElement;
+    if (!parent) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'vn-date-field-wrap';
+    parent.insertBefore(wrap, input);
+    wrap.appendChild(input);
+
+    const display = document.createElement('span');
+    display.className = 'vn-date-display-text';
+    display.textContent = formatDateVN(input.value);
+    wrap.appendChild(display);
+
+    const syncDateText = () => {
+      display.textContent = formatDateVN(input.value);
+    };
+    input.addEventListener('input', syncDateText);
+    input.addEventListener('change', syncDateText);
+    input.addEventListener('focus', syncDateText);
+    input.addEventListener('blur', syncDateText);
+
+    // Observe programmatic .value changes when dialogs open
+    const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    if (desc && desc.get && desc.set) {
+      Object.defineProperty(input, 'value', {
+        get() { return desc.get.call(this); },
+        set(v) {
+          desc.set.call(this, v);
+          display.textContent = formatDateVN(v);
+        },
+        configurable: true
+      });
+    }
+  });
+}
+initVietnameseDateInputs();
