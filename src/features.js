@@ -1,16 +1,16 @@
-import { matchesAcronymOrText } from './student-search.js?v=2.4';
+import { matchesAcronymOrText } from './student-search.js?v=2.5';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.4';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.4';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.5';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.5';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.4';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.5';
 import {
   parseRawTable,
   splitVietnameseName,
@@ -20,7 +20,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=2.4';
+} from './excel-import-export.js?v=2.5';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -31,7 +31,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=2.4';
+} from './data/session-history-repository.js?v=2.5';
 
 export function setupFeatures(ctx) {
   const {
@@ -803,6 +803,63 @@ export function setupFeatures(ctx) {
   // ----------------------------------------------------
   // 3. MẪU SƠ ĐỒ PHÒNG HỌC (PRD §4: ROOM LAYOUT TEMPLATES)
   // ----------------------------------------------------
+  function openRoomClassesDialog(templateId) {
+    const templates = loadRoomTemplates();
+    const tpl = templates.find(t => t.id === templateId);
+    if (!tpl) return;
+    const catalog = getClassCatalog();
+    const classesInRoom = getClassesInRoom(tpl.roomCode, catalog);
+    const dlg = $('#room-classes-dialog');
+    const titleEl = $('#room-classes-dialog-title');
+    const subEl = $('#room-classes-dialog-sub');
+    const listEl = $('#room-classes-dialog-list');
+    if (!dlg || !listEl) return;
+
+    if (titleEl) titleEl.textContent = `Lớp sử dụng: ${tpl.name} (${tpl.roomCode || 'Mẫu'})`;
+    if (subEl) subEl.textContent = `Hiện có ${classesInRoom.length} lớp được xếp lịch học tại phòng này.`;
+
+    if (!classesInRoom.length) {
+      listEl.innerHTML = `<div style="padding:20px; text-align:center; color:#6b7d6e; background:#f8fbf8; border:1px dashed #cbd8cd; border-radius:10px; font-size:14px;">Chưa có lớp nào xếp lịch học tại phòng này.</div>`;
+    } else {
+      const weekdays = ['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
+      listEl.innerHTML = `
+        <div style="display:grid; gap:8px; max-height:56vh; overflow-y:auto; padding-right:2px;">
+          ${classesInRoom.map(c => `
+            <div class="room-schedule-row-item">
+              <div>
+                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                  <strong style="color:#1b4d2a; font-size:15px;">${escapeHtml(c.name || c.code || c.id)}</strong>
+                  <span class="room-chip" style="background:#eaf4ed; color:#1f5f33; font-weight:700;">Mã: ${escapeHtml(c.code || c.id)}</span>
+                  <span class="room-chip">${escapeHtml(formatBirthYearLabel(c.grade))}</span>
+                </div>
+                <small style="display:block; color:#526356; font-size:13px; margin-top:4px;">GV: <strong>${escapeHtml(c.teacherName || '—')}</strong> · TA: <strong>${escapeHtml(c.assistantName || '—')}</strong></small>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                <span class="room-chip" style="background:#eef2ff; color:#3730a3; font-weight:700;">${weekdays[c.weekday] || 'Lịch học'} · ${escapeHtml(c.startTime || '')}–${escapeHtml(c.endTime || '')}</span>
+                <button type="button" class="primary-button" data-enter-room-class="${escapeHtml(c.id)}" style="padding:6px 12px; font-size:12.5px;">Vào lớp</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    listEl.querySelectorAll('[data-enter-room-class]').forEach(btn => {
+      btn.onclick = () => {
+        const clsId = btn.dataset.enterRoomClass;
+        dlg.close();
+        if (ctx.enterClass) {
+          ctx.enterClass(clsId, new Date().toLocaleDateString('sv-SE'));
+        }
+      };
+    });
+
+    dlg.showModal();
+  }
+
+  $('#close-room-classes-dialog')?.addEventListener('click', () => $('#room-classes-dialog')?.close());
+  $('#close-room-classes-bottom-btn')?.addEventListener('click', () => $('#room-classes-dialog')?.close());
+
   function renderRoomTemplatesList() {
     const templates = loadRoomTemplates();
     const catalog = getClassCatalog();
@@ -815,67 +872,66 @@ export function setupFeatures(ctx) {
     list.innerHTML = templates.map(tpl => {
       const aisles = Number(tpl.aisles) || 3;
       const desks = Array.isArray(tpl.desksPerAisle) ? tpl.desksPerAisle : [3, 3, 2];
+      const seatsPerDesk = Number(tpl.seatsPerDesk) || 2;
       const totalDesks = desks.reduce((a, b) => a + b, 0);
-      const estCapacity = totalDesks * (Number(tpl.seatsPerDesk) || 2);
+      const estCapacity = totalDesks * seatsPerDesk;
+      const classesInRoom = getClassesInRoom(tpl.roomCode, catalog);
+      const equipDesc = (tpl.description || '').trim();
 
       return `
-        <article class="room-template-card">
+        <article class="room-template-card room-template-card-compact">
+          <!-- 1. Tên phòng + Badge Mã phòng (ở góc trên) -->
           <div class="room-template-card-top">
-            <strong>${escapeHtml(tpl.name)}</strong>
-            <div class="managed-class-heading-right">
-              <span class="room-chip">${escapeHtml(tpl.roomCode || 'Mẫu')}</span>
-              <div class="card-more-menu-wrap">
-                <button type="button" class="outline-button card-more-toggle-btn" data-toggle-card-more="tpl-${escapeHtml(tpl.id)}" aria-label="Tùy chọn phòng học" title="Tùy chọn phòng học">⋯</button>
-                <div class="card-more-dropdown" hidden>
-                  <button type="button" class="card-more-item" data-edit-template="${escapeHtml(tpl.id)}">Sửa phòng</button>
-                  <button type="button" class="card-more-item text-danger" data-delete-template="${escapeHtml(tpl.id)}">Xóa phòng</button>
-                </div>
-              </div>
-            </div>
+            <strong class="room-template-title">${escapeHtml(tpl.name)}</strong>
+            <span class="room-chip room-code-badge">${escapeHtml(tpl.roomCode || 'Mẫu')}</span>
           </div>
-          <p class="room-template-card-desc">${escapeHtml(tpl.description || 'Chưa có mô tả.')} · <strong>${aisles} dãy · ${totalDesks} bàn · Sức chứa ~${estCapacity} HS</strong></p>
-          <div class="template-layout-preview" aria-label="Sơ đồ mô phỏng">
-            ${desks.map((deskCount, aisleIdx) => {
-              const divs = Array.isArray(tpl.aisleDividers?.[aisleIdx])
-                ? tpl.aisleDividers[aisleIdx].map(Number)
-                : (Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks.map(Number) : [2]);
-              return `
-                <div class="template-aisle-preview">
-                  ${Array.from({ length: deskCount }, (_, di) => `
-                    <div class="template-desk-box" style="${divs.includes(di + 1) && di < deskCount - 1 ? 'border-bottom: 3px solid #1e3a29; margin-bottom: 3px;' : ''}"></div>
-                  `).join('')}
-                </div>
-              `;
-            }).join('')}
-          </div>
-          <div class="room-schedule-box" style="margin-top:10px; padding:10px 12px; background:#f5faf6; border-radius:8px; border:1px solid #dbe8dd;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <strong style="font-size:14.5px; color:#23442a;"> Các lớp sử dụng phòng này theo lịch (${getClassesInRoom(tpl.roomCode, catalog).length} lớp):</strong>
-            </div>
-            ${getClassesInRoom(tpl.roomCode, catalog).length ? `
-              <div style="display:grid; gap:5px;">
-                ${getClassesInRoom(tpl.roomCode, catalog).map(c => `
-                  <div class="room-schedule-row-item">
-                    <div>
-                      <strong style="color:#215f33; font-size:14.5px;">${escapeHtml(c.code || c.id)}</strong> <span class="room-chip" style="font-size:12.5px; padding:6px 10px;">${escapeHtml(formatBirthYearLabel(c.grade))}</span>
-                      <small style="display:block; color:#68786b; font-size:12.5px;">GV: ${escapeHtml(c.teacherName || '—')} · TA: ${escapeHtml(c.assistantName || '—')}</small>
-                    </div>
-                    <div style="text-align:right;">
-                      <span class="room-chip" style="background:#eaf4ed; color:#27673b; font-weight:700;">${['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'][c.weekday]}</span>
-                      <small style="display:block; color:#4e5e51; font-weight:700;">${escapeHtml(c.startTime)}–${escapeHtml(c.endTime)}</small>
-                      <button type="button" class="outline-button" data-enter-class="${escapeHtml(c.id)}" data-session-date="${new Date().toLocaleDateString('sv-SE')}" style="padding:6px 12px; font-size:12.5px; margin-top:2px;">Vào lớp</button>
-                    </div>
+
+          <!-- 2. 1 câu mô tả/giới thiệu ngắn gọn về phòng (số dãy, số bàn, sức chứa, thiết bị) -->
+          <p class="room-template-card-desc">
+            <strong>${aisles} dãy · ${totalDesks} bàn (${seatsPerDesk} chỗ/bàn) · Sức chứa ~${estCapacity} HS</strong>${equipDesc ? ` · ${escapeHtml(equipDesc)}` : ''}
+          </p>
+
+          <!-- 3. Hình ảnh sơ đồ bàn ghế mini (preview layout của phòng) -->
+          <div class="template-layout-preview-wrap" aria-label="Sơ đồ bàn ghế mini của phòng">
+            <div class="template-mini-board">BẢNG LỚP</div>
+            <div class="template-layout-preview">
+              ${desks.map((deskCount, aisleIdx) => {
+                const divs = Array.isArray(tpl.aisleDividers?.[aisleIdx])
+                  ? tpl.aisleDividers[aisleIdx].map(Number)
+                  : (Array.isArray(tpl.dividerAfterDesks) ? tpl.dividerAfterDesks.map(Number) : [2]);
+                return `
+                  <div class="template-aisle-preview">
+                    <span class="template-aisle-mini-label">Dãy ${aisleIdx + 1}</span>
+                    ${Array.from({ length: deskCount }, (_, di) => `
+                      <div class="template-desk-box" style="${divs.includes(di + 1) && di < deskCount - 1 ? 'border-bottom: 3px solid #1e3a29; margin-bottom: 3px;' : ''}">
+                        ${Array.from({ length: Math.min(4, seatsPerDesk) }, () => `<span class="template-seat-dot"></span>`).join('')}
+                      </div>
+                    `).join('')}
                   </div>
-                `).join('')}
-              </div>
-            ` : '<p style="margin:2px 0 0; font-size:13.5px; color:#87968a; font-style:italic;">Chưa có lớp nào xếp lịch học tại phòng này.</p>'}
+                `;
+              }).join('')}
+            </div>
           </div>
-          <div class="room-template-actions" style="margin-top:10px;">
-            <button type="button" class="primary-button room-apply-full-btn" data-apply-template="${escapeHtml(tpl.id)}">Áp dụng sơ đồ vào lớp đang mở</button>
+
+          <!-- 4. Nút thu gọn Xem danh sách lớp sử dụng phòng -->
+          <button type="button" class="outline-button room-classes-trigger-btn" data-open-room-classes="${escapeHtml(tpl.id)}">
+            <span>Xem các lớp đang sử dụng phòng (<strong>${classesInRoom.length} lớp</strong>)</span>
+            <span class="room-classes-arrow">▸</span>
+          </button>
+
+          <!-- 5. Nút "Sửa phòng" cùng các thao tác quản lý phòng đặt gọn ở cuối Card -->
+          <div class="room-template-actions room-template-footer-bar">
+            <button type="button" class="outline-button" data-edit-template="${escapeHtml(tpl.id)}">Sửa phòng</button>
+            <button type="button" class="primary-button" data-apply-template="${escapeHtml(tpl.id)}">Áp dụng sơ đồ</button>
+            <button type="button" class="outline-button text-danger" data-delete-template="${escapeHtml(tpl.id)}">Xóa</button>
           </div>
         </article>
       `;
     }).join('');
+
+    list.querySelectorAll('[data-open-room-classes]').forEach(btn => {
+      btn.onclick = () => openRoomClassesDialog(btn.dataset.openRoomClasses);
+    });
 
     list.querySelectorAll('[data-apply-template]').forEach(btn => {
       btn.onclick = () => {

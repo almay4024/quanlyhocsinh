@@ -1,12 +1,12 @@
-const APP_VERSION = "2.4";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.4';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.4';
+const APP_VERSION = "2.5";
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.5';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.5';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=2.4';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=2.4';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.4';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.4';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.4';
+import { setupFeatures } from './features.js?v=2.5';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=2.5';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.5';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.5';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.5';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -2972,11 +2972,12 @@ function render(){
   const mapSearchQuery = normalizeSearchText($('#seating-map-search-input')?.value || '');
 
   classroom.innerHTML=displayLayout.map((aisle,ci)=>{
+    const FIXED_SEAT_WIDTH = 116;
+    const SEAT_GAP = 6;
+    const DESK_EXTRA = isSeatingEditMode ? 38 : 14;
     const maxOccupants=Math.max(1,...aisle.desks.map(d=>(deskItems[d.id]||[]).length)),
-          perSeatWidth = maxOccupants >= 3 ? 74 : (maxOccupants === 2 ? 96 : 148),
-          minAisleBase = maxOccupants >= 3 ? 236 : (maxOccupants === 2 ? 208 : 176),
-          aisleWidth=Math.max(minAisleBase,(isSeatingEditMode?34:14)+maxOccupants*perSeatWidth),
-          studentWidth=Math.floor((aisleWidth-(isSeatingEditMode?34:14)-(maxOccupants-1)*4)/maxOccupants);
+          studentWidth = FIXED_SEAT_WIDTH,
+          aisleWidth = Math.max(156, DESK_EXTRA + maxOccupants * FIXED_SEAT_WIDTH + Math.max(0, maxOccupants - 1) * SEAT_GAP);
     const origAisleIdx = isTeacherView ? (layout.length - 1 - ci) : ci;
     const sideLabel = isTeacherView ? (ci < displayLayout.length / 2 ? ' (Tay phải GV)' : ' (Tay trái GV)') : '';
 
@@ -5137,3 +5138,568 @@ function initVietnameseDateInputs() {
   });
 }
 initVietnameseDateInputs();
+
+// ============================================================================
+// v2.5: SEATING CHART SNAPSHOT & PNG IMAGE EXPORT
+// ============================================================================
+
+function getSeatingSnapshotData() {
+  const isNoHwActive = Boolean(window.__featuresApp?.isNoHomeworkSession?.());
+  const displayLayout = isTeacherView
+    ? [...layout].reverse().map(a => ({ ...a, desks: [...a.desks].reverse() }))
+    : layout;
+  const occupants = allEntries();
+  const named = occupants.filter(x => x.entry.studentId && studentById(x.entry.studentId));
+  const rosterList = classStudents();
+  const rosterIds = new Set(rosterList.map(s => s.id));
+  const rosterTotal = rosterList.length;
+  const extraMakeupIds = new Set([
+    ...named.map(x => x.entry.studentId).filter(id => id && !rosterIds.has(id)),
+    ...lateQueue.filter(id => id && !rosterIds.has(id))
+  ]);
+  const makeupCount = extraMakeupIds.size;
+  const totalExpected = (rosterTotal + makeupCount) || named.length;
+
+  let presentCount = 0;
+  let lateCount = 0;
+  let absentCount = 0;
+  let hwDoneCount = 0;
+  let hwMissingCount = 0;
+
+  named.forEach(({ entry }) => {
+    const stu = studentById(entry.studentId);
+    const att = entry.attendance || stu?.attendance;
+    const hw = entry.homework || stu?.homework;
+    if (att?.status === 'present') presentCount++;
+    else if (att?.status === 'late') lateCount++;
+    else if (att?.status && att.status.startsWith('absent')) absentCount++;
+
+    if (!isNoHwActive) {
+      if (hw?.status === 'submitted' || hw?.status === 'graded' || (hw?.score !== null && hw?.score !== undefined && hw?.score !== '')) hwDoneCount++;
+      else if (hw?.status === 'not_submitted') hwMissingCount++;
+    }
+  });
+
+  const lateQueueStudents = lateQueue.map(id => studentById(id)).filter(Boolean);
+  lateQueueStudents.forEach(() => {
+    lateCount++;
+  });
+
+  return {
+    isNoHwActive,
+    displayLayout,
+    rosterTotal,
+    makeupCount,
+    totalExpected,
+    attendedCount: presentCount + lateCount,
+    presentCount,
+    lateCount,
+    absentCount,
+    hwDoneCount,
+    hwMissingCount,
+    lateQueueStudents
+  };
+}
+
+function buildSeatingSnapshotHtml() {
+  const data = getSeatingSnapshotData();
+  const clsName = configClass?.name || 'Lớp học';
+  const clsCode = configClass?.code || CURRENT_CLASS_ID;
+  const clsRoom = configClass?.room || 'Phòng tiêu chuẩn';
+  const clsGrade = formatBirthYearInline(configClass?.grade || '');
+  const teacherName = configClass?.teacherName || '—';
+  const assistantName = configClass?.assistantName || '—';
+  const timeRange = (configClass?.startTime && configClass?.endTime)
+    ? `${configClass.startTime}–${configClass.endTime}`
+    : (configClass?.time || '');
+  const dateParts = String(checklistDate || '').split('-');
+  const vnDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : checklistDate;
+  const lessonTitle = checklist?.lessonTitle ? String(checklist.lessonTitle).trim() : '';
+
+  const boardBarHtml = `<div class="snapshot-board-bar">${isTeacherView ? 'BẢNG · ĐẦU LỚP (Góc nhìn Giáo viên từ bục giảng)' : 'BẢNG · ĐẦU LỚP'}</div>`;
+  const backBarHtml = `<div class="snapshot-back-bar">CUỐI LỚP</div>`;
+
+  const aislesHtml = data.displayLayout.map((aisle, ci) => {
+    const origAisleIdx = isTeacherView ? (layout.length - 1 - ci) : ci;
+    const sideLabel = isTeacherView ? (ci < data.displayLayout.length / 2 ? ' (Tay phải GV)' : ' (Tay trái GV)') : '';
+    const maxOcc = Math.max(1, ...aisle.desks.map(d => (deskItems[d.id] || []).length));
+    const aisleMinW = Math.max(148, maxOcc * 116 + Math.max(0, maxOcc - 1) * 6 + 16);
+
+    const desksHtml = aisle.desks.map((desk, di) => {
+      const list = deskItems[desk.id] || [];
+      const displayList = isTeacherView ? [...list].reverse() : list;
+      const origDeskIdx = isTeacherView ? (aisle.desks.length - 1 - di) : di;
+      const origAisle = layout[origAisleIdx];
+      const hasDividerAfter = isTeacherView
+        ? Boolean(origAisle?.desks?.[origDeskIdx - 1]?.dividerAfter)
+        : Boolean(desk.dividerAfter);
+
+      const seatsHtml = displayList.length ? displayList.map(entry => {
+        const stu = studentById(entry.studentId);
+        const att = entry.attendance || stu?.attendance;
+        const hw = entry.homework || stu?.homework;
+        const isMakeup = Boolean(stu && (stu.studentType === 'makeup' || !(stu.classIds || []).includes(CURRENT_CLASS_ID)));
+        const attStatus = att?.status || 'unmarked';
+        let stateClass = 'snap-seat-unmarked';
+        let attLabel = 'Chưa ĐD';
+        if (attStatus === 'present') {
+          stateClass = 'snap-seat-present';
+          attLabel = 'Có mặt';
+        } else if (attStatus === 'late') {
+          stateClass = 'snap-seat-late';
+          const mins = att?.lateMinutes ?? att?.minutesLate;
+          attLabel = mins ? `Muộn ${mins}p` : 'Đi muộn';
+        } else if (attStatus.startsWith('absent')) {
+          stateClass = 'snap-seat-absent';
+          attLabel = 'Vắng';
+        }
+
+        let hwBadgeHtml = '';
+        if (!data.isNoHwActive && stu) {
+          const hwSt = hw?.status || 'uncollected';
+          const hwScore = (hw?.score !== null && hw?.score !== undefined && hw?.score !== '') ? hw.score : null;
+          if (hwScore !== null) {
+            hwBadgeHtml = `<span class="snap-badge snap-hw-graded">BTVN: ${escapeHtml(hwScore)}đ</span>`;
+          } else if (hwSt === 'graded') {
+            hwBadgeHtml = `<span class="snap-badge snap-hw-graded">Đã chấm</span>`;
+          } else if (hwSt === 'submitted') {
+            hwBadgeHtml = `<span class="snap-badge snap-hw-submitted">✓ Đã thu</span>`;
+          } else if (hwSt === 'not_submitted') {
+            hwBadgeHtml = `<span class="snap-badge snap-hw-missing">× K.Nộp</span>`;
+          } else {
+            hwBadgeHtml = `<span class="snap-badge snap-hw-pending">· Chưa thu</span>`;
+          }
+        }
+
+        const testScoreVal = (entry.testScore !== null && entry.testScore !== undefined && entry.testScore !== '')
+          ? entry.testScore
+          : ((stu?.testScore !== null && stu?.testScore !== undefined && stu?.testScore !== '') ? stu.testScore : null);
+        const testBadgeHtml = testScoreVal !== null
+          ? `<span class="snap-badge snap-test-score">Test: ${escapeHtml(testScoreVal)}đ</span>`
+          : '';
+
+        const makeupBadgeHtml = isMakeup ? `<span class="snap-badge snap-makeup-tag">BÙ</span>` : '';
+
+        return `
+          <div class="snap-seat ${stateClass} ${isMakeup ? 'snap-seat-makeup' : ''}">
+            <div class="snap-seat-name">${escapeHtml(stu ? stu.name : 'Chỗ trống')}</div>
+            <div class="snap-seat-badges">
+              <span class="snap-badge snap-att-tag">${escapeHtml(attLabel)}</span>
+              ${hwBadgeHtml}
+              ${testBadgeHtml}
+              ${makeupBadgeHtml}
+            </div>
+          </div>
+        `;
+      }).join('') : `<div class="snap-desk-empty">Bàn ${origDeskIdx + 1} trống</div>`;
+
+      const dividerHtml = (di < aisle.desks.length - 1 && hasDividerAfter)
+        ? `<div class="snap-desk-divider" title="Vạch phân cách bàn"></div>`
+        : '';
+
+      return `
+        <div class="snap-desk">
+          <div class="snap-desk-seats">${seatsHtml}</div>
+        </div>
+        ${dividerHtml}
+      `;
+    }).join('');
+
+    return `
+      <div class="snap-aisle" style="width:${aisleMinW}px; min-width:${aisleMinW}px;">
+        <div class="snap-aisle-header">DÃY ${origAisleIdx + 1}${escapeHtml(sideLabel)}</div>
+        <div class="snap-aisle-desks">${desksHtml}</div>
+      </div>
+    `;
+  }).join('');
+
+  const lateQueueHtml = data.lateQueueStudents.length ? `
+    <div class="snap-late-queue">
+      <strong>Học sinh đi muộn (chờ xếp chỗ):</strong>
+      ${data.lateQueueStudents.map(s => `<span class="snap-late-pill">${escapeHtml(s.name)}</span>`).join('')}
+    </div>
+  ` : '';
+
+  return `
+    <div class="snap-header">
+      <div class="snap-header-main">
+        <div class="snap-title-row">
+          <h3>${escapeHtml(clsName)}</h3>
+          <span class="snap-chip snap-chip-primary">Mã: ${escapeHtml(clsCode)}</span>
+          ${clsGrade && clsGrade !== '—' ? `<span class="snap-chip">${escapeHtml(clsGrade)}</span>` : ''}
+          <span class="snap-chip">${escapeHtml(clsRoom)}</span>
+        </div>
+        <div class="snap-meta-row">
+          <span><strong>Ngày:</strong> ${escapeHtml(vnDate)}${timeRange ? ` (${escapeHtml(timeRange)})` : ''}</span>
+          <span>·</span>
+          <span><strong>GV:</strong> ${escapeHtml(teacherName)}</span>
+          <span>·</span>
+          <span><strong>TA:</strong> ${escapeHtml(assistantName)}</span>
+          ${lessonTitle ? `<span>·</span><span><strong>Bài học:</strong> ${escapeHtml(lessonTitle)}</span>` : ''}
+        </div>
+      </div>
+      <div class="snap-stats-group">
+        <div class="snap-stat-box">
+          <small>Điểm danh</small>
+          <strong>${data.attendedCount} / ${data.totalExpected}</strong>
+          <span>Có mặt ${data.presentCount} · Muộn ${data.lateCount}</span>
+        </div>
+        <div class="snap-stat-box">
+          <small>Bài tập về nhà</small>
+          <strong>${data.isNoHwActive ? 'Không BTVN' : `${data.hwDoneCount} đã thu`}</strong>
+          <span>${data.isNoHwActive ? 'Ca không thu BTVN' : `${data.hwMissingCount} không nộp`}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="snap-map-container">
+      ${isTeacherView ? backBarHtml : boardBarHtml}
+      <div class="snap-aisles-row">${aislesHtml}</div>
+      ${lateQueueHtml}
+      ${isTeacherView ? boardBarHtml : backBarHtml}
+    </div>
+
+    <div class="snap-legend">
+      <span class="snap-legend-title">CHÚ THÍCH KÝ HIỆU:</span>
+      <span class="snap-legend-item"><i class="snap-swatch snap-swatch-present"></i> Có mặt</span>
+      <span class="snap-legend-item"><i class="snap-swatch snap-swatch-late"></i> Đi muộn</span>
+      <span class="snap-legend-item"><i class="snap-swatch snap-swatch-absent"></i> Vắng mặt</span>
+      <span class="snap-legend-item"><i class="snap-swatch snap-swatch-unmarked"></i> Chưa điểm danh</span>
+      <span class="snap-legend-item"><b class="snap-leg-badge snap-hw-submitted">✓ Đã thu</b> Đã nộp BTVN</span>
+      <span class="snap-legend-item"><b class="snap-leg-badge snap-hw-graded">BTVN: 9đ</b> Điểm BTVN</span>
+      <span class="snap-legend-item"><b class="snap-leg-badge snap-hw-missing">× K.Nộp</b> Không nộp BTVN</span>
+      <span class="snap-legend-item"><b class="snap-leg-badge snap-makeup-tag">BÙ</b> Học sinh học bù</span>
+      <span class="snap-legend-item"><i class="snap-divider-swatch"></i> Vạch ngăn bàn</span>
+    </div>
+  `;
+}
+
+function fitSeatingSnapshotBoard() {
+  const dlg = $('#seating-snapshot-dialog');
+  const viewport = $('#seating-snapshot-viewport');
+  const board = $('#seating-snapshot-board');
+  if (!dlg || !dlg.open || !viewport || !board || board.hidden) return;
+
+  board.style.transform = 'none';
+  board.style.marginBottom = '0px';
+  board.style.marginRight = '0px';
+
+  const availW = Math.max(280, viewport.clientWidth - 20);
+  const availH = Math.max(240, viewport.clientHeight - 20);
+  const naturalW = board.scrollWidth || board.offsetWidth || 800;
+  const naturalH = board.scrollHeight || board.offsetHeight || 500;
+
+  const scaleW = availW / naturalW;
+  const scaleH = availH / naturalH;
+  const scale = Math.min(1, scaleW, scaleH);
+
+  if (scale < 0.995) {
+    board.style.transformOrigin = 'top center';
+    board.style.transform = `scale(${scale.toFixed(4)})`;
+    const scaledHeightDiff = naturalH * (1 - scale);
+    board.style.marginBottom = `-${Math.round(scaledHeightDiff)}px`;
+  }
+}
+
+function renderSeatingSnapshotCanvas() {
+  const data = getSeatingSnapshotData();
+  const clsName = configClass?.name || 'Lớp học';
+  const clsCode = configClass?.code || CURRENT_CLASS_ID;
+  const clsRoom = configClass?.room || 'Phòng tiêu chuẩn';
+  const teacherName = configClass?.teacherName || '—';
+  const assistantName = configClass?.assistantName || '—';
+  const dateParts = String(checklistDate || '').split('-');
+  const vnDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : checklistDate;
+
+  const aisleCount = Math.max(1, data.displayLayout.length);
+  const seatW = 132;
+  const seatH = 56;
+  const seatGap = 6;
+  const deskPad = 8;
+  const deskGap = 6;
+  const aisleGap = 16;
+
+  const aisleWidths = data.displayLayout.map(aisle => {
+    const maxOcc = Math.max(1, ...aisle.desks.map(d => (deskItems[d.id] || []).length));
+    return Math.max(168, maxOcc * seatW + Math.max(0, maxOcc - 1) * seatGap + deskPad * 2);
+  });
+
+  const totalAislesW = aisleWidths.reduce((a, b) => a + b, 0) + Math.max(0, aisleCount - 1) * aisleGap;
+  const canvasW = Math.max(880, totalAislesW + 64);
+
+  const maxDesksCount = Math.max(1, ...data.displayLayout.map(a => a.desks.length));
+  const aislesAreaH = 34 + maxDesksCount * (seatH + deskPad * 2 + deskGap) + 24;
+  const headerH = 86;
+  const boardBarH = 34;
+  const backBarH = 30;
+  const legendH = 64;
+  const canvasH = headerH + boardBarH + aislesAreaH + backBarH + legendH + 56;
+
+  const dpr = 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasW * dpr;
+  canvas.height = canvasH * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const roundRect = (x, y, w, h, r) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  roundRect(20, 16, canvasW - 40, headerH - 12, 12);
+  ctx.fillStyle = '#f3f8f4';
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#cfe0d2';
+  ctx.stroke();
+
+  ctx.fillStyle = '#1e3a29';
+  ctx.font = '800 20px sans-serif';
+  ctx.fillText(`${clsName} (${clsCode}) · Phòng ${clsRoom}`, 36, 46);
+
+  ctx.fillStyle = '#4b5e50';
+  ctx.font = '600 13px sans-serif';
+  ctx.fillText(`Ngày: ${vnDate}  |  GV: ${teacherName}  |  TA: ${assistantName}`, 36, 70);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#1f5f33';
+  ctx.font = '800 15px sans-serif';
+  ctx.fillText(`Điểm danh: ${data.attendedCount}/${data.totalExpected} (Có mặt: ${data.presentCount} · Muộn: ${data.lateCount})`, canvasW - 36, 46);
+  ctx.fillStyle = '#334155';
+  ctx.font = '700 13px sans-serif';
+  ctx.fillText(
+    data.isNoHwActive
+      ? 'BTVN: Ca học không có BTVN'
+      : `BTVN: ${data.hwDoneCount} đã thu/chấm · ${data.hwMissingCount} không nộp`,
+    canvasW - 36,
+    70
+  );
+  ctx.textAlign = 'left';
+
+  let curY = headerH + 14;
+  const barW = Math.min(360, canvasW - 120);
+  roundRect((canvasW - barW) / 2, curY, barW, 26, 6);
+  ctx.fillStyle = '#e8f3ea';
+  ctx.fill();
+  ctx.strokeStyle = '#9ec2a6';
+  ctx.stroke();
+  ctx.fillStyle = '#1e3a29';
+  ctx.font = '800 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(isTeacherView ? 'CUỐI LỚP (GÓC NHÌN GIÁO VIÊN)' : 'BẢNG · ĐẦU LỚP', canvasW / 2, curY + 17);
+
+  curY += 38;
+
+  let curX = (canvasW - totalAislesW) / 2;
+
+  data.displayLayout.forEach((aisle, ci) => {
+    const origAisleIdx = isTeacherView ? (layout.length - 1 - ci) : ci;
+    const colW = aisleWidths[ci];
+
+    ctx.fillStyle = '#4d6553';
+    ctx.font = '800 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`DÃY ${origAisleIdx + 1}`, curX + colW / 2, curY + 14);
+
+    let deskY = curY + 24;
+    aisle.desks.forEach((desk, di) => {
+      const list = deskItems[desk.id] || [];
+      const displayList = isTeacherView ? [...list].reverse() : list;
+      const origDeskIdx = isTeacherView ? (aisle.desks.length - 1 - di) : di;
+      const origAisle = layout[origAisleIdx];
+      const hasDividerAfter = isTeacherView
+        ? Boolean(origAisle?.desks?.[origDeskIdx - 1]?.dividerAfter)
+        : Boolean(desk.dividerAfter);
+
+      const dH = seatH + deskPad * 2;
+      roundRect(curX, deskY, colW, dH, 8);
+      ctx.fillStyle = '#fbfdfb';
+      ctx.fill();
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = '#cbd8cd';
+      ctx.stroke();
+
+      if (!displayList.length) {
+        ctx.fillStyle = '#9aa89d';
+        ctx.font = 'italic 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Bàn ${origDeskIdx + 1} trống`, curX + colW / 2, deskY + dH / 2 + 4);
+      } else {
+        const rowSeatsW = displayList.length * seatW + Math.max(0, displayList.length - 1) * seatGap;
+        let seatX = curX + (colW - rowSeatsW) / 2;
+        displayList.forEach(entry => {
+          const stu = studentById(entry.studentId);
+          const att = entry.attendance || stu?.attendance;
+          const hw = entry.homework || stu?.homework;
+          const isMakeup = Boolean(stu && (stu.studentType === 'makeup' || !(stu.classIds || []).includes(CURRENT_CLASS_ID)));
+          const attSt = att?.status || 'unmarked';
+
+          let bg = '#f3f7f3', border = '#ced9cf', textCol = '#334155', attTxt = 'Chưa ĐD';
+          if (attSt === 'present') {
+            bg = '#eaf5ec'; border = '#86c292'; textCol = '#1b4d2a'; attTxt = 'Có mặt';
+          } else if (attSt === 'late') {
+            bg = '#fff5e8'; border = '#e5b26d'; textCol = '#8a5311';
+            const mins = att?.lateMinutes ?? att?.minutesLate;
+            attTxt = mins ? `Muộn ${mins}p` : 'Đi muộn';
+          } else if (attSt.startsWith('absent')) {
+            bg = '#fff0ef'; border = '#e59890'; textCol = '#9e2a22'; attTxt = 'Vắng';
+          }
+          if (isMakeup) {
+            border = '#9333ea';
+          }
+
+          roundRect(seatX, deskY + deskPad, seatW, seatH, 6);
+          ctx.fillStyle = bg;
+          ctx.fill();
+          ctx.lineWidth = isMakeup ? 2 : 1.2;
+          ctx.strokeStyle = border;
+          ctx.stroke();
+
+          const fullName = stu ? stu.name : 'Chỗ trống';
+          ctx.fillStyle = textCol;
+          ctx.font = '700 11.5px sans-serif';
+          ctx.textAlign = 'center';
+          const shortName = fullName.length > 18 ? fullName.slice(0, 17) + '…' : fullName;
+          ctx.fillText(shortName, seatX + seatW / 2, deskY + deskPad + 21);
+
+          let hwTxt = '';
+          if (!data.isNoHwActive && stu) {
+            const hwSt = hw?.status || 'uncollected';
+            const hwScore = (hw?.score !== null && hw?.score !== undefined && hw?.score !== '') ? hw.score : null;
+            if (hwScore !== null) hwTxt = ` · BTVN:${hwScore}đ`;
+            else if (hwSt === 'graded') hwTxt = ' · Đã chấm';
+            else if (hwSt === 'submitted') hwTxt = ' · ✓BTVN';
+            else if (hwSt === 'not_submitted') hwTxt = ' · ×K.Nộp';
+            else hwTxt = ' · Chưa thu';
+          }
+          if (isMakeup) hwTxt += ' [BÙ]';
+
+          ctx.fillStyle = '#475569';
+          ctx.font = '600 10px sans-serif';
+          ctx.fillText(`${attTxt}${hwTxt}`, seatX + seatW / 2, deskY + deskPad + 41);
+
+          seatX += seatW + seatGap;
+        });
+      }
+
+      deskY += dH + deskGap;
+      if (di < aisle.desks.length - 1 && hasDividerAfter) {
+        ctx.fillStyle = '#1e3a29';
+        ctx.fillRect(curX + 4, deskY - deskGap / 2 - 1.5, colW - 8, 3);
+      }
+    });
+
+    curX += colW + aisleGap;
+  });
+
+  curY += aislesAreaH;
+
+  roundRect((canvasW - barW) / 2, curY, barW, 24, 6);
+  ctx.fillStyle = '#f3f6f4';
+  ctx.fill();
+  ctx.strokeStyle = '#cbd8cd';
+  ctx.stroke();
+  ctx.fillStyle = '#526356';
+  ctx.font = '800 11.5px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(isTeacherView ? 'BẢNG · ĐẦU LỚP' : 'CUỐI LỚP', canvasW / 2, curY + 16);
+
+  curY += 36;
+
+  roundRect(20, curY, canvasW - 40, 44, 8);
+  ctx.fillStyle = '#f8faf8';
+  ctx.fill();
+  ctx.strokeStyle = '#d5e2d7';
+  ctx.stroke();
+
+  ctx.fillStyle = '#1e3a29';
+  ctx.font = '700 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(
+    'CHÚ THÍCH:  [Xanh lá] Có mặt  ·  [Vàng cam] Đi muộn  ·  [Đỏ hồng] Vắng mặt  ·  [✓BTVN] Đã thu  ·  [BTVN: điểm] Đã chấm  ·  [×K.Nộp] Không nộp  ·  [BÙ] Học bù  ·  [━] Vạch ngăn bàn',
+    canvasW / 2,
+    curY + 26
+  );
+
+  return canvas.toDataURL('image/png');
+}
+
+function openSeatingSnapshotDialog() {
+  const dlg = $('#seating-snapshot-dialog');
+  const board = $('#seating-snapshot-board');
+  const imgWrap = $('#seating-snapshot-img-wrap');
+  const imgEl = $('#seating-snapshot-img');
+  const modeBtn = $('#toggle-seating-img-mode-btn');
+  if (!dlg || !board) return;
+
+  board.innerHTML = buildSeatingSnapshotHtml();
+  board.hidden = false;
+  if (imgWrap) imgWrap.hidden = true;
+  if (modeBtn) modeBtn.textContent = 'Chế độ Ảnh (Giữ để Lưu/Copy)';
+
+  const dataUrl = renderSeatingSnapshotCanvas();
+  if (imgEl) imgEl.src = dataUrl;
+
+  dlg.showModal();
+  requestAnimationFrame(() => {
+    fitSeatingSnapshotBoard();
+  });
+}
+
+$('#export-seating-image-btn')?.addEventListener('click', () => {
+  openSeatingSnapshotDialog();
+});
+
+$('#close-seating-snapshot-btn')?.addEventListener('click', () => {
+  $('#seating-snapshot-dialog')?.close();
+});
+
+$('#toggle-seating-img-mode-btn')?.addEventListener('click', () => {
+  const board = $('#seating-snapshot-board');
+  const imgWrap = $('#seating-snapshot-img-wrap');
+  const imgEl = $('#seating-snapshot-img');
+  const modeBtn = $('#toggle-seating-img-mode-btn');
+  if (!board || !imgWrap) return;
+  const showingImg = !imgWrap.hidden;
+  if (showingImg) {
+    imgWrap.hidden = true;
+    board.hidden = false;
+    if (modeBtn) modeBtn.textContent = 'Chế độ Ảnh (Giữ để Lưu/Copy)';
+    requestAnimationFrame(() => fitSeatingSnapshotBoard());
+  } else {
+    if (imgEl) imgEl.src = renderSeatingSnapshotCanvas();
+    board.hidden = true;
+    imgWrap.hidden = false;
+    if (modeBtn) modeBtn.textContent = 'Quay lại Khung Bảng';
+  }
+});
+
+$('#download-seating-png-btn')?.addEventListener('click', () => {
+  const dataUrl = renderSeatingSnapshotCanvas();
+  const imgEl = $('#seating-snapshot-img');
+  if (imgEl) imgEl.src = dataUrl;
+  const clsCode = (configClass?.code || CURRENT_CLASS_ID || 'lop').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = `So-do-lop-${clsCode}-${checklistDate}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  toast('Đã xuất và tải xuống hình ảnh PNG sơ đồ lớp.');
+});
+
+window.addEventListener('resize', () => {
+  if ($('#seating-snapshot-dialog')?.open) {
+    fitSeatingSnapshotBoard();
+  }
+});
+

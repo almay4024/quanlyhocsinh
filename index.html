@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Lớp học vui (v2.4) · Quản lý lớp học trung tâm</title>
+  <title>Lớp học vui (v2.5) · Quản lý lớp học trung tâm</title>
   <link rel="stylesheet" href="/src/styles.css?v=2.3" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.4</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.5</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -648,6 +648,7 @@
               </div>
               <button type="button" class="outline-button" id="undo-layout-button" disabled title="Hoàn tác thao tác vừa thực hiện trên sơ đồ (Ctrl+Z)">↩ Hoàn tác</button>
               <button type="button" class="outline-button" id="teacher-view-button" title="Chuyển đổi góc nhìn của Giáo viên từ bục giảng (lật ngược trên-dưới và trái-phải)">Góc nhìn Giáo viên</button>
+              <button type="button" class="outline-button" id="export-seating-image-btn" title="Mở chế độ chụp màn hình gọn trong 1 khung hình hoặc tải ảnh PNG sơ đồ lớp">Xuất ảnh sơ đồ</button>
               <button type="button" class="outline-button late-button" id="late-button">Điểm danh muộn</button>
               <button type="button" class="outline-button" id="edit-layout">Điều chỉnh layout</button>
             </div>
@@ -2057,7 +2058,7 @@
         <div class="login-brand">
           
           <div>
-            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.4</span></strong>
+            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.5</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2124,6 +2125,45 @@
   </section>
 
   
+  
+  <!-- Chế độ Chụp màn hình & Xuất hình ảnh Sơ đồ lớp (Seating Snapshot & PNG Export Modal) -->
+  <dialog id="seating-snapshot-dialog" class="seating-snapshot-dialog">
+    <div class="seating-snapshot-shell">
+      <div class="seating-snapshot-toolbar">
+        <div class="seating-snapshot-toolbar-left">
+          <strong>Xuất ảnh & Chụp màn hình Sơ đồ lớp</strong>
+          <small>Tự động thu gọn vừa khít 1 khung hình (không cần cuộn) kèm chú thích ký hiệu bên dưới</small>
+        </div>
+        <div class="seating-snapshot-toolbar-actions">
+          <button type="button" class="outline-button" id="toggle-seating-img-mode-btn" title="Chuyển sang dạng ảnh trực tiếp để nhấn giữ Lưu/Sao chép trên iPad & Điện thoại">Chế độ Ảnh (Giữ để Lưu/Copy)</button>
+          <button type="button" class="primary-button" id="download-seating-png-btn">Tải ảnh PNG</button>
+          <button type="button" class="outline-button" id="close-seating-snapshot-btn">Đóng</button>
+        </div>
+      </div>
+      <div class="seating-snapshot-viewport" id="seating-snapshot-viewport">
+        <div class="seating-snapshot-board" id="seating-snapshot-board"></div>
+        <div class="seating-snapshot-img-wrap" id="seating-snapshot-img-wrap" hidden>
+          <p class="seating-snapshot-img-hint">Mẹo trên iPad / Điện thoại: Nhấn giữ trực tiếp vào hình ảnh bên dưới để chọn <strong>"Sao chép"</strong> hoặc <strong>"Lưu vào Ảnh"</strong>.</p>
+          <img id="seating-snapshot-img" alt="Hình ảnh sơ đồ lớp học" />
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Popup Danh sách các lớp đang sử dụng phòng học (Room Classes Modal) -->
+  <dialog id="room-classes-dialog" class="class-config-dialog room-classes-dialog">
+    <div class="dialog-form">
+      <button type="button" class="close-button" id="close-room-classes-dialog" aria-label="Đóng">×</button>
+      <div class="eyebrow">LỊCH SỬ DỤNG PHÒNG HỌC</div>
+      <h2 id="room-classes-dialog-title">Các lớp đang sử dụng phòng</h2>
+      <p id="room-classes-dialog-sub" class="dialog-hint">Danh sách các lớp được xếp lịch học tại phòng này.</p>
+      <div id="room-classes-dialog-list" class="room-classes-dialog-list"></div>
+      <div class="class-config-actions" style="margin-top:16px;">
+        <button type="button" class="outline-button" id="close-room-classes-bottom-btn" style="grid-column: 1 / -1;">Đóng</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Hidden compatibility nodes so any legacy/cached DOM selector never returns null -->
   <div id="legacy-compat-dom" hidden style="display:none!important;" aria-hidden="true">
     <button type="button" id="staff-menu-nav"></button>
