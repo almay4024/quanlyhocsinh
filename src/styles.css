@@ -7053,3 +7053,220 @@ body {
   background: #f3e8ff !important;
   color: #6b21a8 !important;
 }
+
+
+/* =========================================================
+   v3.0 INTERACTIVE DATA GRID EXCEL IMPORT, STUDENT TAG BADGES,
+   MANAGED CLASS SINGLE ACTION, AND CLASS CONFIG TIME GRID FIX
+   ========================================================= */
+
+/* 1. Interactive Data Grid Excel Import (#import-roster-dialog) */
+#import-roster-dialog.import-roster-dialog {
+  width: min(1040px, calc(100vw - 28px)) !important;
+  max-width: 1040px !important;
+}
+
+.import-target-class-banner {
+  padding: 10px 14px !important;
+  margin-bottom: 10px !important;
+  border-radius: 9px !important;
+  background: #eaf5ec !important;
+  border: 1.5px solid #86c292 !important;
+  color: #1b4d2a !important;
+  font-size: 13.5px !important;
+  line-height: 1.45 !important;
+}
+
+.import-top-controls-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
+  gap: 12px !important;
+  margin-bottom: 8px !important;
+}
+
+.import-grid-summary-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  padding: 8px 12px !important;
+  background: #f4f9f5 !important;
+  border: 1px solid #cfe0d2 !important;
+  border-radius: 8px 8px 0 0 !important;
+  font-size: 13.5px !important;
+  color: #1e3a29 !important;
+}
+
+.import-count-highlight {
+  display: inline-block !important;
+  padding: 1px 8px !important;
+  border-radius: 999px !important;
+  background: #2e6d42 !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+}
+
+.import-interactive-grid-wrap {
+  max-height: 320px !important;
+  overflow: auto !important;
+  border: 1px solid #cfe0d2 !important;
+  border-top: 0 !important;
+  border-radius: 0 0 8px 8px !important;
+}
+
+.import-interactive-grid-table th.grid-col-header-th {
+  vertical-align: top !important;
+  padding: 8px 8px !important;
+  min-width: 145px !important;
+  background: #edf6ef !important;
+  border-bottom: 2px solid #9ec5a6 !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 5 !important;
+}
+
+.import-interactive-grid-table th.grid-col-header-th.grid-col-ignored {
+  background: #f3f5f4 !important;
+  border-bottom-color: #d1d9d3 !important;
+  opacity: 0.78 !important;
+}
+
+.grid-col-index-badge {
+  font-size: 11.5px !important;
+  font-weight: 800 !important;
+  color: #36533e !important;
+  margin-bottom: 5px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.grid-col-role-select {
+  width: 100% !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 4px 8px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: #1b4d2a !important;
+  background: #ffffff !important;
+  border: 1.5px solid #6da67b !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  outline: none !important;
+}
+
+.grid-col-ignored .grid-col-role-select {
+  color: #647467 !important;
+  border-color: #cbd5ce !important;
+  font-weight: 600 !important;
+}
+
+.grid-col-sample-hint {
+  display: block !important;
+  margin-top: 4px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: #526656 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.import-interactive-grid-table td.grid-cell-ignored {
+  color: #94a398 !important;
+  background: #fafbfa !important;
+  font-style: italic !important;
+}
+
+.import-interactive-grid-table td.grid-cell-active {
+  color: #1e3a29 !important;
+  font-weight: 500 !important;
+  background: #ffffff !important;
+}
+
+/* 2. Student Tag Inline Badges next to Student Name in all tables */
+.student-tag-inline {
+  display: inline-flex !important;
+  align-items: center !important;
+  vertical-align: middle !important;
+  margin-left: 5px !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  background: #eaf4ec !important;
+  color: #245c36 !important;
+  border: 1px solid #b8d8c0 !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+  white-space: nowrap !important;
+}
+
+.student-tag-inline.new-tag {
+  background: #fff4df !important;
+  color: #a86418 !important;
+  border-color: #f3d098 !important;
+}
+
+/* 3. Fix Class Config Time Fields 3-Column Grid & Remove Close Button Blue Focus Ring */
+.class-config-fields > .class-config-time-fields,
+.class-config-time-fields {
+  grid-column: 1 / -1 !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  align-items: end !important;
+  width: 100% !important;
+  margin: 6px 0 !important;
+  box-sizing: border-box !important;
+}
+
+.class-config-time-fields:has(#config-class-duration-custom-wrap[hidden]) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.class-config-time-fields > .field-label {
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+}
+
+.class-config-time-fields > .field-label input,
+.class-config-time-fields > .field-label select {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  margin: 0 !important;
+  padding: 8px 12px !important;
+  box-sizing: border-box !important;
+}
+
+.class-config-time-fields > .time-range-preview {
+  grid-column: 1 / -1 !important;
+  margin-top: 2px !important;
+}
+
+@media (max-width: 560px) {
+  .class-config-fields > .class-config-time-fields,
+  .class-config-time-fields,
+  .class-config-time-fields:has(#config-class-duration-custom-wrap[hidden]) {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+}
+
+.close-button,
+dialog .close-button,
+.close-button:focus,
+.close-button:focus-visible,
+.close-button:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}

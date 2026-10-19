@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Lớp học vui (v2.9) · Quản lý lớp học trung tâm</title>
+  <title>Lớp học vui (v3.0) · Quản lý lớp học trung tâm</title>
   <link rel="stylesheet" href="/src/styles.css?v=2.3" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.9</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.0</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -1134,103 +1134,61 @@
   <!-- Import học sinh từ Excel / Google Sheets với Tùy chọn Ánh xạ Cột linh hoạt -->
   <dialog id="import-roster-dialog" class="import-roster-dialog">
     <div class="dialog-form">
-      <button type="button" class="close-button" id="close-import-dialog" aria-label="Đóng">×</button>
-      <div class="eyebrow">NHẬP LIỆU EXCEL / GOOGLE SHEETS THÔNG MINH</div>
-      <h2>Nhập danh sách học sinh & Tùy chọn cột</h2>
-      <p class="dialog-hint">Tải file hoặc dán bảng copy từ Excel/Sheets. Bạn có thể tùy chọn ánh xạ từng cột theo cấu trúc file của bạn.</p>
+      <button type="button" class="close-button" id="close-import-dialog" tabindex="-1" aria-label="Đóng">×</button>
+      <div class="eyebrow">NHẬP LIỆU EXCEL / GOOGLE SHEETS TRỰC QUAN</div>
+      <h2>Nhập danh sách học sinh (Bảng tương tác trực tiếp)</h2>
+      <p class="dialog-hint">Dán dữ liệu từ Excel/Sheets (Ctrl + V) hoặc chọn file. Hệ thống tự động dựng bảng dữ liệu — bạn chỉ cần kiểm tra hoặc chọn nhãn cột ngay trên đầu mỗi cột rồi bấm Xác nhận.</p>
 
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:10px;">
+      <div id="import-target-class-banner" class="import-target-class-banner" hidden></div>
+
+      <div class="import-top-controls-grid">
         <label class="field-label" style="margin:0;">Tải file từ máy tính (.csv, .tsv, .txt):
           <input type="file" id="import-file-input" accept=".csv, .tsv, .txt" style="margin-top:4px;" />
         </label>
-        <label class="field-label" style="margin:0;">Lớp mặc định (nếu file không có cột mã lớp):
+        <label class="field-label" style="margin:0;">Gán vào lớp (mặc định tự nhận lớp đang mở):
           <select id="import-default-class-select" style="margin-top:4px;"></select>
         </label>
       </div>
 
-      <label class="field-label">Dán văn bản bảng tính từ Excel / Google Sheets (Ctrl + V):
-        <textarea id="import-paste-textarea" rows="4" placeholder="Mã HS	Họ và tên	Trường	Lớp 1	SĐT Phụ huynh&#10;HS001	Nguyễn Minh Quân	THCS Cầu Giấy	Toán 8A	0987654321"></textarea>
+      <label class="field-label" style="margin-top:10px;">Dán văn bản bảng tính từ Excel / Google Sheets (Ctrl + V — tự động hiện bảng ngay bên dưới):
+        <textarea id="import-paste-textarea" rows="3" placeholder="Ví dụ: HỌC	K9.1832	Phạm Chí	Kiên	02/10/2026	Trần Phú	TSA2.QUANBM	2K9.H4.GIANGNH"></textarea>
       </label>
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin:10px 0;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin:8px 0;">
         <label class="time-toggle" style="margin:0;">
-          <input type="checkbox" id="import-has-header" checked /> Dòng đầu tiên là tiêu đề cột
+          <input type="checkbox" id="import-has-header" /> Dòng đầu tiên trong dữ liệu dán là dòng tiêu đề cột
         </label>
-        <button type="button" class="primary-button" id="detect-columns-btn">1. Đọc các cột trong file</button>
+        <button type="button" class="outline-button" id="detect-columns-btn">Làm mới & Tự nhận diện lại cột</button>
       </div>
 
-      <!-- Column Mapping Controls (Ánh xạ cột) -->
-      <div id="column-mapping-section" class="column-mapping-wrap" hidden>
-        <div class="eyebrow" style="margin: 8px 0 4px;">BƯỚC 2: TÙY CHỌN ÁNH XẠ CỘT TƯƠNG ỨNG</div>
-        <div class="name-mode-choice" style="margin-bottom:8px;">
-          <span style="font-size:14px; font-weight:700; color:#495f50; margin-right:10px;">Chế độ Họ tên:</span>
-          <label style="font-size:14px; margin-right:12px; cursor:pointer;">
-            <input type="radio" name="name-mode" value="single" checked id="name-mode-single" /> 1 cột "Họ và tên" (Hệ thống tự động tách Họ đệm & Tên)
-          </label>
-          <label style="font-size:14px; cursor:pointer;">
-            <input type="radio" name="name-mode" value="split" id="name-mode-split" /> 2 cột riêng (1 cột Họ đệm + 1 cột Tên)
-          </label>
-        </div>
-
-        <div class="mapping-grid">
-          <label class="field-label">Cột Mã học sinh
-            <select id="map-col-code" class="col-map-select"><option value="-1">-- Không có / Tự sinh --</option></select>
-          </label>
-          <label class="field-label" id="single-name-col-wrap">Cột Họ và tên đầy đủ *
-            <select id="map-col-fullname" class="col-map-select"></select>
-          </label>
-          <label class="field-label" id="family-name-col-wrap" hidden>Cột Họ và tên đệm *
-            <select id="map-col-familyname" class="col-map-select"></select>
-          </label>
-          <label class="field-label" id="given-name-col-wrap" hidden>Cột Tên *
-            <select id="map-col-givenname" class="col-map-select"></select>
-          </label>
-          <label class="field-label">Cột Trường học *
-            <select id="map-col-school" class="col-map-select"></select>
-          </label>
-          <label class="field-label">Cột Mã lớp 1 (hoặc Tên lớp) *
-            <select id="map-col-class1" class="col-map-select"><option value="-1">-- Theo lớp mặc định --</option></select>
-          </label>
-          <label class="field-label">Cột Mã lớp 2 (nếu có)
-            <select id="map-col-class2" class="col-map-select"><option value="-1">-- Không có --</option></select>
-          </label>
-          <label class="field-label">Cột Mã lớp 3 (nếu có)
-            <select id="map-col-class3" class="col-map-select"><option value="-1">-- Không có --</option></select>
-          </label>
-          <label class="field-label">Cột SĐT Phụ huynh
-            <select id="map-col-phone" class="col-map-select"><option value="-1">-- Không có --</option></select>
-          </label>
-          <label class="field-label">Cột Tên Phụ huynh
-            <select id="map-col-parent" class="col-map-select"><option value="-1">-- Không có --</option></select>
-          </label>
-          <label class="field-label">Cột Trạng thái theo học
-            <select id="map-col-status" class="col-map-select"><option value="-1">-- Mặc định: Học --</option></select>
-          </label>
-        </div>
-
-        <button type="button" class="outline-button" id="preview-mapped-btn" style="margin-top:8px;">2. Xem trước theo ánh xạ cột</button>
+      <!-- Hidden legacy mapping section kept for DOM compatibility -->
+      <div id="column-mapping-section" hidden style="display:none!important;">
+        <input type="radio" name="name-mode" value="single" id="name-mode-single" />
+        <input type="radio" name="name-mode" value="split" id="name-mode-split" checked />
+        <div id="single-name-col-wrap"></div><div id="family-name-col-wrap"></div><div id="given-name-col-wrap"></div>
+        <select id="map-col-code"></select><select id="map-col-fullname"></select><select id="map-col-familyname"></select>
+        <select id="map-col-givenname"></select><select id="map-col-school"></select><select id="map-col-class1"></select>
+        <select id="map-col-class2"></select><select id="map-col-class3"></select><select id="map-col-phone"></select>
+        <select id="map-col-parent"></select><select id="map-col-status"></select>
+        <button type="button" id="preview-mapped-btn"></button>
       </div>
 
-      <div id="import-preview-wrap" style="margin-top:14px;" hidden>
-        <h4>Xem trước danh sách (<span id="import-preview-count">0</span> học sinh hợp lệ):</h4>
-        <div class="attendance-table-wrap" style="max-height:220px; overflow:auto;">
-          <table class="attendance-report-table" id="import-preview-table">
-            <thead>
-              <tr>
-                <th>Mã HS</th>
-                <th>Họ và tên đệm</th>
-                <th>Tên</th>
-                <th>Trường học</th>
-                <th>Các lớp gắn vào</th>
-                <th>SĐT Phụ huynh</th>
-              </tr>
-            </thead>
+      <div id="import-preview-wrap" style="margin-top:10px;" hidden>
+        <div class="import-grid-summary-bar">
+          <div>
+            <strong>Bảng dữ liệu tương tác:</strong> Đã nhận diện <span id="import-preview-count" class="import-count-highlight">0</span> học sinh hợp lệ.
+            <small style="display:block; color:#526656;">Chọn tên trường ở thanh thả xuống trên đỉnh mỗi cột (có thể chọn nhiều cột là "Mã lớp").</small>
+          </div>
+        </div>
+        <div class="attendance-table-wrap import-interactive-grid-wrap">
+          <table class="attendance-report-table import-interactive-grid-table" id="import-preview-table">
+            <thead id="import-preview-thead"></thead>
             <tbody id="import-preview-tbody"></tbody>
           </table>
         </div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
         <button type="button" class="outline-button" id="cancel-import-btn">Hủy</button>
         <button type="button" class="primary-button" id="confirm-import-btn" disabled>✓ Xác nhận nhập vào hệ thống</button>
       </div>
@@ -1353,7 +1311,7 @@
   <!-- Class Config Dialog -->
   <dialog id="class-config-dialog" class="class-config-dialog">
     <form id="class-config-form">
-      <button type="button" class="close-button" id="close-class-config" aria-label="Đóng">×</button>
+      <button type="button" class="close-button" id="close-class-config" tabindex="-1" aria-label="Đóng">×</button>
       <div class="eyebrow">CẤU HÌNH LỚP</div>
       <h2 id="class-config-title">Thêm lớp học</h2>
       <input type="hidden" id="config-class-id" />
@@ -1446,7 +1404,7 @@
               <option value="custom">Tùy chỉnh...</option>
             </select>
           </label>
-          <label class="field-label" id="config-class-duration-custom-wrap" hidden>Thời lượng tùy chỉnh (bội số 5p)
+          <label class="field-label" id="config-class-duration-custom-wrap" hidden>Thời lượng tùy chỉnh
             <input id="config-class-duration-custom" type="text" placeholder="VD: 1:20 hoặc 80p" />
           </label>
           <small id="config-class-time-preview" class="time-range-preview">Ca học: 15:30 – 17:00</small>
@@ -2069,7 +2027,7 @@
         <div class="login-brand">
           
           <div>
-            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.9</span></strong>
+            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.0</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>

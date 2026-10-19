@@ -1,21 +1,25 @@
-import { matchesAcronymOrText } from './student-search.js?v=2.9';
+import { matchesAcronymOrText } from './student-search.js?v=3.0';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=2.9';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.9';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.0';
+import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=3.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.9';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.0';
 import {
   ENROLLMENT_STATUS_PRESETS,
+  GRID_COLUMN_ROLE_OPTIONS,
+  isStatusWord,
   normalizeEnrollmentStatus,
   parseRawTable,
   splitVietnameseName,
+  autoDetectGridColumnRoles,
+  extractStudentsFromGrid,
   autoDetectColumnMapping,
   mapCustomColumns,
   parseRosterText,
@@ -23,7 +27,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=2.9';
+} from './excel-import-export.js?v=3.0';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -34,7 +38,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=2.9';
+} from './data/session-history-repository.js?v=3.0';
 
 export function setupFeatures(ctx) {
   const {
@@ -67,6 +71,19 @@ export function setupFeatures(ctx) {
   } = ctx;
 
   let activeRosterClassId = null;
+
+  function renderStudentTagsBadges(student) {
+    const rawTags = Array.isArray(student?.tags) ? [...student.tags].filter(Boolean) : [];
+    if (student?.isNew && !rawTags.some(t => String(t).toLowerCase() === 'mới')) {
+      rawTags.unshift('Mới');
+    }
+    if (!rawTags.length) return '';
+    return rawTags.map(tag => {
+      const isNewTag = String(tag).toLowerCase() === 'mới';
+      return `<span class="student-tag-inline ${isNewTag ? 'new-tag' : ''}">${escapeHtml(tag)}</span>`;
+    }).join(' ');
+  }
+
   let parsedImportData = [];
   let currentReportTab = 'a4-roster';
 
@@ -839,7 +856,6 @@ export function setupFeatures(ctx) {
               </div>
               <div class="room-schedule-col-right">
                 <span class="room-chip room-schedule-time-badge">${weekdays[c.weekday] || 'Lịch học'} · ${escapeHtml(c.startTime || '')}–${escapeHtml(c.endTime || '')}</span>
-                <button type="button" class="primary-button room-schedule-enter-btn" data-enter-room-class="${escapeHtml(c.id)}">Vào lớp</button>
               </div>
             </div>
           `).join('')}
@@ -1118,7 +1134,7 @@ export function setupFeatures(ctx) {
       return `
         <tr>
           <td>${escapeHtml(fam || '—')}</td>
-          <td><strong>${escapeHtml(giv || s.name)}</strong></td>
+          <td><strong>${escapeHtml(giv || s.name)}</strong> ${renderStudentTagsBadges(s)}</td>
           <td>${escapeHtml(s.studentCode || '—')}</td>
           <td>${escapeHtml(s.school || '—')}</td>
           <td>${escapeHtml(s.parentContact?.name || '—')}</td>
@@ -2311,6 +2327,24 @@ export function setupFeatures(ctx) {
     }
   }
 
+  function syncImportTargetBanner() {
+    const banner = $('#import-target-class-banner');
+    const select = $('#import-default-class-select');
+    if (!banner) return;
+    const catalog = getClassCatalog();
+    const targetId = (isRosterImportContext && activeRosterClassId) ? activeRosterClassId : (select?.value || '');
+    const cls = catalog.find(c => c.id === targetId);
+    if (cls) {
+      banner.hidden = false;
+      banner.innerHTML = isRosterImportContext
+        ? `<strong>Lớp đích cố định: [${escapeHtml(cls.code || cls.id)}] ${escapeHtml(cls.name)}</strong> — Mọi học sinh hợp lệ trong bảng bên dưới sẽ được gán thẳng vào lớp này.`
+        : `<strong>Lớp gán mặc định: [${escapeHtml(cls.code || cls.id)}] ${escapeHtml(cls.name)}</strong> — Học sinh sẽ được gán vào lớp này (kèm theo các cột Mã lớp trong bảng nếu có).`;
+    } else {
+      banner.hidden = true;
+      banner.innerHTML = '';
+    }
+  }
+
   // Import from Excel / Google Sheets inside Roster Admin Dialog (Class-specific context)
   const rosterImportBtn = $('#roster-import-btn');
   if (rosterImportBtn) {
@@ -2318,12 +2352,13 @@ export function setupFeatures(ctx) {
       isRosterImportContext = true;
       parsedImportData = [];
       parsedRawRows = [];
+      gridColumnRoles = [];
       $('#import-paste-textarea').value = '';
       if ($('#import-file-input')) $('#import-file-input').value = '';
       if ($('#import-preview-wrap')) $('#import-preview-wrap').hidden = true;
-      if ($('#column-mapping-section')) $('#column-mapping-section').hidden = true;
       if ($('#confirm-import-btn')) $('#confirm-import-btn').disabled = true;
       populateImportDefaultClassSelect(activeRosterClassId || getCurrentClassId());
+      syncImportTargetBanner();
       $('#import-roster-dialog').showModal();
     };
   }
@@ -2335,14 +2370,15 @@ export function setupFeatures(ctx) {
       isRosterImportContext = false;
       parsedImportData = [];
       parsedRawRows = [];
+      gridColumnRoles = [];
       $('#import-paste-textarea').value = '';
       if ($('#import-file-input')) $('#import-file-input').value = '';
       if ($('#import-preview-wrap')) $('#import-preview-wrap').hidden = true;
-      if ($('#column-mapping-section')) $('#column-mapping-section').hidden = true;
       if ($('#confirm-import-btn')) $('#confirm-import-btn').disabled = true;
       const filterClassVal = $('#master-class-filter')?.value;
       const preselectClass = (filterClassVal && filterClassVal !== 'all') ? filterClassVal : '';
       populateImportDefaultClassSelect(preselectClass);
+      syncImportTargetBanner();
       $('#import-roster-dialog').showModal();
     };
   }
@@ -2352,1184 +2388,133 @@ export function setupFeatures(ctx) {
   const cancelImportBtn = $('#cancel-import-btn');
   if (cancelImportBtn) cancelImportBtn.onclick = () => $('#import-roster-dialog').close();
 
-  initFlexibleColumnMappingImport();
-
-  // Finalize attendance dialog buttons
-  const finalizeBtn = $('#finalize-button');
-  if (finalizeBtn) finalizeBtn.onclick = handleFinalizeAttendance;
-  const closeFinalizeDialog = $('#close-finalize-dialog');
-  if (closeFinalizeDialog) closeFinalizeDialog.onclick = () => $('#finalize-dialog').close();
-  const cancelFinalizeBtn = $('#cancel-finalize-btn');
-  if (cancelFinalizeBtn) cancelFinalizeBtn.onclick = () => $('#finalize-dialog').close();
-  const confirmFinalizeBtnEl = $('#confirm-finalize-btn');
-  if (confirmFinalizeBtnEl) confirmFinalizeBtnEl.onclick = confirmFinalizeAttendance;
-
-  // Late Dialog minutes calculation
-  const arrivalTimeInput = $('#arrival-time');
-  if (arrivalTimeInput) {
-    arrivalTimeInput.oninput = updateLateMinutesCalculation;
-  }
-  const lateBtn = $('#late-button');
-  if (lateBtn) {
-    const originalLateClick = lateBtn.onclick;
-    lateBtn.onclick = () => {
-      if (originalLateClick) originalLateClick();
-      setTimeout(updateLateMinutesCalculation, 50);
-    };
-  }
-
-  // Session Report Center (Enhanced Attendance Export Dialog)
-  document.querySelectorAll('.report-tab').forEach(tab => {
-    tab.onclick = () => renderReportCenter(tab.dataset.reportTab);
-  });
-  const copyTeacherReportBtn = $('#copy-teacher-report-btn');
-  if (copyTeacherReportBtn) {
-    copyTeacherReportBtn.onclick = () => {
-      const currentClass = getActiveClassConfig();
-      const date = getChecklistDate();
-      const roster = classStudents();
-      const entries = allEntries();
-      const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'present').length;
-      const lateList = roster.filter(s => {
-        const seated = entries.find(p => p.entry.studentId === s.id);
-        return getLateQueue().includes(s.id) || seated?.entry.attendance?.status === 'late';
-      });
-      const absentList = roster.filter(s => {
-        const seated = entries.find(p => p.entry.studentId === s.id);
-        const inLate = getLateQueue().includes(s.id);
-        return !seated && !inLate;
-      });
-      const missingHW = roster.filter(s => {
-        const seated = entries.find(p => p.entry.studentId === s.id);
-        const status = seated?.entry.homework?.status || s.homework?.status;
-        return status === 'not_submitted';
-      });
-      const lowScores = roster.filter(s => {
-        const seated = entries.find(p => p.entry.studentId === s.id);
-        const hwScore = seated?.entry.homework?.score ?? s.homework?.score;
-        const testScore = s.testScore ?? seated?.entry.testScore;
-        const lowest = Math.min(...[hwScore, testScore].filter(x => x !== null && x !== undefined));
-        return lowest < 7.0 && lowest >= 0;
-      });
-      const lessonTitle = $('#lesson-title')?.value.trim() || 'Bài học hôm nay';
-      const sessionNote = $('#session-note')?.value.trim() || '';
-
-      const lines = [
-        ` BÁO CÁO CA HỌC - ${currentClass.name} (${currentClass.code || currentClass.id})`,
-        ` Ngày: ${date} (${currentClass.startTime} - ${currentClass.endTime}) | Phòng: ${currentClass.room}`,
-        ` Giáo viên: ${currentClass.teacherName} |  Trợ giảng: ${currentClass.assistantName}`,
-        ` Bài học: ${lessonTitle}`,
-        `----------------------------------------`,
-        ` SĨ SỐ: ${presentCount + lateList.length}/${roster.length} (Có mặt: ${presentCount} | Đi muộn: ${lateList.length} | Vắng: ${absentList.length})`,
-        ``,
-        `× KHÔNG NỘP BTVN (${missingHW.length} bạn):`,
-        missingHW.length ? missingHW.map((s, i) => {
-          const seated = entries.find(p => p.entry.studentId === s.id);
-          const rMap = { not_done: 'Chưa làm', forgot: 'Quên vở', missed_previous: 'Nghỉ buổi trước' };
-          const reason = rMap[seated?.entry.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
-          return `  ${i+1}. ${s.name} (${s.school || '—'}) - Lý do: ${reason}`;
-        }).join('\n') : `  ✓ 100% học sinh nộp bài đầy đủ`,
-        ``,
-        ` ĐI MUỘN (${lateList.length} bạn):`,
-        lateList.length ? lateList.map((s, i) => `  ${i+1}. ${s.name} - Giờ đến: ${s.arrivalTime || '—'} (muộn ${s.lateMinutes || 10}p)`).join('\n') : `  ✓ Không có bạn nào đi muộn`,
-        ``,
-        `!️ ĐIỂM CẦN LƯU Ý (< 7đ) (${lowScores.length} bạn):`,
-        lowScores.length ? lowScores.map((s, i) => {
-          const seated = entries.find(p => p.entry.studentId === s.id);
-          const hw = seated?.entry.homework?.score ?? s.homework?.score ?? '—';
-          return `  ${i+1}. ${s.name} - Điểm: ${hw}`;
-        }).join('\n') : `  ✓ Tất cả bài tập đều đạt từ 7 điểm trở lên`,
-        ``,
-        ` VẮNG MẶT (${absentList.length} bạn):`,
-        absentList.length ? absentList.map((s, i) => `  ${i+1}. ${s.name} (SĐT PH: ${s.parentContact?.phone || '—'})`).join('\n') : `  ✓ Đầy đủ sĩ số`,
-        ...((ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).length ? [
-          ``,
-          ` HỌC BÙ TRONG BUỔI (${(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).length} bạn):`,
-          ...(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id || entries.some(e => e.entry.studentId === m.id) || getLateQueue().includes(m.id)) : []).map((m, i) => `  ${i+1}. ${m.name} (Bù từ: ${m.sourceClassName || 'Lớp khác'})`)
-        ] : []),
-        sessionNote ? `\n GHI CHÚ TRỢ GIẢNG:\n${sessionNote}` : ''
-      ];
-
-      const reportText = lines.join('\n');
-      navigator.clipboard.writeText(reportText).then(() => {
-        toast('Đã sao chép báo cáo gửi Giáo viên! Có thể dán ngay vào Zalo/Telegram.');
-      }).catch(() => {
-        toast('Đã chuẩn bị nội dung báo cáo.');
-      });
-    };
-  }
-
-  const exportAttBtn = $('#export-attendance-button');
-  if (exportAttBtn) {
-    exportAttBtn.onclick = () => {
-      renderReportCenter('teacher-summary');
-      $('#attendance-export-dialog').showModal();
-    };
-  }
-  const exportCsvBtn = $('#export-csv-button');
-  if (exportCsvBtn) exportCsvBtn.onclick = exportReportAsCsv;
-
-  // Google Sheets Sync Dialog
-  const googleSheetsSyncBtn = $('#google-sheets-sync-btn');
-  if (googleSheetsSyncBtn) {
-    googleSheetsSyncBtn.onclick = () => {
-      const cfg = loadGoogleSheetsConfig();
-      if ($('#sheets-spreadsheet-id')) $('#sheets-spreadsheet-id').value = cfg.spreadsheetId || '';
-      if ($('#sheets-tab-name')) $('#sheets-tab-name').value = cfg.sheetName || 'DiemDanh';
-      if ($('#sheets-autosync-toggle')) $('#sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
-      const statusBox = $('#sheets-sync-status-box');
-      if (statusBox) {
-        statusBox.textContent = cfg.lastSyncedAt
-          ? `Lần đồng bộ gần nhất: ${new Date(cfg.lastSyncedAt).toLocaleString('vi-VN')} · Trạng thái: ${cfg.syncStatus}`
-          : 'Chưa thực hiện đồng bộ.';
-      }
-      $('#google-sheets-sync-dialog').showModal();
-    };
-  }
-  const closeSheetsSyncBtn = $('#close-sheets-sync-btn');
-  if (closeSheetsSyncBtn) closeSheetsSyncBtn.onclick = () => $('#google-sheets-sync-dialog').close();
-  const triggerSheetsSyncBtn = $('#trigger-sheets-sync-btn');
-  if (triggerSheetsSyncBtn) {
-    triggerSheetsSyncBtn.onclick = async () => {
-      const id = $('#sheets-spreadsheet-id').value.trim();
-      const tabName = $('#sheets-tab-name').value.trim() || 'DiemDanh';
-      const autoSync = $('#sheets-autosync-toggle').checked;
-
-      if (!id) {
-        toast('Vui lòng nhập Google Spreadsheet ID hoặc link Google Sheets.');
-        return;
-      }
-
-      saveGoogleSheetsConfig({
-        spreadsheetId: id,
-        sheetName: tabName,
-        autoSync
-      });
-
-      const statusBox = $('#sheets-sync-status-box');
-      if (statusBox) statusBox.textContent = 'Đang đồng bộ dữ liệu điểm danh và BTVN sang Google Sheets...';
-
-      try {
-        const sessionData = {
-          date: getChecklistDate(),
-          className: getActiveClassConfig().name,
-          students: classStudents()
-        };
-        const updated = await syncSessionToGoogleSheets(sessionData, loadGoogleSheetsConfig());
-        if (statusBox) {
-          statusBox.innerHTML = `✓ Đồng bộ thành công lúc ${new Date(updated.lastSyncedAt).toLocaleTimeString('vi-VN')}. Dữ liệu các ô (cells) trên Google Sheets đã được cập nhật.`;
-        }
-        addClassActivity(`Đồng bộ dữ liệu ${getActiveClassConfig().name} lên Google Sheets`, 'attendance');
-        toast('✓ Đã đồng bộ dữ liệu thành công sang Google Sheets!');
-      } catch (err) {
-        if (statusBox) statusBox.textContent = `Lỗi: ${err.message}`;
-        toast(`Lỗi đồng bộ: ${err.message}`);
-      }
-    };
-  }
-
-  // TA Portal Timesheet listeners
-  const portalMonthInput = $('#portal-month-input');
-  if (portalMonthInput) portalMonthInput.onchange = renderTAPortal;
-  const exportTimesheetBtn = $('#export-timesheet-btn');
-  if (exportTimesheetBtn) exportTimesheetBtn.onclick = () => window.print();
-  const exportTimesheetCsvBtn = $('#export-timesheet-csv-btn');
-  if (exportTimesheetCsvBtn) {
-    exportTimesheetCsvBtn.onclick = () => {
-      const table = $('#portal-table');
-      if (!table) return;
-      const headers = ['STT', 'Ngày làm việc', 'Ca học & Lớp', 'Thời gian ca', 'Thời lượng', 'Xác nhận chấm công', 'Trạng thái đối chiếu'];
-      const rows = [...table.querySelectorAll('tbody tr')].map(tr => {
-        return [...tr.querySelectorAll('td')].map(td => td.textContent.trim());
-      }).filter(r => r.length === headers.length);
-      exportToCsv(headers, rows, `BangChamCong_${portalMonthInput?.value || 'Thang'}.csv`);
-      toast('Đã xuất file chấm công CSV.');
-    };
-  }
-
-  // Help button
-  const helpBtn = $('#system-help-btn');
-  if (helpBtn) {
-    helpBtn.onclick = () => {
-      toast('Quy trình: 1. Đặt biểu tượng học sinh vào bàn -> 2. Thu BTVN (người KHÔNG nộp trước) -> 3. Điểm danh -> 4. Chốt sĩ số sau 15p.');
-    };
-  }
-
-  // Check finalized indicator for current session
-  const currentClass = getActiveClassConfig();
-  const date = getChecklistDate();
-  const isFinalized = Boolean(localStorage.getItem(`lopvui.finalized-session.v1.${currentClass?.id}.${date}`));
-  const finalizedBadge = $('#finalized-indicator-badge');
-  if (finalizedBadge) finalizedBadge.hidden = !isFinalized;
-
-  // Initialize dropdowns & display
-  updateCurrentUserDisplay();
-  populateRoomTemplateDropdowns();
-
-  
-  // Global click delegation for all Login, Logout, and Role-switch elements
-  document.addEventListener('click', (e) => {
-    // 1. Direct role card on login screen
-    const roleCard = e.target.closest('[data-direct-role]');
-    if (roleCard) {
-      e.preventDefault();
-      e.stopPropagation();
-      const role = roleCard.dataset.directRole;
-      const master = getMasterData();
-      const defaultEmpByRole = {
-        assistant: 'employee-ta-001',
-        teacher: 'employee-teacher-001',
-        office: 'employee-office-001',
-        admin: 'employee-admin-001'
-      };
-      const targetEmp = master.employees.find(emp => emp.id === defaultEmpByRole[role])
-        || master.employees.find(emp => emp.role === role)
-        || master.employees[0];
-      if (targetEmp) {
-        handleLogin(targetEmp.id);
-      }
-      return;
-    }
-
-    // 2. Select login button
-    const selectLoginBtn = e.target.closest('#confirm-select-login-btn');
-    if (selectLoginBtn) {
-      e.preventDefault();
-      e.stopPropagation();
-      const select = document.getElementById('login-employee-select');
-      if (select && select.value) {
-        handleLogin(select.value);
-      }
-      return;
-    }
-
-    // 3. Logout buttons (anywhere in topbar, sidebar, or dialog)
-    const logoutTarget = e.target.closest('#logout-button') 
-      || e.target.closest('.logout-button') 
-      || e.target.closest('#sidebar-logout-btn') 
-      || e.target.closest('#dialog-logout-btn');
-    if (logoutTarget) {
-      e.preventDefault();
-      e.stopPropagation();
-      handleLogout();
-      return;
-    }
-
-    // 4. Role switch buttons
-    const switchRoleTarget = e.target.closest('#topbar-switch-role-btn') 
-      || e.target.closest('#switch-account-quick-btn')
-      || e.target.closest('#user-profile-button');
-    if (switchRoleTarget) {
-      // Don't trigger if clicked on the bell or logout button
-      if (e.target.closest('.bell') || e.target.closest('.logout-button')) return;
-      e.preventDefault();
-      e.stopPropagation();
-      openAccountSwitchDialog();
-      return;
-    }
-
-    // 5. Close account dialog button
-    const cancelAccBtn = e.target.closest('#dialog-cancel-account-btn') || e.target.closest('#close-account-switch');
-    if (cancelAccBtn) {
-      e.preventDefault();
-      e.stopPropagation();
-      $('#account-switch-dialog')?.close();
-      return;
-    }
-  });
-
-  // Check auth status on load
-  checkAuthStatus();
-
-  
-// Staff management subtab handled in switchMgmtTab
-
-  const staffMenuNav = $('#staff-menu-nav');
-  if (staffMenuNav) {
-    staffMenuNav.onclick = () => {
-      setMainMenuPanel('management');
-      if (mgmtTabStaff) mgmtTabStaff.click();
-    };
-  }
-
-  const manageEmployeesBtn = $('#manage-employees-button');
-  if (manageEmployeesBtn) {
-    manageEmployeesBtn.onclick = () => {
-      setMainMenuPanel('management');
-      if (mgmtTabStaff) mgmtTabStaff.click();
-    };
-  }
-
-  const addStaffMemberBtn = $('#add-staff-member-btn');
-  if (addStaffMemberBtn) addStaffMemberBtn.onclick = () => openStaffDialog();
-
-  const exportStaffCsvBtn = $('#export-staff-csv-btn');
-  if (exportStaffCsvBtn) exportStaffCsvBtn.onclick = exportStaffListAsCsv;
-
-  const staffSearchInput = $('#staff-search-input');
-  if (staffSearchInput) staffSearchInput.oninput = renderStaffManagement;
-
-  const staffRoleFilter = $('#staff-role-filter');
-  if (staffRoleFilter) staffRoleFilter.onchange = renderStaffManagement;
-
-  const closeStaffForm = $('#close-staff-form');
-  if (closeStaffForm) closeStaffForm.onclick = () => $('#staff-form-dialog')?.close();
-
-  const cancelStaffFormBtn = $('#cancel-staff-form-btn');
-  if (cancelStaffFormBtn) cancelStaffFormBtn.onclick = () => $('#staff-form-dialog')?.close();
-
-  const staffForm = $('#staff-form');
-  if (staffForm) {
-    staffForm.onsubmit = (e) => {
-      e.preventDefault();
-      const id = $('#staff-form-id').value;
-      const code = $('#staff-code').value.trim();
-      const name = $('#staff-name').value.trim();
-      const role = $('#staff-role').value;
-      const phone = $('#staff-phone').value.trim();
-      const email = $('#staff-email').value.trim();
-      const note = $('#staff-note').value.trim();
-
-      const master = getMasterData();
-
-      if (id) {
-        // Edit existing
-        const emp = master.employees.find(item => item.id === id);
-        if (emp) {
-          emp.code = code;
-          emp.name = name;
-          emp.role = role;
-          emp.phone = phone;
-          emp.email = email;
-          emp.note = note;
-        }
-      } else {
-        // Add new
-        const newEmp = {
-          id: `employee-${role}-${Date.now().toString(36)}`,
-          code,
-          name,
-          role,
-          phone,
-          email,
-          note
-        };
-        master.employees.push(newEmp);
-      }
-
-      // Synchronize employee names with assigned classes in classCatalog
-      const catalog = getClassCatalog();
-      let catalogChanged = false;
-      catalog.forEach(cls => {
-        const teachers = master.employees.filter(item => (cls.teacherIds || []).includes(item.id));
-        if (teachers.length) {
-          const newNames = teachers.map(item => item.name).join(', ');
-          if (cls.teacherName !== newNames) {
-            cls.teacherName = newNames;
-            catalogChanged = true;
-          }
-        }
-        const assistants = master.employees.filter(item => (cls.assistantIds || []).includes(item.id));
-        if (assistants.length) {
-          const newNames = assistants.map(item => item.name).join(', ');
-          if (cls.assistantName !== newNames) {
-            cls.assistantName = newNames;
-            catalogChanged = true;
-          }
-        }
-      });
-      if (catalogChanged) {
-        saveClassCatalog(catalog);
-      }
-
-      if (ctx.setMasterData) ctx.setMasterData(master); else localStorage.setItem('lopvui.master-data.v1', JSON.stringify(master));
-      $('#staff-form-dialog')?.close();
-      toast(`Đã lưu thông tin nhân viên ${name}.`);
-      renderStaffManagement();
-      renderMainMenu();
-      updateCurrentUserDisplay();
-      renderLoginScreen();
-    };
-  }
-
-
-  // ----------------------------------------------------
-  // TÍNH NĂNG MỚI: CHI TIẾT NHÂN SỰ & LỊCH SỬ CA LÀM (REQ 1 & 2)
-  // ----------------------------------------------------
-  function openStaffDetailDialog(empId) {
-    const master = getMasterData();
-    const catalog = getClassCatalog();
-    const emp = master.employees.find(e => e.id === empId);
-    if (!emp) return;
-
-    const dialog = $('#staff-detail-dialog');
-    if (!dialog) return;
-
-    const roleLabels = {
-      assistant: 'Trợ giảng (TA)',
-      teacher: 'Giáo viên (GV)',
-      office: 'Văn phòng',
-      admin: 'Quản trị viên'
-    };
-
-    const sessionChanges = ctx.sessionChanges ? ctx.sessionChanges() : {};
-    const { assignedRegular, assignedSpecial, workHistory } = getStaffShiftData(emp.id, catalog, sessionChanges);
-
-    const nameParts = emp.name.split(' ').filter(Boolean);
-    const initials = nameParts.length >= 2 ? (nameParts[0][0] + nameParts.at(-1)[0]).toUpperCase() : emp.name.slice(0, 2).toUpperCase();
-    const weekdayNames = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
-
-    const html = `
-      <div class="student-profile-header">
-        <div>
-          <h3 style="margin:0 0 4px; font:800 16px Manrope,sans-serif; color:#233d31;">${escapeHtml(emp.name)}</h3>
-          <p style="margin:2px 0; font-size:14px; color:#5c6b60;">
-            <span class="staff-role-badge ${escapeHtml(emp.role)}">${escapeHtml(roleLabels[emp.role] || emp.role)}</span> · Mã NV: <strong>${escapeHtml(emp.code)}</strong>
-          </p>
-          <p style="margin:2px 0; font-size:14px; color:#5c6b60;">
-            SĐT: <strong>${escapeHtml(emp.phone || '—')}</strong> · Email: <strong>${escapeHtml(emp.email || '—')}</strong>
-          </p>
-          ${emp.note ? `<p style="margin:4px 0; font-size:13.5px; color:#78887b; font-style:italic;">Ghi chú: ${escapeHtml(emp.note)}</p>` : ''}
-        </div>
-      </div>
-
-      <div class="staff-detail-sections" style="margin-top:16px; display:grid; gap:14px;">
-        <!-- Phần 1: Các ca được phân công định kỳ -->
-        <section class="portal-stat-card" style="padding:14px;">
-          <h4 style="margin:0 0 10px; color:#2e4435; font:700 12px Manrope,sans-serif;"> Các ca được phân công định kỳ (Lịch cố định hàng tuần)</h4>
-          ${assignedRegular.length ? `
-            <div class="portal-table-wrap">
-              <table class="portal-table">
-                <thead>
-                  <tr>
-                    <th>Lớp học</th>
-                    <th>Môn</th>
-                    <th>Thời gian</th>
-                    <th>Phòng</th>
-                    <th>Vai trò</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${assignedRegular.map(r => `
-                    <tr>
-                      <td><strong style="color:#215f33;">${escapeHtml(r.classCode || r.className)}</strong></td>
-                      <td>${escapeHtml(r.subject || '—')}</td>
-                      <td>${weekdayNames[r.weekday]} · ${escapeHtml(r.time)}</td>
-                      <td><span class="room-chip">${escapeHtml(r.room || '—')}</span></td>
-                      <td><span class="staff-role-badge ${r.roleInClass.includes('Giáo viên') ? 'teacher' : r.roleInClass.includes('Trợ giảng') ? 'assistant' : 'office'}">${escapeHtml(r.roleInClass)}</span></td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          ` : '<p style="color:#8a968c; font-size:13.5px; margin:0;">Chưa có ca cố định nào được phân công trong cấu hình lớp.</p>'}
-        </section>
-
-        <!-- Phần 2: Ca học bù / Tăng cường / Điều chỉnh -->
-        <section class="portal-stat-card" style="padding:14px;">
-          <h4 style="margin:0 0 10px; color:#2e4435; font:700 12px Manrope,sans-serif;"> Ca học bù / Tăng cường / Lịch điều chỉnh</h4>
-          ${assignedSpecial.length ? `
-            <div class="portal-table-wrap">
-              <table class="portal-table">
-                <thead>
-                  <tr>
-                    <th>Ngày học</th>
-                    <th>Lớp</th>
-                    <th>Giờ học</th>
-                    <th>Phòng</th>
-                    <th>Phân loại</th>
-                    <th>Vai trò</th>
-                    <th>Ghi chú</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${assignedSpecial.map(s => `
-                    <tr>
-                      <td><strong>${escapeHtml(s.date)}</strong></td>
-                      <td>${escapeHtml(s.className)}</td>
-                      <td>${escapeHtml(s.time || '—')}</td>
-                      <td><span class="room-chip">${escapeHtml(s.room || '—')}</span></td>
-                      <td><span class="room-chip" style="background:#eef5ee; color:#367950;">${escapeHtml(s.category)}</span></td>
-                      <td>${escapeHtml(s.roleInClass)}</td>
-                      <td><small>${escapeHtml(s.note || '—')}</small></td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          ` : '<p style="color:#8a968c; font-size:13.5px; margin:0;">Không có ca học bù hoặc điều chỉnh phát sinh.</p>'}
-        </section>
-
-        <!-- Phần 3: Lịch sử những ca nhân viên đó đã làm -->
-        <section class="portal-stat-card" style="padding:14px;">
-          <h4 style="margin:0 0 10px; color:#2e4435; font:700 12px Manrope,sans-serif;"> Lịch sử những ca nhân viên đó đã làm</h4>
-          ${workHistory.length ? `
-            <div class="portal-table-wrap">
-              <table class="portal-table">
-                <thead>
-                  <tr>
-                    <th>Ngày</th>
-                    <th>Lớp</th>
-                    <th>Bắt đầu</th>
-                    <th>Đóng ca</th>
-                    <th>Trạng thái</th>
-                    <th>Sĩ số</th>
-                    <th>BTVN</th>
-                    <th>Ghi chú ca</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${workHistory.map(w => {
-                    const startStr = w.startedAt ? new Date(w.startedAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}) : '—';
-                    const closeStr = w.closedAt ? new Date(w.closedAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}) : '—';
-                    const statusBadge = w.status === 'closed'
-                      ? '<span class="session-badge-state closed" style="padding:6px 12px; font-size:12.5px;">✓ Đã đóng</span>'
-                      : '<span class="session-badge-state live" style="padding:6px 12px; font-size:12.5px;">● Đang làm</span>';
-                    return `
-                      <tr>
-                        <td><strong>${escapeHtml(w.date)}</strong></td>
-                        <td>${escapeHtml(w.className || w.classId)}</td>
-                        <td>${escapeHtml(startStr)}</td>
-                        <td>${escapeHtml(closeStr)}</td>
-                        <td>${statusBadge}</td>
-                        <td>${w.stats?.present || 0}/${w.stats?.total || 0}</td>
-                        <td>${w.stats?.homeworkDone || 0} bài</td>
-                        <td><small>${escapeHtml(w.finalNote || w.notes || '—')}</small></td>
-                      </tr>
-                    `;
-                  }).join('')}
-                </tbody>
-              </table>
-            </div>
-          ` : '<p style="color:#8a968c; font-size:13.5px; margin:0;">Chưa ghi nhận ca làm nào trong lịch sử.</p>'}
-        </section>
-      </div>
-    `;
-
-    $('#staff-detail-content').innerHTML = html;
-
-    const editBtn = $('#edit-staff-from-detail-btn');
-    if (editBtn) {
-      editBtn.onclick = () => {
-        dialog.close();
-        openStaffDialog(emp.id);
-      };
-    }
-
-    dialog.showModal();
-  }
-
-  // ----------------------------------------------------
-  // TÍNH NĂNG MỚI: LỊCH HỌC, HỌC BÙ & THÊM/BỚT TA BUỔI TIẾP THEO (REQ 3)
-  // ----------------------------------------------------
-  let schedMakeupAssistants = [];
-  let schedNextAssistants = [];
-
-  function renderSchedMakeupAssistants() {
-    const master = getMasterData();
-    const host = $('#sched-makeup-assistants-selected');
-    if (!host) return;
-    host.innerHTML = schedMakeupAssistants.map(id => {
-      const emp = master.employees.find(e => e.id === id);
-      return emp ? `<span class="staff-chip">${escapeHtml(emp.name)} <small>${escapeHtml(emp.code)}</small><button type="button" data-remove-makeup-ta="${id}">×</button></span>` : '';
-    }).join('') || '<small class="staff-picker-empty">Chưa chọn trợ giảng phụ trách</small>';
-
-    host.querySelectorAll('[data-remove-makeup-ta]').forEach(btn => {
-      btn.onclick = () => {
-        schedMakeupAssistants = schedMakeupAssistants.filter(id => id !== btn.dataset.removeMakeupTa);
-        renderSchedMakeupAssistants();
-      };
-    });
-
-    const choice = $('#sched-makeup-assistant-choice');
-    if (choice) {
-      const available = master.employees.filter(e => e.role === 'assistant' && !schedMakeupAssistants.includes(e.id));
-      choice.innerHTML = '<option value="">Chọn trợ giảng để thêm...</option>' + available.map(e => 
-        `<option value="${e.id}">${escapeHtml(e.name)} · ${escapeHtml(e.code)}</option>`
-      ).join('');
-    }
-  }
-
-  function renderSchedNextAssistants() {
-    const master = getMasterData();
-    const host = $('#sched-next-assistants-selected');
-    if (!host) return;
-    host.innerHTML = schedNextAssistants.map(id => {
-      const emp = master.employees.find(e => e.id === id);
-      return emp ? `<span class="staff-chip">${escapeHtml(emp.name)} <small>${escapeHtml(emp.code)}</small><button type="button" data-remove-next-ta="${id}">×</button></span>` : '';
-    }).join('') || '<small class="staff-picker-empty">Chưa chọn trợ giảng cho ca này</small>';
-
-    host.querySelectorAll('[data-remove-next-ta]').forEach(btn => {
-      btn.onclick = () => {
-        schedNextAssistants = schedNextAssistants.filter(id => id !== btn.dataset.removeNextTa);
-        renderSchedNextAssistants();
-      };
-    });
-
-    const choice = $('#sched-next-assistant-choice');
-    if (choice) {
-      const available = master.employees.filter(e => e.role === 'assistant' && !schedNextAssistants.includes(e.id));
-      choice.innerHTML = '<option value="">Chọn trợ giảng để thêm...</option>' + available.map(e => 
-        `<option value="${e.id}">${escapeHtml(e.name)} · ${escapeHtml(e.code)}</option>`
-      ).join('');
-    }
-  }
-
-  function openSessionScheduleDialog(classId) {
-    const catalog = getClassCatalog();
-    const item = catalog.find(c => c.id === classId);
-    if (!item) return;
-
-    const master = getMasterData();
-    const dialog = $('#session-schedule-dialog');
-    if (!dialog) return;
-
-    $('#session-schedule-title').textContent = `Lịch học & Phân công: ${item.name}`;
-    $('#sched-class-id').value = item.id;
-
-    // Tab switching
-    const tabAddMakeup = $('#sched-tab-add-makeup');
-    const tabNext = $('#sched-tab-next-session');
-    const panelAddMakeup = $('#add-makeup-session-form');
-    const panelNext = $('#edit-next-session-form');
-
-    tabAddMakeup.onclick = () => {
-      tabAddMakeup.classList.add('active');
-      tabNext.classList.remove('active');
-      panelAddMakeup.hidden = false;
-      panelNext.hidden = true;
-    };
-    tabNext.onclick = () => {
-      tabNext.classList.add('active');
-      tabAddMakeup.classList.remove('active');
-      panelNext.hidden = false;
-      panelAddMakeup.hidden = true;
-    };
-
-    // Tab 1 setup
-    const tmr = new Date();
-    tmr.setDate(tmr.getDate() + 1);
-    $('#sched-makeup-date').value = tmr.toISOString().slice(0, 10);
-    if (window.__timeHelpers?.setDurationFieldsFromStartEnd) {
-      window.__timeHelpers.setDurationFieldsFromStartEnd({
-        startTime: item.startTime || '15:30',
-        endTime: item.endTime || '17:00',
-        startSel: '#sched-makeup-start',
-        endSel: '#sched-makeup-end',
-        durationSel: '#sched-makeup-duration',
-        customWrapSel: '#sched-makeup-duration-custom-wrap',
-        customInputSel: '#sched-makeup-duration-custom',
-        previewSel: '#sched-makeup-time-preview'
-      });
-    } else {
-      $('#sched-makeup-start').value = item.startTime || '15:30';
-      $('#sched-makeup-end').value = item.endTime || '17:00';
-    }
-    $('#sched-makeup-room').value = item.room || 'P1-T3-CS1';
-    $('#sched-makeup-note').value = '';
-
-    const teachers = master.employees.filter(e => e.role === 'teacher');
-    $('#sched-makeup-teacher').innerHTML = teachers.map(t => 
-      `<option value="${t.id}" ${t.id === item.teacherId ? 'selected' : ''}>${escapeHtml(t.name)} · ${escapeHtml(t.code)}</option>`
-    ).join('');
-
-    schedMakeupAssistants = [...(item.assistantIds || [])];
-    renderSchedMakeupAssistants();
-
-    // Tab 2 setup
-    let nextDateStr = '';
-    if (ctx.occurrenceDate) {
-      try {
-        nextDateStr = ctx.occurrenceDate(item).toLocaleDateString('sv-SE');
-      } catch {
-        nextDateStr = tmr.toISOString().slice(0, 10);
-      }
-    } else {
-      nextDateStr = tmr.toISOString().slice(0, 10);
-    }
-    $('#sched-next-date').value = nextDateStr;
-
-    const sessionChanges = ctx.sessionChanges ? ctx.sessionChanges() : {};
-    const changeKey = ctx.sessionChangeKey ? ctx.sessionChangeKey(item.id, nextDateStr) : `${item.id}:${nextDateStr}`;
-    const existingChange = sessionChanges[changeKey];
-
-    $('#sched-next-status').value = existingChange?.status === 'cancelled' ? 'cancel' : existingChange?.status === 'makeup' ? 'holiday_makeup' : existingChange?.assistantIds ? 'staff_change' : 'normal';
-    $('#sched-next-note').value = existingChange?.note || '';
-
-    $('#sched-next-teacher').innerHTML = teachers.map(t => {
-      const isSelected = existingChange?.teacherIds ? existingChange.teacherIds.includes(t.id) : (t.id === item.teacherId);
-      return `<option value="${t.id}" ${isSelected ? 'selected' : ''}>${escapeHtml(t.name)} · ${escapeHtml(t.code)}</option>`;
-    }).join('');
-
-    schedNextAssistants = existingChange?.assistantIds ? [...existingChange.assistantIds] : [...(item.assistantIds || [])];
-    renderSchedNextAssistants();
-
-    dialog.showModal();
-  }
-
-  // ----------------------------------------------------
-  // TÍNH NĂNG MỚI: MỞ LỚP & ĐÓNG LỚP (REQ 4)
-  // ----------------------------------------------------
-  function updateSessionStateUI() {
-    const classId = getCurrentClassId();
-    const date = getChecklistDate();
-    const record = getSessionRecord(classId, date);
-
-    const badge = $('#session-status-badge');
-    const openBtn = $('#open-session-btn');
-    const closeBtn = $('#close-session-btn');
-    const chkClosePanel = $('#checklist-close-session-panel');
-
-    if (openBtn) openBtn.hidden = true;
-    if (closeBtn) closeBtn.hidden = true;
-    if (!badge) return;
-
-    if (record && record.status === 'closed') {
-      const timeStr = record.closedAt ? new Date(record.closedAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}) : '';
-      badge.className = 'session-badge-state closed';
-      badge.textContent = `Đã đóng ca${timeStr ? ` (${timeStr})` : ''}`;
-      badge.style.display = 'inline-flex';
-    } else if (record && record.status === 'active') {
-      const timeStr = record.startedAt ? new Date(record.startedAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}) : '';
-      badge.className = 'session-badge-state live';
-      badge.textContent = `● Đang diễn ra${timeStr ? ` (${timeStr})` : ''}`;
-      badge.style.display = 'inline-flex';
-      if (chkClosePanel) chkClosePanel.hidden = false;
-    } else {
-      badge.className = 'session-badge-state live';
-      badge.textContent = '● Đang diễn ra';
-      badge.style.display = 'inline-flex';
-      if (chkClosePanel) chkClosePanel.hidden = false;
-    }
-  }
-
-  function handleOpenSession() {
-    const classId = getCurrentClassId();
-    const date = getChecklistDate();
-    const user = getSignedInAccount();
-    const classInfo = getActiveClassConfig();
-
-    openClassSession(classId, date, user, classInfo);
-    toast(`Đã bắt đầu ca học ${classInfo?.name || ''} và ghi nhận vào lịch sử ca làm.`);
-    addClassActivity(`Bắt đầu ca làm việc bởi ${user?.name || 'nhân viên'}`, 'shift');
-    updateSessionStateUI();
-  }
-
-    function handleCloseSessionPrompt() {
-    const classId = getCurrentClassId();
-    const date = getChecklistDate();
-    const dialog = $('#close-session-dialog');
-    if (!dialog) return;
-
-    const roster = classStudents();
-    const entries = allEntries();
-    const lateQueueList = getLateQueue();
-
-    const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'present').length;
-    const lateCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'late').length;
-    const totalRoster = roster.length;
-    const absentCount = Math.max(0, totalRoster - presentCount - lateCount);
-    const hwCount = entries.filter(e => e.entry.studentId && (e.entry.homework?.status === 'submitted' || e.entry.homework?.status === 'graded')).length;
-    const uncollectedHw = entries.filter(e => e.entry.studentId && (!e.entry.homework || e.entry.homework.status === 'uncollected')).length;
-
-    $('#close-stat-present').textContent = `${presentCount + lateCount}/${totalRoster}`;
-    $('#close-stat-late').textContent = lateCount;
-    $('#close-stat-absent').textContent = absentCount;
-    $('#close-stat-hw').textContent = hwCount;
-
-    // Detect uncompleted checklist items with real labels
-    const startInputs = Array.from(document.querySelectorAll('#checklist-items .checklist-item input[type="checkbox"]'));
-    const uncompletedStart = startInputs.filter(inp => !inp.checked).map(inp => {
-      const itemEl = inp.closest('.checklist-item');
-      const lbl = itemEl?.querySelector('.checklist-label-input')?.value?.trim() 
-        || itemEl?.querySelector('input[type="text"]')?.value?.trim()
-        || inp.getAttribute('aria-label')?.replace(/^Đánh dấu\s*/, '')?.trim()
-        || 'Công việc đầu ca';
-      return {
-        id: inp.dataset.checklistItem,
-        label: lbl,
-        type: 'start'
-      };
-    });
-
-    const endInputs = Array.from(document.querySelectorAll('#end-checklist-items .checklist-item input[type="checkbox"]'));
-    const uncompletedEnd = endInputs.filter(inp => !inp.checked).map(inp => {
-      const itemEl = inp.closest('.checklist-item');
-      const lbl = itemEl?.querySelector('.checklist-label-input')?.value?.trim() 
-        || itemEl?.querySelector('input[type="text"]')?.value?.trim()
-        || inp.getAttribute('aria-label')?.replace(/^Đánh dấu\s*/, '')?.trim()
-        || 'Công việc cuối ca';
-      return {
-        id: inp.dataset.endChecklistItem,
-        label: lbl,
-        type: 'end'
-      };
-    });
-
-    // Detect unfilled fields
-    const lessonTitleVal = $('#lesson-title')?.value.trim() || '';
-    const sessionNoteVal = $('#session-note')?.value.trim() || '';
-    const hwAssignmentVal = $('#homework-assignment')?.value.trim() || '';
-    const isTestReq = $('#test-required-toggle')?.checked;
-    const isHandoverDone = Boolean($('#handover-person')?.value.trim());
-
-    const uncompletedHtml = [];
-
-    if (uncompletedStart.length) {
-      uncompletedHtml.push(`
-        <div style="margin-bottom:6px;">
-          <strong style="color:#854d0e;">Đầu ca (Setup):</strong>
-          <div style="display:grid; gap:4px; margin-top:3px;">
-            ${uncompletedStart.map(item => `
-              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
-                <input type="checkbox" class="confirm-unfilled-item" data-item-type="start" data-item-id="${escapeHtml(item.id)}" />
-                <span>Chưa hoàn thành: <strong>${escapeHtml(item.label)}</strong></span>
-              </label>
-            `).join('')}
-          </div>
-        </div>
-      `);
-    }
-
-    if (uncompletedEnd.length) {
-      uncompletedHtml.push(`
-        <div style="margin-bottom:6px;">
-          <strong style="color:#854d0e;">Cuối ca (Handover):</strong>
-          <div style="display:grid; gap:4px; margin-top:3px;">
-            ${uncompletedEnd.map(item => `
-              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
-                <input type="checkbox" class="confirm-unfilled-item" data-item-type="end" data-item-id="${escapeHtml(item.id)}" />
-                <span>Chưa hoàn thành: <strong>${escapeHtml(item.label)}</strong></span>
-              </label>
-            `).join('')}
-          </div>
-        </div>
-      `);
-    }
-
-    if (!lessonTitleVal) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Chưa điền <strong>Tên bài học hôm nay</strong> (Mục 01).</div>`);
-    }
-    if (!sessionNoteVal) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Chưa có <strong>Ghi chú chung buổi học & tình hình lớp</strong> (Mục 02).</div>`);
-    }
-    if (!hwAssignmentVal && !getNoHomeworkStatus(classId, date).noHomework) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Chưa nhập <strong>Nội dung BTVN giao về nhà</strong> (Mục 04).</div>`);
-    }
-    if (isTestReq && !isHandoverDone) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Có bài test cuối giờ nhưng <strong>chưa xác nhận người nhận bàn giao bài</strong>.</div>`);
-    }
-    if (uncollectedHw > 0) {
-      uncompletedHtml.push(`<div><span style="color:#dc2626;">!️</span> Còn <strong>${uncollectedHw} học sinh</strong> trong bàn chưa thu hoặc chưa chọn lý do không nộp BTVN.</div>`);
-    }
-    if (absentCount > 0) {
-      uncompletedHtml.push(`<div><span style="color:#4b5563;">ℹ️</span> Có <strong>${absentCount} học sinh</strong> chưa vào lớp (sẽ tự động ghi nhận Vắng khi đóng ca).</div>`);
-    }
-
-    const uncompletedContainer = $('#close-session-uncompleted-list');
-    if (uncompletedContainer) {
-      if (uncompletedHtml.length) {
-        uncompletedContainer.innerHTML = uncompletedHtml.join('');
-        $('#close-session-uncompleted-section').hidden = false;
-      } else {
-        uncompletedContainer.innerHTML = '<div style="color:#15803d; font-weight:700;">✓ Toàn bộ checklist và thông tin buổi học đã hoàn thành đầy đủ 100%!</div>';
-        $('#close-session-uncompleted-section').hidden = false;
-      }
-    }
-
-    const detailsHtml = `
-      <p style="margin:4px 0;"><strong>Lớp:</strong> ${escapeHtml(getActiveClassConfig()?.code || classId)} · ${escapeHtml(getActiveClassConfig()?.name || classId)} · <strong>Ngày:</strong> ${escapeHtml(date)}</p>
-      <p style="margin:4px 0;"><strong>Sĩ số có mặt:</strong> ${presentCount} bạn đúng giờ, ${lateCount} bạn đi muộn, ${absentCount} bạn vắng mặt.</p>
-      <p style="margin:4px 0;"><strong>BTVN đã thu:</strong> ${hwCount} bài tập (${uncollectedHw ? `<span style="color:#b45309;">${uncollectedHw} chưa kiểm tra</span>` : 'đã kiểm tra hết'}).</p>
-    `;
-    $('#close-session-details-box').innerHTML = detailsHtml;
-    $('#close-session-final-note').value = sessionNoteVal || '';
-
-    dialog.showModal();
-  }
-
-  function confirmCloseSession() {
-    const classId = getCurrentClassId();
-    const date = getChecklistDate();
-    const user = getSignedInAccount();
-    const classInfo = getActiveClassConfig();
-    const finalNote = $('#close-session-final-note')?.value.trim() || '';
-
-    // If user checked any missing checklist items directly in the dialog, apply them!
-    document.querySelectorAll('.confirm-unfilled-item:checked').forEach(chk => {
-      const type = chk.dataset.itemType;
-      const id = chk.dataset.itemId;
-      const targetInp = document.querySelector(`#${type === 'start' ? 'checklist-items' : 'end-checklist-items'} [data-${type === 'start' ? 'checklist-item' : 'end-checklist-item'}="${id}"]`);
-      if (targetInp && !targetInp.checked) {
-        targetInp.checked = true;
-        targetInp.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    });
-
-    const roster = classStudents();
-    const entries = allEntries();
-
-    const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'present').length;
-    const lateCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'late').length;
-    const totalRoster = roster.length;
-    const absentCount = Math.max(0, totalRoster - presentCount - lateCount);
-    const hwCount = entries.filter(e => e.entry.studentId && (e.entry.homework?.status === 'submitted' || e.entry.homework?.status === 'graded')).length;
-
-    // Collect checklist items status
-    const startChecklist = Array.from(document.querySelectorAll('#checklist-items .checklist-item')).map(el => ({
-      label: el.querySelector('.checklist-label-input')?.value?.trim() 
-        || el.querySelector('strong')?.textContent?.trim() 
-        || el.querySelector('input[type="checkbox"]')?.getAttribute('aria-label')?.replace(/^Đánh dấu\s*/, '')?.trim() 
-        || 'Công việc đầu ca',
-      done: el.querySelector('input[type="checkbox"]')?.checked || false
-    }));
-    const endChecklist = Array.from(document.querySelectorAll('#end-checklist-items .checklist-item')).map(el => ({
-      label: el.querySelector('.checklist-label-input')?.value?.trim() 
-        || el.querySelector('strong')?.textContent?.trim() 
-        || el.querySelector('input[type="checkbox"]')?.getAttribute('aria-label')?.replace(/^Đánh dấu\s*/, '')?.trim() 
-        || 'Công việc cuối ca',
-      done: el.querySelector('input[type="checkbox"]')?.checked || false
-    }));
-
-    const snapshot = {
-      className: classInfo?.name || classId,
-      classCode: classInfo?.code || classId,
-      subject: classInfo?.subject || '',
-      room: classInfo?.room || '',
-      grade: classInfo?.grade || '—',
-      teacherName: classInfo?.teacherName || '',
-      assistantName: classInfo?.assistantName || '',
-      lessonTitle: $('#lesson-title')?.value.trim() || '',
-      sessionNote: $('#session-note')?.value.trim() || '',
-      homeworkAssignment: $('#homework-assignment')?.value.trim() || '',
-      checklistSummary: [...startChecklist, ...endChecklist],
-      layout: ctx.getLayout ? ctx.getLayout() : null,
-      deskItems: ctx.getDeskItems ? ctx.getDeskItems() : null,
-      students: roster.map(s => {
-        const seated = entries.find(e => e.entry.studentId === s.id);
-        const isLate = getLateQueue().includes(s.id) || seated?.entry.attendance?.status === 'late';
-        const isPresent = Boolean(seated);
-        const attStatus = isLate ? 'late' : isPresent ? 'present' : (s.attendance?.status?.startsWith('absent') ? s.attendance.status : 'absent');
-        const minsLate = seated?.entry.attendance?.lateMinutes || seated?.entry.attendance?.minutesLate || s.attendance?.lateMinutes || s.attendance?.minutesLate || 10;
-        const hwStatus = seated?.entry.homework?.status || s.homework?.status || 'uncollected';
-        const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? null;
-        const hwReason = seated?.entry.homework?.reason || s.homework?.reason || '';
-        const testScore = seated?.entry.testScore ?? s.testScore ?? null;
-        const stuNote = (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '';
-        return {
-          studentId: s.id,
-          studentName: s.name,
-          studentCode: s.studentCode || null,
-          school: s.school || '',
-          attendance: { status: attStatus, minutesLate: isLate ? minsLate : 0, lateMinutes: isLate ? minsLate : 0 },
-          homework: { status: hwStatus, score: hwScore, reason: hwReason },
-          testScore,
-          note: stuNote
-        };
-      }),
-      stats: {
-        total: totalRoster,
-        present: presentCount + lateCount,
-        late: lateCount,
-        absent: absentCount,
-        homeworkDone: hwCount
-      }
-    };
-
-    const staffEmp = getMasterData().employees.find(e => e.id === user?.employeeId);
-    const staffName = staffEmp?.name || user?.name || 'Trợ giảng';
-
-    // 1. Lưu & cập nhật (Upsert) vào lịch sử học sinh
-    const allStudents = getStudents();
-    roster.forEach(s => {
-      const seated = entries.find(e => e.entry.studentId === s.id);
-      const isLate = getLateQueue().includes(s.id) || seated?.entry.attendance?.status === 'late';
-      const isPresent = Boolean(seated);
-      const attStatus = isLate ? 'late' : isPresent ? 'present' : (s.attendance?.status?.startsWith('absent') ? s.attendance.status : 'absent');
-      const minsLate = seated?.entry.attendance?.lateMinutes || seated?.entry.attendance?.minutesLate || s.attendance?.lateMinutes || s.attendance?.minutesLate || 10;
-      const hwStatus = seated?.entry.homework?.status || s.homework?.status || 'uncollected';
-      const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? null;
-      const hwReason = seated?.entry.homework?.reason || s.homework?.reason || '';
-      const stuNote = (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '';
-
-      s.attendanceHistory = s.attendanceHistory || [];
-      const attIdx = s.attendanceHistory.findIndex(h => h.date === date && h.classId === classId);
-      const attObj = {
-        classId,
-        date,
-        status: attStatus,
-        minutesLate: isLate ? minsLate : 0,
-        lateMinutes: isLate ? minsLate : 0,
-        timestamp: Date.now()
-      };
-      if (attIdx >= 0) s.attendanceHistory[attIdx] = attObj;
-      else s.attendanceHistory.unshift(attObj);
-
-      s.sessionNotes = s.sessionNotes || [];
-      const noteIdx = s.sessionNotes.findIndex(n => n.date === date && n.classId === classId);
-      const noteObj = {
-        ...(noteIdx >= 0 ? s.sessionNotes[noteIdx] : {}),
-        classId,
-        date,
-        homeworkStatus: hwStatus,
-        homeworkReason: hwReason,
-        homeworkScore: hwScore,
-        note: stuNote,
-        updatedAt: Date.now()
-      };
-      if (noteIdx >= 0) s.sessionNotes[noteIdx] = noteObj;
-      else s.sessionNotes.unshift(noteObj);
-
-      if (hwScore !== null) {
-        s.scores = s.scores || [];
-        const scIdx = s.scores.findIndex(sc => sc.date === date && sc.classId === classId && (sc.type === 'BTVN' || !sc.type));
-        const scObj = { classId, date, score: Number(hwScore), type: 'BTVN', timestamp: Date.now() };
-        if (scIdx >= 0) s.scores[scIdx] = scObj;
-        else s.scores.unshift(scObj);
-      }
-
-      if (seated) {
-        const allDesks = ctx.desks ? ctx.desks() : [];
-        const spot = allDesks.find(item => item.desk.id === seated.deskId);
-        s.seatingHistory = s.seatingHistory || [];
-        const seatIdx = s.seatingHistory.findIndex(sh => sh.date === date && sh.classId === classId);
-        const seatObj = {
-          classId,
-          date,
-          deskId: seated.deskId,
-          aisle: spot ? spot.ci + 1 : null,
-          desk: spot ? spot.di + 1 : null,
-          position: seated.index + 1,
-          timestamp: Date.now()
-        };
-        if (seatIdx >= 0) s.seatingHistory[seatIdx] = seatObj;
-        else s.seatingHistory.unshift(seatObj);
-      }
-    });
-    saveStudentRecords(allStudents, ctx.getMakeupStudents ? ctx.getMakeupStudents() : []);
-
-    // 2. Lưu vào lịch sử lớp học
-    closeClassSession(classId, date, user, snapshot, finalNote);
-
-    // 3. Lưu trạng thái hoàn tất và lưu trữ dữ liệu ca học (bảo lưu desk-items của ngày để xem lại)
-    localStorage.setItem(`lopvui.finalized-session.v1.${classId}.${date}`, JSON.stringify({ closed: true, date: Date.now(), staff: staffName }));
-
-    toast('Đã đóng ca thành công, lưu vào lịch sử và reset phòng học sẵn sàng cho ca mới.');
-    addClassActivity(`${staffName} đã kết thúc và đóng ca học`, 'shift');
-
-    const statusBadge = $('#session-status-badge');
-    if (statusBadge) {
-      statusBadge.className = 'session-badge-state closed';
-      statusBadge.innerHTML = '● Đã đóng ca';
-    }
-
-    const chkStatus = $('#checklist-close-session-status');
-    if (chkStatus) {
-      chkStatus.textContent = `✓ Ca học đã được đóng lúc ${new Date().toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})} bởi ${staffName}`;
-    }
-
-    $('#close-session-dialog')?.close();
-    updateSessionStateUI();
-
-    if (ctx.navigateTo) {
-      ctx.navigateTo(`class/${classInfo?.code || classId}/general`);
-    } else if (ctx.enterClass) {
-      ctx.enterClass(classId, date);
-    } else {
-      render();
-    }
-  }
-// ----------------------------------------------------
-  // TÍNH NĂNG MỚI: OPTION KHÔNG CÓ BTVN (REQ 5)
-  // ----------------------------------------------------
-  function initSessionNoHomework() {
-    const classId = getCurrentClassId();
-    const date = getChecklistDate();
-    const status = getNoHomeworkStatus(classId, date);
-
-    const checkbox = $('#session-no-hw-checkbox');
-    const hint = $('#no-hw-auto-hint');
-
-    if (!checkbox) return;
-    checkbox.checked = status.noHomework;
-
-    if (hint) {
-      if (status.noHomework) {
-        hint.textContent = (status.reason === 'manual' || !status.reason) ? 'Đã chọn thủ công' : status.reason;
-        hint.style.display = 'block';
-      } else {
-        hint.textContent = 'Bình thường (có thu BTVN)';
-        hint.style.display = 'none';
-      }
-    }
-  }
-
-  function handleNoHomeworkToggle(e) {
-    const classId = getCurrentClassId();
-    const date = getChecklistDate();
-    const checked = e.target.checked;
-
-    setNoHomeworkStatus(classId, date, checked);
-
-    const hint = $('#no-hw-auto-hint');
-    if (hint) {
-      hint.textContent = checked ? 'Đã chọn: Ca này không có BTVN' : 'Bình thường (có thu BTVN)';
-      hint.style.display = checked ? 'block' : 'none';
-    }
-
-    toast(checked ? 'Đã bật: Ca học này không có BTVN (bỏ qua cảnh báo thiếu BTVN).' : 'Đã tắt: Ca học này sẽ thu BTVN như bình thường.');
-    render();
-  }
-
-  function isNoHomeworkSession() {
-    const classId = getCurrentClassId();
-    const date = getChecklistDate();
-    return getNoHomeworkStatus(classId, date).noHomework;
-  }
-
-  // ----------------------------------------------------
-  // TÍNH NĂNG MỚI: SMART EXCEL IMPORT VỚI TÙY CHỌN CỘT (REQ 6)
-  // ----------------------------------------------------
   let parsedRawRows = [];
+  let gridColumnRoles = [];
 
   function initFlexibleColumnMappingImport() {
     const fileInput = $('#import-file-input');
     const textarea = $('#import-paste-textarea');
     const detectBtn = $('#detect-columns-btn');
-    const previewBtn = $('#preview-mapped-btn');
     const confirmBtn = $('#confirm-import-btn');
-    const mappingSection = $('#column-mapping-section');
     const previewWrap = $('#import-preview-wrap');
     const hasHeaderCheckbox = $('#import-has-header');
     const defaultClassSelect = $('#import-default-class-select');
-    const radioSingle = $('#name-mode-single');
-    const radioSplit = $('#name-mode-split');
-    const singleWrap = $('#single-name-col-wrap');
-    const familyWrap = $('#family-name-col-wrap');
-    const givenWrap = $('#given-name-col-wrap');
 
     populateImportDefaultClassSelect(activeRosterClassId || '');
 
-    const readCurrentMappingConfig = () => {
-      const selectedDefaultClass = defaultClassSelect ? defaultClassSelect.value : '';
-      const contextClass = isRosterImportContext && activeRosterClassId ? activeRosterClassId : '';
+    const getImportOptions = () => {
+      const selectedDefault = defaultClassSelect ? defaultClassSelect.value : '';
+      const contextClass = (isRosterImportContext && activeRosterClassId) ? activeRosterClassId : '';
       return {
-        hasHeader: hasHeaderCheckbox?.checked ?? true,
-        nameMode: radioSplit?.checked ? 'split' : 'single',
-        codeCol: Number($('#map-col-code')?.value ?? -1),
-        fullNameCol: Number($('#map-col-fullname')?.value ?? -1),
-        familyNameCol: Number($('#map-col-familyname')?.value ?? -1),
-        givenNameCol: Number($('#map-col-givenname')?.value ?? -1),
-        schoolCol: Number($('#map-col-school')?.value ?? -1),
-        classCol1: Number($('#map-col-class1')?.value ?? -1),
-        classCol2: Number($('#map-col-class2')?.value ?? -1),
-        classCol3: Number($('#map-col-class3')?.value ?? -1),
-        phoneCol: Number($('#map-col-phone')?.value ?? -1),
-        parentNameCol: Number($('#map-col-parent')?.value ?? -1),
-        statusCol: Number($('#map-col-status')?.value ?? -1),
-        defaultClassId: selectedDefaultClass || contextClass,
-        contextClassId: contextClass
+        hasHeader: Boolean(hasHeaderCheckbox?.checked),
+        defaultClassId: selectedDefault || contextClass,
+        contextClassId: contextClass || selectedDefault
       };
+    };
+
+    const refreshExtractedStudentsAndGrid = (rebuildHeader = true) => {
+      if (!parsedRawRows.length) {
+        if (previewWrap) previewWrap.hidden = true;
+        if (confirmBtn) confirmBtn.disabled = true;
+        return;
+      }
+
+      const catalog = getClassCatalog();
+      const opts = getImportOptions();
+      parsedImportData = extractStudentsFromGrid(parsedRawRows, gridColumnRoles, opts, catalog);
+
+      if (previewWrap) previewWrap.hidden = false;
+      const countEl = $('#import-preview-count');
+      if (countEl) countEl.textContent = parsedImportData.length;
+      if (confirmBtn) {
+        confirmBtn.disabled = parsedImportData.length === 0;
+        confirmBtn.textContent = parsedImportData.length > 0
+          ? `✓ Xác nhận nhập ${parsedImportData.length} học sinh vào hệ thống`
+          : '✓ Xác nhận nhập vào hệ thống';
+      }
+
+      const thead = $('#import-preview-thead');
+      const tbody = $('#import-preview-tbody');
+      if (!thead || !tbody) return;
+
+      const maxCols = Math.max(1, ...parsedRawRows.slice(0, 15).map(r => r.length));
+      while (gridColumnRoles.length < maxCols) gridColumnRoles.push('ignore');
+
+      const headerRow = opts.hasHeader ? parsedRawRows[0] : null;
+      const dataRows = opts.hasHeader ? parsedRawRows.slice(1) : parsedRawRows;
+
+      if (rebuildHeader) {
+        thead.innerHTML = `
+          <tr class="grid-role-selector-row">
+            ${Array.from({ length: maxCols }, (_, colIdx) => {
+              const currentRole = gridColumnRoles[colIdx] || 'ignore';
+              const isIgnored = currentRole === 'ignore';
+              const sampleVal = String((dataRows[0]?.[colIdx] ?? parsedRawRows[0]?.[colIdx] ?? '') || '').trim();
+              return `
+                <th class="grid-col-header-th ${isIgnored ? 'grid-col-ignored' : 'grid-col-active'}">
+                  <div class="grid-col-index-badge">Cột ${colIdx + 1}${headerRow ? `: ${escapeHtml(String(headerRow[colIdx] || '').slice(0, 20))}` : ''}</div>
+                  <select class="grid-col-role-select" data-grid-col-idx="${colIdx}" aria-label="Chọn trường cho cột ${colIdx + 1}">
+                    ${GRID_COLUMN_ROLE_OPTIONS.map(opt => `
+                      <option value="${escapeHtml(opt.value)}" ${currentRole === opt.value ? 'selected' : ''}>${escapeHtml(opt.label)}</option>
+                    `).join('')}
+                  </select>
+                  ${sampleVal ? `<small class="grid-col-sample-hint" title="Mẫu dòng 1: ${escapeHtml(sampleVal)}">Mẫu: ${escapeHtml(sampleVal.slice(0, 22))}</small>` : ''}
+                </th>
+              `;
+            }).join('')}
+          </tr>
+        `;
+
+        thead.querySelectorAll('.grid-col-role-select').forEach(sel => {
+          sel.onchange = () => {
+            const cIdx = Number(sel.dataset.gridColIdx);
+            const newRole = sel.value;
+            // For single-instance roles (code, familyName, givenName, fullName, school, phone, parentName, status),
+            // if user picks a role that was already on another column, keep it clean so user doesn't have to manually unset the old column
+            const singleRoles = new Set(['code', 'familyName', 'givenName', 'fullName', 'school', 'phone', 'parentName', 'status']);
+            if (singleRoles.has(newRole)) {
+              gridColumnRoles = gridColumnRoles.map((r, idx) => (idx !== cIdx && r === newRole) ? 'ignore' : r);
+            }
+            gridColumnRoles[cIdx] = newRole;
+            refreshExtractedStudentsAndGrid(true);
+          };
+        });
+      }
+
+      const previewSlice = dataRows.slice(0, 25);
+      tbody.innerHTML = previewSlice.map(row => `
+        <tr>
+          ${Array.from({ length: maxCols }, (_, colIdx) => {
+            const role = gridColumnRoles[colIdx] || 'ignore';
+            const cellVal = String(row[colIdx] ?? '').trim();
+            return `<td class="${role === 'ignore' ? 'grid-cell-ignored' : 'grid-cell-active'}">${escapeHtml(cellVal || '—')}</td>`;
+          }).join('')}
+        </tr>
+      `).join('') + (dataRows.length > 25 ? `<tr><td colspan="${maxCols}" style="text-align:center; color:#647768; font-weight:600; padding:10px;">...và ${dataRows.length - 25} dòng học sinh khác (Tổng cộng ${parsedImportData.length} học sinh hợp lệ)</td></tr>` : '');
+    };
+
+    const parseAndRenderFromText = (rawText, showToast = false) => {
+      if (!rawText || !rawText.trim()) {
+        parsedRawRows = [];
+        gridColumnRoles = [];
+        refreshExtractedStudentsAndGrid(true);
+        return;
+      }
+      const { rows } = parseRawTable(rawText);
+      if (!rows.length) {
+        if (showToast) toast('Không tìm thấy dòng dữ liệu nào trong bảng.');
+        return;
+      }
+      parsedRawRows = rows;
+      const catalog = getClassCatalog();
+      const detected = autoDetectGridColumnRoles(rows, catalog);
+      if (hasHeaderCheckbox) hasHeaderCheckbox.checked = Boolean(detected.hasHeader);
+      gridColumnRoles = detected.roles;
+      syncImportTargetBanner();
+      refreshExtractedStudentsAndGrid(true);
+      if (showToast) {
+        toast(`Đã dựng bảng dữ liệu: nhận diện ${parsedImportData.length} học sinh.`);
+      }
     };
 
     fileInput?.addEventListener('change', (e) => {
@@ -3537,10 +2522,15 @@ export function setupFeatures(ctx) {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (event) => {
-        if (textarea) textarea.value = event.target.result;
-        detectBtn?.click();
+        const content = event.target.result || '';
+        if (textarea) textarea.value = content;
+        parseAndRenderFromText(content, true);
       };
       reader.readAsText(file, 'utf-8');
+    });
+
+    textarea?.addEventListener('input', () => {
+      parseAndRenderFromText(textarea.value, false);
     });
 
     detectBtn?.addEventListener('click', () => {
@@ -3549,171 +2539,80 @@ export function setupFeatures(ctx) {
         toast('Vui lòng dán bảng dữ liệu hoặc tải file lên trước.');
         return;
       }
-
-      const { rows } = parseRawTable(text);
-      if (!rows.length) {
-        toast('Không tìm thấy dòng dữ liệu nào trong bảng.');
-        return;
-      }
-
-      parsedRawRows = rows;
-      if (mappingSection) mappingSection.hidden = false;
-
-      const sampleRow = rows[0];
-      const colOptionsHtml = (noneLabel = '-- Không có / Bỏ qua --', includeNone = true) => {
-        let opts = includeNone ? `<option value="-1">${escapeHtml(noneLabel)}</option>` : '';
-        sampleRow.forEach((cell, idx) => {
-          opts += `<option value="${idx}">Cột ${idx + 1}: "${escapeHtml(String(cell || '').slice(0, 32))}"</option>`;
-        });
-        return opts;
-      };
-
-      const selectConfigs = [
-        { sel: '#map-col-code', noneLabel: '-- Không có / Tự sinh --', includeNone: true },
-        { sel: '#map-col-fullname', noneLabel: '-- Chọn cột Họ và tên --', includeNone: false },
-        { sel: '#map-col-familyname', noneLabel: '-- Không có / Bỏ qua --', includeNone: true },
-        { sel: '#map-col-givenname', noneLabel: '-- Chọn cột Tên --', includeNone: false },
-        { sel: '#map-col-school', noneLabel: '-- Không có / Bỏ qua --', includeNone: true },
-        { sel: '#map-col-class1', noneLabel: '-- Theo lớp mặc định --', includeNone: true },
-        { sel: '#map-col-class2', noneLabel: '-- Không có --', includeNone: true },
-        { sel: '#map-col-class3', noneLabel: '-- Không có --', includeNone: true },
-        { sel: '#map-col-phone', noneLabel: '-- Không có --', includeNone: true },
-        { sel: '#map-col-parent', noneLabel: '-- Không có --', includeNone: true },
-        { sel: '#map-col-status', noneLabel: '-- Mặc định: Học --', includeNone: true }
-      ];
-
-      selectConfigs.forEach(({ sel, noneLabel, includeNone }) => {
-        const el = $(sel);
-        if (el) {
-          el.innerHTML = colOptionsHtml(noneLabel, includeNone);
-          if (includeNone) el.value = '-1';
-        }
-      });
-
-      const detected = autoDetectColumnMapping(rows);
-      if (hasHeaderCheckbox) hasHeaderCheckbox.checked = Boolean(detected.hasHeader);
-
-      if (detected.nameMode === 'split') {
-        if (radioSplit) radioSplit.checked = true;
-        if (radioSingle) radioSingle.checked = false;
-        if (singleWrap) singleWrap.hidden = true;
-        if (familyWrap) familyWrap.hidden = false;
-        if (givenWrap) givenWrap.hidden = false;
-      } else {
-        if (radioSingle) radioSingle.checked = true;
-        if (radioSplit) radioSplit.checked = false;
-        if (singleWrap) singleWrap.hidden = false;
-        if (familyWrap) familyWrap.hidden = true;
-        if (givenWrap) givenWrap.hidden = true;
-      }
-
-      if ($('#map-col-code')) $('#map-col-code').value = String(detected.codeCol);
-      if ($('#map-col-fullname') && detected.fullNameCol >= 0) $('#map-col-fullname').value = String(detected.fullNameCol);
-      if ($('#map-col-familyname')) $('#map-col-familyname').value = String(detected.familyNameCol);
-      if ($('#map-col-givenname') && detected.givenNameCol >= 0) $('#map-col-givenname').value = String(detected.givenNameCol);
-      if ($('#map-col-school')) $('#map-col-school').value = String(detected.schoolCol);
-      if ($('#map-col-class1')) $('#map-col-class1').value = String(detected.classCol1);
-      if ($('#map-col-class2')) $('#map-col-class2').value = String(detected.classCol2);
-      if ($('#map-col-class3')) $('#map-col-class3').value = String(detected.classCol3);
-      if ($('#map-col-phone')) $('#map-col-phone').value = String(detected.phoneCol);
-      if ($('#map-col-parent')) $('#map-col-parent').value = String(detected.parentNameCol);
-      if ($('#map-col-status')) $('#map-col-status').value = String(detected.statusCol ?? -1);
-
-      previewBtn?.click();
+      parseAndRenderFromText(text, true);
     });
 
-    radioSingle?.addEventListener('change', () => {
-      if (singleWrap) singleWrap.hidden = false;
-      if (familyWrap) familyWrap.hidden = true;
-      if (givenWrap) givenWrap.hidden = true;
-    });
-
-    radioSplit?.addEventListener('change', () => {
-      if (singleWrap) singleWrap.hidden = true;
-      if (familyWrap) familyWrap.hidden = false;
-      if (givenWrap) givenWrap.hidden = false;
+    hasHeaderCheckbox?.addEventListener('change', () => {
+      if (parsedRawRows.length) {
+        refreshExtractedStudentsAndGrid(true);
+      }
     });
 
     defaultClassSelect?.addEventListener('change', () => {
-      if (parsedRawRows.length && previewWrap && !previewWrap.hidden) {
-        previewBtn?.click();
+      syncImportTargetBanner();
+      if (parsedRawRows.length) {
+        refreshExtractedStudentsAndGrid(false);
       }
-    });
-
-    previewBtn?.addEventListener('click', () => {
-      if (!parsedRawRows.length) return;
-      const catalog = getClassCatalog();
-      const mapping = readCurrentMappingConfig();
-      parsedImportData = mapCustomColumns(parsedRawRows, mapping, catalog);
-
-      if (!parsedImportData.length) {
-        toast('Không trích xuất được học sinh nào. Vui lòng kiểm tra lại cấu hình ánh xạ cột.');
-        return;
-      }
-
-      if (previewWrap) previewWrap.hidden = false;
-      const countEl = $('#import-preview-count');
-      if (countEl) countEl.textContent = parsedImportData.length;
-
-      const tbody = $('#import-preview-tbody');
-      if (tbody) {
-        tbody.innerHTML = parsedImportData.slice(0, 15).map((item) => {
-          const classNames = (item.classIds || []).map(cid => {
-            const c = catalog.find(x => x.id === cid);
-            return c ? (c.code || c.name || c.id) : cid;
-          }).join(', ');
-
-          return `
-            <tr>
-              <td><strong>${escapeHtml(item.studentCode || '—')}</strong></td>
-              <td>${escapeHtml(item.familyName || '—')}</td>
-              <td><strong>${escapeHtml(item.givenName || '—')}</strong></td>
-              <td>${escapeHtml(item.school || '—')}</td>
-              <td class="col-allow-wrap">${escapeHtml(classNames || 'Chưa gán lớp')}</td>
-              <td>${escapeHtml(item.parentContact?.phone || '—')}</td>
-              <td>${escapeHtml(item.enrollmentStatus || 'Học')}</td>
-            </tr>
-          `;
-        }).join('') + (parsedImportData.length > 15 ? `<tr><td colspan="7" style="text-align:center; color:#888;">...và ${parsedImportData.length - 15} học sinh khác</td></tr>` : '');
-      }
-
-      if (confirmBtn) confirmBtn.disabled = false;
-      toast(`Đã xử lý xong xem trước ${parsedImportData.length} học sinh.`);
     });
 
     confirmBtn?.addEventListener('click', () => {
-      const mapping = readCurrentMappingConfig();
+      const catalog = getClassCatalog();
+      const opts = getImportOptions();
       if (parsedRawRows.length) {
-        parsedImportData = mapCustomColumns(parsedRawRows, mapping, getClassCatalog());
+        parsedImportData = extractStudentsFromGrid(parsedRawRows, gridColumnRoles, opts, catalog);
       }
-      if (!parsedImportData.length) return;
+      if (!parsedImportData.length) {
+        toast('Chưa có học sinh hợp lệ để nhập. Hãy chọn cột Tên / Họ và tên trên đầu bảng.');
+        return;
+      }
 
       const currentStudents = getStudents();
       const currentMakeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
-      const explicitTargetClassId = mapping.defaultClassId || mapping.contextClassId || '';
+
+      // Remove any old corrupted record (e.g. studentCode === "HỌC") before importing
+      for (let i = currentStudents.length - 1; i >= 0; i--) {
+        const st = currentStudents[i];
+        const sc = String(st?.studentCode || '').trim();
+        if (sc && isStatusWord(sc)) {
+          currentStudents.splice(i, 1);
+        }
+      }
+
+      // Direct target class when importing inside a class or when selected in the dropdown
+      const forcedClassId = (isRosterImportContext && activeRosterClassId)
+        ? activeRosterClassId
+        : (defaultClassSelect?.value || '');
 
       let addedCount = 0;
       let updatedCount = 0;
 
       parsedImportData.forEach(item => {
         const finalClassIds = [...(item.classIds || [])];
-        if (explicitTargetClassId && (!finalClassIds.length || mapping.contextClassId)) {
-          if (!finalClassIds.includes(explicitTargetClassId)) {
-            finalClassIds.push(explicitTargetClassId);
-          }
+        if (forcedClassId && !finalClassIds.includes(forcedClassId)) {
+          finalClassIds.push(forcedClassId);
         }
 
-        const existing = currentStudents.find(s =>
-          (item.studentCode && s.studentCode && s.studentCode.toLowerCase() === item.studentCode.toLowerCase()) ||
-          (s.name.trim().toLowerCase() === item.name.trim().toLowerCase() && (!item.school || (s.school || '').toLowerCase() === item.school.toLowerCase()))
-        );
+        const validCode = (item.studentCode && !isStatusWord(item.studentCode) && !/^\d{1,3}$/.test(item.studentCode))
+          ? String(item.studentCode).trim().toUpperCase()
+          : null;
+
+        const existing = currentStudents.find(s => {
+          if (validCode && s.studentCode && s.studentCode.toUpperCase() === validCode) {
+            return true;
+          }
+          if (!validCode && !s.studentCode) {
+            return s.name.trim().toLowerCase() === item.name.trim().toLowerCase() &&
+                   (s.school || '').trim().toLowerCase() === (item.school || '').trim().toLowerCase();
+          }
+          return false;
+        });
 
         if (existing) {
           existing.familyName = item.familyName || existing.familyName;
           existing.givenName = item.givenName || existing.givenName;
           existing.name = item.name || existing.name;
-          existing.school = item.school || existing.school;
-          if (item.studentCode) existing.studentCode = String(item.studentCode).trim().toUpperCase();
+          if (item.school) existing.school = item.school;
+          if (validCode) existing.studentCode = validCode;
           if (item.parentContact?.phone || item.parentContact?.name) {
             existing.parentContact = {
               name: item.parentContact?.name || existing.parentContact?.name || '',
@@ -3724,20 +2623,27 @@ export function setupFeatures(ctx) {
             const merged = new Set([...(existing.classIds || []), ...finalClassIds]);
             existing.classIds = [...merged];
           }
+          if (item.tag) {
+            existing.tags = Array.isArray(existing.tags) ? existing.tags : [];
+            if (!existing.tags.includes(item.tag)) existing.tags.push(item.tag);
+          }
           existing.enrollmentStatus = item.enrollmentStatus || existing.enrollmentStatus || 'Học';
           updatedCount++;
         } else {
+          const tagsArr = item.tag ? [item.tag] : [];
           const newStudent = createStudentProfile({
             name: item.name,
             familyName: item.familyName,
             givenName: item.givenName,
-            studentCode: item.studentCode,
+            studentCode: validCode,
             school: item.school,
             parentContact: item.parentContact,
             classIds: finalClassIds,
             enrollmentStatus: item.enrollmentStatus || 'Học',
+            tags: tagsArr,
             kind: 'regular'
           });
+          newStudent.studentCode = validCode;
           newStudent.classIds = finalClassIds;
           newStudent.familyName = item.familyName;
           newStudent.givenName = item.givenName;
@@ -4080,7 +2986,7 @@ export function setupFeatures(ctx) {
           <td style="cursor:pointer;" data-view-student-detail="${escapeHtml(s.id)}" title="Bấm mở Hồ sơ thông tin chung">${escapeHtml(fam || '—')}</td>
           <td style="cursor:pointer;" data-view-student-detail="${escapeHtml(s.id)}" title="Bấm mở Hồ sơ thông tin chung">
             <strong style="color:#1b522c; text-decoration:underline;">${escapeHtml(giv || s.name)}</strong>
-            ${s.isNew || (s.tags && s.tags.includes('Mới')) ? '<span class="student-tag new-tag">MỚI</span>' : ''}
+            ${renderStudentTagsBadges(s)}
           </td>
           <td>${escapeHtml(s.school || '—')}</td>
           <td>

@@ -293,34 +293,19 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
     if (storage) storage.setItem(MAKEUP_KEY, JSON.stringify(makeup));
   }
 
-  const regular = stored.filter(student => student && student.studentType !== 'makeup').map(student => {
-    // Auto-repair records that were imported with 1-column STT offset in earlier versions:
-    // (studentCode was "1","2","3"..., familyName was actual studentCode like "K9.730...", givenName was familyName, school was givenName)
-    const sc = String(student.studentCode || '').trim();
-    const fam = String(student.familyName || '').trim();
-    const giv = String(student.givenName || '').trim();
+  const regular = stored.filter(student => {
+    if (!student || student.studentType === 'makeup') return false;
+    const sc = String(student.studentCode || '').trim().toUpperCase();
     const sch = String(student.school || '').trim();
-    const ph = String(student.parentContact?.phone || '').trim();
-    if (/^\d{1,3}$/.test(sc) && /^[A-Za-z0-9._-]{3,18}$/.test(fam) && /\d/.test(fam) && !fam.includes(' ') && giv && sch && !sch.toLowerCase().startsWith('th')) {
-      const fixedCode = fam.toUpperCase();
-      const fixedFamily = giv;
-      const fixedGiven = sch;
-      const fixedName = `${fixedFamily} ${fixedGiven}`.trim();
-      return {
-        ...student,
-        studentCode: fixedCode,
-        familyName: fixedFamily,
-        givenName: fixedGiven,
-        name: fixedName,
-        school: '',
-        enrollmentStatus: student.enrollmentStatus || 'Học'
-      };
-    }
-    return {
-      ...student,
-      enrollmentStatus: student.enrollmentStatus || 'Học'
-    };
-  });
+    // Purge corrupted single record where "HỌC" was mapped into studentCode or Date was mapped into school
+    if (sc === 'HỌC' || sc === 'HOC' || sc === 'NGHỈ' || sc === 'TẠM NGHỈ') return false;
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(sch) && /^[A-Za-z0-9._-]{3,16}$/.test(String(student.familyName || '').trim())) return false;
+    return true;
+  }).map(student => ({
+    ...student,
+    enrollmentStatus: student.enrollmentStatus || 'Học'
+  }));
+
   const legacyMakeup = stored.filter(student => student && student.studentType === 'makeup').map(student => ({
     ...student,
     sourceClassName: student.sourceClassName || student.school || 'T2',
@@ -367,7 +352,7 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
       sessionNotes: sessNotes,
       scores: scoreList,
       notes: student.notes || [],
-      tags: Array.isArray(student.tags) ? student.tags : (student.isNew && Date.now() - (student.createdAt || 0) < 21 * 86400000 ? ['Mới'] : []),
+      tags: (Array.isArray(student.tags) && student.tags.length) ? student.tags : (seedMatch?.tags?.length ? [...seedMatch.tags] : (student.isNew && Date.now() - (student.createdAt || 0) < 21 * 86400000 ? ['Mới'] : [])),
       learningNotes: student.learningNotes || seedMatch?.learningNotes || ''
     };
   });

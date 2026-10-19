@@ -1,4 +1,4 @@
-// Utilities for importing/exporting roster data, CSV parsing, Excel export and Google Sheets sync architecture.
+// Utilities for importing/exporting roster data, Interactive Data Grid column mapping, CSV/Excel export & Google Sheets sync.
 
 export const ENROLLMENT_STATUS_PRESETS = [
   'Học',
@@ -8,21 +8,47 @@ export const ENROLLMENT_STATUS_PRESETS = [
   'Trùng'
 ];
 
+export const GRID_COLUMN_ROLE_OPTIONS = [
+  { value: 'ignore', label: '-- Bỏ qua cột này --' },
+  { value: 'code', label: 'Mã HS' },
+  { value: 'familyName', label: 'Họ đệm' },
+  { value: 'givenName', label: 'Tên' },
+  { value: 'fullName', label: 'Họ và tên đầy đủ' },
+  { value: 'school', label: 'Trường học' },
+  { value: 'classCode', label: 'Mã lớp' },
+  { value: 'phone', label: 'SĐT Phụ huynh' },
+  { value: 'parentName', label: 'Tên Phụ huynh' },
+  { value: 'status', label: 'Trạng thái' },
+  { value: 'tag', label: 'Tag phân loại' }
+];
+
+const KNOWN_STATUS_WORDS = new Set([
+  'học', 'đang học', 'hoc', 'dang hoc',
+  'chưa nhập học', 'chua nhap hoc',
+  'tạm nghỉ', 'tam nghi', 'bảo lưu', 'bao luu',
+  'nghỉ', 'nghi', 'nghỉ học', 'đã nghỉ',
+  'trùng', 'trung'
+]);
+
+export function isStatusWord(rawVal) {
+  const s = String(rawVal ?? '').trim().toLowerCase();
+  return KNOWN_STATUS_WORDS.has(s);
+}
+
 export function normalizeEnrollmentStatus(rawVal) {
   const trimmed = String(rawVal ?? '').trim();
   if (!trimmed) return 'Học';
   const lower = trimmed.toLowerCase();
   if (lower === 'học' || lower === 'đang học' || lower === 'hoc' || lower === 'dang hoc') return 'Học';
   if (lower === 'chưa nhập học' || lower === 'chua nhap hoc') return 'Chưa nhập học';
-  if (lower === 'tạm nghỉ' || lower === 'tam nghi' || lower === 'bảo lưu') return 'Tạm nghỉ';
+  if (lower === 'tạm nghỉ' || lower === 'tam nghi' || lower === 'bảo lưu' || lower === 'bao luu') return 'Tạm nghỉ';
   if (lower === 'nghỉ' || lower === 'nghi' || lower === 'nghỉ học' || lower === 'đã nghỉ') return 'Nghỉ';
   if (lower === 'trùng' || lower === 'trung') return 'Trùng';
   return trimmed;
 }
 
 /**
- * Splits raw copied text into rows and cells, automatically stripping a leading STT (index 0) column
- * so subsequent columns never shift right by 1 column.
+ * Splits raw copied text into rows and cells without shifting columns.
  */
 export function parseRawTable(rawText) {
   if (!rawText || !rawText.trim()) return { headers: [], rows: [] };
@@ -63,41 +89,7 @@ export function parseRawTable(rawText) {
     return cells;
   };
 
-  let rows = lines.map(line => parseCsvLine(line, delimiter)).filter(r => r.some(c => String(c || '').trim() !== ''));
-  if (!rows.length) return { headers: [], rows: [] };
-
-  // Check if column 0 is an STT (serial number) column and strip it directly so indices never shift
-  if (rows[0].length > 1) {
-    const firstHeader = String(rows[0][0] || '').trim().toLowerCase();
-    const isExplicitSttHeader = (
-      firstHeader === 'stt' ||
-      firstHeader === 'tt' ||
-      firstHeader === 'no' ||
-      firstHeader === 'no.' ||
-      firstHeader === '#' ||
-      firstHeader.includes('số thứ tự')
-    );
-
-    const dataSample = rows.slice(1, Math.min(8, rows.length));
-    const isDataCol0Sequential = dataSample.length > 0 && dataSample.every((r, idx) => {
-      const v = String(r[0] || '').trim();
-      return /^\d{1,4}[.)]?$/.test(v) && Number(v.replace(/\D/g, '')) === idx + 1;
-    });
-
-    const isAllRowsCol0Sequential = rows.length >= 2 && rows.slice(0, Math.min(8, rows.length)).every((r, idx) => {
-      const v = String(r[0] || '').trim();
-      return /^\d{1,4}[.)]?$/.test(v) && Number(v.replace(/\D/g, '')) === idx + 1;
-    });
-
-    const isCol0PureSmallIntegers = dataSample.length >= 2 &&
-      (firstHeader === '' || isExplicitSttHeader) &&
-      dataSample.every(r => /^\d{1,4}$/.test(String(r[0] || '').trim()));
-
-    if (isExplicitSttHeader || isDataCol0Sequential || isAllRowsCol0Sequential || isCol0PureSmallIntegers) {
-      rows = rows.map(r => r.slice(1));
-    }
-  }
-
+  const rows = lines.map(line => parseCsvLine(line, delimiter)).filter(r => r.some(c => String(c || '').trim() !== ''));
   return { rows };
 }
 
@@ -153,7 +145,7 @@ export function resolveClassIdsFromCell(val, defaultId, classCatalog = []) {
         const codeNorm = normStr(c.code);
         const nameNorm = normStr(c.name);
         return (codeNorm && codeNorm.length >= 3 && (norm.includes(codeNorm) || codeNorm.includes(norm))) ||
-               (nameNorm && nameNorm.length >= 3 && (norm.includes(nameNorm) || nameNorm.includes(norm)));
+               (nameNorm && nameNorm.length >= 4 && (norm.includes(nameNorm) || nameNorm.includes(norm)));
       });
     }
 
@@ -168,191 +160,329 @@ export function resolveClassIdsFromCell(val, defaultId, classCatalog = []) {
   return resolved;
 }
 
-/**
- * Auto-detects column indices from header row and sample data rows.
- * Note: Leading STT column is already stripped in parseRawTable; any remaining STT column is also ignored.
- */
-export function autoDetectColumnMapping(rows = []) {
-  const result = {
-    hasHeader: true,
-    nameMode: 'single',
-    sttCol: -1,
-    codeCol: -1,
-    fullNameCol: -1,
-    familyNameCol: -1,
-    givenNameCol: -1,
-    schoolCol: -1,
-    classCol1: -1,
-    classCol2: -1,
-    classCol3: -1,
-    phoneCol: -1,
-    parentNameCol: -1,
-    statusCol: -1
-  };
-  if (!rows || !rows.length) return result;
+function isDateString(val) {
+  const s = String(val || '').trim();
+  if (!s) return false;
+  return /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/.test(s) || /^\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}$/.test(s);
+}
 
-  const headerRow = rows[0].map(c => String(c || '').trim());
-  const lowerHeaders = headerRow.map(c => c.toLowerCase());
+function isPhoneNumberString(val) {
+  const s = String(val || '').trim().replace(/[\s.\-()]/g, '');
+  return /^(?:0|\+?84)\d{8,10}$/.test(s);
+}
 
-  const looksLikeHeader = lowerHeaders.some(h =>
-    h === 'stt' || h.includes('số thứ tự') || h.includes('tên') || h.includes('họ') ||
-    h.includes('name') || h.includes('mã') || h.includes('trường') ||
-    h.includes('sđt') || h.includes('phone') || h.includes('lớp') || h.includes('class') ||
-    h.includes('trạng thái') || h.includes('tình trạng') || h.includes('status')
-  );
-  result.hasHeader = looksLikeHeader;
+function isStudentCodeLike(val, classCatalog = []) {
+  const s = String(val || '').trim();
+  if (!s || s.includes(' ') || isDateString(s) || isPhoneNumberString(s) || isStatusWord(s)) return false;
+  if (/^\d+$/.test(s)) return false;
+  // If it matches a known class in classCatalog, it is a classCode, NOT a studentCode
+  if (resolveClassIdsFromCell(s, null, classCatalog).length > 0) return false;
+  // Typical student code patterns: K9.1832, K09.3049, HS001, 2K9.0123 (letters/digits with short number suffix)
+  if (/^(?:2?K\d{1,2}|HS|SV|MA|ST)[._\-]?\d{2,6}$/i.test(s)) return true;
+  if (/^[A-Za-z]{1,4}\d{1,2}\.\d{2,6}$/.test(s)) return true;
+  return false;
+}
 
-  if (looksLikeHeader) {
-    lowerHeaders.forEach((h, idx) => {
-      if (!h) return;
-      if (h === 'stt' || h === 'tt' || h === 'no' || h === 'no.' || h === '#' || h.includes('số thứ tự')) {
-        result.sttCol = idx;
-        return;
-      }
-      if (h.includes('trạng thái') || h.includes('tình trạng') || h.includes('theo học') || h === 'status') {
-        if (result.statusCol === -1) result.statusCol = idx;
-        return;
-      }
-      if (h.includes('mã lớp 2') || h.includes('lớp 2') || h === 'class 2') {
-        if (result.classCol2 === -1) result.classCol2 = idx;
-        return;
-      }
-      if (h.includes('mã lớp 3') || h.includes('lớp 3') || h === 'class 3') {
-        if (result.classCol3 === -1) result.classCol3 = idx;
-        return;
-      }
-      if (h.includes('mã lớp') || h.includes('lớp 1') || h.includes('các lớp') || h.includes('lớp học') || h === 'lớp' || h === 'class' || h.includes('class code')) {
-        if (result.classCol1 === -1) result.classCol1 = idx;
-        return;
-      }
-      if (h.includes('mã hs') || h.includes('mã học sinh') || h.includes('mã số') || h.includes('student code') || h === 'mã' || h === 'code' || h === 'id') {
-        if (result.codeCol === -1) result.codeCol = idx;
-        return;
-      }
-      if (h.includes('sđt') || h.includes('điện thoại') || h.includes('phone') || h.includes('tel') || h.includes('liên hệ')) {
-        if (result.phoneCol === -1) result.phoneCol = idx;
-        return;
-      }
-      if (h.includes('phụ huynh') || h.includes('tên ph') || h.includes('họ tên ph') || h.includes('parent') || h.includes('bố') || h.includes('mẹ')) {
-        if (result.parentNameCol === -1) result.parentNameCol = idx;
-        return;
-      }
-      if (h.includes('trường') || h.includes('school')) {
-        if (result.schoolCol === -1) result.schoolCol = idx;
-        return;
-      }
-      if (h.includes('họ và tên đệm') || h.includes('họ đệm') || h === 'họ' || h === 'last name' || h === 'family name') {
-        if (result.familyNameCol === -1) result.familyNameCol = idx;
-        return;
-      }
-      if (h.includes('họ và tên') || h.includes('họ tên') || h === 'full name' || h === 'fullname') {
-        if (result.fullNameCol === -1) result.fullNameCol = idx;
-        return;
-      }
-      if (h === 'tên' || h === 'tên hs' || h === 'tên học sinh' || h === 'first name' || h === 'given name' || h === 'name') {
-        if (result.givenNameCol === -1) result.givenNameCol = idx;
-        return;
-      }
-    });
-
-    if (result.fullNameCol === -1 && result.familyNameCol === -1 && result.givenNameCol >= 0) {
-      result.fullNameCol = result.givenNameCol;
-    }
-    if (result.fullNameCol === -1 && result.familyNameCol >= 0 && result.givenNameCol >= 0) {
-      result.nameMode = 'split';
-    }
-  } else {
-    // Heuristic inspection of row[0] cells when no header row is present
-    const sample = rows[0].map(c => String(c || '').trim());
-    let cur = 0;
-    // Check if sample[0] looks like a student code (e.g., K9.730, HS001, 2K9...)
-    if (sample[cur] && (/^[A-Za-z0-9._-]{3,16}$/.test(sample[cur]) && /\d/.test(sample[cur]) && !/^0\d{8,10}$/.test(sample[cur]))) {
-      result.codeCol = cur++;
-    }
-    // Check if next two columns are split familyName + givenName (givenName is 1 word, next col is school/class)
-    if (sample.length >= cur + 3 && sample[cur + 1] && !sample[cur + 1].includes(' ')) {
-      result.nameMode = 'split';
-      result.familyNameCol = cur;
-      result.givenNameCol = cur + 1;
-      cur += 2;
-    } else {
-      result.fullNameCol = cur++;
-    }
-    if (sample.length > cur) result.schoolCol = cur++;
-    if (sample.length > cur) result.classCol1 = cur++;
-    if (sample.length > cur) result.phoneCol = cur++;
-  }
-
-  if (result.nameMode === 'single' && result.fullNameCol === -1) {
-    const used = new Set([
-      result.sttCol, result.codeCol, result.schoolCol,
-      result.classCol1, result.classCol2, result.classCol3,
-      result.phoneCol, result.parentNameCol, result.statusCol
-    ]);
-    for (let idx = 0; idx < headerRow.length; idx++) {
-      if (!used.has(idx)) {
-        result.fullNameCol = idx;
-        break;
-      }
-    }
-    if (result.fullNameCol === -1) result.fullNameCol = 0;
-  }
-
-  return result;
+function isClassCodeLike(val, classCatalog = []) {
+  const s = String(val || '').trim();
+  if (!s || isDateString(s) || isPhoneNumberString(s) || isStatusWord(s) || /^\d+$/.test(s)) return false;
+  if (resolveClassIdsFromCell(s, null, classCatalog).length > 0) return true;
+  // Multi-part class codes like TSA2.QUANBM, 2K9.H4.GIANGNH, T3.QUANGDM (contains letters after dot)
+  if (/^[A-Za-z0-9]{2,8}\.[A-Za-z0-9._\-]{2,20}$/.test(s) && /[A-Za-z]{2,}$/.test(s)) return true;
+  return false;
 }
 
 /**
- * Maps raw table rows according to user's custom column mapping
+ * Smart content + header inspection that returns { hasHeader, roles: ['status', 'code', 'familyName', 'givenName', 'ignore', 'school', 'classCode', ...] }
+ * for the Interactive Data Grid.
  */
-export function mapCustomColumns(rows, mapping, classCatalog = []) {
-  if (!rows || !rows.length) return [];
+export function autoDetectGridColumnRoles(rows = [], classCatalog = []) {
+  if (!rows || !rows.length) return { hasHeader: false, roles: [] };
+  const maxCols = Math.max(...rows.slice(0, 15).map(r => r.length));
+  const firstRow = rows[0].map(c => String(c || '').trim());
+  const lowerFirst = firstRow.map(c => c.toLowerCase());
 
-  const startIndex = mapping.hasHeader ? 1 : 0;
+  // Determine whether row 0 is a header row or already a data row!
+  // If row 0 contains a date ("02/10/2026"), a student code ("K9.1832"), a phone number, or a status value ("HỌC") alongside codes:
+  const row0HasDataSignals = firstRow.some(cell =>
+    isDateString(cell) ||
+    isPhoneNumberString(cell) ||
+    isStudentCodeLike(cell, classCatalog) ||
+    isStatusWord(cell)
+  );
+
+  const HEADER_KEYWORDS = [
+    'stt', 'số thứ tự', 'mã hs', 'mã học sinh', 'student code',
+    'họ và tên', 'họ tên', 'họ đệm', 'họ và tên đệm', 'tên hs', 'tên học sinh',
+    'trường', 'trường học', 'sđt', 'điện thoại', 'phụ huynh', 'mã lớp', 'lớp học',
+    'trạng thái', 'tình trạng', 'ngày sinh', 'ngày vào'
+  ];
+  const row0HeaderMatches = lowerFirst.filter(h =>
+    HEADER_KEYWORDS.some(kw => h === kw || (kw.length >= 4 && h.includes(kw))) ||
+    h === 'tên' || h === 'họ' || h === 'lớp' || h === 'mã' || h === 'đại' || h === 'hình'
+  ).length;
+
+  const hasHeader = !row0HasDataSignals && row0HeaderMatches >= 2 && rows.length > 1;
+  const dataRows = (hasHeader ? rows.slice(1) : rows).slice(0, 20);
+  const roles = new Array(maxCols).fill('ignore');
+
+  // 1. If hasHeader is true, use header names first, then verify/fill with data samples
+  if (hasHeader) {
+    lowerFirst.forEach((h, idx) => {
+      if (!h) return;
+      if (h === 'stt' || h === 'tt' || h === 'no' || h === 'no.' || h === '#' || h.includes('số thứ tự') || h.includes('ngày')) {
+        roles[idx] = 'ignore';
+      } else if (h.includes('trạng thái') || h.includes('tình trạng') || h.includes('tt học') || h === 'status') {
+        roles[idx] = 'status';
+      } else if (h.includes('mã lớp') || h.includes('lớp') || h === 'class' || h === 'đại' || h === 'hình') {
+        roles[idx] = 'classCode';
+      } else if (h.includes('mã hs') || h.includes('mã học sinh') || h.includes('student code') || h === 'mã' || h === 'code') {
+        roles[idx] = 'code';
+      } else if (h.includes('sđt') || h.includes('điện thoại') || h.includes('phone') || h.includes('tel')) {
+        roles[idx] = 'phone';
+      } else if (h.includes('phụ huynh') || h.includes('tên ph') || h.includes('parent')) {
+        roles[idx] = 'parentName';
+      } else if (h.includes('trường') || h.includes('school')) {
+        roles[idx] = 'school';
+      } else if (h.includes('họ và tên đệm') || h.includes('họ đệm') || h === 'họ' || h === 'last name') {
+        roles[idx] = 'familyName';
+      } else if (h.includes('họ và tên') || h.includes('họ tên') || h === 'full name' || h === 'fullname') {
+        roles[idx] = 'fullName';
+      } else if (h === 'tên' || h === 'tên hs' || h === 'tên học sinh' || h === 'first name' || h === 'name') {
+        roles[idx] = 'givenName';
+      } else if (h.includes('tag') || h.includes('phân loại')) {
+        roles[idx] = 'tag';
+      }
+    });
+  }
+
+  // 2. Content-based inspection for any column still marked 'ignore' (or all columns when hasHeader is false)
+  const colSamples = Array.from({ length: maxCols }, (_, colIdx) =>
+    dataRows.map(r => String(r[colIdx] ?? '').trim()).filter(Boolean)
+  );
+
+  // Pass A: Identify unambiguous pattern columns (STT, Date, Status, Phone, StudentCode, ClassCode)
+  for (let colIdx = 0; colIdx < maxCols; colIdx++) {
+    if (hasHeader && roles[colIdx] !== 'ignore') continue;
+    const vals = colSamples[colIdx];
+    if (!vals.length) continue;
+
+    const ratio = (pred) => vals.filter(pred).length / vals.length;
+
+    // Check sequential STT / pure small integers
+    if (ratio(v => /^\d{1,4}[.)]?$/.test(v)) >= 0.8) {
+      roles[colIdx] = 'ignore';
+      continue;
+    }
+    // Check Date (e.g. 02/10/2026) -> ignore!
+    if (ratio(isDateString) >= 0.6) {
+      roles[colIdx] = 'ignore';
+      continue;
+    }
+    // Check Status ("HỌC", "Nghỉ", "Tạm nghỉ"...)
+    if (ratio(isStatusWord) >= 0.5) {
+      if (!roles.includes('status')) {
+        roles[colIdx] = 'status';
+        continue;
+      }
+    }
+    // Check Phone
+    if (ratio(isPhoneNumberString) >= 0.5) {
+      if (!roles.includes('phone')) {
+        roles[colIdx] = 'phone';
+        continue;
+      }
+    }
+    // Check Student Code (e.g. K9.1832)
+    if (ratio(v => isStudentCodeLike(v, classCatalog)) >= 0.5) {
+      if (!roles.includes('code')) {
+        roles[colIdx] = 'code';
+        continue;
+      }
+    }
+    // Check Class Code (e.g. 2K9.H4.GIANGNH, TSA2.QUANBM)
+    if (ratio(v => isClassCodeLike(v, classCatalog)) >= 0.4) {
+      roles[colIdx] = 'classCode';
+      continue;
+    }
+  }
+
+  // Pass B: Identify Name columns (familyName + givenName OR fullName) and School column among remaining text columns
+  const hasAnyNameRole = roles.includes('fullName') || roles.includes('givenName') || roles.includes('familyName');
+  if (!hasAnyNameRole) {
+    const candidateCols = [];
+    for (let colIdx = 0; colIdx < maxCols; colIdx++) {
+      if (roles[colIdx] !== 'ignore') continue;
+      const vals = colSamples[colIdx];
+      if (!vals.length) continue;
+      // Ignore pure numbers or dates
+      if (vals.every(v => /^\d+$/.test(v) || isDateString(v))) continue;
+      candidateCols.push(colIdx);
+    }
+
+    // Check if there is a pair of adjacent columns (colA, colB) where colA is familyName (1-4 words) and colB is givenName (single word, no spaces, Vietnamese letters)
+    let foundSplitPair = false;
+    for (let i = 0; i < candidateCols.length - 1; i++) {
+      const cA = candidateCols[i];
+      const cB = candidateCols[i + 1];
+      if (cB === cA + 1) {
+        const valsA = colSamples[cA];
+        const valsB = colSamples[cB];
+        const aLooksLikeFamily = valsA.filter(v => !/\d/.test(v) && v.length >= 2).length / Math.max(1, valsA.length) >= 0.6;
+        const bLooksLikeSingleGiven = valsB.filter(v => !v.includes(' ') && !/\d/.test(v) && v.length >= 1 && v.length <= 12).length / Math.max(1, valsB.length) >= 0.7;
+        if (aLooksLikeFamily && bLooksLikeSingleGiven) {
+          roles[cA] = 'familyName';
+          roles[cB] = 'givenName';
+          foundSplitPair = true;
+          break;
+        }
+      }
+    }
+
+    if (!foundSplitPair && candidateCols.length > 0) {
+      // Find first column that looks like full Vietnamese name
+      const fullCol = candidateCols.find(c => {
+        const vals = colSamples[c];
+        return vals.filter(v => v.includes(' ') && !/\d/.test(v)).length / Math.max(1, vals.length) >= 0.5;
+      }) ?? candidateCols[0];
+      roles[fullCol] = 'fullName';
+    }
+  } else if (roles.includes('givenName') && !roles.includes('familyName') && !roles.includes('fullName')) {
+    // If only "Tên" was matched by header and no "Họ đệm", check if previous column is familyName, otherwise make it fullName
+    const gIdx = roles.indexOf('givenName');
+    const valsG = colSamples[gIdx] || [];
+    const mostlyMultiWord = valsG.filter(v => v.includes(' ')).length / Math.max(1, valsG.length) >= 0.5;
+    if (mostlyMultiWord) {
+      roles[gIdx] = 'fullName';
+    }
+  }
+
+  // Pass C: Find School column among remaining unassigned text columns after the name columns
+  if (!roles.includes('school')) {
+    const lastNameIdx = Math.max(roles.indexOf('givenName'), roles.indexOf('fullName'), roles.indexOf('familyName'));
+    for (let colIdx = Math.max(0, lastNameIdx + 1); colIdx < maxCols; colIdx++) {
+      if (roles[colIdx] !== 'ignore') continue;
+      const vals = colSamples[colIdx];
+      if (!vals.length) continue;
+      if (vals.filter(v => isDateString(v) || /^\d+$/.test(v)).length / vals.length >= 0.5) continue;
+      roles[colIdx] = 'school';
+      break;
+    }
+  }
+
+  return { hasHeader, roles };
+}
+
+/**
+ * Extracts student objects directly from the Interactive Data Grid using the column role array.
+ */
+export function extractStudentsFromGrid(rows = [], roles = [], options = {}, classCatalog = []) {
+  if (!rows || !rows.length) return [];
+  const {
+    hasHeader = false,
+    defaultClassId = '',
+    contextClassId = ''
+  } = options;
+
+  const startIndex = hasHeader ? 1 : 0;
   const results = [];
+
+  const codeCols = [];
+  const familyCols = [];
+  const givenCols = [];
+  const fullCols = [];
+  const schoolCols = [];
+  const classCols = [];
+  const phoneCols = [];
+  const parentCols = [];
+  const statusCols = [];
+  const tagCols = [];
+
+  roles.forEach((role, idx) => {
+    if (role === 'code') codeCols.push(idx);
+    else if (role === 'familyName') familyCols.push(idx);
+    else if (role === 'givenName') givenCols.push(idx);
+    else if (role === 'fullName') fullCols.push(idx);
+    else if (role === 'school') schoolCols.push(idx);
+    else if (role === 'classCode') classCols.push(idx);
+    else if (role === 'phone') phoneCols.push(idx);
+    else if (role === 'parentName') parentCols.push(idx);
+    else if (role === 'status') statusCols.push(idx);
+    else if (role === 'tag') tagCols.push(idx);
+  });
 
   for (let i = startIndex; i < rows.length; i++) {
     const row = rows[i];
     if (!row || !row.length) continue;
 
+    const firstNonEmpty = (cols) => {
+      for (const c of cols) {
+        const v = String(row[c] ?? '').trim();
+        if (v) return v;
+      }
+      return '';
+    };
+
     let familyName = '';
     let givenName = '';
     let fullName = '';
 
-    if (mapping.nameMode === 'split') {
-      familyName = String((mapping.familyNameCol >= 0 ? row[mapping.familyNameCol] : '') || '').trim();
-      givenName = String((mapping.givenNameCol >= 0 ? row[mapping.givenNameCol] : '') || '').trim();
+    if (familyCols.length || givenCols.length) {
+      familyName = firstNonEmpty(familyCols);
+      givenName = firstNonEmpty(givenCols);
       fullName = `${familyName} ${givenName}`.trim();
-    } else {
-      fullName = String((mapping.fullNameCol >= 0 ? row[mapping.fullNameCol] : '') || '').trim();
-      const split = splitVietnameseName(fullName);
-      familyName = split.familyName;
-      givenName = split.givenName;
+      if (!familyName && fullName.includes(' ')) {
+        const sp = splitVietnameseName(fullName);
+        familyName = sp.familyName;
+        givenName = sp.givenName;
+      }
+    } else if (fullCols.length) {
+      fullName = firstNonEmpty(fullCols);
+      const sp = splitVietnameseName(fullName);
+      familyName = sp.familyName;
+      givenName = sp.givenName;
     }
 
     if (!fullName || fullName.length < 2 || /^\d+$/.test(fullName)) continue;
 
-    const studentCode = (mapping.codeCol >= 0 ? row[mapping.codeCol] : '') || '';
-    const school = (mapping.schoolCol >= 0 ? row[mapping.schoolCol] : '') || '';
-    const parentPhone = (mapping.phoneCol >= 0 ? row[mapping.phoneCol] : '') || '';
-    const parentName = (mapping.parentNameCol >= 0 ? row[mapping.parentNameCol] : '') || '';
-    const tag = (mapping.tagCol >= 0 ? row[mapping.tagCol] : '') || '';
-    const rawStatus = (mapping.statusCol >= 0 ? row[mapping.statusCol] : '') || '';
-    const enrollmentStatus = normalizeEnrollmentStatus(rawStatus);
+    let rawCode = firstNonEmpty(codeCols);
+    // Guard: never allow a status word ("HỌC") or pure serial integer ("1", "2") or date to be saved as studentCode!
+    if (rawCode && (isStatusWord(rawCode) || /^\d{1,3}$/.test(rawCode) || isDateString(rawCode))) {
+      rawCode = '';
+    }
 
-    // Collect class IDs from mapped class columns AND selected/context target class
+    let rawSchool = firstNonEmpty(schoolCols);
+    if (rawSchool && isDateString(rawSchool)) {
+      rawSchool = '';
+    }
+
+    const parentPhone = firstNonEmpty(phoneCols);
+    const parentName = firstNonEmpty(parentCols);
+    const rawStatus = firstNonEmpty(statusCols);
+    const enrollmentStatus = normalizeEnrollmentStatus(rawStatus);
+    const rawTag = firstNonEmpty(tagCols);
+
+    // Resolve class IDs from all columns marked as 'classCode'
     const classIds = [];
-    for (const colIdx of [mapping.classCol1, mapping.classCol2, mapping.classCol3]) {
-      if (colIdx >= 0 && row[colIdx] && String(row[colIdx]).trim()) {
-        const ids = resolveClassIdsFromCell(row[colIdx], null, classCatalog);
-        ids.forEach(cid => { if (cid && !classIds.includes(cid)) classIds.push(cid); });
+    for (const cIdx of classCols) {
+      const cellVal = String(row[cIdx] ?? '').trim();
+      if (cellVal) {
+        const ids = resolveClassIdsFromCell(cellVal, null, classCatalog);
+        ids.forEach(cid => {
+          if (cid && !classIds.includes(cid)) classIds.push(cid);
+        });
       }
     }
 
-    // If user explicitly opened import inside a specific class roster (contextClassId) or selected defaultClassId:
-    const targetClassId = mapping.defaultClassId || mapping.contextClassId || '';
-    if (targetClassId && (!classIds.length || mapping.contextClassId)) {
-      if (!classIds.includes(targetClassId)) {
-        classIds.push(targetClassId);
+    // CRITICAL RULE:
+    // 1. If opened inside a specific class context (contextClassId, e.g., 2K9.H4.GIANGNH), ALWAYS attach contextClassId!
+    if (contextClassId && !classIds.includes(contextClassId)) {
+      classIds.push(contextClassId);
+    }
+    // 2. If user selected a defaultClassId in the dropdown and no class matched (or defaultClassId is explicitly set), attach defaultClassId!
+    if (defaultClassId && !classIds.includes(defaultClassId)) {
+      if (!classIds.length || defaultClassId === contextClassId) {
+        classIds.push(defaultClassId);
       }
     }
 
@@ -360,15 +490,15 @@ export function mapCustomColumns(rows, mapping, classCatalog = []) {
       name: fullName,
       familyName,
       givenName,
-      studentCode: studentCode ? String(studentCode).trim() : null,
-      school: String(school).trim(),
+      studentCode: rawCode ? rawCode.toUpperCase() : null,
+      school: rawSchool,
       classIds,
       parentContact: {
-        name: String(parentName).trim(),
-        phone: String(parentPhone).trim()
+        name: parentName,
+        phone: parentPhone
       },
       enrollmentStatus,
-      tag: tag || '',
+      tag: rawTag,
       isNew: false
     });
   }
@@ -377,19 +507,63 @@ export function mapCustomColumns(rows, mapping, classCatalog = []) {
 }
 
 /**
- * Standard auto-detection for simple pasted text
+ * Legacy-compatible wrappers so any external call to autoDetectColumnMapping / mapCustomColumns also uses the smart engine.
  */
+export function autoDetectColumnMapping(rows = [], classCatalog = []) {
+  const { hasHeader, roles } = autoDetectGridColumnRoles(rows, classCatalog);
+  const classCols = roles.map((r, i) => r === 'classCode' ? i : -1).filter(i => i >= 0);
+  const hasSplit = roles.includes('familyName') || roles.includes('givenName');
+  return {
+    hasHeader,
+    nameMode: hasSplit && !roles.includes('fullName') ? 'split' : 'single',
+    sttCol: -1,
+    codeCol: roles.indexOf('code'),
+    fullNameCol: roles.indexOf('fullName'),
+    familyNameCol: roles.indexOf('familyName'),
+    givenNameCol: roles.indexOf('givenName'),
+    schoolCol: roles.indexOf('school'),
+    classCol1: classCols[0] ?? -1,
+    classCol2: classCols[1] ?? -1,
+    classCol3: classCols[2] ?? -1,
+    phoneCol: roles.indexOf('phone'),
+    parentNameCol: roles.indexOf('parentName'),
+    statusCol: roles.indexOf('status'),
+    roles
+  };
+}
+
+export function mapCustomColumns(rows, mapping, classCatalog = []) {
+  if (mapping && Array.isArray(mapping.roles)) {
+    return extractStudentsFromGrid(rows, mapping.roles, mapping, classCatalog);
+  }
+  const maxCols = Math.max(12, ...(rows || []).slice(0, 5).map(r => r.length));
+  const roles = new Array(maxCols).fill('ignore');
+  if (mapping) {
+    if (mapping.codeCol >= 0) roles[mapping.codeCol] = 'code';
+    if (mapping.nameMode === 'split') {
+      if (mapping.familyNameCol >= 0) roles[mapping.familyNameCol] = 'familyName';
+      if (mapping.givenNameCol >= 0) roles[mapping.givenNameCol] = 'givenName';
+    } else if (mapping.fullNameCol >= 0) {
+      roles[mapping.fullNameCol] = 'fullName';
+    }
+    if (mapping.schoolCol >= 0) roles[mapping.schoolCol] = 'school';
+    if (mapping.classCol1 >= 0) roles[mapping.classCol1] = 'classCode';
+    if (mapping.classCol2 >= 0) roles[mapping.classCol2] = 'classCode';
+    if (mapping.classCol3 >= 0) roles[mapping.classCol3] = 'classCode';
+    if (mapping.phoneCol >= 0) roles[mapping.phoneCol] = 'phone';
+    if (mapping.parentNameCol >= 0) roles[mapping.parentNameCol] = 'parentName';
+    if (mapping.statusCol >= 0) roles[mapping.statusCol] = 'status';
+  }
+  return extractStudentsFromGrid(rows, roles, mapping || {}, classCatalog);
+}
+
 export function parseRosterText(rawText, classCatalog = [], defaultClassId = null) {
   const { rows } = parseRawTable(rawText);
   if (!rows.length) return [];
-  const detected = autoDetectColumnMapping(rows);
-  detected.defaultClassId = defaultClassId;
-  return mapCustomColumns(rows, detected, classCatalog);
+  const { hasHeader, roles } = autoDetectGridColumnRoles(rows, classCatalog);
+  return extractStudentsFromGrid(rows, roles, { hasHeader, defaultClassId }, classCatalog);
 }
 
-/**
- * Downloads a string content as a file in browser.
- */
 export function downloadFile(content, fileName, mimeType = 'text/csv;charset=utf-8;') {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -404,21 +578,16 @@ export function downloadFile(content, fileName, mimeType = 'text/csv;charset=utf
   }, 100);
 }
 
-/**
- * Exports data to CSV with UTF-8 BOM so Excel opens it with full Vietnamese diacritics.
- */
 export function exportToCsv(headers, rows, fileName = 'bao-cao.csv') {
   const escapeCell = (cell) => {
     const str = String(cell ?? '').replace(/"/g, '""');
     return `"${str}"`;
   };
-
   const csvRows = [];
   csvRows.push(headers.map(escapeCell).join(','));
   rows.forEach(row => {
     csvRows.push(row.map(escapeCell).join(','));
   });
-
   const csvContent = '\uFEFF' + csvRows.join('\r\n');
   downloadFile(csvContent, fileName, 'text/csv;charset=utf-8;');
 }
@@ -448,9 +617,7 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
   if (!config.spreadsheetId) {
     throw new Error('Chưa cấu hình Google Spreadsheet ID');
   }
-
   await new Promise(res => setTimeout(res, 600));
-
   const timestamp = Date.now();
   const updatedConfig = {
     ...config,
