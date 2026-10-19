@@ -1,12 +1,12 @@
 {
   "name": "lop-hoc-vui",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "private": true,
-  "description": "Hệ thống quản lý lớp học, sơ đồ chỗ ngồi & lớp bổ trợ (v3.2)",
+  "description": "Hệ thống quản lý lớp học, sơ đồ chỗ ngồi & lớp bổ trợ (v3.3)",
   "scripts": {
     "start": "node server.mjs",
     "deploy": "firebase deploy --only hosting",
-    "deploy:all": "git add -A && git commit -m \"Update Lop Hoc Vui v3.2\" && git push && npx firebase-tools deploy --only hosting"
+    "deploy:all": "git add -A && git commit -m \"Update Lop Hoc Vui v3.3\" && git push && npx firebase-tools deploy --only hosting"
   },
   "type": "module"
 }

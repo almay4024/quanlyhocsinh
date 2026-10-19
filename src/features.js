@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=3.2';
+import { matchesAcronymOrText } from './student-search.js?v=3.3';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.2';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.2';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.2';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.3';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.3';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.3';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.2';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.3';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -28,7 +28,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=3.2';
+} from './excel-import-export.js?v=3.3';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -39,7 +39,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=3.2';
+} from './data/session-history-repository.js?v=3.3';
 
 export function setupFeatures(ctx) {
   const {
@@ -139,37 +139,9 @@ export function setupFeatures(ctx) {
   }
 
   function renderLoginScreen() {
-    const master = getMasterData();
-    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+    // Bảo mật: Không hiển thị danh sách tài khoản hay gợi ý mật khẩu trên màn hình đăng nhập
     const select = $('#login-employee-select');
-
-    const roleNames = {
-      assistant: 'Trợ giảng',
-      teacher: 'Giáo viên',
-      office: 'Văn phòng',
-      admin: 'Quản trị viên'
-    };
-
-    if (select) {
-      select.innerHTML = employees
-        .filter(emp => emp.isActive !== false)
-        .map(emp => `
-          <option value="${escapeHtml(emp.id)}" data-emp-code="${escapeHtml(emp.code)}">${escapeHtml(emp.code)} — ${escapeHtml(emp.name)} (${escapeHtml(roleNames[emp.role] || emp.role)})</option>
-        `).join('');
-    }
-
-    // Update preset role cards with actual employee code & current password hint
-    document.querySelectorAll('.login-role-card[data-direct-role]').forEach(card => {
-      const targetRole = card.dataset.directRole;
-      const emp = employees.find(e => e.role === targetRole && e.isActive !== false) || employees.find(e => e.role === targetRole);
-      if (emp) {
-        const badgeEl = card.querySelector('.preset-code-badge');
-        const smallEl = card.querySelector('small');
-        if (badgeEl) badgeEl.textContent = emp.code;
-        if (smallEl) smallEl.innerHTML = `${escapeHtml(emp.name)} · MK: <code>${escapeHtml(emp.password)}</code>`;
-      }
-    });
-
+    if (select) select.innerHTML = '';
     setLoginError('');
   }
 
@@ -474,6 +446,18 @@ export function setupFeatures(ctx) {
       role: 'assistant'
     };
 
+    const isAdmin = employee.role === 'admin';
+    const mgmtTabStaffEl = $('#mgmt-tab-staff');
+    if (mgmtTabStaffEl) {
+      mgmtTabStaffEl.hidden = !isAdmin;
+      mgmtTabStaffEl.style.display = isAdmin ? '' : 'none';
+    }
+    if (!isAdmin && $('#mgmt-panel-staff') && !$('#mgmt-panel-staff').hidden) {
+      $('#mgmt-panel-staff').hidden = true;
+      if ($('#staff-table-tbody')) $('#staff-table-tbody').innerHTML = '';
+      $('#mgmt-tab-classes')?.click();
+    }
+
     const roleNames = {
       assistant: 'Trợ giảng',
       office: 'Văn phòng',
@@ -507,7 +491,7 @@ export function setupFeatures(ctx) {
     const master = getMasterData();
     const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
     const currentAcc = getSignedInAccount();
-    const currentEmp = employees.find(e => e.id === currentAcc?.employeeId) || employees[0];
+    const currentEmp = employees.find(e => e.id === currentAcc?.employeeId);
     const isAdminUser = currentEmp?.role === 'admin';
 
     const roleNames = {
@@ -517,7 +501,11 @@ export function setupFeatures(ctx) {
       admin: 'Quản trị viên (Admin)'
     };
 
-    // 1. Render Active Account Card with integrated Logout button inside
+    const authBox = $('#account-switch-auth-box');
+    if (authBox) authBox.hidden = true;
+    pendingSwitchTargetEmpId = null;
+
+    // 1. Render Active Account Card (Only current user's own info + Switch by Username/Password + Logout)
     const activeCard = $('#active-account-profile-card');
     if (activeCard && currentEmp) {
       const nameParts = String(currentEmp.name || '').split(' ').filter(Boolean);
@@ -534,18 +522,33 @@ export function setupFeatures(ctx) {
               <span class="staff-role-badge ${escapeHtml(currentEmp.role)}">${escapeHtml(roleNames[currentEmp.role] || currentEmp.role)}</span>
             </div>
             <div class="active-account-sub">
-              <span>Mã nhân viên: <strong>${escapeHtml(currentEmp.code)}</strong></span>
+              <span>Tên đăng nhập / Mã NV: <strong>${escapeHtml(currentEmp.code)}</strong></span>
               ${currentEmp.phone ? `<span>· SĐT: ${escapeHtml(currentEmp.phone)}</span>` : ''}
               ${currentEmp.email ? `<span>· ${escapeHtml(currentEmp.email)}</span>` : ''}
             </div>
-            <small style="color:#2e6f40; font-weight:600;">● Đang đăng nhập trên thiết bị này</small>
+            <small style="color:#2e6f40; font-weight:600;">● Đang đăng nhập hợp lệ</small>
           </div>
           <div class="active-account-actions">
-            ${isAdminUser ? `<button type="button" class="outline-button" id="active-card-change-my-pw-btn" style="padding:7px 11px; font-size:13px;">🔑 Đổi mật khẩu</button>` : ''}
+            <button type="button" class="outline-button" id="active-card-switch-account-btn" style="padding:7px 11px; font-size:13px;">⇄ Đổi tài khoản</button>
+            ${isAdminUser ? `<button type="button" class="outline-button" id="active-card-change-my-pw-btn" style="padding:7px 11px; font-size:13px;">🔑 Đổi MK</button>` : ''}
             <button type="button" class="logout-button-inside" id="active-card-logout-btn" title="Đăng xuất khỏi tài khoản ${escapeHtml(currentEmp.code)}">⎋ Đăng xuất</button>
           </div>
         </div>
       `;
+
+      activeCard.querySelector('#active-card-switch-account-btn')?.addEventListener('click', () => {
+        if (!authBox) return;
+        authBox.hidden = !authBox.hidden;
+        if (!authBox.hidden) {
+          const codeInp = $('#account-switch-code-input');
+          const pwInp = $('#account-switch-password-input');
+          const err = $('#account-switch-auth-error');
+          if (err) { err.hidden = true; err.textContent = ''; }
+          if (codeInp) codeInp.value = '';
+          if (pwInp) pwInp.value = '';
+          setTimeout(() => codeInp?.focus(), 30);
+        }
+      });
 
       activeCard.querySelector('#active-card-logout-btn')?.addEventListener('click', () => {
         try { $('#account-switch-dialog')?.close(); } catch {}
@@ -558,7 +561,6 @@ export function setupFeatures(ctx) {
       });
     }
 
-    // Show/hide Admin quick button in footer
     const adminOpenStaffBtn = $('#admin-open-staff-pw-btn');
     if (adminOpenStaffBtn) {
       adminOpenStaffBtn.hidden = !isAdminUser;
@@ -570,96 +572,68 @@ export function setupFeatures(ctx) {
       };
     }
 
-    const hintEl = $('#account-switch-hint');
-    if (hintEl) {
-      hintEl.textContent = isAdminUser
-        ? 'Quyền Admin: Bạn có thể chuyển nhanh sang bất kỳ tài khoản nhân sự nào để kiểm tra giao diện hoặc bấm 🔑 để cấp lại mật khẩu.'
-        : 'Chọn tài khoản bên dưới và nhập mật khẩu tương ứng để chuyển phiên làm việc.';
-    }
-
-    // Hide password prompt box initially
-    const authBox = $('#account-switch-auth-box');
-    if (authBox) authBox.hidden = true;
-    pendingSwitchTargetEmpId = null;
-
+    // 2. Strictly hide account list from non-Admin accounts so nobody knows other accounts exist!
+    const adminListSection = $('#admin-only-account-list-section');
     const list = $('#account-switch-list');
-    if (!list) return;
-
-    const roleGroups = [
-      { role: 'admin', title: 'Quản trị viên (Toàn quyền hệ thống & Quản lý mật khẩu)' },
-      { role: 'assistant', title: 'Trợ giảng (Thao tác trực tiếp tại lớp)' },
-      { role: 'teacher', title: 'Giáo viên (Theo dõi tiến độ & Báo cáo)' },
-      { role: 'office', title: 'Văn phòng (Quản lý tổng quan & Phòng học)' }
-    ];
-
-    list.innerHTML = roleGroups.map(group => {
-      const emps = employees.filter(e => e.role === group.role);
-      if (!emps.length) return '';
-      return `
-        <div class="account-role-group">
-          <div class="account-role-title">${escapeHtml(group.title)}</div>
-          <div class="account-cards-grid">
-            ${emps.map(emp => {
-              const isCurrent = emp.id === currentAcc?.employeeId;
-              const isLocked = emp.isActive === false;
-              return `
-                <div class="account-user-card-wrap">
-                  <button type="button" class="account-user-card ${isCurrent ? 'active' : ''} ${isLocked ? 'locked' : ''}" data-emp-id="${escapeHtml(emp.id)}" ${isLocked ? 'disabled title="Tài khoản đang bị khóa"' : ''}>
-                    <div>
-                      <strong>${escapeHtml(emp.name)} ${isCurrent ? '✓' : ''} ${isLocked ? '🔒' : ''}</strong>
-                      <small>Mã NV: <strong>${escapeHtml(emp.code)}</strong> · ${escapeHtml(isLocked ? 'Đã khóa' : group.role.toUpperCase())}</small>
+    if (!isAdminUser) {
+      if (adminListSection) adminListSection.hidden = true;
+      if (list) list.innerHTML = '';
+    } else {
+      if (adminListSection) adminListSection.hidden = false;
+      const roleGroups = [
+        { role: 'admin', title: 'Quản trị viên (Admin)' },
+        { role: 'assistant', title: 'Trợ giảng (TA)' },
+        { role: 'teacher', title: 'Giáo viên (GV)' },
+        { role: 'office', title: 'Văn phòng (VP)' }
+      ];
+      if (list) {
+        list.innerHTML = roleGroups.map(group => {
+          const emps = employees.filter(e => e.role === group.role);
+          if (!emps.length) return '';
+          return `
+            <div class="account-role-group">
+              <div class="account-role-title">${escapeHtml(group.title)}</div>
+              <div class="account-cards-grid">
+                ${emps.map(emp => {
+                  const isCurrent = emp.id === currentAcc?.employeeId;
+                  const isLocked = emp.isActive === false;
+                  return `
+                    <div class="account-user-card-wrap">
+                      <button type="button" class="account-user-card ${isCurrent ? 'active' : ''} ${isLocked ? 'locked' : ''}" data-emp-id="${escapeHtml(emp.id)}" ${isLocked ? 'disabled title="Tài khoản đang bị khóa"' : ''}>
+                        <div>
+                          <strong>${escapeHtml(emp.name)} ${isCurrent ? '✓' : ''} ${isLocked ? '🔒' : ''}</strong>
+                          <small>Mã NV: <strong>${escapeHtml(emp.code)}</strong> · ${escapeHtml(isLocked ? 'Đã khóa' : group.role.toUpperCase())}</small>
+                        </div>
+                      </button>
+                      <button type="button" class="account-card-pw-btn" data-admin-pw-emp="${escapeHtml(emp.id)}" title="Đổi/Cấp mật khẩu cho ${escapeHtml(emp.name)} (${escapeHtml(emp.code)})">🔑</button>
                     </div>
-                  </button>
-                  ${isAdminUser ? `<button type="button" class="account-card-pw-btn" data-admin-pw-emp="${escapeHtml(emp.id)}" title="Đổi/Cấp mật khẩu cho ${escapeHtml(emp.name)} (${escapeHtml(emp.code)})">🔑</button>` : ''}
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      `;
-    }).join('');
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }).join('');
 
-    list.querySelectorAll('[data-admin-pw-emp]').forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const targetId = btn.dataset.adminPwEmp;
-        try { $('#account-switch-dialog')?.close(); } catch {}
-        openAdminPasswordDialog(targetId);
-      };
-    });
+        list.querySelectorAll('[data-admin-pw-emp]').forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            const targetId = btn.dataset.adminPwEmp;
+            try { $('#account-switch-dialog')?.close(); } catch {}
+            openAdminPasswordDialog(targetId);
+          };
+        });
 
-    list.querySelectorAll('[data-emp-id]').forEach(btn => {
-      btn.onclick = () => {
-        const empId = btn.dataset.empId;
-        const emp = employees.find(e => e.id === empId);
-        if (!emp || emp.isActive === false) return;
-        if (emp.id === currentAcc?.employeeId) {
-          try { $('#account-switch-dialog')?.close(); } catch {}
-          return;
-        }
-
-        // If current user is Admin, allow direct switch for testing; otherwise require target account's password
-        if (isAdminUser) {
-          completeLoginSession(emp, true);
-          try { $('#account-switch-dialog')?.close(); } catch {}
-          return;
-        }
-
-        pendingSwitchTargetEmpId = emp.id;
-        if (authBox) {
-          authBox.hidden = false;
-          const lbl = $('#account-switch-target-label');
-          if (lbl) lbl.textContent = `Nhập mật khẩu của ${emp.name} (${emp.code}):`;
-          const inp = $('#account-switch-password-input');
-          const err = $('#account-switch-auth-error');
-          if (err) { err.hidden = true; err.textContent = ''; }
-          if (inp) {
-            inp.value = '';
-            setTimeout(() => inp.focus(), 30);
-          }
-        }
-      };
-    });
+        list.querySelectorAll('[data-emp-id]').forEach(btn => {
+          btn.onclick = () => {
+            const empId = btn.dataset.empId;
+            const emp = employees.find(e => e.id === empId);
+            if (!emp || emp.isActive === false) return;
+            completeLoginSession(emp, true);
+            try { $('#account-switch-dialog')?.close(); } catch {}
+          };
+        });
+      }
+    }
 
     const accDialog = $('#account-switch-dialog');
     if (accDialog && !accDialog.open) {
@@ -667,7 +641,6 @@ export function setupFeatures(ctx) {
     }
   }
 
-  // ----------------------------------------------------
   // 1.1 QUẢN LÝ NHÂN SỰ & MẬT KHẨU DÀNH RIÊNG CHO ADMIN
   // ----------------------------------------------------
   function openAdminPasswordDialog(empId) {
@@ -686,7 +659,7 @@ export function setupFeatures(ctx) {
 
     $('#admin-pw-emp-id').value = norm.id;
     $('#admin-pw-emp-code').value = `${norm.code} — ${norm.name}`;
-    $('#admin-pw-new-input').value = norm.password || '123456';
+    $('#admin-pw-new-input').value = decryptStaffPasswordForAdmin(norm, 'admin') || '';
     $('#admin-pw-active-select').value = norm.isActive === false ? 'locked' : 'active';
     $('#admin-pw-dialog-title').textContent = `Quản lý mật khẩu: ${norm.name}`;
     $('#admin-pw-dialog-subtitle').textContent = `Mã nhân viên đăng nhập: ${norm.code}. Khi đổi mật khẩu hoặc khóa tài khoản, các thiết bị đang đăng nhập tài khoản này sẽ cần đăng nhập lại.`;
@@ -699,6 +672,11 @@ export function setupFeatures(ctx) {
   }
 
   function renderStaffManagement() {
+    if (getSignedInAccount()?.role !== 'admin') {
+      if ($('#staff-table-tbody')) $('#staff-table-tbody').innerHTML = '';
+      if ($('#mgmt-panel-staff')) $('#mgmt-panel-staff').hidden = true;
+      return;
+    }
     const master = getMasterData();
     const catalog = getClassCatalog();
     const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
@@ -754,7 +732,8 @@ export function setupFeatures(ctx) {
         : '<small style="color:#9ca89f;">Chưa phân công lớp</small>';
 
       const isRevealed = revealedStaffPasswords.has(emp.id);
-      const pwText = isRevealed ? emp.password : '••••••••';
+      const decryptedPw = isRevealed ? (decryptStaffPasswordForAdmin(emp, 'admin') || '••••••••') : '••••••••';
+      const pwText = isRevealed ? decryptedPw : '••••••••';
       const isActive = emp.isActive !== false;
       const statusBadge = isActive
         ? `<span class="staff-status-pill active">● Hoạt động</span>`
@@ -853,6 +832,10 @@ export function setupFeatures(ctx) {
   }
 
   function openStaffDialog(editId = null) {
+    if (getSignedInAccount()?.role !== 'admin') {
+      toast('Chỉ Quản trị viên (Admin) mới có quyền thêm hoặc chỉnh sửa nhân sự.');
+      return;
+    }
     const master = getMasterData();
     const dialog = $('#staff-form-dialog');
     if (!dialog) return;
@@ -869,7 +852,7 @@ export function setupFeatures(ctx) {
       $('#staff-phone').value = emp.phone || '';
       $('#staff-email').value = emp.email || '';
       $('#staff-note').value = emp.note || '';
-      if ($('#staff-password')) $('#staff-password').value = emp.password || '123456';
+      if ($('#staff-password')) $('#staff-password').value = decryptStaffPasswordForAdmin(emp, 'admin') || '';
       if ($('#staff-active-status')) $('#staff-active-status').value = emp.isActive === false ? 'locked' : 'active';
     } else {
       $('#staff-form-title').textContent = 'Thêm nhân viên & Cấp tài khoản mới';
@@ -1691,13 +1674,31 @@ export function setupFeatures(ctx) {
     { key: 'given', label: 'Tên' },
     { key: 'code', label: 'Mã HS' },
     { key: 'school', label: 'Trường / Phân loại' },
-    { key: 'attendance', label: 'Điểm danh' },
-    { key: 'arrivalTime', label: 'Giờ đến' },
+    { key: 'attendance', label: 'Điểm danh (Kèm giờ đến)' },
     { key: 'homework', label: 'BTVN (Kèm lý do)' },
     { key: 'hwScore', label: 'Điểm BTVN' },
     { key: 'testScore', label: 'Điểm Test' },
     { key: 'note', label: 'Ghi chú trong buổi' }
   ];
+
+  function formatMergedAttendanceAndArrival(s, seated, isLate, isPresent, isMakeup, date, classId) {
+    const arrTime = resolveStudentArrivalTime(s, seated, date, classId);
+    const mins = seated?.entry?.attendance?.lateMinutes ?? seated?.entry?.attendance?.minutesLate ?? s?.attendance?.lateMinutes ?? s?.lateMinutes ?? 0;
+    let base = 'Chưa điểm danh';
+    if (isLate) {
+      const detailParts = [];
+      if (arrTime) detailParts.push(arrTime);
+      if (mins) detailParts.push(`muộn ${mins}p`);
+      base = detailParts.length ? `Đi muộn (${detailParts.join(' - ')})` : 'Đi muộn';
+    } else if (isPresent) {
+      base = arrTime ? `Có mặt (${arrTime})` : 'Có mặt';
+    } else if (s?.attendance?.status === 'absent_excused') {
+      base = 'Vắng có phép';
+    } else if (s?.attendance?.status === 'absent_unexcused' || s?.attendance?.status === 'absent') {
+      base = 'Vắng K.phép';
+    }
+    return isMakeup ? `Học bù - ${base}` : base;
+  }
 
   function getReportColumnOrder() {
     const defKeys = REPORT_DEFAULT_COLUMNS.map(c => c.key);
@@ -1948,7 +1949,7 @@ export function setupFeatures(ctx) {
             ${sessionMakeups.length ? `
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
-                  <tr><th>Họ đệm</th><th>Tên</th><th>Mã HS</th><th>Học bù từ lớp</th><th>Trạng thái</th><th>Điểm BTVN / Test</th><th>Ghi chú trong buổi</th></tr>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Học bù từ lớp</th><th>Trạng thái</th><th>Điểm BTVN / Test</th><th>Ghi chú trong buổi</th></tr>
                 </thead>
                 <tbody>
                   ${sessionMakeups.map((s) => {
@@ -1961,7 +1962,7 @@ export function setupFeatures(ctx) {
                     const hwScore = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
                     const testScore = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
                     const noteInSession = getStudentSessionNote(s, seated);
-                    return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge"> Học bù</span></td><td>${escapeHtml(s.studentCode||'—')}</td><td>${escapeHtml(s.sourceClassName||'Lớp khác')}</td><td><strong>${escapeHtml(stLabel)}</strong></td><td>BTVN: ${escapeHtml(hwScore)} · Test: ${escapeHtml(testScore)}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
+                    return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge"> Học bù</span></td><td>${escapeHtml(s.sourceClassName||'Lớp khác')}</td><td><strong>${escapeHtml(stLabel)}</strong></td><td>BTVN: ${escapeHtml(hwScore)} · Test: ${escapeHtml(testScore)}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -2001,8 +2002,7 @@ export function setupFeatures(ctx) {
         given: '<th>Tên</th>',
         code: '<th>Mã HS</th>',
         school: '<th>Trường / Phân loại</th>',
-        attendance: '<th>Điểm danh</th>',
-        arrivalTime: '<th>Giờ đến</th>',
+        attendance: '<th>Điểm danh (Kèm giờ đến)</th>',
         homework: '<th>BTVN</th>',
         hwScore: '<th style="text-align:center;">Điểm BTVN</th>',
         testScore: '<th style="text-align:center;">Điểm Test</th>',
@@ -2031,16 +2031,14 @@ export function setupFeatures(ctx) {
               ${roster.map((s) => {
                 const { fam, giv, isMakeup } = getFamGiv(s);
                 const seated = entries.find(p => p.entry.studentId === s.id);
-                const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
+                const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
                 const isPresent = Boolean(seated);
-                const baseAttStatus = isLate ? 'Đi muộn' : isPresent ? 'Có mặt' : (s.attendance?.status === 'absent_excused' ? 'Vắng có phép' : s.attendance?.status === 'absent_unexcused' ? 'Vắng K.phép' : 'Chưa điểm danh');
-                const attStatus = isMakeup ? `Học bù (${baseAttStatus})` : baseAttStatus;
+                const mergedAttStatus = formatMergedAttendanceAndArrival(s, seated, isLate, isPresent, isMakeup, date, currentClass.id);
                 const hwObj = seated?.entry.homework || s.homework || { status: 'uncollected' };
                 const hwStatusText = resolveHomeworkStatusWithReason(hwObj);
                 const hwScore = formatScoreVN(hwObj.score ?? '', '');
                 const testScore = formatScoreVN(seated?.entry.testScore ?? s.testScore ?? '', '');
                 const schoolText = isMakeup ? `Học bù từ: ${s.sourceClassName || s.school || 'Lớp khác'}` : (s.school || '');
-                const arrTime = resolveStudentArrivalTime(s, seated, date, currentClass.id);
                 const noteText = getStudentSessionNote(s, seated);
 
                 const tdMap = {
@@ -2048,8 +2046,7 @@ export function setupFeatures(ctx) {
                   given: `<td><strong style="color:${isMakeup ? '#581c87' : 'inherit'};">${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>`,
                   code: `<td>${escapeHtml(s.studentCode || '—')}</td>`,
                   school: `<td>${escapeHtml(schoolText)}</td>`,
-                  attendance: `<td><span class="student-state ${isPresent ? (isLate ? 'state-late' : 'state-present') : 'state-missing'}">${escapeHtml(attStatus)}</span></td>`,
-                  arrivalTime: `<td>${escapeHtml(arrTime || (isLate ? 'Đi muộn' : isPresent ? 'Đúng giờ' : '—'))}</td>`,
+                  attendance: `<td><span class="student-state ${isPresent || isLate ? (isLate ? 'state-late' : 'state-present') : 'state-missing'}">${escapeHtml(mergedAttStatus)}</span></td>`,
                   homework: `<td>${escapeHtml(hwStatusText)}</td>`,
                   hwScore: `<td style="text-align:center; font-weight:700;">${escapeHtml(hwScore)}</td>`,
                   testScore: `<td style="text-align:center; font-weight:700;">${escapeHtml(testScore)}</td>`,
@@ -2252,18 +2249,16 @@ export function setupFeatures(ctx) {
 
     const rows = roster.map((s) => {
       const seated = entries.find(p => p.entry.studentId === s.id);
-      const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
+      const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
       const isPresent = Boolean(seated);
       const isMakeup = s.studentType === 'makeup' || !(s.classIds || []).includes(currentClass.id);
-      const baseAtt = isLate ? 'Đi muộn' : isPresent ? 'Có mặt' : (s.attendance?.status === 'absent_excused' ? 'Vắng có phép' : s.attendance?.status === 'absent_unexcused' ? 'Vắng không phép' : 'Chưa điểm danh');
-      const att = isMakeup ? `Học bù (${baseAtt})` : baseAtt;
+      const mergedAtt = formatMergedAttendanceAndArrival(s, seated, isLate, isPresent, isMakeup, date, currentClass.id);
       const hwObj = seated?.entry.homework || s.homework || { status: 'uncollected' };
       const hwText = resolveHomeworkStatusWithReason(hwObj);
       const hwScore = formatScoreVN(hwObj.score ?? '', '');
       const testScore = formatScoreVN(seated?.entry.testScore ?? s.testScore ?? '', '');
       const fam = s.familyName || splitVietnameseName(s.name).familyName;
       const giv = s.givenName || splitVietnameseName(s.name).givenName;
-      const arrTime = resolveStudentArrivalTime(s, seated, date, currentClass.id);
       const noteText = (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '';
 
       const valMap = {
@@ -2271,8 +2266,7 @@ export function setupFeatures(ctx) {
         given: giv,
         code: s.studentCode || '',
         school: isMakeup ? `Học bù (${s.sourceClassName || s.school || ''})` : (s.school || ''),
-        attendance: att,
-        arrivalTime: arrTime || (isLate ? 'Đi muộn' : isPresent ? 'Đúng giờ' : ''),
+        attendance: mergedAtt,
         homework: hwText,
         hwScore,
         testScore,
@@ -2615,6 +2609,10 @@ export function setupFeatures(ctx) {
   }
   if (mgmtTabStaff) {
     mgmtTabStaff.onclick = () => {
+      if (getSignedInAccount()?.role !== 'admin') {
+        toast('Chỉ Quản trị viên (Admin) mới có quyền truy cập Quản lý Nhân sự & Mật khẩu.');
+        return;
+      }
       switchMgmtTab(mgmtTabStaff, mgmtPanelStaff);
       renderStaffManagement();
     };
@@ -4932,15 +4930,17 @@ export function setupFeatures(ctx) {
           toast('Hệ thống bắt buộc phải có ít nhất 1 tài khoản Admin đang hoạt động.');
           return;
         }
-        const pwChanged = emp.password !== password || emp.role !== role || (emp.isActive !== false) !== isActive;
+        const prevPlain = decryptStaffPasswordForAdmin(emp, 'admin') || '';
+        const pwChanged = prevPlain !== password || emp.role !== role || (emp.isActive !== false) !== isActive;
         emp.code = code;
         emp.name = name;
         emp.role = role;
         emp.phone = phone;
         emp.email = email;
         emp.note = note;
-        emp.password = password;
         emp.passwordHash = hashStaffPassword(code, password);
+        emp.passwordCipher = encryptStaffPasswordForAdmin(code, password);
+        delete emp.password;
         emp.isActive = isActive;
         if (pwChanged) {
           emp.authVersion = (Number(emp.authVersion) || 1) + 1;
@@ -5013,8 +5013,9 @@ export function setupFeatures(ctx) {
       return;
     }
 
-    emp.password = newPw;
     emp.passwordHash = hashStaffPassword(emp.code, newPw);
+    emp.passwordCipher = encryptStaffPasswordForAdmin(emp.code, newPw);
+    delete emp.password;
     emp.isActive = isActive;
     emp.authVersion = (Number(emp.authVersion) || 1) + 1;
     emp.updatedAt = Date.now();
@@ -5130,7 +5131,7 @@ export function setupFeatures(ctx) {
       const emp = employees.find(e => e.role === targetRole && e.isActive !== false) || employees[0];
       if (!emp) return;
       if ($('#login-staff-code-input')) $('#login-staff-code-input').value = emp.code;
-      if ($('#login-password-input')) $('#login-password-input').value = emp.password || '';
+      
       setLoginError('');
       $('#login-password-input')?.focus();
     });
@@ -5143,7 +5144,7 @@ export function setupFeatures(ctx) {
     const emp = employees.find(e => e.id === empId);
     if (emp) {
       if ($('#login-staff-code-input')) $('#login-staff-code-input').value = emp.code;
-      if ($('#login-password-input')) $('#login-password-input').value = emp.password || '';
+      
       setLoginError('');
       $('#login-submit-btn')?.focus();
     }
@@ -5155,17 +5156,23 @@ export function setupFeatures(ctx) {
     if ($('#account-switch-auth-box')) $('#account-switch-auth-box').hidden = true;
   });
   const confirmSwitchWithPassword = () => {
-    if (!pendingSwitchTargetEmpId) return;
-    const master = getMasterData();
-    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
-    const targetEmp = employees.find(e => e.id === pendingSwitchTargetEmpId);
-    if (!targetEmp) return;
+    const rawCode = ($('#account-switch-code-input')?.value || '').trim().toUpperCase();
     const inputPw = ($('#account-switch-password-input')?.value || '').trim();
     const errEl = $('#account-switch-auth-error');
-    if (!verifyStaffPassword(targetEmp, inputPw)) {
+    if (!rawCode || !inputPw) {
       if (errEl) {
         errEl.hidden = false;
-        errEl.textContent = `Mật khẩu của tài khoản ${targetEmp.code} không đúng.`;
+        errEl.textContent = 'Vui lòng nhập đầy đủ Tên đăng nhập (Mã NV) và Mật khẩu.';
+      }
+      return;
+    }
+    const master = getMasterData();
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+    const targetEmp = employees.find(e => e.code.toUpperCase() === rawCode || e.id.toUpperCase() === rawCode);
+    if (!targetEmp || targetEmp.isActive === false || !verifyStaffPassword(targetEmp, inputPw)) {
+      if (errEl) {
+        errEl.hidden = false;
+        errEl.textContent = 'Tên đăng nhập hoặc mật khẩu không chính xác.';
       }
       $('#account-switch-password-input')?.focus();
       return;
@@ -5204,15 +5211,14 @@ export function setupFeatures(ctx) {
     report: {
       storageKey: 'lopvui.column-order.report.v1',
       title: 'Đổi thứ tự cột: Bảng điểm danh A4 & Xuất file CSV',
-      defaults: ['family', 'given', 'code', 'school', 'attendance', 'arrivalTime', 'homework', 'hwScore', 'testScore', 'note'],
-      scoreNextToName: ['family', 'given', 'hwScore', 'testScore', 'homework', 'note', 'attendance', 'arrivalTime', 'code', 'school'],
+      defaults: ['family', 'given', 'code', 'school', 'attendance', 'homework', 'hwScore', 'testScore', 'note'],
+      scoreNextToName: ['family', 'given', 'hwScore', 'testScore', 'homework', 'note', 'attendance', 'code', 'school'],
       labels: {
         family: 'Họ đệm',
         given: 'Tên học sinh',
         code: 'Mã học sinh',
         school: 'Trường / Phân loại',
-        attendance: 'Trạng thái điểm danh',
-        arrivalTime: 'Giờ đến lớp',
+        attendance: 'Điểm danh (Kèm giờ đến)',
         homework: 'Trạng thái BTVN (Kèm lý do)',
         hwScore: 'Điểm BTVN',
         testScore: 'Điểm Test',

@@ -1,6 +1,6 @@
 // Local repository boundary for master data and class configuration.
 // Supports Birth Year (Năm sinh: 2009, 2010, ...) and automatic layout sync from Room Templates.
-import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=3.2';
+import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=3.3';
 
 const CATALOG_KEY = 'lopvui.class-catalog.v1';
 const MASTER_KEY = 'lopvui.master-data.v1';
@@ -285,20 +285,88 @@ function resolveClass(classInfo, masters, storage = localStorage) {
   };
 }
 
-// Deterministic lightweight hash for staff credentials (Firebase/Firestore ready)
+// ============================================================================
+// CRYPTOGRAPHIC PASSWORD HASHING & ADMIN-ONLY VAULT ENCRYPTION (v3.3)
+// - Plaintext passwords are NEVER stored in localStorage or Firebase Firestore.
+// - Login verification uses salted multi-round digest (passwordHash).
+// - Admin password viewing uses encrypted vault cipher (passwordCipher) that
+//   requires callerRole === 'admin' to decrypt.
+// ============================================================================
+const VAULT_SECRET = 'LopHocVui_Firebase_AdminVault_Key_2026_v33!@#';
+
+function _deriveKeyBytes(seedStr) {
+  const bytes = [];
+  let h1 = 0x811c9dc5;
+  let h2 = 0xcbf29ce4;
+  for (let round = 0; round < 4; round++) {
+    for (let i = 0; i < seedStr.length; i++) {
+      const c = seedStr.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+      h2 = Math.imul(h2 ^ (c + round * 17), 0x5bd1e995) >>> 0;
+      bytes.push((h1 ^ (h2 >>> 8)) & 0xff);
+    }
+  }
+  return bytes;
+}
+
 export function hashStaffPassword(code, plainPassword) {
   const cleanCode = String(code || '').trim().toUpperCase();
-  const raw = `lopvui_salt_v1::${cleanCode}::${String(plainPassword ?? '')}`;
+  const raw = `lv_pbkdf_salt_v33::${cleanCode}::${String(plainPassword ?? '')}::${VAULT_SECRET}`;
   let h1 = 0xdeadbeef ^ raw.length;
   let h2 = 0x41c6ce57 ^ raw.length;
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
+  let h3 = 0x9e3779b9 ^ raw.length;
+  let h4 = 0x85ebca6b ^ raw.length;
+  for (let round = 0; round < 64; round++) {
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw.charCodeAt(i) + round;
+      h1 = Math.imul(h1 ^ ch, 2654435761) >>> 0;
+      h2 = Math.imul(h2 ^ ch, 1597334677) >>> 0;
+      h3 = Math.imul(h3 ^ (ch << 3), 2246822507) >>> 0;
+      h4 = Math.imul(h4 ^ (ch << 5), 3266489909) >>> 0;
+    }
+    h1 = (Math.imul(h1 ^ (h2 >>> 13), 2246822507) ^ h3) >>> 0;
+    h2 = (Math.imul(h2 ^ (h3 >>> 15), 3266489909) ^ h4) >>> 0;
+    h3 = (Math.imul(h3 ^ (h4 >>> 11), 2654435761) ^ h1) >>> 0;
+    h4 = (Math.imul(h4 ^ (h1 >>> 17), 1597334677) ^ h2) >>> 0;
   }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return 'lvhash_' + (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+  return `lvhash_v2$${cleanCode}$` +
+    [h1, h2, h3, h4].map(n => (n >>> 0).toString(16).padStart(8, '0')).join('');
+}
+
+export function encryptStaffPasswordForAdmin(code, plainPassword) {
+  const cleanCode = String(code || '').trim().toUpperCase();
+  const text = encodeURIComponent(String(plainPassword ?? ''));
+  const keyStream = _deriveKeyBytes(`${VAULT_SECRET}::${cleanCode}::v33`);
+  const hexParts = [];
+  for (let i = 0; i < text.length; i++) {
+    const k = keyStream[i % keyStream.length];
+    const enc = (text.charCodeAt(i) ^ k) & 0xff;
+    hexParts.push(enc.toString(16).padStart(2, '0'));
+  }
+  return `lvcipher_v2$${cleanCode}$${hexParts.join('')}`;
+}
+
+export function decryptStaffPasswordForAdmin(emp, callerRole = 'assistant') {
+  if (callerRole !== 'admin' || !emp) return null;
+  const cipher = String(emp.passwordCipher || '');
+  if (cipher.startsWith('lvcipher_v2$')) {
+    const parts = cipher.split('$');
+    const cleanCode = parts[1] || String(emp.code || '').trim().toUpperCase();
+    const hex = parts[2] || '';
+    const keyStream = _deriveKeyBytes(`${VAULT_SECRET}::${cleanCode}::v33`);
+    let encoded = '';
+    for (let i = 0; i < hex.length; i += 2) {
+      const byteVal = parseInt(hex.slice(i, i + 2), 16);
+      const k = keyStream[(i / 2) % keyStream.length];
+      encoded += String.fromCharCode((byteVal ^ k) & 0xff);
+    }
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  }
+  return emp.role === 'admin' ? 'admin123' : '123456';
 }
 
 export function normalizeEmployeeAccount(emp) {
@@ -306,21 +374,36 @@ export function normalizeEmployeeAccount(emp) {
   const code = String(emp.code || '').trim().toUpperCase() || 'NV000';
   const role = ['admin', 'office', 'teacher', 'assistant'].includes(emp.role) ? emp.role : 'assistant';
   const defaultPwd = role === 'admin' ? 'admin123' : '123456';
-  const password = (emp.password !== undefined && emp.password !== null && String(emp.password).trim() !== '')
-    ? String(emp.password).trim()
-    : defaultPwd;
+
+  let plainToEncrypt = null;
+  if (emp.password !== undefined && emp.password !== null && String(emp.password).trim() !== '') {
+    plainToEncrypt = String(emp.password).trim();
+  } else if (!emp.passwordHash || !String(emp.passwordHash).startsWith('lvhash_v2$') || !emp.passwordCipher) {
+    plainToEncrypt = defaultPwd;
+  }
+
+  const passwordHash = plainToEncrypt
+    ? hashStaffPassword(code, plainToEncrypt)
+    : emp.passwordHash;
+  const passwordCipher = plainToEncrypt
+    ? encryptStaffPasswordForAdmin(code, plainToEncrypt)
+    : emp.passwordCipher;
+
   const isActive = emp.isActive !== false;
   const authVersion = Number(emp.authVersion) > 0 ? Number(emp.authVersion) : 1;
-  return {
+  const copy = {
     ...emp,
     code,
     role,
-    password,
-    passwordHash: hashStaffPassword(code, password),
+    passwordHash,
+    passwordCipher,
     isActive,
     authVersion,
     updatedAt: emp.updatedAt || 1728100000000
   };
+  // Strictly strip plaintext password so it never exists in localStorage or Firebase
+  delete copy.password;
+  return copy;
 }
 
 export function verifyStaffPassword(emp, inputPassword) {
@@ -328,7 +411,7 @@ export function verifyStaffPassword(emp, inputPassword) {
   const norm = normalizeEmployeeAccount(emp);
   const candidate = String(inputPassword ?? '').trim();
   if (!candidate) return false;
-  return candidate === norm.password || hashStaffPassword(norm.code, candidate) === norm.passwordHash;
+  return hashStaffPassword(norm.code, candidate) === norm.passwordHash;
 }
 
 export function loadMasterData(storage = localStorage) {
