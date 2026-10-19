@@ -1,12 +1,12 @@
-const APP_VERSION = "2.5";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.5';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.5';
+const APP_VERSION = "2.9";
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=2.9';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=2.9';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=2.5';
-import { normalizeSearchText, searchStudents } from './student-search.js?v=2.5';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.5';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.5';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.5';
+import { setupFeatures } from './features.js?v=2.9';
+import { normalizeSearchText, searchStudents } from './student-search.js?v=2.9';
+import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=2.9';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=2.9';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=2.9';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -357,7 +357,38 @@ function saveSessionNote(id,value){
 for(const student of [...students,...makeupStudents])if(!(student.id in attendanceNotes)){const saved=student.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate);if(saved)attendanceNotes[student.id]=saved.note;}
 const classStudents=()=>students.filter(student=>(student.classIds||[]).includes(CURRENT_CLASS_ID));
 const splitStudentName=name=>{const parts=String(name||'').trim().split(/\s+/).filter(Boolean);return {familyName:parts.slice(0,-1).join(' '),givenName:parts.at(-1)||''};};
-function createStudentProfile({name,school='',kind='regular',parentContact={name:'',phone:''},studentCode=null,tags=[]}){const makeup=kind==='makeup';const cleanCode=(studentCode&&String(studentCode).trim())?String(studentCode).trim().toUpperCase():null;return {id:`stu-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,...splitStudentName(name),studentCode:cleanCode,name,school:makeup?'':school,sourceClassName:makeup?school:'',attendingClassId:makeup?CURRENT_CLASS_ID:null,classIds:makeup?[]:[CURRENT_CLASS_ID],courseIds:[],parentContact:{name:parentContact.name||'',phone:parentContact.phone||''},photoURL:null,scores:[],attendanceHistory:[],seatingHistory:[],notes:[],learningNotes:'',tags:Array.isArray(tags)?tags:[],isNew:false,studentType:makeup?'makeup':'regular',createdAt:Date.now()};}
+function createStudentProfile({name,familyName=undefined,givenName=undefined,school='',kind='regular',parentContact={name:'',phone:''},studentCode=null,classIds=null,enrollmentStatus='Học',tags=[]}){
+  const makeup=kind==='makeup';
+  const cleanCode=(studentCode&&String(studentCode).trim())?String(studentCode).trim().toUpperCase():null;
+  const splitParts=splitStudentName(name);
+  const resolvedClassIds = makeup
+    ? []
+    : (Array.isArray(classIds) ? [...new Set(classIds.filter(Boolean))] : [CURRENT_CLASS_ID]);
+  return {
+    id:`stu-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+    familyName: familyName !== undefined && familyName !== '' ? familyName : splitParts.familyName,
+    givenName: givenName !== undefined && givenName !== '' ? givenName : splitParts.givenName,
+    studentCode:cleanCode,
+    name,
+    school:makeup?'':school,
+    sourceClassName:makeup?school:'',
+    attendingClassId:makeup?CURRENT_CLASS_ID:null,
+    classIds:resolvedClassIds,
+    courseIds:[],
+    parentContact:{name:parentContact?.name||'',phone:parentContact?.phone||''},
+    enrollmentStatus: (enrollmentStatus && String(enrollmentStatus).trim()) ? String(enrollmentStatus).trim() : 'Học',
+    photoURL:null,
+    scores:[],
+    attendanceHistory:[],
+    seatingHistory:[],
+    notes:[],
+    learningNotes:'',
+    tags:Array.isArray(tags)?tags:[],
+    isNew:false,
+    studentType:makeup?'makeup':'regular',
+    createdAt:Date.now()
+  };
+}
 const currentStaffName=()=>masterData?.employees?.find(e=>e.id===currentEmployeeId)?.name||document.querySelector('.user-name')?.childNodes[0]?.textContent.trim()||'Trợ giảng';
 const personalWorkKey=()=>`lopvui.personal-work.v1.${encodeURIComponent(currentStaffName().trim().toLocaleLowerCase('vi'))}`;
 let personalWorkDays=read(personalWorkKey(),{});
@@ -2404,6 +2435,16 @@ function openStudentProfile(id, origin = null){
       <label class="field-label">Mã học sinh<input id="profile-code" value="${escapeHtml(student.studentCode||'')}" placeholder="Ví dụ: K09.3049" style="text-transform:uppercase;" /></label>
       <label class="field-label">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" /></label>
       <label class="field-label">Số điện thoại phụ huynh<input id="profile-parent-phone" type="tel" value="${escapeHtml(student.parentContact?.phone||'')}" /></label>
+      <div class="field-label profile-wide">
+        <span>Trạng thái theo học</span>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
+          <select id="profile-enrollment-status-select" style="flex:1 1 200px;">
+            ${['Học', 'Chưa nhập học', 'Tạm nghỉ', 'Nghỉ', 'Trùng'].map(st => `<option value="${escapeHtml(st)}" ${(student.enrollmentStatus || 'Học') === st ? 'selected' : ''}>${escapeHtml(st)}</option>`).join('')}
+            <option value="__custom__" ${!['Học', 'Chưa nhập học', 'Tạm nghỉ', 'Nghỉ', 'Trùng'].includes(student.enrollmentStatus || 'Học') ? 'selected' : ''}>Khác (Tự nhập trạng thái...)</option>
+          </select>
+          <input id="profile-enrollment-status-custom" value="${!['Học', 'Chưa nhập học', 'Tạm nghỉ', 'Nghỉ', 'Trùng'].includes(student.enrollmentStatus || 'Học') ? escapeHtml(student.enrollmentStatus || '') : ''}" placeholder="Nhập trạng thái tùy chỉnh..." style="flex:1 1 220px; ${!['Học', 'Chưa nhập học', 'Tạm nghỉ', 'Nghỉ', 'Trùng'].includes(student.enrollmentStatus || 'Học') ? '' : 'display:none;'}" />
+        </div>
+      </div>
 
       <div class="field-label profile-wide">
         <span>Các lớp đang theo học <small style="font-weight:500; color:#5b7760;">(Bấm vào lớp để mở Hồ sơ học sinh trong Lớp)</small></span>
@@ -2499,6 +2540,15 @@ function openStudentProfile(id, origin = null){
   }
 
   renderEnrolledClassesUI();
+  const statusSelectEl = $('#profile-enrollment-status-select');
+  const statusCustomEl = $('#profile-enrollment-status-custom');
+  if (statusSelectEl && statusCustomEl) {
+    statusSelectEl.onchange = () => {
+      const isCustom = statusSelectEl.value === '__custom__';
+      statusCustomEl.style.display = isCustom ? 'block' : 'none';
+      if (isCustom) statusCustomEl.focus();
+    };
+  }
   setGeneralStudentProfileEditMode(false);
 
   if ($('#unlock-student-profile-btn')) {
@@ -2619,6 +2669,9 @@ $('#save-student-profile').onclick=()=>{
     name: $('#profile-parent-name').value.trim(),
     phone: $('#profile-parent-phone').value.trim()
   };
+  const statusSelVal = $('#profile-enrollment-status-select')?.value || 'Học';
+  const statusCustomVal = ($('#profile-enrollment-status-custom')?.value || '').trim();
+  student.enrollmentStatus = statusSelVal === '__custom__' ? (statusCustomVal || 'Học') : statusSelVal;
 
   if (typeof enrolledClassIds !== 'undefined') {
     student.classIds = enrolledClassIds.length ? enrolledClassIds : (student.classIds || []);

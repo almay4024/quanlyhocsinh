@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Lớp học vui (v2.5) · Quản lý lớp học trung tâm</title>
+  <title>Lớp học vui (v2.9) · Quản lý lớp học trung tâm</title>
   <link rel="stylesheet" href="/src/styles.css?v=2.3" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.5</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.9</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -196,22 +196,22 @@
             <!-- Master Student KPIs -->
             <div class="staff-metrics-grid">
               <div class="summary-card">
-                <div class="summary-top"><span>Tổng học sinh</span><div class="icon-box mint"></div></div>
+                <div class="summary-top"><span>Tổng học sinh</span></div>
                 <strong id="master-kpi-total">0</strong>
                 <small>Toàn bộ học sinh trung tâm</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Học 1 lớp</span><div class="icon-box lilac"></div></div>
+                <div class="summary-top"><span>Học 1 lớp</span></div>
                 <strong id="master-kpi-single">0</strong>
                 <small>Theo học 1 môn/lớp</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Học nhiều lớp</span><div class="icon-box peach"></div></div>
+                <div class="summary-top"><span>Học nhiều lớp</span></div>
                 <strong id="master-kpi-multi">0</strong>
                 <small>Theo học từ 2 lớp trở lên</small>
               </div>
               <div class="summary-card">
-                <div class="summary-top"><span>Học sinh mới</span><div class="icon-box mint"></div></div>
+                <div class="summary-top"><span>Học sinh mới</span></div>
                 <strong id="master-kpi-new">0</strong>
                 <small>Gia nhập trong 3 tuần</small>
               </div>
@@ -235,6 +235,13 @@
               <select id="master-class-filter" aria-label="Lọc theo lớp học">
                 <option value="all">Tất cả các lớp</option>
               </select>
+              <div class="excel-status-filter-wrap" id="master-status-filter-wrap">
+                <button type="button" class="outline-button excel-status-filter-btn" id="master-status-filter-btn" aria-expanded="false">
+                  <span id="master-status-filter-label">Trạng thái: Tất cả</span>
+                  <span class="excel-filter-caret">▾</span>
+                </button>
+                <div class="excel-status-filter-dropdown" id="master-status-filter-dropdown" hidden></div>
+              </div>
             </div>
 
             <!-- Floating / Top Bulk Actions Bar -->
@@ -263,6 +270,7 @@
                     <th class="sortable-th" data-master-sort="given">Tên <span class="sort-icon">⇅</span></th>
                     <th class="sortable-th" data-master-sort="school">Trường học <span class="sort-icon">⇅</span></th>
                     <th class="sortable-th" data-master-sort="parent">Phụ huynh & SĐT <span class="sort-icon">⇅</span></th>
+                    <th class="sortable-th" data-master-sort="status">Trạng thái <span class="sort-icon">⇅</span></th>
                     <th class="sortable-th" data-master-sort="classes">Các lớp theo học <span class="sort-icon">⇅</span></th>
                     <th style="text-align:center;">Hành động</th>
                   </tr>
@@ -1195,6 +1203,9 @@
           <label class="field-label">Cột Tên Phụ huynh
             <select id="map-col-parent" class="col-map-select"><option value="-1">-- Không có --</option></select>
           </label>
+          <label class="field-label">Cột Trạng thái theo học
+            <select id="map-col-status" class="col-map-select"><option value="-1">-- Mặc định: Học --</option></select>
+          </label>
         </div>
 
         <button type="button" class="outline-button" id="preview-mapped-btn" style="margin-top:8px;">2. Xem trước theo ánh xạ cột</button>
@@ -2058,7 +2069,7 @@
         <div class="login-brand">
           
           <div>
-            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.5</span></strong>
+            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v2.9</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>

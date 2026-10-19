@@ -9,6 +9,7 @@
       "user_uploaded_files/**",
       "*.mjs",
       "README.md",
+      "DEPLOY-NGAY.*",
       "package*.json"
     ],
     "headers": [

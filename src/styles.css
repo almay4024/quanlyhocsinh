@@ -6744,3 +6744,312 @@ body {
   justify-content: center !important;
   text-align: center !important;
 }
+
+
+/* =========================================================
+   v2.6 EXCEL IMPORT OFFSET FIX, ENROLLMENT STATUS FILTER,
+   MINI ROOM PREVIEW EXPANSION, ROOM SCHEDULE 2-COL FLEX,
+   AND PLAIN-TEXT CLASS LISTS IN STAFF & STUDENT TABLES
+   ========================================================= */
+
+/* 1. Room Template Mini Layout Preview: Expand across the grey box & prevent "Dãy 1, 2, 3" from wrapping */
+.template-layout-preview-wrap {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  padding: 12px 16px !important;
+  background: #f5f8f6 !important;
+  border: 1px solid #dce7de !important;
+  border-radius: 10px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.template-mini-board {
+  align-self: center !important;
+  min-width: 120px !important;
+  text-align: center !important;
+  font-size: 10.5px !important;
+  font-weight: 800 !important;
+  letter-spacing: 1px !important;
+  color: #245132 !important;
+  background: #e1f0e5 !important;
+  border-bottom: 2.5px solid #5d9b6c !important;
+  padding: 3px 24px !important;
+  border-radius: 4px !important;
+  white-space: nowrap !important;
+}
+
+.template-layout-preview {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  justify-content: space-evenly !important;
+  gap: 14px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 4px 0 2px !important;
+  box-sizing: border-box !important;
+}
+
+.template-aisle-preview {
+  flex: 1 1 0 !important;
+  min-width: 58px !important;
+  max-width: 140px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 4px !important;
+}
+
+.template-aisle-mini-label {
+  display: block !important;
+  text-align: center !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #4b5e50 !important;
+  white-space: nowrap !important;
+  margin-bottom: 3px !important;
+}
+
+.template-desk-box {
+  width: 100% !important;
+  min-height: 18px !important;
+  padding: 3px 6px !important;
+  border-radius: 4px !important;
+  background: #ffffff !important;
+  border: 1px solid #bfd2c3 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  box-sizing: border-box !important;
+}
+
+/* 2. Popup "Lịch sử dụng phòng học": Strict 2-column Flexbox so right column never drops or shifts left */
+.room-classes-modal-items {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  max-height: 58vh !important;
+  overflow-y: auto !important;
+  padding-right: 2px !important;
+}
+
+.room-schedule-row-item.room-schedule-row-fixed {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px 14px !important;
+  background: #ffffff !important;
+  border: 1px solid #d8e5da !important;
+  border-radius: 10px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.room-schedule-col-left {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 5px !important;
+}
+
+.room-schedule-title-line {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+
+.room-schedule-cls-name {
+  color: #1b4d2a !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+}
+
+.room-schedule-staff-line {
+  display: block !important;
+  color: #526356 !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+}
+
+.room-schedule-col-right {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  text-align: right !important;
+}
+
+.room-schedule-time-badge {
+  background: #eef2ff !important;
+  color: #3730a3 !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+}
+
+.room-schedule-enter-btn {
+  padding: 6px 14px !important;
+  font-size: 13px !important;
+  white-space: nowrap !important;
+}
+
+/* 3. Plain-text Class Lists in Staff & Master Student Tables + Prevent Right-Column Clipping */
+.plain-class-list-text,
+.plain-class-cell {
+  font-size: 13.5px !important;
+  color: #2c3e31 !important;
+  line-height: 1.45 !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+}
+
+.plain-class-link {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  color: #1f5f33 !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px !important;
+}
+
+.plain-class-link:hover {
+  color: #144021 !important;
+}
+
+#mgmt-panel-students .portal-table-wrap,
+#mgmt-panel-staff .portal-table-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding-bottom: 8px !important;
+  box-sizing: border-box !important;
+}
+
+#master-student-table th,
+#master-student-table td {
+  padding: 8px 9px !important;
+  font-size: 13.5px !important;
+}
+
+/* 4. Excel-style Multi-select Enrollment Status Filter & Status Pills */
+.excel-status-filter-wrap {
+  position: relative !important;
+  display: inline-flex !important;
+  flex: 1 1 180px !important;
+  min-width: 170px !important;
+}
+
+.excel-status-filter-btn {
+  width: 100% !important;
+  min-height: 44px !important;
+  padding: 8px 12px !important;
+  border-radius: 9px !important;
+  border: 1px solid #cbd8cd !important;
+  background: #ffffff !important;
+  color: #1e3a29 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+}
+
+.excel-status-filter-dropdown {
+  position: absolute !important;
+  top: calc(100% + 5px) !important;
+  left: 0 !important;
+  min-width: 230px !important;
+  max-width: 300px !important;
+  background: #ffffff !important;
+  border: 1px solid #b8cebc !important;
+  border-radius: 10px !important;
+  box-shadow: 0 10px 28px rgba(20, 45, 28, 0.16) !important;
+  padding: 8px 10px !important;
+  z-index: 95 !important;
+}
+
+.excel-status-filter-dropdown[hidden] {
+  display: none !important;
+}
+
+.excel-filter-option {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 6px !important;
+  border-radius: 6px !important;
+  font-size: 13.5px !important;
+  color: #25382b !important;
+  cursor: pointer !important;
+  user-select: none !important;
+}
+
+.excel-filter-option:hover {
+  background: #eef6f0 !important;
+}
+
+.excel-filter-option input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  margin: 0 !important;
+  accent-color: #2e6d42 !important;
+}
+
+.excel-filter-option small {
+  margin-left: auto !important;
+  color: #6b7d6e !important;
+  font-size: 12px !important;
+}
+
+.excel-filter-divider {
+  height: 1px !important;
+  background: #e2ebe3 !important;
+  margin: 4px 0 !important;
+}
+
+.enrollment-status-pill {
+  display: inline-block !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  background: #edf5ef !important;
+  color: #1f5f33 !important;
+}
+
+.enrollment-status-pill.status-text-pending {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+.enrollment-status-pill.status-text-paused {
+  background: #fffbeb !important;
+  color: #b45309 !important;
+}
+
+.enrollment-status-pill.status-text-stopped {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+}
+
+.enrollment-status-pill.status-text-duplicate {
+  background: #f3e8ff !important;
+  color: #6b21a8 !important;
+}
