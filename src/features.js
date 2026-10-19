@@ -3,7 +3,7 @@ import { matchesAcronymOrText } from './student-search.js?v=3.1';
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
 import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.1';
-import { normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=3.1';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.1';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
@@ -90,12 +90,27 @@ export function setupFeatures(ctx) {
   // ----------------------------------------------------
   
   // ----------------------------------------------------
-  // 0. HỆ THỐNG ĐĂNG NHẬP & ĐĂNG XUẤT (LOGIN & LOGOUT)
+  // 0. HỆ THỐNG ĐĂNG NHẬP & ĐĂNG XUẤT BẰNG MÃ NHÂN VIÊN & MẬT KHẨU (QUẢN LÝ BỞI ADMIN)
   // ----------------------------------------------------
+  const revealedStaffPasswords = new Set();
+  let pendingSwitchTargetEmpId = null;
+
+  function setLoginError(msg = '') {
+    const errEl = $('#login-error-msg');
+    if (!errEl) return;
+    if (!msg) {
+      errEl.hidden = true;
+      errEl.textContent = '';
+    } else {
+      errEl.hidden = false;
+      errEl.textContent = msg;
+    }
+  }
+
   function renderLoginScreen() {
     const master = getMasterData();
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
     const select = $('#login-employee-select');
-    if (!select) return;
 
     const roleNames = {
       assistant: 'Trợ giảng',
@@ -104,30 +119,60 @@ export function setupFeatures(ctx) {
       admin: 'Quản trị viên'
     };
 
-    // Populate select
-    select.innerHTML = master.employees.map(emp => `
-      <option value="${escapeHtml(emp.id)}">${escapeHtml(emp.name)} (${escapeHtml(roleNames[emp.role] || emp.role)} - ${escapeHtml(emp.code)})</option>
-    `).join('');
-  }
-
-  function handleLogin(empId) {
-    const master = getMasterData();
-    const emp = master.employees.find(e => e.id === empId);
-    if (!emp) {
-      toast('Không tìm thấy tài khoản nhân viên.');
-      return;
+    if (select) {
+      select.innerHTML = employees
+        .filter(emp => emp.isActive !== false)
+        .map(emp => `
+          <option value="${escapeHtml(emp.id)}" data-emp-code="${escapeHtml(emp.code)}">${escapeHtml(emp.code)} — ${escapeHtml(emp.name)} (${escapeHtml(roleNames[emp.role] || emp.role)})</option>
+        `).join('');
     }
 
-    const account = { employeeId: emp.id, role: emp.role };
+    // Update preset role cards with actual employee code & current password hint
+    document.querySelectorAll('.login-role-card[data-direct-role]').forEach(card => {
+      const targetRole = card.dataset.directRole;
+      const emp = employees.find(e => e.role === targetRole && e.isActive !== false) || employees.find(e => e.role === targetRole);
+      if (emp) {
+        const badgeEl = card.querySelector('.preset-code-badge');
+        const smallEl = card.querySelector('small');
+        if (badgeEl) badgeEl.textContent = emp.code;
+        if (smallEl) smallEl.innerHTML = `${escapeHtml(emp.name)} · MK: <code>${escapeHtml(emp.password)}</code>`;
+      }
+    });
+
+    setLoginError('');
+  }
+
+  function completeLoginSession(emp, rememberMe = true) {
+    const normEmp = normalizeEmployeeAccount(emp);
+    const account = {
+      employeeId: normEmp.id,
+      code: normEmp.code,
+      name: normEmp.name,
+      role: normEmp.role,
+      authVersion: Number(normEmp.authVersion) || 1,
+      loginAt: Date.now()
+    };
+
     setSignedInAccount(account);
     localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
+    localStorage.removeItem('lopvui.explicit-logout.v1');
+    try {
+      sessionStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
+    } catch {}
+
+    // Record lastLoginAt in masterData
+    const master = getMasterData();
+    const targetInMaster = (master.employees || []).find(e => e.id === normEmp.id);
+    if (targetInMaster) {
+      targetInMaster.lastLoginAt = Date.now();
+      if (ctx.setMasterData) ctx.setMasterData(master);
+    }
 
     // Reset any active class path/query in URL to return to main menu
     try {
       history.pushState({}, '', '/');
     } catch {}
 
-    // Hide login screen, show app shell (both hidden property and inline display)
     const loginScreen = document.getElementById('login-screen') || $('#login-screen');
     const appShell = document.getElementById('app-shell') || $('#app-shell');
     const classWorkspace = document.getElementById('class-workspace') || $('#class-workspace');
@@ -155,22 +200,87 @@ export function setupFeatures(ctx) {
       mainMenuView.style.display = '';
     }
 
+    setLoginError('');
+    if ($('#login-password-input')) $('#login-password-input').value = '';
     updateCurrentUserDisplay();
 
     // Default view based on role
-    if (emp.role === 'assistant' || emp.role === 'teacher') {
+    if (normEmp.role === 'assistant' || normEmp.role === 'teacher') {
       setMainMenuPanel('work');
     } else {
       setMainMenuPanel('management');
     }
 
-    const roleLabelText = emp.role === 'assistant' ? 'Trợ giảng' : emp.role === 'office' ? 'Văn phòng' : emp.role === 'teacher' ? 'Giáo viên' : 'Admin';
-    toast(`Xin chào ${emp.name}! Đã đăng nhập vai trò ${roleLabelText}.`);
+    const roleLabelText = normEmp.role === 'assistant' ? 'Trợ giảng' : normEmp.role === 'office' ? 'Văn phòng' : normEmp.role === 'teacher' ? 'Giáo viên' : 'Admin';
+    toast(`Xin chào ${normEmp.name} (${normEmp.code})! Đã đăng nhập vai trò ${roleLabelText}.`);
+    return true;
   }
 
-  function handleLogout() {
-    // Logout immediately without blocking dialog
+  function handleLoginByCredentials(rawCode, rawPassword, rememberMe = true) {
+    const cleanCode = String(rawCode || '').trim().toUpperCase();
+    const cleanPass = String(rawPassword ?? '').trim();
+
+    if (!cleanCode) {
+      setLoginError('Vui lòng nhập Mã nhân viên (VD: AD001, TA001, GV001, VP001).');
+      $('#login-staff-code-input')?.focus();
+      return false;
+    }
+    if (!cleanPass) {
+      setLoginError('Vui lòng nhập Mật khẩu đăng nhập.');
+      $('#login-password-input')?.focus();
+      return false;
+    }
+
+    const master = getMasterData();
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+    const emp = employees.find(e => e.code.toUpperCase() === cleanCode || e.id.toUpperCase() === cleanCode);
+
+    if (!emp) {
+      setLoginError(`Mã nhân viên "${cleanCode}" không tồn tại trong hệ thống. Vui lòng kiểm tra lại.`);
+      $('#login-staff-code-input')?.focus();
+      return false;
+    }
+
+    if (emp.isActive === false) {
+      setLoginError(`Tài khoản ${emp.code} (${emp.name}) đã bị Admin tạm khóa. Vui lòng liên hệ Quản trị viên.`);
+      return false;
+    }
+
+    if (!verifyStaffPassword(emp, cleanPass)) {
+      setLoginError(`Mật khẩu không chính xác cho mã nhân viên ${emp.code}. Vui lòng thử lại hoặc liên hệ Admin.`);
+      $('#login-password-input')?.focus();
+      return false;
+    }
+
+    return completeLoginSession(emp, rememberMe);
+  }
+
+  function handleLogin(empIdOrCode, optionalPassword = null) {
+    const master = getMasterData();
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+    const cleanTarget = String(empIdOrCode || '').trim().toUpperCase();
+    const emp = employees.find(e => e.id === empIdOrCode || e.code.toUpperCase() === cleanTarget);
+    if (!emp) {
+      toast('Không tìm thấy tài khoản nhân viên.');
+      return false;
+    }
+    if (emp.isActive === false) {
+      setLoginError(`Tài khoản ${emp.code} (${emp.name}) đang bị Admin tạm khóa.`);
+      toast(`Tài khoản ${emp.code} đang bị tạm khóa.`);
+      return false;
+    }
+    if (optionalPassword !== null && !verifyStaffPassword(emp, optionalPassword)) {
+      setLoginError('Mật khẩu không chính xác.');
+      toast('Mật khẩu không chính xác.');
+      return false;
+    }
+    return completeLoginSession(emp, true);
+  }
+
+  function handleLogout(reasonMsg = '') {
     localStorage.removeItem('lopvui.signed-in-account.v1');
+    localStorage.setItem('lopvui.explicit-logout.v1', '1');
+    try { sessionStorage.removeItem('lopvui.signed-in-account.v1'); } catch {}
     setSignedInAccount({ employeeId: null, role: null });
 
     // Close any open dialogs
@@ -183,7 +293,6 @@ export function setupFeatures(ctx) {
       history.pushState({}, '', '/');
     } catch {}
 
-    // Hide main app views, show login screen
     const appShell = document.getElementById('app-shell') || $('#app-shell');
     const classWorkspace = document.getElementById('class-workspace') || $('#class-workspace');
     const classGeneralView = document.getElementById('class-general-view') || $('#class-general-view');
@@ -205,28 +314,81 @@ export function setupFeatures(ctx) {
       loginScreen.hidden = false;
       loginScreen.style.display = 'grid';
       renderLoginScreen();
+      if (reasonMsg) setLoginError(reasonMsg);
+      setTimeout(() => $('#login-staff-code-input')?.focus(), 50);
     }
 
-    toast('Đã đăng xuất khỏi hệ thống.');
+    toast(reasonMsg || 'Đã đăng xuất khỏi hệ thống.');
+  }
+
+  function verifyActiveSessionIntegrity() {
+    const currentAcc = getSignedInAccount();
+    if (!currentAcc || !currentAcc.employeeId) return false;
+    const master = getMasterData();
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+    const emp = employees.find(e => e.id === currentAcc.employeeId);
+    if (!emp) {
+      handleLogout('Tài khoản của bạn không còn tồn tại trên hệ thống. Vui lòng đăng nhập lại.');
+      return false;
+    }
+    if (emp.isActive === false) {
+      handleLogout(`Tài khoản ${emp.code} (${emp.name}) vừa bị Admin tạm khóa.`);
+      return false;
+    }
+    if (currentAcc.authVersion && Number(emp.authVersion) > Number(currentAcc.authVersion)) {
+      handleLogout(`Mật khẩu hoặc quyền hạn của tài khoản ${emp.code} đã được Admin thay đổi. Vui lòng đăng nhập lại.`);
+      return false;
+    }
+    // Keep role synced if Admin updated role
+    if (currentAcc.role !== emp.role || currentAcc.code !== emp.code) {
+      const updated = { ...currentAcc, role: emp.role, code: emp.code, name: emp.name, authVersion: emp.authVersion };
+      setSignedInAccount(updated);
+      localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(updated));
+      updateCurrentUserDisplay();
+    }
+    return true;
   }
 
   function checkAuthStatus() {
+    const explicitLogout = localStorage.getItem('lopvui.explicit-logout.v1') === '1';
     const saved = localStorage.getItem('lopvui.signed-in-account.v1');
     let account = null;
     try {
-      account = JSON.parse(saved);
+      account = saved ? JSON.parse(saved) : null;
     } catch {}
 
     const appShell = document.getElementById('app-shell') || $('#app-shell');
     const loginScreen = document.getElementById('login-screen') || $('#login-screen');
+    const master = getMasterData();
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
 
-    if (!account || !account.employeeId) {
-      account = { employeeId: 'employee-ta-001', role: 'assistant' };
-      localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
-      setSignedInAccount(account);
-      updateCurrentUserDisplay();
-    }
-    if (false) {
+    // If explicitly logged out, require login on #login-screen
+    if (explicitLogout || !account || !account.employeeId) {
+      if (!explicitLogout && !account) {
+        // First bootstrap fallback if session existed before v3.1
+        const defaultEmp = employees.find(e => e.id === 'employee-ta-001' && e.isActive !== false) || employees.find(e => e.isActive !== false);
+        if (defaultEmp) {
+          account = {
+            employeeId: defaultEmp.id,
+            code: defaultEmp.code,
+            name: defaultEmp.name,
+            role: defaultEmp.role,
+            authVersion: defaultEmp.authVersion || 1
+          };
+          localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
+          setSignedInAccount(account);
+          updateCurrentUserDisplay();
+          if (loginScreen) {
+            loginScreen.hidden = true;
+            loginScreen.style.display = 'none';
+          }
+          if (appShell) {
+            appShell.hidden = false;
+            appShell.style.display = '';
+          }
+          return true;
+        }
+      }
       if (appShell) {
         appShell.hidden = true;
         appShell.style.display = 'none';
@@ -237,27 +399,45 @@ export function setupFeatures(ctx) {
         renderLoginScreen();
       }
       return false;
-    } else {
-      // Logged in
-      if (loginScreen) {
-        loginScreen.hidden = true;
-        loginScreen.style.display = 'none';
-      }
-      if (appShell) {
-        appShell.hidden = false;
-        appShell.style.display = '';
-      }
-      return true;
     }
+
+    const emp = employees.find(e => e.id === account.employeeId);
+    if (!emp || emp.isActive === false || (account.authVersion && Number(emp.authVersion) > Number(account.authVersion))) {
+      handleLogout(emp?.isActive === false ? 'Tài khoản đã bị Admin tạm khóa.' : 'Phiên đăng nhập đã hết hạn hoặc mật khẩu đã thay đổi.');
+      return false;
+    }
+
+    // Valid session: ensure authVersion & code are hydrated
+    account = {
+      ...account,
+      employeeId: emp.id,
+      code: emp.code,
+      name: emp.name,
+      role: emp.role,
+      authVersion: emp.authVersion || 1
+    };
+    localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
+    setSignedInAccount(account);
+    updateCurrentUserDisplay();
+
+    if (loginScreen) {
+      loginScreen.hidden = true;
+      loginScreen.style.display = 'none';
+    }
+    if (appShell) {
+      appShell.hidden = false;
+      appShell.style.display = '';
+    }
+    return true;
   }
 
   // ----------------------------------------------------
-  // 1. ACCOUNT SWITCHER (PHÂN QUYỀN TRỢ GIẢNG / VĂN PHÒNG / GV / ADMIN)
+  // 1. TOPBAR ACCOUNT MENU & ACCOUNT SWITCHER (CÓ NÚT LOGOUT BÊN TRONG)
   // ----------------------------------------------------
   function updateCurrentUserDisplay() {
     const account = getSignedInAccount();
     const master = getMasterData();
-    const employee = master.employees.find(e => e.id === account?.employeeId) || {
+    const employee = (master.employees || []).map(normalizeEmployeeAccount).find(e => e && e.id === account?.employeeId) || {
       name: 'Chưa đăng nhập',
       code: '—',
       role: 'assistant'
@@ -267,54 +447,140 @@ export function setupFeatures(ctx) {
       assistant: 'Trợ giảng',
       office: 'Văn phòng',
       teacher: 'Giáo viên',
-      admin: 'Quản trị viên'
+      admin: 'Admin'
     };
 
-    const nameParts = employee.name.split(' ').filter(Boolean);
+    const nameParts = String(employee.name || '').split(' ').filter(Boolean);
     const initials = nameParts.length >= 2 
       ? (nameParts[0][0] + nameParts.at(-1)[0]).toUpperCase()
-      : employee.name.slice(0, 2).toUpperCase();
+      : String(employee.name || 'NV').slice(0, 2).toUpperCase();
+
+    const avatarEl = $('#current-user-avatar');
+    if (avatarEl) {
+      avatarEl.textContent = initials;
+      avatarEl.className = `user-avatar-chip role-${employee.role || 'assistant'}`;
+    }
 
     const nameEl = $('#current-user-name');
     if (nameEl) {
-      nameEl.innerHTML = `${escapeHtml(employee.name)}<small id="current-user-role">${escapeHtml(roleNames[employee.role] || employee.role)}</small>`;
+      const codeSuffix = employee.code && employee.code !== '—' ? ` · ${employee.code}` : '';
+      nameEl.innerHTML = `${escapeHtml(employee.name)}<small id="current-user-role">${escapeHtml((roleNames[employee.role] || employee.role) + codeSuffix)}</small>`;
     }
     const roleBadge = $('#role-display-badge');
     if (roleBadge) {
-      roleBadge.textContent = `Vai trò: ${roleNames[employee.role] || employee.role} · ${employee.name}`;
+      roleBadge.textContent = `Vai trò: ${roleNames[employee.role] || employee.role} · ${employee.name} (${employee.code || ''})`;
     }
   }
 
   function openAccountSwitchDialog() {
     const master = getMasterData();
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
     const currentAcc = getSignedInAccount();
+    const currentEmp = employees.find(e => e.id === currentAcc?.employeeId) || employees[0];
+    const isAdminUser = currentEmp?.role === 'admin';
+
+    const roleNames = {
+      assistant: 'Trợ giảng (TA)',
+      office: 'Văn phòng (VP)',
+      teacher: 'Giáo viên (GV)',
+      admin: 'Quản trị viên (Admin)'
+    };
+
+    // 1. Render Active Account Card with integrated Logout button inside
+    const activeCard = $('#active-account-profile-card');
+    if (activeCard && currentEmp) {
+      const nameParts = String(currentEmp.name || '').split(' ').filter(Boolean);
+      const initials = nameParts.length >= 2
+        ? (nameParts[0][0] + nameParts.at(-1)[0]).toUpperCase()
+        : String(currentEmp.name || 'NV').slice(0, 2).toUpperCase();
+
+      activeCard.innerHTML = `
+        <div class="active-account-card-main">
+          <div class="active-account-avatar role-${escapeHtml(currentEmp.role)}">${escapeHtml(initials)}</div>
+          <div class="active-account-meta">
+            <div class="active-account-title-row">
+              <strong>${escapeHtml(currentEmp.name)}</strong>
+              <span class="staff-role-badge ${escapeHtml(currentEmp.role)}">${escapeHtml(roleNames[currentEmp.role] || currentEmp.role)}</span>
+            </div>
+            <div class="active-account-sub">
+              <span>Mã nhân viên: <strong>${escapeHtml(currentEmp.code)}</strong></span>
+              ${currentEmp.phone ? `<span>· SĐT: ${escapeHtml(currentEmp.phone)}</span>` : ''}
+              ${currentEmp.email ? `<span>· ${escapeHtml(currentEmp.email)}</span>` : ''}
+            </div>
+            <small style="color:#2e6f40; font-weight:600;">● Đang đăng nhập trên thiết bị này</small>
+          </div>
+          <div class="active-account-actions">
+            ${isAdminUser ? `<button type="button" class="outline-button" id="active-card-change-my-pw-btn" style="padding:7px 11px; font-size:13px;">🔑 Đổi mật khẩu</button>` : ''}
+            <button type="button" class="logout-button-inside" id="active-card-logout-btn" title="Đăng xuất khỏi tài khoản ${escapeHtml(currentEmp.code)}">⎋ Đăng xuất</button>
+          </div>
+        </div>
+      `;
+
+      activeCard.querySelector('#active-card-logout-btn')?.addEventListener('click', () => {
+        try { $('#account-switch-dialog')?.close(); } catch {}
+        handleLogout();
+      });
+
+      activeCard.querySelector('#active-card-change-my-pw-btn')?.addEventListener('click', () => {
+        try { $('#account-switch-dialog')?.close(); } catch {}
+        openAdminPasswordDialog(currentEmp.id);
+      });
+    }
+
+    // Show/hide Admin quick button in footer
+    const adminOpenStaffBtn = $('#admin-open-staff-pw-btn');
+    if (adminOpenStaffBtn) {
+      adminOpenStaffBtn.hidden = !isAdminUser;
+      adminOpenStaffBtn.onclick = () => {
+        try { $('#account-switch-dialog')?.close(); } catch {}
+        setMainMenuPanel('management');
+        $('#mgmt-tab-staff')?.click();
+        renderStaffManagement();
+      };
+    }
+
+    const hintEl = $('#account-switch-hint');
+    if (hintEl) {
+      hintEl.textContent = isAdminUser
+        ? 'Quyền Admin: Bạn có thể chuyển nhanh sang bất kỳ tài khoản nhân sự nào để kiểm tra giao diện hoặc bấm 🔑 để cấp lại mật khẩu.'
+        : 'Chọn tài khoản bên dưới và nhập mật khẩu tương ứng để chuyển phiên làm việc.';
+    }
+
+    // Hide password prompt box initially
+    const authBox = $('#account-switch-auth-box');
+    if (authBox) authBox.hidden = true;
+    pendingSwitchTargetEmpId = null;
+
     const list = $('#account-switch-list');
     if (!list) return;
 
     const roleGroups = [
+      { role: 'admin', title: 'Quản trị viên (Toàn quyền hệ thống & Quản lý mật khẩu)' },
       { role: 'assistant', title: 'Trợ giảng (Thao tác trực tiếp tại lớp)' },
-      { role: 'office', title: 'Văn phòng (Quản lý tổng quan & Templates)' },
       { role: 'teacher', title: 'Giáo viên (Theo dõi tiến độ & Báo cáo)' },
-      { role: 'admin', title: 'Quản trị viên (Toàn quyền hệ thống)' }
+      { role: 'office', title: 'Văn phòng (Quản lý tổng quan & Phòng học)' }
     ];
 
     list.innerHTML = roleGroups.map(group => {
-      const emps = master.employees.filter(e => e.role === group.role);
+      const emps = employees.filter(e => e.role === group.role);
       if (!emps.length) return '';
       return `
         <div class="account-role-group">
           <div class="account-role-title">${escapeHtml(group.title)}</div>
           <div class="account-cards-grid">
             ${emps.map(emp => {
-              const isActive = emp.id === currentAcc?.employeeId;
-              const initials = emp.name.split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+              const isCurrent = emp.id === currentAcc?.employeeId;
+              const isLocked = emp.isActive === false;
               return `
-                <button type="button" class="account-user-card ${isActive ? 'active' : ''}" data-emp-id="${escapeHtml(emp.id)}">
-                  <div>
-                    <strong>${escapeHtml(emp.name)} ${isActive ? '✓' : ''}</strong>
-                    <small>Mã: ${escapeHtml(emp.code)} · ${escapeHtml(group.role.toUpperCase())}</small>
-                  </div>
-                </button>
+                <div class="account-user-card-wrap">
+                  <button type="button" class="account-user-card ${isCurrent ? 'active' : ''} ${isLocked ? 'locked' : ''}" data-emp-id="${escapeHtml(emp.id)}" ${isLocked ? 'disabled title="Tài khoản đang bị khóa"' : ''}>
+                    <div>
+                      <strong>${escapeHtml(emp.name)} ${isCurrent ? '✓' : ''} ${isLocked ? '🔒' : ''}</strong>
+                      <small>Mã NV: <strong>${escapeHtml(emp.code)}</strong> · ${escapeHtml(isLocked ? 'Đã khóa' : group.role.toUpperCase())}</small>
+                    </div>
+                  </button>
+                  ${isAdminUser ? `<button type="button" class="account-card-pw-btn" data-admin-pw-emp="${escapeHtml(emp.id)}" title="Đổi/Cấp mật khẩu cho ${escapeHtml(emp.name)} (${escapeHtml(emp.code)})">🔑</button>` : ''}
+                </div>
               `;
             }).join('')}
           </div>
@@ -322,43 +588,45 @@ export function setupFeatures(ctx) {
       `;
     }).join('');
 
+    list.querySelectorAll('[data-admin-pw-emp]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const targetId = btn.dataset.adminPwEmp;
+        try { $('#account-switch-dialog')?.close(); } catch {}
+        openAdminPasswordDialog(targetId);
+      };
+    });
+
     list.querySelectorAll('[data-emp-id]').forEach(btn => {
       btn.onclick = () => {
         const empId = btn.dataset.empId;
-        const emp = master.employees.find(e => e.id === empId);
-        if (!emp) return;
-        setSignedInAccount({ employeeId: emp.id, role: emp.role });
-        localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify({ employeeId: emp.id, role: emp.role }));
-        updateCurrentUserDisplay();
-
-        // Close any active class view and return to main menu
-        try {
-          history.pushState({}, '', '/');
-        } catch {}
-
-        if ($('#class-workspace')) {
-          $('#class-workspace').hidden = true;
-          $('#class-workspace').style.display = '';
-        }
-        if ($('#class-general-view')) {
-          $('#class-general-view').hidden = true;
-          $('#class-general-view').style.display = '';
-        }
-        if ($('#main-menu-view')) {
-          $('#main-menu-view').hidden = false;
-          $('#main-menu-view').style.display = '';
+        const emp = employees.find(e => e.id === empId);
+        if (!emp || emp.isActive === false) return;
+        if (emp.id === currentAcc?.employeeId) {
+          try { $('#account-switch-dialog')?.close(); } catch {}
+          return;
         }
 
-        // Switch to the appropriate panel based on new role
-        if (emp.role === 'assistant' || emp.role === 'teacher') {
-          setMainMenuPanel('work');
-        } else {
-          setMainMenuPanel('management');
+        // If current user is Admin, allow direct switch for testing; otherwise require target account's password
+        if (isAdminUser) {
+          completeLoginSession(emp, true);
+          try { $('#account-switch-dialog')?.close(); } catch {}
+          return;
         }
 
-        try { $('#account-switch-dialog')?.close(); } catch {}
-        const roleNames = { assistant: 'Trợ giảng', office: 'Văn phòng', teacher: 'Giáo viên', admin: 'Admin' };
-        toast(`Đã chuyển sang tài khoản ${emp.name} (${roleNames[emp.role] || emp.role})`);
+        pendingSwitchTargetEmpId = emp.id;
+        if (authBox) {
+          authBox.hidden = false;
+          const lbl = $('#account-switch-target-label');
+          if (lbl) lbl.textContent = `Nhập mật khẩu của ${emp.name} (${emp.code}):`;
+          const inp = $('#account-switch-password-input');
+          const err = $('#account-switch-auth-error');
+          if (err) { err.hidden = true; err.textContent = ''; }
+          if (inp) {
+            inp.value = '';
+            setTimeout(() => inp.focus(), 30);
+          }
+        }
       };
     });
 
@@ -368,14 +636,41 @@ export function setupFeatures(ctx) {
     }
   }
 
-  
   // ----------------------------------------------------
-  // 1.1 QUẢN LÝ NHÂN SỰ DÀNH RIÊNG CHO ADMIN (PERSONNEL MANAGEMENT)
+  // 1.1 QUẢN LÝ NHÂN SỰ & MẬT KHẨU DÀNH RIÊNG CHO ADMIN
   // ----------------------------------------------------
+  function openAdminPasswordDialog(empId) {
+    const currentAcc = getSignedInAccount();
+    if (currentAcc?.role !== 'admin') {
+      toast('Chỉ tài khoản Quản trị viên (Admin) mới có quyền quản lý mật khẩu.');
+      return;
+    }
+    const master = getMasterData();
+    const emp = (master.employees || []).find(e => e.id === empId);
+    if (!emp) return;
+    const norm = normalizeEmployeeAccount(emp);
+
+    const dlg = $('#admin-password-dialog');
+    if (!dlg) return;
+
+    $('#admin-pw-emp-id').value = norm.id;
+    $('#admin-pw-emp-code').value = `${norm.code} — ${norm.name}`;
+    $('#admin-pw-new-input').value = norm.password || '123456';
+    $('#admin-pw-active-select').value = norm.isActive === false ? 'locked' : 'active';
+    $('#admin-pw-dialog-title').textContent = `Quản lý mật khẩu: ${norm.name}`;
+    $('#admin-pw-dialog-subtitle').textContent = `Mã nhân viên đăng nhập: ${norm.code}. Khi đổi mật khẩu hoặc khóa tài khoản, các thiết bị đang đăng nhập tài khoản này sẽ cần đăng nhập lại.`;
+
+    try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); }
+    setTimeout(() => {
+      const inp = $('#admin-pw-new-input');
+      if (inp) { inp.focus(); inp.select(); }
+    }, 40);
+  }
+
   function renderStaffManagement() {
     const master = getMasterData();
     const catalog = getClassCatalog();
-    const employees = master.employees || [];
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
 
     const search = ($('#staff-search-input')?.value || '').trim().toLowerCase();
     const roleFilter = $('#staff-role-filter')?.value || 'all';
@@ -392,7 +687,6 @@ export function setupFeatures(ctx) {
     if ($('#staff-kpi-teachers')) $('#staff-kpi-teachers').textContent = teachers;
     if ($('#staff-kpi-office')) $('#staff-kpi-office').textContent = office;
 
-    // Filter employees
     const filtered = employees.filter(e => {
       if (roleFilter !== 'all' && e.role !== roleFilter) return false;
       if (search) {
@@ -418,10 +712,6 @@ export function setupFeatures(ctx) {
     };
 
     tbody.innerHTML = filtered.map((emp, index) => {
-      const nameParts = emp.name.split(' ').filter(Boolean);
-      const initials = nameParts.length >= 2 ? (nameParts[0][0] + nameParts.at(-1)[0]).toUpperCase() : emp.name.slice(0, 2).toUpperCase();
-
-      // Find assigned classes
       const assigned = catalog.filter(c => 
         (c.teacherIds || []).includes(emp.id) || 
         (c.assistantIds || []).includes(emp.id) || 
@@ -432,8 +722,19 @@ export function setupFeatures(ctx) {
         ? `<span class="plain-class-list-text">${assigned.map(c => escapeHtml(c.code || c.name)).join(', ')}</span>` 
         : '<small style="color:#9ca89f;">Chưa phân công lớp</small>';
 
+      const isRevealed = revealedStaffPasswords.has(emp.id);
+      const pwText = isRevealed ? emp.password : '••••••••';
+      const isActive = emp.isActive !== false;
+      const statusBadge = isActive
+        ? `<span class="staff-status-pill active">● Hoạt động</span>`
+        : `<span class="staff-status-pill locked">🔒 Đã khóa</span>`;
+
+      const contactHtml = (emp.phone || emp.email)
+        ? `<div>${escapeHtml(emp.phone || '—')}</div><small style="color:#6d7d70;">${escapeHtml(emp.email || '')}</small>`
+        : '—';
+
       return `
-        <tr>
+        <tr class="${!isActive ? 'staff-row-locked' : ''}">
           <td style="text-align:center;">${index + 1}</td>
           <td>
             <div style="cursor:pointer;" data-view-staff="${escapeHtml(emp.id)}" title="Bấm để xem phân công ca & lịch sử làm việc">
@@ -441,23 +742,43 @@ export function setupFeatures(ctx) {
               <small style="display:block; color:#7d8c80; font-size:12.5px;">Bấm xem ca & lịch sử</small>
             </div>
           </td>
-          <td><strong>${escapeHtml(emp.code)}</strong></td>
+          <td><strong class="staff-code-pill">${escapeHtml(emp.code)}</strong></td>
           <td><span class="staff-role-badge ${escapeHtml(emp.role)}">${escapeHtml(roleLabels[emp.role] || emp.role)}</span></td>
-          <td>${escapeHtml(emp.phone || '—')}</td>
-          <td>${escapeHtml(emp.email || '—')}</td>
+          <td>
+            <div class="staff-pw-cell">
+              ${statusBadge}
+              <div class="staff-pw-reveal-row">
+                <code class="staff-pw-code ${isRevealed ? 'revealed' : ''}">${escapeHtml(pwText)}</code>
+                <button type="button" class="staff-pw-eye-btn" data-toggle-staff-pw="${escapeHtml(emp.id)}" title="${isRevealed ? 'Ẩn mật khẩu' : 'Xem mật khẩu hiện tại'}">${isRevealed ? 'Ẩn' : 'Xem'}</button>
+              </div>
+            </div>
+          </td>
+          <td>${contactHtml}</td>
           <td class="col-allow-wrap">${assignedBadges}</td>
           <td style="text-align:center; white-space:nowrap;">
-            
-            <button type="button" class="outline-button" data-edit-staff="${escapeHtml(emp.id)}" style="padding:7px 12px; font-size:13.5px; margin-left:4px;">Sửa</button>
-            <button type="button" class="text-danger" data-delete-staff="${escapeHtml(emp.id)}" style="padding:7px 12px; font-size:13.5px; margin-left:4px;">Xóa</button>
+            <button type="button" class="outline-button" data-reset-pw-staff="${escapeHtml(emp.id)}" style="padding:7px 10px; font-size:13px;" title="Cấp hoặc đổi mật khẩu đăng nhập">🔑 Đổi MK</button>
+            <button type="button" class="outline-button" data-edit-staff="${escapeHtml(emp.id)}" style="padding:7px 10px; font-size:13px; margin-left:4px;">Sửa</button>
+            <button type="button" class="text-danger" data-delete-staff="${escapeHtml(emp.id)}" style="padding:7px 10px; font-size:13px; margin-left:4px;">Xóa</button>
           </td>
         </tr>
       `;
     }).join('');
 
-    // Attach view, edit & delete events
     tbody.querySelectorAll('[data-view-staff]').forEach(btn => {
       btn.onclick = () => openStaffDetailDialog(btn.dataset.viewStaff);
+    });
+
+    tbody.querySelectorAll('[data-toggle-staff-pw]').forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.dataset.toggleStaffPw;
+        if (revealedStaffPasswords.has(id)) revealedStaffPasswords.delete(id);
+        else revealedStaffPasswords.add(id);
+        renderStaffManagement();
+      };
+    });
+
+    tbody.querySelectorAll('[data-reset-pw-staff]').forEach(btn => {
+      btn.onclick = () => openAdminPasswordDialog(btn.dataset.resetPwStaff);
     });
 
     tbody.querySelectorAll('[data-edit-staff]').forEach(btn => {
@@ -470,7 +791,13 @@ export function setupFeatures(ctx) {
         const emp = master.employees.find(e => e.id === staffId);
         if (!emp) return;
 
-        // Check if assigned to any class
+        // Prevent deleting the last active admin
+        const activeAdmins = (master.employees || []).filter(e => e.role === 'admin' && e.isActive !== false);
+        if (emp.role === 'admin' && activeAdmins.length <= 1) {
+          alert('Không thể xóa tài khoản Quản trị viên (Admin) duy nhất của hệ thống!');
+          return;
+        }
+
         const assigned = catalog.filter(c => 
           (c.teacherIds || []).includes(emp.id) || 
           (c.assistantIds || []).includes(emp.id) || 
@@ -478,18 +805,18 @@ export function setupFeatures(ctx) {
         );
 
         if (assigned.length > 0) {
-          alert(`Không thể xóa! Nhân viên ${emp.name} đang được phân công phụ trách ${assigned.length} lớp: ${assigned.map(c => c.name).join(', ')}. Vui lòng gỡ phân công trong cấu hình lớp trước khi xóa.`);
+          alert(`Không thể xóa! Nhân viên ${emp.name} đang được phân công phụ trách ${assigned.length} lớp: ${assigned.map(c => c.name).join(', ')}. Vui lòng gỡ phân công trong cấu hình lớp (hoặc chuyển trạng thái sang Tạm khóa) trước khi xóa.`);
           return;
         }
 
         if (!confirm(`Bạn có chắc chắn muốn xóa nhân viên ${emp.name} (${emp.code}) khỏi hệ thống?`)) return;
 
         master.employees = master.employees.filter(e => e.id !== staffId);
-        // Persist
-        if (ctx.setMasterData) ctx.setMasterData(master); else localStorage.setItem('lopvui.master-data.v1', JSON.stringify(master));
+        if (ctx.setMasterData) ctx.setMasterData(master);
+        else localStorage.setItem('lopvui.master-data.v1', JSON.stringify(master));
         renderStaffManagement();
         renderMainMenu();
-        toast(`Đã xóa nhân viên ${emp.name}.`);
+        toast(`Đã xóa nhân viên ${emp.name} (${emp.code}).`);
       };
     });
   }
@@ -500,9 +827,10 @@ export function setupFeatures(ctx) {
     if (!dialog) return;
 
     if (editId) {
-      const emp = master.employees.find(e => e.id === editId);
-      if (!emp) return;
-      $('#staff-form-title').textContent = 'Chỉnh sửa thông tin nhân viên';
+      const rawEmp = master.employees.find(e => e.id === editId);
+      if (!rawEmp) return;
+      const emp = normalizeEmployeeAccount(rawEmp);
+      $('#staff-form-title').textContent = 'Chỉnh sửa thông tin & Tài khoản nhân viên';
       $('#staff-form-id').value = emp.id;
       $('#staff-code').value = emp.code;
       $('#staff-name').value = emp.name;
@@ -510,17 +838,19 @@ export function setupFeatures(ctx) {
       $('#staff-phone').value = emp.phone || '';
       $('#staff-email').value = emp.email || '';
       $('#staff-note').value = emp.note || '';
+      if ($('#staff-password')) $('#staff-password').value = emp.password || '123456';
+      if ($('#staff-active-status')) $('#staff-active-status').value = emp.isActive === false ? 'locked' : 'active';
     } else {
-      $('#staff-form-title').textContent = 'Thêm nhân viên mới';
+      $('#staff-form-title').textContent = 'Thêm nhân viên & Cấp tài khoản mới';
       $('#staff-form-id').value = '';
-      
-      // Do not auto-generate dummy codes
       $('#staff-code').value = '';
       $('#staff-name').value = '';
       $('#staff-role').value = 'assistant';
       $('#staff-phone').value = '';
       $('#staff-email').value = '';
       $('#staff-note').value = '';
+      if ($('#staff-password')) $('#staff-password').value = '123456';
+      if ($('#staff-active-status')) $('#staff-active-status').value = 'active';
     }
 
     dialog.showModal();
@@ -531,8 +861,8 @@ export function setupFeatures(ctx) {
     const catalog = getClassCatalog();
     const roleLabels = { assistant: 'Trợ giảng', teacher: 'Giáo viên', office: 'Văn phòng', admin: 'Quản trị viên' };
 
-    const headers = ['STT', 'Mã NV', 'Họ và tên', 'Vai trò', 'Số điện thoại', 'Email', 'Các lớp phụ trách', 'Ghi chú'];
-    const rows = (master.employees || []).map((emp, index) => {
+    const headers = ['STT', 'Mã NV (Login)', 'Họ và tên', 'Vai trò', 'Trạng thái TK', 'Số điện thoại', 'Email', 'Các lớp phụ trách', 'Ghi chú'];
+    const rows = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean).map((emp, index) => {
       const assigned = catalog.filter(c => 
         (c.teacherIds || []).includes(emp.id) || 
         (c.assistantIds || []).includes(emp.id) || 
@@ -544,6 +874,7 @@ export function setupFeatures(ctx) {
         emp.code,
         emp.name,
         roleLabels[emp.role] || emp.role,
+        emp.isActive === false ? 'Tạm khóa' : 'Đang hoạt động',
         emp.phone || '',
         emp.email || '',
         assigned || 'Chưa phân công',
@@ -1885,11 +2216,14 @@ export function setupFeatures(ctx) {
       $('#portal-assigned-classes').textContent = `Phụ trách: ${assignedClasses.map(c => c.name).join(', ') || 'Chưa phân công lớp'}`;
     }
 
-    // Collect confirmed work shifts in this month
-    const personalWorkKey = `lopvui.personal-work.v1.${encodeURIComponent(emp.name.trim().toLocaleLowerCase('vi'))}`;
+    // Collect confirmed work shifts in this month (keyed by employeeId v2 with fallback to legacy v1 name key)
+    const personalWorkKeyV2 = `lopvui.personal-work.v2.${emp.id}`;
+    const personalWorkKeyV1 = `lopvui.personal-work.v1.${encodeURIComponent(emp.name.trim().toLocaleLowerCase('vi'))}`;
     let personalWorkDays = {};
     try {
-      personalWorkDays = JSON.parse(localStorage.getItem(personalWorkKey) || '{}');
+      const v2 = JSON.parse(localStorage.getItem(personalWorkKeyV2) || 'null');
+      const v1 = JSON.parse(localStorage.getItem(personalWorkKeyV1) || '{}');
+      personalWorkDays = (v2 && typeof v2 === 'object' && Object.keys(v2).length) ? { ...v1, ...v2 } : (v1 || {});
     } catch {}
 
     // Also check session checklist confirmations
@@ -4354,6 +4688,17 @@ export function setupFeatures(ctx) {
   $('#close-staff-form')?.addEventListener('click', () => $('#staff-form-dialog')?.close());
   $('#cancel-staff-form-btn')?.addEventListener('click', () => $('#staff-form-dialog')?.close());
 
+  $('#staff-pw-default-btn')?.addEventListener('click', () => {
+    const role = $('#staff-role')?.value || 'assistant';
+    if ($('#staff-password')) $('#staff-password').value = role === 'admin' ? 'admin123' : '123456';
+  });
+  $('#staff-pw-random-btn')?.addEventListener('click', () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let pw = '';
+    for (let i = 0; i < 6; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    if ($('#staff-password')) $('#staff-password').value = pw;
+  });
+
   $('#staff-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const master = getMasterData();
@@ -4365,6 +4710,8 @@ export function setupFeatures(ctx) {
     const phone = ($('#staff-phone')?.value || '').trim();
     const email = ($('#staff-email')?.value || '').trim();
     const note = ($('#staff-note')?.value || '').trim();
+    const password = ($('#staff-password')?.value || '').trim() || (role === 'admin' ? 'admin123' : '123456');
+    const isActive = ($('#staff-active-status')?.value || 'active') !== 'locked';
 
     if (!code || !name) {
       toast('Vui lòng nhập đầy đủ Mã nhân viên và Họ tên.');
@@ -4379,14 +4726,26 @@ export function setupFeatures(ctx) {
     if (editId) {
       const emp = (master.employees || []).find(x => x.id === editId);
       if (emp) {
+        const activeAdmins = (master.employees || []).filter(x => x.id !== editId && x.role === 'admin' && x.isActive !== false);
+        if (emp.role === 'admin' && (role !== 'admin' || !isActive) && activeAdmins.length === 0) {
+          toast('Hệ thống bắt buộc phải có ít nhất 1 tài khoản Admin đang hoạt động.');
+          return;
+        }
+        const pwChanged = emp.password !== password || emp.role !== role || (emp.isActive !== false) !== isActive;
         emp.code = code;
         emp.name = name;
         emp.role = role;
         emp.phone = phone;
         emp.email = email;
         emp.note = note;
+        emp.password = password;
+        emp.passwordHash = hashStaffPassword(code, password);
+        emp.isActive = isActive;
+        if (pwChanged) {
+          emp.authVersion = (Number(emp.authVersion) || 1) + 1;
+        }
+        emp.updatedAt = Date.now();
       }
-      // Cập nhật tên hiển thị của nhân sự trong danh mục lớp
       catalog.forEach(cls => {
         if ((cls.teacherIds || []).includes(editId)) {
           cls.teacherName = (cls.teacherIds || []).map(id => master.employees.find(x => x.id === id)?.name).filter(Boolean).join(', ');
@@ -4397,15 +4756,19 @@ export function setupFeatures(ctx) {
       });
       saveClassCatalog(catalog);
     } else {
-      master.employees.push({
+      master.employees.push(normalizeEmployeeAccount({
         id: `employee-${role}-${Date.now().toString(36)}`,
         code,
         name,
         role,
         phone,
         email,
-        note
-      });
+        note,
+        password,
+        isActive,
+        authVersion: 1,
+        updatedAt: Date.now()
+      }));
     }
 
     if (ctx.setMasterData) ctx.setMasterData(master);
@@ -4415,7 +4778,61 @@ export function setupFeatures(ctx) {
     renderStaffManagement();
     renderMainMenu();
     updateCurrentUserDisplay();
-    toast(editId ? `Đã cập nhật thông tin nhân viên ${name}.` : `Đã thêm nhân viên mới: ${name} (${code}).`);
+    toast(editId ? `Đã cập nhật tài khoản nhân viên ${name} (${code}).` : `Đã tạo tài khoản nhân viên mới: ${name} (Mã: ${code}, MK: ${password}).`);
+  });
+
+  // Gắn sự kiện cho Hộp thoại Cấp/Đổi mật khẩu nhanh của Admin (#admin-password-dialog)
+  $('#close-admin-password-dialog')?.addEventListener('click', () => $('#admin-password-dialog')?.close());
+  $('#cancel-admin-password-btn')?.addEventListener('click', () => $('#admin-password-dialog')?.close());
+  $('#admin-pw-set-default-btn')?.addEventListener('click', () => {
+    if ($('#admin-pw-new-input')) $('#admin-pw-new-input').value = '123456';
+  });
+  $('#admin-pw-set-random-btn')?.addEventListener('click', () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let pw = '';
+    for (let i = 0; i < 6; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    if ($('#admin-pw-new-input')) $('#admin-pw-new-input').value = pw;
+  });
+  $('#admin-password-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const empId = $('#admin-pw-emp-id')?.value;
+    const newPw = ($('#admin-pw-new-input')?.value || '').trim();
+    const isActive = ($('#admin-pw-active-select')?.value || 'active') !== 'locked';
+    if (!empId || !newPw) {
+      toast('Vui lòng nhập mật khẩu mới.');
+      return;
+    }
+    const master = getMasterData();
+    const emp = (master.employees || []).find(x => x.id === empId);
+    if (!emp) return;
+
+    const activeAdmins = (master.employees || []).filter(x => x.id !== empId && x.role === 'admin' && x.isActive !== false);
+    if (emp.role === 'admin' && !isActive && activeAdmins.length === 0) {
+      toast('Không thể khóa tài khoản Admin duy nhất của hệ thống.');
+      return;
+    }
+
+    emp.password = newPw;
+    emp.passwordHash = hashStaffPassword(emp.code, newPw);
+    emp.isActive = isActive;
+    emp.authVersion = (Number(emp.authVersion) || 1) + 1;
+    emp.updatedAt = Date.now();
+    revealedStaffPasswords.add(emp.id);
+
+    if (ctx.setMasterData) ctx.setMasterData(master);
+    else localStorage.setItem('lopvui.master-data.v1', JSON.stringify(master));
+
+    // If Admin changed their own password, keep their active session authVersion updated
+    const currentAcc = getSignedInAccount();
+    if (currentAcc && currentAcc.employeeId === emp.id) {
+      const updatedAcc = { ...currentAcc, authVersion: emp.authVersion };
+      setSignedInAccount(updatedAcc);
+      localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(updatedAcc));
+    }
+
+    $('#admin-password-dialog')?.close();
+    renderStaffManagement();
+    toast(`Đã cập nhật mật khẩu mới cho ${emp.name} (${emp.code}).`);
   });
 
   // Gắn sự kiện cho Chốt sĩ số & Rà soát vắng mặt (#finalize-dialog)
@@ -4475,24 +4892,92 @@ export function setupFeatures(ctx) {
     });
   }, 100);
 
-  // Gắn sự kiện cho các nút Đăng nhập / Đăng xuất / Hướng dẫn / Google Sheets để không có nút chết
-  $('#logout-button')?.addEventListener('click', handleLogout);
-  $('#sidebar-logout-btn')?.addEventListener('click', handleLogout);
+  // Gắn sự kiện cho Form Đăng nhập Mã nhân viên & Mật khẩu (#auth-login-form) và Nút Đăng xuất trong Tài khoản
+  $('#logout-button')?.addEventListener('click', () => handleLogout());
+  $('#sidebar-logout-btn')?.addEventListener('click', () => handleLogout());
   $('#dialog-logout-btn')?.addEventListener('click', () => {
     $('#account-switch-dialog')?.close();
     handleLogout();
   });
+
+  $('#toggle-login-pw-btn')?.addEventListener('click', () => {
+    const pwInput = $('#login-password-input');
+    const btn = $('#toggle-login-pw-btn');
+    if (!pwInput || !btn) return;
+    const isHidden = pwInput.type === 'password';
+    pwInput.type = isHidden ? 'text' : 'password';
+    btn.textContent = isHidden ? 'Ẩn' : 'Hiện';
+  });
+
+  $('#auth-login-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const code = $('#login-staff-code-input')?.value || '';
+    const password = $('#login-password-input')?.value || '';
+    const remember = $('#login-remember-checkbox') ? $('#login-remember-checkbox').checked : true;
+    handleLoginByCredentials(code, password, remember);
+  });
+
+  $('#login-staff-code-input')?.addEventListener('input', () => setLoginError(''));
+  $('#login-password-input')?.addEventListener('input', () => setLoginError(''));
+
+  // Khi bấm vào thẻ tài khoản gợi ý hoặc nút "Điền Mã NV này": điền sẵn Mã NV + Mật khẩu mẫu để tiện test nhanh
   document.querySelectorAll('.login-role-card[data-direct-role]').forEach(card => {
     card.addEventListener('click', () => {
       const targetRole = card.dataset.directRole;
       const master = getMasterData();
-      const emp = (master.employees || []).find(e => e.role === targetRole) || master.employees?.[0];
-      if (emp) handleLogin(emp.id);
+      const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+      const emp = employees.find(e => e.role === targetRole && e.isActive !== false) || employees[0];
+      if (!emp) return;
+      if ($('#login-staff-code-input')) $('#login-staff-code-input').value = emp.code;
+      if ($('#login-password-input')) $('#login-password-input').value = emp.password || '';
+      setLoginError('');
+      $('#login-password-input')?.focus();
     });
   });
+
   $('#confirm-select-login-btn')?.addEventListener('click', () => {
     const empId = $('#login-employee-select')?.value;
-    if (empId) handleLogin(empId);
+    const master = getMasterData();
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+    const emp = employees.find(e => e.id === empId);
+    if (emp) {
+      if ($('#login-staff-code-input')) $('#login-staff-code-input').value = emp.code;
+      if ($('#login-password-input')) $('#login-password-input').value = emp.password || '';
+      setLoginError('');
+      $('#login-submit-btn')?.focus();
+    }
+  });
+
+  // Xác thực mật khẩu khi chuyển nhanh tài khoản trong #account-switch-dialog (dành cho user không phải Admin)
+  $('#cancel-switch-auth-btn')?.addEventListener('click', () => {
+    pendingSwitchTargetEmpId = null;
+    if ($('#account-switch-auth-box')) $('#account-switch-auth-box').hidden = true;
+  });
+  const confirmSwitchWithPassword = () => {
+    if (!pendingSwitchTargetEmpId) return;
+    const master = getMasterData();
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+    const targetEmp = employees.find(e => e.id === pendingSwitchTargetEmpId);
+    if (!targetEmp) return;
+    const inputPw = ($('#account-switch-password-input')?.value || '').trim();
+    const errEl = $('#account-switch-auth-error');
+    if (!verifyStaffPassword(targetEmp, inputPw)) {
+      if (errEl) {
+        errEl.hidden = false;
+        errEl.textContent = `Mật khẩu của tài khoản ${targetEmp.code} không đúng.`;
+      }
+      $('#account-switch-password-input')?.focus();
+      return;
+    }
+    completeLoginSession(targetEmp, true);
+    try { $('#account-switch-dialog')?.close(); } catch {}
+  };
+  $('#confirm-switch-auth-btn')?.addEventListener('click', confirmSwitchWithPassword);
+  $('#account-switch-password-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      confirmSwitchWithPassword();
+    }
   });
   $('#google-sheets-sync-btn')?.addEventListener('click', () => {
     const cfg = loadGoogleSheetsConfig();
@@ -4918,6 +5403,8 @@ export function setupFeatures(ctx) {
     handleLogin,
     handleLogout,
     checkAuthStatus,
+    verifyActiveSessionIntegrity,
+    openAdminPasswordDialog,
     updateCurrentUserDisplay,
     renderTutoringModule,
     renderRoomTemplatesList,

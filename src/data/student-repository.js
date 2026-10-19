@@ -403,24 +403,70 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
     storage.setItem(MAKEUP_KEY, JSON.stringify(makeupRecords));
   }
 
+  const photoStore = loadPhotoStore(storage);
+  normalized.forEach(s => hydrateStudentPhoto(s, photoStore));
+  makeupRecords.forEach(s => hydrateStudentPhoto(s, photoStore));
   return { students: normalized, makeupStudents: makeupRecords };
 }
 
+const PHOTOS_KEY = 'lopvui.student-photos.v1';
+
+function loadPhotoStore(storage = getStorage()) {
+  try {
+    if (!storage) return {};
+    return JSON.parse(storage.getItem(PHOTOS_KEY) || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+
+function sanitizeStudentForStorage(s, photoStore) {
+  if (!s || typeof s !== 'object') return null;
+  const copy = { ...s };
+  // Strip transient per-session UI state so multi-class/multi-device saves never conflict
+  delete copy.attendance;
+  delete copy.homework;
+  delete copy.testScore;
+  delete copy.arrivalTime;
+  delete copy.lateMinutes;
+
+  copy.studentCode = (copy.studentCode && String(copy.studentCode).trim())
+    ? String(copy.studentCode).trim().toUpperCase()
+    : null;
+
+  // Offload base64 data URLs to separate key lopvui.student-photos.v1 to keep student roster payload small
+  if (copy.photoURL && String(copy.photoURL).startsWith('data:image/')) {
+    photoStore[copy.id] = copy.photoURL;
+    copy.hasStoredPhoto = true;
+    copy.photoURL = `@photo:${copy.id}`;
+  } else if (!copy.photoURL) {
+    delete photoStore[copy.id];
+    copy.hasStoredPhoto = false;
+  }
+  copy.updatedAt = copy.updatedAt || Date.now();
+  return copy;
+}
+
+export function hydrateStudentPhoto(student, photoStore) {
+  if (!student) return student;
+  if (student.photoURL && String(student.photoURL).startsWith('@photo:')) {
+    const pid = String(student.photoURL).slice(7) || student.id;
+    student.photoURL = photoStore[pid] || photoStore[student.id] || null;
+  } else if (!student.photoURL && photoStore[student.id]) {
+    student.photoURL = photoStore[student.id];
+  }
+  return student;
+}
+
 export function saveStudentRecords(students, makeupStudents, storage = getStorage()) {
-  const cleanStudents = (students || []).filter(Boolean).map(s => ({
-    ...s,
-    studentCode: (s.studentCode && String(s.studentCode).trim())
-      ? String(s.studentCode).trim().toUpperCase()
-      : null
-  }));
-  const cleanMakeups = (makeupStudents || []).filter(Boolean).map(s => ({
-    ...s,
-    studentCode: (s.studentCode && String(s.studentCode).trim())
-      ? String(s.studentCode).trim().toUpperCase()
-      : null
-  }));
+  const photoStore = loadPhotoStore(storage);
+  const cleanStudents = (students || []).filter(Boolean).map(s => sanitizeStudentForStorage(s, photoStore)).filter(Boolean);
+  const cleanMakeups = (makeupStudents || []).filter(Boolean).map(s => sanitizeStudentForStorage(s, photoStore)).filter(Boolean);
 
   if (storage) {
+    try {
+      storage.setItem(PHOTOS_KEY, JSON.stringify(photoStore));
+    } catch {}
     storage.setItem(STUDENTS_KEY, JSON.stringify(cleanStudents));
     storage.setItem(MAKEUP_KEY, JSON.stringify(cleanMakeups));
   }

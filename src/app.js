@@ -6,7 +6,7 @@ import { setupFeatures } from './features.js?v=3.1';
 import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.1';
 import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=3.1';
 import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.1';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear } from './data/class-catalog-repository.js?v=3.1';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.1';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -390,8 +390,19 @@ function createStudentProfile({name,familyName=undefined,givenName=undefined,sch
   };
 }
 const currentStaffName=()=>masterData?.employees?.find(e=>e.id===currentEmployeeId)?.name||document.querySelector('.user-name')?.childNodes[0]?.textContent.trim()||'Trợ giảng';
-const personalWorkKey=()=>`lopvui.personal-work.v1.${encodeURIComponent(currentStaffName().trim().toLocaleLowerCase('vi'))}`;
-let personalWorkDays=read(personalWorkKey(),{});
+const personalWorkKey=()=>`lopvui.personal-work.v2.${currentEmployeeId||'employee-ta-001'}`;
+const loadPersonalWorkDays=()=>{
+  const v2 = read(personalWorkKey(), null);
+  if (v2 && typeof v2 === 'object' && Object.keys(v2).length > 0) return v2;
+  const legacyKey = `lopvui.personal-work.v1.${encodeURIComponent(currentStaffName().trim().toLocaleLowerCase('vi'))}`;
+  const v1 = read(legacyKey, {});
+  if (v1 && typeof v1 === 'object' && Object.keys(v1).length > 0) {
+    try { localStorage.setItem(personalWorkKey(), JSON.stringify(v1)); } catch {}
+    return v1;
+  }
+  return v2 || {};
+};
+let personalWorkDays=loadPersonalWorkDays();
 const renderPersonalWork=()=>{const didWork=Boolean(personalWorkDays[checklistDate]),button=$('#personal-work-toggle'),status=$('#personal-work-status');if(!button||!status)return;button.setAttribute('aria-pressed',String(didWork));button.classList.toggle('checked',didWork);button.textContent=didWork?'✓ Đã xác nhận đi làm hôm nay':'✓ Tôi có đi làm hôm nay';status.textContent=didWork?`Bạn đã tự xác nhận đi làm hôm nay (${checklistDate}).`:`Chưa xác nhận hôm nay · ${checklistDate}`;};
 $('#personal-work-toggle').onclick=()=>{if(personalWorkDays[checklistDate])delete personalWorkDays[checklistDate];else personalWorkDays[checklistDate]={staff:currentStaffName(),at:Date.now()};localStorage.setItem(personalWorkKey(),JSON.stringify(personalWorkDays));renderPersonalWork();};
 renderPersonalWork();
@@ -552,8 +563,15 @@ const selectedRole=()=>['assistant','office','teacher','admin'].includes(signedI
 function occurrenceDate(classInfo,from=new Date()){const date=new Date(from);date.setHours(0,0,0,0);let days=(Number(classInfo.weekday)-date.getDay()+7)%7;const startToday=new Date(date),endToday=new Date(date);const [hour,minute]=String(classInfo.startTime||'15:30').split(':').map(Number),[endHour,endMinute]=String(classInfo.endTime||'17:00').split(':').map(Number);startToday.setHours(hour,minute,0,0);endToday.setHours(endHour,endMinute,0,0);if(days===0&&startToday<from&&from>=endToday)days=7;date.setDate(date.getDate()+days);return date;}
 function formatSessionDate(date){const today=new Date();today.setHours(0,0,0,0);const tomorrow=new Date(today);tomorrow.setDate(tomorrow.getDate()+1);const dateOnly=new Date(date);dateOnly.setHours(0,0,0,0);if(dateOnly.getTime()===today.getTime())return 'Hôm nay';if(dateOnly.getTime()===tomorrow.getTime())return 'Ngày mai';return `${weekdayNames[date.getDay()]}, ${date.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}`;}
 function classScheduleStamp(classInfo,date){const [hour,minute]=String(classInfo.startTime||'15:30').split(':').map(Number),stamp=new Date(date);stamp.setHours(hour,minute,0,0);return stamp;}
-function sessionChangeKey(classId,date){return classId+'::'+new Date(date).toLocaleDateString('sv-SE');}
-function getSessionChange(classId,date){return sessionChanges[sessionChangeKey(classId,date)]||null;}
+function normalizeIsoDateString(date) {
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) return date.trim();
+  try { return new Date(date).toLocaleDateString('sv-SE'); } catch { return String(date || ''); }
+}
+function sessionChangeKey(classId,date){return classId+'::'+normalizeIsoDateString(date);}
+function getSessionChange(classId,date){
+  const iso = normalizeIsoDateString(date);
+  return sessionChanges[`${classId}::${iso}`] || sessionChanges[`${classId}:${iso}`] || null;
+}
 function assignedIdsFor(item,change,role){const field={teacher:'teacherIds',assistant:'assistantIds',office:'officeIds'}[role];if(role==='office')return item.officeIds||[];const override=change&&Object.prototype.hasOwnProperty.call(change,field)?change[field]:undefined;return override===undefined?(item[field]||[]):override;}
 function employeeNames(ids){return ids.map(id=>masterData.employees.find(employee=>employee.id===id)?.name).filter(Boolean).join(', ')||'Chưa phân công';}
 function assignedShiftInstances(role){
@@ -593,7 +611,7 @@ function assignedShiftInstances(role){
 function scheduleCard(classInfo,dateArg,changeArg){const date=dateArg||occurrenceDate(classInfo),change=changeArg===undefined?getSessionChange(classInfo.id,date):changeArg,start=classScheduleStamp(classInfo,date),end=new Date(date);const [endHour,endMinute]=String(classInfo.endTime||'17:00').split(':').map(Number);end.setHours(endHour,endMinute,0,0);const ongoing=new Date()>=start&&new Date()<end,status=ongoing?'Đang diễn ra':change?.status==='makeup'?'Học bù':'Sắp tới',dateText=formatSessionDate(date),teacherNames=employeeNames(assignedIdsFor(classInfo,change,'teacher')),assistantNames=employeeNames(assignedIdsFor(classInfo,change,'assistant')),chip=change?.status==='makeup'?'<span class="shift-state live">Học bù</span>':change?.note?'<span class="shift-state">Đã điều chỉnh</span>':'';return '<article class="shift-card '+(ongoing?'ongoing':'')+'" style="cursor:pointer;" data-enter-class="'+escapeHtml(classInfo.id)+'" data-session-date="'+date.toLocaleDateString('sv-SE')+'"><div class="shift-card-icon">'+(ongoing?'◉':'')+'</div><div class="shift-card-main"><div class="shift-card-title"><strong style="font-size:16px; color:#214e2d;">'+escapeHtml(classInfo.code||classInfo.name)+'</strong><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">Khối '+escapeHtml(classInfo.grade||'—')+'</span><span class="shift-state '+(ongoing?'live':'')+'">'+status+'</span>'+chip+'</div><p>'+escapeHtml(classInfo.subject||'Lớp học')+' · '+escapeHtml(classInfo.room||'Chưa xếp phòng')+'</p><div class="shift-card-details"><span> '+escapeHtml(dateText)+' · '+escapeHtml(classInfo.startTime)+'–'+escapeHtml(classInfo.endTime)+'</span><span>Giáo viên: '+escapeHtml(teacherNames)+' · Trợ giảng: '+escapeHtml(assistantNames)+'</span></div></div><button type="button" class="primary-button" data-enter-class="'+escapeHtml(classInfo.id)+'" data-session-date="'+date.toLocaleDateString('sv-SE')+'">'+(ongoing?'Mở lớp':'Xem lớp')+'</button></article>';}
 function renderMainMenu(){
   const role=selectedRole(),workPanel=$('#work-menu-panel'),managed=$('#managed-class-list');
-  document.querySelector('.user-name small').textContent=({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role];
+  const _curEmp=masterData?.employees?.find(e=>e.id===currentEmployeeId);if(document.querySelector('.user-name small'))document.querySelector('.user-name small').textContent=({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role]+(_curEmp?.code?' · '+_curEmp.code:'');window.__featuresApp?.updateCurrentUserDisplay?.();
   $('#main-menu-title').textContent=$('#management-menu-panel').hidden?'Ca làm & Lớp phụ trách':'Quản lý lớp học';
   $('#main-menu-description').textContent=$('#management-menu-panel').hidden?'Chọn ca làm hôm nay hoặc lớp phụ trách để mở trang tổng quan lớp học.':'Cập nhật người phụ trách, lịch học, phòng và thiết lập mặc định cho từng lớp.';
   $('#work-menu-tab').classList.toggle('active',workPanel&&!workPanel.hidden);
@@ -1566,7 +1584,7 @@ document.addEventListener('click',event=>{
     return;
   }
   const sessionEdit=event.target.closest('[data-edit-session]');if(sessionEdit){if(window.__featuresApp?.openSessionScheduleDialog){window.__featuresApp.openSessionScheduleDialog(sessionEdit.dataset.editSession);}else{openSessionChange(sessionEdit.dataset.editSession);}return;}
-  const edit=event.target.closest('[data-edit-class]');if(edit){openClassConfig(edit.dataset.editClass);return;}const remove=event.target.closest('[data-delete-class]');if(remove){const item=classCatalog.find(row=>row.id===remove.dataset.deleteClass);if(item&&window.confirm(`Xóa lớp ${item.name} khỏi danh sách quản lý? Dữ liệu buổi học đã lưu trên thiết bị sẽ không bị xóa.`)){classCatalog=classCatalog.filter(row=>row.id!==item.id);saveClassCatalog(classCatalog);renderMainMenu();}}});
+  const edit=event.target.closest('[data-edit-class]');if(edit){openClassConfig(edit.dataset.editClass);return;}const remove=event.target.closest('[data-delete-class]');if(remove){const item=classCatalog.find(row=>row.id===remove.dataset.deleteClass);if(item&&window.confirm(`Xóa lớp ${item.name} khỏi danh sách quản lý? Học sinh thuộc lớp này sẽ được gỡ liên kết lớp tự động.`)){classCatalog=classCatalog.filter(row=>row.id!==item.id);students.forEach(s=>{if(Array.isArray(s.classIds))s.classIds=s.classIds.filter(cid=>cid!==item.id);});makeupStudents.forEach(m=>{if(m.attendingClassId===item.id)m.attendingClassId=classCatalog[0]?.id||null;});saveStudentRecords(students,makeupStudents);saveClassCatalog(classCatalog);renderMainMenu();toast(`Đã xóa lớp ${item.name} và làm sạch dữ liệu liên kết.`);}}});
 function roleLabel(role){return ({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role]||role;}
 function renderEmployeeAdminList(){const host=$('#employee-admin-list');host.innerHTML=masterData.employees.map(employee=>'<div class="employee-admin-row" data-employee-id="'+escapeHtml(employee.id)+'"><label class="field-label">Mã<input data-employee-code value="'+escapeHtml(employee.code)+'" required></label><label class="field-label">Họ tên<input data-employee-name value="'+escapeHtml(employee.name)+'" required></label><label class="field-label">Vai trò<select data-employee-role><option value="assistant" '+(employee.role==='assistant'?'selected':'')+'>Trợ giảng</option><option value="office" '+(employee.role==='office'?'selected':'')+'>Văn phòng</option><option value="teacher" '+(employee.role==='teacher'?'selected':'')+'>Giáo viên</option><option value="admin" '+(employee.role==='admin'?'selected':'')+'>Admin</option></select></label></div>').join('');}
 if($('#manage-employees-button'))$('#manage-employees-button').onclick=()=>{
@@ -1575,7 +1593,7 @@ if($('#manage-employees-button'))$('#manage-employees-button').onclick=()=>{
   if (window.__featuresApp?.renderStaffManagement) {
     window.__featuresApp.renderStaffManagement();
   }
-};$('#close-employee-admin').onclick=()=>$('#employee-admin-dialog').close();$('#employee-admin-form').addEventListener('submit',event=>{event.preventDefault();const edits=[...document.querySelectorAll('[data-employee-id]')].map(row=>({id:row.dataset.employeeId,code:row.querySelector('[data-employee-code]').value.trim(),name:row.querySelector('[data-employee-name]').value.trim(),role:row.querySelector('[data-employee-role]').value})),code=$('#employee-code-input').value.trim(),name=$('#employee-name-input').value.trim(),role=$('#employee-role-input').value;if(!code||!name)return;const combinedCodes=[...edits.map(item=>item.code),...(code?[code]:[])];if(new Set(combinedCodes.map(item=>item.toLocaleUpperCase())).size!==combinedCodes.length){toast('Mã nhân viên phải là duy nhất.');return;}for(const update of edits){const old=masterData.employees.find(item=>item.id===update.id);if(!old)continue;Object.assign(old,update);if(old.role!==update.role){for(const item of classCatalog){for(const field of ['teacherIds','assistantIds','officeIds'])item[field]=(item[field]||[]).filter(id=>id!==old.id);if(update.role==='teacher')(item.teacherIds||=[]).push(old.id);if(update.role==='assistant')(item.assistantIds||=[]).push(old.id);if(update.role==='office')(item.officeIds||=[]).push(old.id);item.teacherId=item.teacherIds?.[0]||'';item.teacherName=employeeNames(item.teacherIds||[]);item.assistantName=employeeNames(item.assistantIds||[]);}}}if(code){masterData.employees.push({id:'employee-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,5),code,name,role});}saveMasterData(masterData);saveClassCatalog(classCatalog);$('#employee-code-input').value='';$('#employee-name-input').value='';renderEmployeeAdminList();renderMainMenu();toast('Đã lưu danh sách nhân viên.');});
+};$('#close-employee-admin').onclick=()=>$('#employee-admin-dialog').close();$('#employee-admin-form').addEventListener('submit',event=>{event.preventDefault();const edits=[...document.querySelectorAll('[data-employee-id]')].map(row=>({id:row.dataset.employeeId,code:row.querySelector('[data-employee-code]').value.trim(),name:row.querySelector('[data-employee-name]').value.trim(),role:row.querySelector('[data-employee-role]').value})),code=$('#employee-code-input').value.trim(),name=$('#employee-name-input').value.trim(),role=$('#employee-role-input').value;if(!code||!name)return;const combinedCodes=[...edits.map(item=>item.code),...(code?[code]:[])];if(new Set(combinedCodes.map(item=>item.toLocaleUpperCase())).size!==combinedCodes.length){toast('Mã nhân viên phải là duy nhất.');return;}for(const update of edits){const old=masterData.employees.find(item=>item.id===update.id);if(!old)continue;Object.assign(old,update);if(old.role!==update.role){for(const item of classCatalog){for(const field of ['teacherIds','assistantIds','officeIds'])item[field]=(item[field]||[]).filter(id=>id!==old.id);if(update.role==='teacher')(item.teacherIds||=[]).push(old.id);if(update.role==='assistant')(item.assistantIds||=[]).push(old.id);if(update.role==='office')(item.officeIds||=[]).push(old.id);item.teacherId=item.teacherIds?.[0]||'';item.teacherName=employeeNames(item.teacherIds||[]);item.assistantName=employeeNames(item.assistantIds||[]);}}}if(code){masterData.employees.push(normalizeEmployeeAccount({id:'employee-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,5),code,name,role,password:role==='admin'?'admin123':'123456',isActive:true,authVersion:1}));}saveMasterData(masterData);saveClassCatalog(classCatalog);$('#employee-code-input').value='';$('#employee-name-input').value='';renderEmployeeAdminList();renderMainMenu();toast('Đã lưu danh sách nhân viên.');});
 function fillSessionStaffSelect(select,role,selectedIds=[]){const names=masterData.employees.filter(employee=>employee.role===role).map(employee=>'<option value="'+escapeHtml(employee.id)+'" '+(selectedIds.includes(employee.id)?'selected':'')+'>'+escapeHtml(employee.name)+' · '+escapeHtml(employee.code)+'</option>').join('');select.innerHTML='<option value="@none">Không phân công '+(role==='assistant'?'trợ giảng':'giáo viên')+'</option>'+names;for(const option of select.options)if(option.value==='@none')option.selected=false;}
 function openSessionChange(classId){const item=classCatalog.find(row=>row.id===classId);if(!item)return;$('#session-change-class-id').value=classId;const date=occurrenceDate(item).toLocaleDateString('sv-SE');$('#session-change-date').value=date;const existing=getSessionChange(classId,date);$('#session-change-type').value=existing?.status==='cancelled'?'cancel':existing?.status==='makeup'?'makeup':existing?.note?'staff_change':'staff_change';$('#session-makeup-date').value='';$('#makeup-date-field').hidden=!['makeup','holiday_makeup'].includes($('#session-change-type').value);$('#session-change-note').value=existing?.note||'';fillSessionStaffSelect($('#session-change-teachers'),'teacher',existing?.teacherIds||[]);fillSessionStaffSelect($('#session-change-assistants'),'assistant',existing?.assistantIds||[]);$('#session-change-dialog').showModal();}
 $('#close-session-change').onclick=()=>$('#session-change-dialog').close();$('#cancel-session-change').onclick=()=>$('#session-change-dialog').close();$('#session-change-type').onchange=event=>{$('#makeup-date-field').hidden=!['makeup','holiday_makeup'].includes(event.target.value);};$('#session-change-form').addEventListener('submit',event=>{event.preventDefault();const classId=$('#session-change-class-id').value,item=classCatalog.find(row=>row.id===classId),date=$('#session-change-date').value,type=$('#session-change-type').value;if(!item||!date)return;const readIds=select=>{const ids=[...select.selectedOptions].map(option=>option.value);if(ids.includes('@none'))return [];return ids.length?ids:undefined;},teacherIds=readIds($('#session-change-teachers')),assistantIds=readIds($('#session-change-assistants')),note=$('#session-change-note').value.trim(),makeRecord=(sessionDate,status)=>({classId,date:sessionDate,status,teacherIds,assistantIds,note,updatedAt:Date.now(),updatedBy:currentEmployeeId});if(type==='holiday_makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Nghỉ lễ'};const makeupDate=$('#session-makeup-date').value;if(makeupDate)sessionChanges[sessionChangeKey(classId,makeupDate)]={...makeRecord(makeupDate,'makeup'),sourceDate:date,note:note||'Buổi học bù'};}else if(type==='cancel'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Lớp nghỉ'};}else if(type==='makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'makeup'),note:note||'Buổi học bù'};}else{sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'scheduled')};}saveClassSessionChanges(sessionChanges);$('#session-change-dialog').close();renderMainMenu();toast('Đã lưu điều chỉnh cho buổi học.');});
@@ -2588,13 +2606,43 @@ function openStudentProfile(id, origin = null){
       }
       const reader = new FileReader();
       reader.onload = (loadEvt) => {
-        const dataUrl = loadEvt.target.result;
-        student.photoURL = dataUrl;
-        saveStudentRecords(students, makeupStudents);
-        save();
-        render();
-        toast('Đã cập nhật ảnh chân dung học sinh thành công.');
-        openStudentProfile(student.id, origin);
+        const rawDataUrl = loadEvt.target.result;
+        const img = new Image();
+        img.onload = () => {
+          let finalDataUrl = rawDataUrl;
+          try {
+            const maxW = 420, maxH = 560;
+            let w = img.width || maxW, h = img.height || maxH;
+            if (w > maxW || h > maxH) {
+              const ratio = Math.min(maxW / w, maxH / h);
+              w = Math.round(w * ratio);
+              h = Math.round(h * ratio);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx2d = canvas.getContext('2d');
+            ctx2d.fillStyle = '#ffffff';
+            ctx2d.fillRect(0, 0, w, h);
+            ctx2d.drawImage(img, 0, 0, w, h);
+            finalDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          } catch {}
+          student.photoURL = finalDataUrl;
+          student.updatedAt = Date.now();
+          saveStudentRecords(students, makeupStudents);
+          save();
+          render();
+          toast('Đã nén tối ưu & cập nhật ảnh chân dung học sinh.');
+          openStudentProfile(student.id, origin);
+        };
+        img.onerror = () => {
+          student.photoURL = rawDataUrl;
+          saveStudentRecords(students, makeupStudents);
+          save();
+          render();
+          openStudentProfile(student.id, origin);
+        };
+        img.src = rawDataUrl;
       };
       reader.readAsDataURL(file);
     };
@@ -4221,7 +4269,9 @@ const features = setupFeatures({
   getSignedInAccount: () => signedInAccount,
   setSignedInAccount: (acc) => {
     signedInAccount = acc;
-    currentEmployeeId = acc.employeeId;
+    currentEmployeeId = acc?.employeeId || null;
+    personalWorkDays = loadPersonalWorkDays();
+    renderPersonalWork();
   },
   getCurrentClassId: () => CURRENT_CLASS_ID,
   getActiveClassConfig: () => activeClassConfig(),
@@ -4286,7 +4336,8 @@ function refreshUIOnRealtimeUpdate(changedKeys = [], source = 'remote') {
 
   // Reload active class session data & student records
   reloadClassSessionData(CURRENT_CLASS_ID, checklistDate);
-  personalWorkDays = read(personalWorkKey(), {});
+  personalWorkDays = loadPersonalWorkDays();
+  window.__featuresApp?.verifyActiveSessionIntegrity?.();
 
   // Notify new incoming notifications if any
   if (changedKeys.includes(commKey) || changedKeys.includes('*')) {

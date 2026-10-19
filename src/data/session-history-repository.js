@@ -171,18 +171,17 @@ export const seedSessionHistory = [
   }
 ];
 
+export function getIndividualSessionKey(classId, date) {
+  return `lopvui.session-record.v1.${classId}.${date}`;
+}
+
 export function loadSessionHistory(storage = (typeof localStorage !== 'undefined' ? localStorage : null)) {
   try {
     if (storage) {
       const raw = storage.getItem(SESSION_HISTORY_KEY);
-      if (raw) {
+      if (raw !== null) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          seedSessionHistory.forEach(seedItem => {
-            if (!parsed.some(p => p.id === seedItem.id || (p.classId === seedItem.classId && p.date === seedItem.date))) {
-              parsed.push(structuredClone(seedItem));
-            }
-          });
           return parsed;
         }
       }
@@ -325,6 +324,10 @@ export function syncActiveClassSessionRecord(classId, date, currentUser, snapsho
   record.finalNote = snapshotData.sessionNote ?? record.finalNote ?? '';
   record.sessionNote = snapshotData.sessionNote ?? record.sessionNote ?? '';
   record.homeworkAssignment = snapshotData.homeworkAssignment ?? record.homeworkAssignment ?? '';
+  record.homeworkLink = snapshotData.homeworkLink ?? record.homeworkLink ?? '';
+  record.notebookLink = snapshotData.notebookLink ?? record.notebookLink ?? '';
+  record.updatedBy = operator;
+  record.revision = (Number(record.revision) || 0) + 1;
   if (snapshotData.layout) record.layout = snapshotData.layout;
   if (snapshotData.deskItems) record.deskItems = snapshotData.deskItems;
   if (snapshotData.students) record.studentsSnapshot = snapshotData.students;
@@ -384,6 +387,10 @@ export function closeClassSession(classId, date, currentUser, snapshotData, fina
   record.finalNote = finalNote || snapshotData.sessionNote || record.finalNote || '';
   record.lessonTitle = snapshotData.lessonTitle || record.lessonTitle || '';
   record.homeworkAssignment = snapshotData.homeworkAssignment || record.homeworkAssignment || '';
+  record.homeworkLink = snapshotData.homeworkLink || record.homeworkLink || '';
+  record.notebookLink = snapshotData.notebookLink || record.notebookLink || '';
+  record.updatedBy = operator;
+  record.revision = (Number(record.revision) || 0) + 1;
   record.layout = snapshotData.layout || record.layout || null;
   record.deskItems = snapshotData.deskItems || record.deskItems || null;
   record.studentsSnapshot = snapshotData.students || record.studentsSnapshot || [];

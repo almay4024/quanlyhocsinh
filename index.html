@@ -44,11 +44,11 @@
               </div>
             </section>
           </div>
-          <div class="user user-clickable" id="user-profile-button" role="button" tabindex="0" title="Nhấp để đổi tài khoản hoặc vai trò">
-            <span class="user-name" id="current-user-name">Anh Linh<small id="current-user-role">Trợ giảng</small></span>
-            <span class="chevron" title="Đổi vai trò">⇄</span>
+          <div class="user user-clickable" id="user-profile-button" role="button" tabindex="0" aria-haspopup="dialog" title="Bấm để mở Tài khoản, Đổi tài khoản hoặc Đăng xuất">
+            <span class="user-avatar-chip" id="current-user-avatar">AL</span>
+            <span class="user-name" id="current-user-name">Anh Linh<small id="current-user-role">Trợ giảng · TA001</small></span>
+            <span class="chevron" title="Tài khoản & Đăng xuất">▾</span>
           </div>
-          <button type="button" class="logout-button" id="logout-button" title="Đăng xuất khỏi hệ thống">Đăng xuất</button>
         </div>
       </header>
 
@@ -336,10 +336,10 @@
                   <tr>
                     <th style="width:35px; text-align:center;">STT</th>
                     <th>Nhân viên</th>
-                    <th>Mã NV</th>
+                    <th>Mã NV (Login)</th>
                     <th>Vai trò</th>
-                    <th>Số điện thoại</th>
-                    <th>Email</th>
+                    <th>Mật khẩu & Trạng thái TK</th>
+                    <th>Liên hệ (SĐT / Email)</th>
                     <th>Các lớp đang phụ trách</th>
                     <th style="text-align:center;">Hành động</th>
                   </tr>
@@ -990,17 +990,42 @@
     </div>
   </dialog>
 
-  <!-- Chuyển đổi tài khoản / vai trò (Account & Role Switcher) -->
-  <dialog id="account-switch-dialog" class="class-config-dialog">
+  <!-- Hộp thoại Tài khoản cá nhân, Quản lý phiên & Đăng xuất (Account Menu Dialog) -->
+  <dialog id="account-switch-dialog" class="class-config-dialog account-menu-dialog">
     <div class="dialog-form">
       <button type="button" class="close-button" id="close-account-switch" aria-label="Đóng">×</button>
-      <div class="eyebrow">PHÂN QUYỀN HỆ THỐNG</div>
-      <h2>Chuyển đổi tài khoản / Vai trò</h2>
-      <p class="dialog-hint">Chọn tài khoản nhân sự để thử nghiệm giao diện theo đúng phân quyền (Trợ giảng, Văn phòng, Giáo viên, Admin).</p>
+      <div class="eyebrow">TÀI KHOẢN ĐANG ĐĂNG NHẬP</div>
+      <h2>Thông tin tài khoản & Phiên làm việc</h2>
+
+      <!-- Thẻ thông tin tài khoản hiện tại + Nút Đăng xuất tích hợp bên trong -->
+      <div id="active-account-profile-card" class="active-account-profile-card"></div>
+
+      <!-- Khung xác thực mật khẩu khi chuyển nhanh sang tài khoản khác -->
+      <div id="account-switch-auth-box" class="account-switch-auth-box" hidden>
+        <div class="account-switch-auth-header">
+          <strong id="account-switch-target-label">Xác thực mật khẩu chuyển tài khoản</strong>
+          <button type="button" class="outline-button" id="cancel-switch-auth-btn" style="padding:3px 8px; font-size:12px;">Hủy</button>
+        </div>
+        <div class="account-switch-auth-row">
+          <input type="password" id="account-switch-password-input" placeholder="Nhập mật khẩu của tài khoản này..." autocomplete="current-password" />
+          <button type="button" class="primary-button" id="confirm-switch-auth-btn">Xác nhận đổi</button>
+        </div>
+        <small id="account-switch-auth-error" class="text-danger" hidden></small>
+      </div>
+
+      <div class="account-switch-divider">
+        <span>CHUYỂN NHANH TÀI KHOẢN KHÁC</span>
+      </div>
+      <p class="dialog-hint" id="account-switch-hint" style="margin-top:0;">Chọn tài khoản bên dưới để chuyển phiên làm việc (yêu cầu mật khẩu nếu không phải Admin).</p>
       
       <div id="account-switch-list" class="account-switch-list"></div>
-      <div style="margin-top:16px; padding-top:12px; border-top:1px solid #edf0ed; display:flex; justify-content:space-between; align-items:center;">
-        <button type="button" class="text-danger" id="dialog-logout-btn" style="font-size:14px; padding:6px 10px; border:1px solid #fad2cf; border-radius:6px; background:#fff8f8; cursor:pointer;">Đăng xuất tài khoản này</button>
+
+      <div class="account-dialog-footer">
+        <small style="color:#647868;">Mật khẩu nhân sự được cấp và quản lý tập trung qua tài khoản Admin.</small>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" class="outline-button" id="admin-open-staff-pw-btn" hidden>🔑 Quản lý MK Nhân sự</button>
+          <button type="button" class="logout-button-inside" id="dialog-logout-btn">⎋ Đăng xuất khỏi hệ thống</button>
+        </div>
       </div>
     </div>
   </dialog>
@@ -1798,6 +1823,19 @@
         <label class="field-label">Số điện thoại
           <input id="staff-phone" type="tel" placeholder="Ví dụ: 0987654321" />
         </label>
+        <label class="field-label">Mật khẩu đăng nhập (Do Admin cấp)
+          <div class="staff-pw-input-group">
+            <input id="staff-password" type="text" required placeholder="Nhập mật khẩu (VD: 123456)" autocomplete="off" />
+            <button type="button" class="outline-button" id="staff-pw-default-btn" title="Đặt về mật khẩu mặc định 123456" style="padding:6px 10px; font-size:12.5px; white-space:nowrap;">Mặc định</button>
+            <button type="button" class="outline-button" id="staff-pw-random-btn" title="Tạo mật khẩu ngẫu nhiên 6 ký tự" style="padding:6px 10px; font-size:12.5px; white-space:nowrap;">Ngẫu nhiên</button>
+          </div>
+        </label>
+        <label class="field-label">Trạng thái tài khoản
+          <select id="staff-active-status">
+            <option value="active">Đang hoạt động (Cho phép đăng nhập)</option>
+            <option value="locked">Tạm khóa (Chặn đăng nhập)</option>
+          </select>
+        </label>
         <label class="field-label class-config-wide">Email liên hệ
           <input id="staff-email" type="email" placeholder="Ví dụ: anh.ht@trungtam.edu.vn" />
         </label>
@@ -1809,6 +1847,41 @@
       <div class="class-config-actions">
         <button type="button" class="outline-button" id="cancel-staff-form-btn">Hủy</button>
         <button type="submit" class="primary-button">Lưu nhân viên</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- HỘP THOẠI CẤP / ĐỔI MẬT KHẨU NHANH DÀNH CHO ADMIN -->
+  <dialog id="admin-password-dialog" class="class-config-dialog" style="width:min(460px, calc(100vw - 28px));">
+    <form id="admin-password-form" class="dialog-form">
+      <button type="button" class="close-button" id="close-admin-password-dialog" aria-label="Đóng">×</button>
+      <div class="eyebrow">QUẢN LÝ BẢO MẬT (ADMIN)</div>
+      <h2 id="admin-pw-dialog-title">Cấp / Đổi mật khẩu nhân viên</h2>
+      <p class="dialog-hint" id="admin-pw-dialog-subtitle">Mật khẩu mới sẽ có hiệu lực ngay lập tức khi đăng nhập trên mọi thiết bị.</p>
+      <input type="hidden" id="admin-pw-emp-id" />
+
+      <div class="class-config-fields" style="grid-template-columns:1fr;">
+        <label class="field-label">Mã nhân viên đăng nhập
+          <input id="admin-pw-emp-code" readonly style="background:#f3f6f4; font-weight:700; color:#1f4f32;" />
+        </label>
+        <label class="field-label">Mật khẩu mới
+          <div class="staff-pw-input-group">
+            <input id="admin-pw-new-input" type="text" required placeholder="Nhập mật khẩu mới..." autocomplete="off" />
+            <button type="button" class="outline-button" id="admin-pw-set-default-btn" style="padding:6px 10px; font-size:12.5px;">123456</button>
+            <button type="button" class="outline-button" id="admin-pw-set-random-btn" style="padding:6px 10px; font-size:12.5px;">Ngẫu nhiên</button>
+          </div>
+        </label>
+        <label class="field-label">Trạng thái tài khoản
+          <select id="admin-pw-active-select">
+            <option value="active">Đang hoạt động (Cho phép đăng nhập)</option>
+            <option value="locked">Tạm khóa (Thu hồi phiên & chặn đăng nhập)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="class-config-actions" style="margin-top:16px;">
+        <button type="button" class="outline-button" id="cancel-admin-password-btn">Hủy</button>
+        <button type="submit" class="primary-button">Lưu mật khẩu mới</button>
       </div>
     </form>
   </dialog>
@@ -2022,75 +2095,112 @@
     </div>
   </dialog>
 
-  <!-- MÀN HÌNH ĐĂNG NHẬP (LOGIN SCREEN) -->
+  <!-- MÀN HÌNH ĐĂNG NHẬP (LOGIN SCREEN - MÃ NHÂN VIÊN & MẬT KHẨU) -->
   <section id="login-screen" class="login-screen" hidden>
-    <div class="login-card">
+    <div class="login-card login-card-auth">
       <div class="login-header">
         <div class="login-brand">
-          
           <div>
-            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.1</span></strong>
-            <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.1</span></strong>
+            <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
         <h1>Đăng nhập hệ thống</h1>
-        <p>Chọn vai trò của bạn để vào làm việc ngay (Chưa cần mật khẩu):</p>
+        <p>Sử dụng <strong>Mã nhân viên</strong> và <strong>Mật khẩu</strong> đã được Quản trị viên (Admin) cấp:</p>
       </div>
 
-      <!-- 4 THẺ VAI TRÒ ĐĂNG NHẬP 1 CHẠM -->
-      <div class="login-role-cards-grid">
-        <button type="button" class="login-role-card" data-direct-role="assistant" title="Bấm để đăng nhập vai trò Trợ giảng">
-          <div class="login-role-icon assistant"></div>
-          <strong>Trợ giảng (TA)</strong>
-          <p>Điểm danh, thu BTVN trên sơ đồ, quản lý ca làm và lớp bổ trợ.</p>
-          <div class="login-role-card-footer">
-            <small>TK: Anh Linh (TA001)</small>
-            <span>Đăng nhập ➔</span>
-          </div>
-        </button>
+      <!-- FORM ĐĂNG NHẬP CHÍNH THỨC BẰNG MÃ NHÂN VIÊN & MẬT KHẨU -->
+      <form id="auth-login-form" class="auth-login-form" autocomplete="on">
+        <div class="auth-form-grid">
+          <label class="field-label">
+            <span>Mã nhân viên</span>
+            <input
+              type="text"
+              id="login-staff-code-input"
+              name="username"
+              required
+              autocomplete="username"
+              placeholder="Ví dụ: AD001, TA001, GV001, VP001..."
+              style="text-transform:uppercase; font-weight:700; letter-spacing:0.5px;"
+            />
+          </label>
 
-        <button type="button" class="login-role-card" data-direct-role="teacher" title="Bấm để đăng nhập vai trò Giáo viên">
-          <div class="login-role-icon teacher"></div>
-          <strong>Giáo viên</strong>
-          <p>Xem sĩ số lớp, theo dõi bài tập, nhận bài kiểm tra và xuất báo cáo.</p>
-          <div class="login-role-card-footer">
-            <small>TK: Cô Minh Anh (GV001)</small>
-            <span>Đăng nhập ➔</span>
-          </div>
-        </button>
+          <label class="field-label">
+            <span>Mật khẩu</span>
+            <div class="auth-password-field-wrap">
+              <input
+                type="password"
+                id="login-password-input"
+                name="password"
+                required
+                autocomplete="current-password"
+                placeholder="Nhập mật khẩu được cấp..."
+              />
+              <button type="button" class="auth-pw-toggle-btn" id="toggle-login-pw-btn" title="Hiện/Ẩn mật khẩu" aria-label="Hiện hoặc ẩn mật khẩu">Hiện</button>
+            </div>
+          </label>
+        </div>
 
-        <button type="button" class="login-role-card" data-direct-role="office" title="Bấm để đăng nhập vai trò Văn phòng">
-          <div class="login-role-icon office"></div>
-          <strong>Văn phòng</strong>
-          <p>Quản lý mẫu sơ đồ phòng học, danh sách lớp gốc và đối chiếu dữ liệu.</p>
-          <div class="login-role-card-footer">
-            <small>TK: Lan Phương (VP001)</small>
-            <span>Đăng nhập ➔</span>
-          </div>
-        </button>
+        <div class="auth-login-options-row">
+          <label class="auth-remember-label">
+            <input type="checkbox" id="login-remember-checkbox" checked />
+            <span>Duy trì đăng nhập trên thiết bị này</span>
+          </label>
+          <small style="color:#6d7f71;">Quên mật khẩu? Liên hệ Admin (AD001) để cấp lại.</small>
+        </div>
 
-        <button type="button" class="login-role-card" data-direct-role="admin" title="Bấm để đăng nhập vai trò Admin">
-          <div class="login-role-icon admin">⚙️</div>
-          <strong>Quản trị viên (Admin)</strong>
-          <p>Toàn quyền quản trị lớp học, nhân sự và cấu hình toàn hệ thống.</p>
-          <div class="login-role-card-footer">
-            <small>TK: Quản trị (AD001)</small>
-            <span>Đăng nhập ➔</span>
-          </div>
-        </button>
-      </div>
+        <div id="login-error-msg" class="auth-login-error" role="alert" hidden></div>
 
-      <!-- CHỌN NHÂN SỰ CỤ THỂ HOẶC TỪ MENU THẢ XUỐNG -->
+        <button type="submit" class="primary-button auth-submit-btn" id="login-submit-btn">
+          Đăng nhập vào hệ thống ➔
+        </button>
+      </form>
+
+      <!-- KHUNG TRA CỨU & ĐIỀN NHANH TÀI KHOẢN CHO TRƯỚC (HỖ TRỢ TEST NHANH) -->
       <div class="login-quick-select-wrap">
-        <div class="login-divider"><span>HOẶC ĐĂNG NHẬP TÀI KHOẢN NHÂN SỰ CỤ THỂ</span></div>
-        <div class="login-select-row">
-          <select id="login-employee-select" aria-label="Chọn tài khoản"></select>
-          <button type="button" class="primary-button" id="confirm-select-login-btn">Đăng nhập</button>
+        <div class="login-divider"><span>ĐIỀN NHANH TÀI KHOẢN CHO TRƯỚC (BẤM ĐỂ CHỌN)</span></div>
+        <div class="login-role-cards-grid login-preset-cards-grid">
+          <button type="button" class="login-role-card" data-direct-role="assistant" title="Điền nhanh tài khoản Trợ giảng TA001">
+            <div class="login-role-card-top">
+              <strong>Trợ giảng (TA)</strong>
+              <span class="preset-code-badge">TA001</span>
+            </div>
+            <small>Anh Linh · MK mặc định: <code>123456</code></small>
+          </button>
+
+          <button type="button" class="login-role-card" data-direct-role="teacher" title="Điền nhanh tài khoản Giáo viên GV001">
+            <div class="login-role-card-top">
+              <strong>Giáo viên (GV)</strong>
+              <span class="preset-code-badge">GV001</span>
+            </div>
+            <small>Cô Minh Anh · MK mặc định: <code>123456</code></small>
+          </button>
+
+          <button type="button" class="login-role-card" data-direct-role="office" title="Điền nhanh tài khoản Văn phòng VP001">
+            <div class="login-role-card-top">
+              <strong>Văn phòng (VP)</strong>
+              <span class="preset-code-badge">VP001</span>
+            </div>
+            <small>Lan Phương · MK mặc định: <code>123456</code></small>
+          </button>
+
+          <button type="button" class="login-role-card" data-direct-role="admin" title="Điền nhanh tài khoản Quản trị viên AD001">
+            <div class="login-role-card-top">
+              <strong>Quản trị (Admin)</strong>
+              <span class="preset-code-badge admin">AD001</span>
+            </div>
+            <small>Admin · MK mặc định: <code>admin123</code></small>
+          </button>
+        </div>
+
+        <div class="login-select-row" style="margin-top:10px;">
+          <select id="login-employee-select" aria-label="Chọn nhanh nhân sự để điền Mã NV"></select>
+          <button type="button" class="outline-button" id="confirm-select-login-btn">Điền Mã NV này</button>
         </div>
       </div>
 
       <div class="login-footer">
-        <small>Hệ thống tự động lưu trữ phiên làm việc và đồng bộ ngoại tuyến (Offline Persistence).</small>
+        <small>Tài khoản và mật khẩu được quản lý tập trung qua Admin & đồng bộ chuẩn bị cho Firebase Cloud.</small>
       </div>
     </div>
   </section>
@@ -2146,6 +2256,7 @@
       <button type="button" id="checklist-sidebar-tab"></button>
       <button type="button" id="students-tab"></button>
     </div>
+    <button type="button" id="logout-button"></button>
     <button type="button" id="sidebar-logout-btn"></button>
     <button type="button" id="topbar-switch-role-btn"></button>
     <span id="role-display-badge"></span>
