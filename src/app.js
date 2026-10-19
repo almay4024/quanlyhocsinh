@@ -1,12 +1,12 @@
-const APP_VERSION = "3.1";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.1';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.1';
+const APP_VERSION = "3.2";
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.2';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.2';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=3.1';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.1';
-import { loadStudentRecords, saveStudentRecords } from './data/student-repository.js?v=3.1';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.1';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.1';
+import { setupFeatures } from './features.js?v=3.2';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.2';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.2';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.2';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.2';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -18,6 +18,27 @@ function formatBirthYearInline(gradeVal) {
   if (!by || by === '—') return '—';
   return String(by);
 }
+
+function formatScoreVN(val, fallback = '') {
+  if (val === null || val === undefined || val === '') return fallback;
+  if (typeof val === 'string' && val.trim() === '/') return '/';
+  const clean = String(val).trim().replace(',', '.');
+  if (!clean) return fallback;
+  const num = Number(clean);
+  if (Number.isNaN(num)) return String(val);
+  const rounded = Math.round(num * 100) / 100;
+  return String(rounded).replace('.', ',');
+}
+
+function parseScoreVN(raw) {
+  if (raw === null || raw === undefined) return null;
+  const clean = String(raw).trim().replace(',', '.');
+  if (clean === '') return null;
+  const num = Number(clean);
+  if (Number.isNaN(num)) return NaN;
+  return num;
+}
+
 
 // Built-in fallback for syncActiveClassSessionRecord so cached modules never break app startup
 function syncActiveClassSessionRecord(classId, date, currentUser, snapshotData) {
@@ -328,8 +349,8 @@ const saveChecklist=()=>{
 };
 const desks=()=>layout.flatMap((aisle,ci)=>aisle.desks.map((desk,di)=>({aisle,desk,ci,di})));
 const allEntries=()=>desks().flatMap(({desk})=>(deskItems[desk.id]||[]).map((entry,index)=>({entry,deskId:desk.id,index})));
-const homeworkLabel=status=>({uncollected:'Chưa thu',not_submitted:'Không nộp',submitted:'Đã thu',graded:'Đã chấm điểm'})[status]||'Chưa thu';
-const homeworkSymbol=record=>record?.status==='graded'?String(record.score??'•'):({not_submitted:'×',submitted:'✓',uncollected:'·'})[record?.status]||'·';
+const homeworkLabel=status=>({uncollected:'Chưa thu',not_submitted:'Chưa nộp',submitted:'Đã nộp',graded:'Đã nộp'})[status]||'Chưa thu';
+const homeworkSymbol=record=>(record?.score!==null&&record?.score!==undefined&&record?.score!=='')?formatScoreVN(record.score):({not_submitted:'×',submitted:'✓',graded:'✓',uncollected:'·'})[record?.status]||'·';
 const homeworkClass=status=>({not_submitted:'hw-missing',submitted:'hw-collected',graded:'hw-graded',uncollected:'hw-uncollected'})[status]||'hw-uncollected';
 const attendanceLabel=status=>({present:'Có mặt',late:'Đi muộn',absent_excused:'Vắng có phép',absent_unexcused:'Vắng không phép'})[status]||'Chưa điểm danh';
 const studentById=id=>students.find(s=>s.id===id)||makeupStudents.find(s=>s.id===id);
@@ -357,15 +378,23 @@ function saveSessionNote(id,value){
 for(const student of [...students,...makeupStudents])if(!(student.id in attendanceNotes)){const saved=student.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate);if(saved)attendanceNotes[student.id]=saved.note;}
 const classStudents=()=>students.filter(student=>(student.classIds||[]).includes(CURRENT_CLASS_ID));
 const splitStudentName=name=>{const parts=String(name||'').trim().split(/\s+/).filter(Boolean);return {familyName:parts.slice(0,-1).join(' '),givenName:parts.at(-1)||''};};
-function createStudentProfile({name,familyName=undefined,givenName=undefined,school='',kind='regular',parentContact={name:'',phone:''},studentCode=null,classIds=null,enrollmentStatus='Học',tags=[]}){
+function createStudentProfile({name,familyName=undefined,givenName=undefined,school='',kind='regular',parentContact={name:'',phone:''},studentCode=null,classIds=null,enrollmentStatus='Học',tags=[],isNew=undefined}){
   const makeup=kind==='makeup';
   const cleanCode=(studentCode&&String(studentCode).trim())?String(studentCode).trim().toUpperCase():null;
   const splitParts=splitStudentName(name);
   const resolvedClassIds = makeup
     ? []
     : (Array.isArray(classIds) ? [...new Set(classIds.filter(Boolean))] : [CURRENT_CLASS_ID]);
-  return {
-    id:`stu-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+  const isNewStudent = isNew !== undefined ? Boolean(isNew) : !makeup;
+  const baseTags = Array.isArray(tags) ? [...tags] : [];
+  if (!makeup && isNewStudent && !baseTags.includes('Mới')) {
+    baseTags.unshift('Mới');
+  } else if (makeup && !baseTags.includes('Học bù')) {
+    baseTags.unshift('Học bù');
+  }
+  const id = `stu-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+  const profile = {
+    id,
     familyName: familyName !== undefined && familyName !== '' ? familyName : splitParts.familyName,
     givenName: givenName !== undefined && givenName !== '' ? givenName : splitParts.givenName,
     studentCode:cleanCode,
@@ -375,19 +404,23 @@ function createStudentProfile({name,familyName=undefined,givenName=undefined,sch
     attendingClassId:makeup?CURRENT_CLASS_ID:null,
     classIds:resolvedClassIds,
     courseIds:[],
-    parentContact:{name:parentContact?.name||'',phone:parentContact?.phone||''},
+    parentContact:{name:parentContact?.name||'',phone:''},
     enrollmentStatus: (enrollmentStatus && String(enrollmentStatus).trim()) ? String(enrollmentStatus).trim() : 'Học',
     photoURL:null,
+    photoDriveFileId:null,
+    photoDriveFileName:null,
     scores:[],
     attendanceHistory:[],
     seatingHistory:[],
     notes:[],
     learningNotes:'',
-    tags:Array.isArray(tags)?tags:[],
-    isNew:false,
+    tags:[...new Set(baseTags.filter(Boolean))],
+    isNew:isNewStudent,
     studentType:makeup?'makeup':'regular',
     createdAt:Date.now()
   };
+  profile.photoDriveFileName = buildStudentDrivePhotoFileName(profile, classCatalog);
+  return profile;
 }
 const currentStaffName=()=>masterData?.employees?.find(e=>e.id===currentEmployeeId)?.name||document.querySelector('.user-name')?.childNodes[0]?.textContent.trim()||'Trợ giảng';
 const personalWorkKey=()=>`lopvui.personal-work.v2.${currentEmployeeId||'employee-ta-001'}`;
@@ -572,39 +605,48 @@ function getSessionChange(classId,date){
   const iso = normalizeIsoDateString(date);
   return sessionChanges[`${classId}::${iso}`] || sessionChanges[`${classId}:${iso}`] || null;
 }
-function assignedIdsFor(item,change,role){const field={teacher:'teacherIds',assistant:'assistantIds',office:'officeIds'}[role];if(role==='office')return item.officeIds||[];const override=change&&Object.prototype.hasOwnProperty.call(change,field)?change[field]:undefined;return override===undefined?(item[field]||[]):override;}
+function assignedIdsFor(item,change,role){const field={teacher:'teacherIds',assistant:'assistantIds',office:'officeIds'}[role];if(!field)return [];const override=change&&Object.prototype.hasOwnProperty.call(change,field)?change[field]:undefined;return override===undefined?(item[field]||[]):override;}
 function employeeNames(ids){return ids.map(id=>masterData.employees.find(employee=>employee.id===id)?.name).filter(Boolean).join(', ')||'Chưa phân công';}
+function isClassAssignedToCurrentAccount(item) {
+  if (!item) return false;
+  const role = selectedRole();
+  if (role === 'admin' || !currentEmployeeId) return true;
+  const inRegular = (item.teacherIds || []).includes(currentEmployeeId)
+    || item.teacherId === currentEmployeeId
+    || (item.assistantIds || []).includes(currentEmployeeId)
+    || (item.officeIds || []).includes(currentEmployeeId);
+  if (inRegular) return true;
+  for (const ch of Object.values(sessionChanges || {})) {
+    if (ch && ch.classId === item.id) {
+      if ((ch.teacherIds || []).includes(currentEmployeeId) || ch.teacherId === currentEmployeeId || (ch.assistantIds || []).includes(currentEmployeeId) || (ch.officeIds || []).includes(currentEmployeeId)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+function getVisibleClassesForAccount() {
+  const role = selectedRole();
+  if (role === 'admin' || !currentEmployeeId) return classCatalog;
+  return classCatalog.filter(isClassAssignedToCurrentAccount);
+}
 function assignedShiftInstances(role){
-  const today=new Date();
-  today.setHours(0,0,0,0);
   const results=[];
   for(const item of classCatalog){
-    for(let offset=0;offset<35;offset++){
-      const date=new Date(today);
-      date.setDate(date.getDate()+offset);
-      if(date.getDay()!==item.weekday)continue;
-      const change=getSessionChange(item.id,date);
+    for(const offset of [0,1,2,3,4,5,6]){
+      const date=new Date();date.setHours(0,0,0,0);date.setDate(date.getDate()+offset);
+      if(date.getDay()!==Number(item.weekday))continue;
+      const dateKey=date.toLocaleDateString('sv-SE'),change=getSessionChange(item.id,dateKey);
       if(change?.status==='cancelled')continue;
-      if(role!=='admin'&&role!=='office'&&currentEmployeeId&&!assignedIdsFor(item,change,role).includes(currentEmployeeId))continue;
+      if(role!=='admin'&&currentEmployeeId&&!assignedIdsFor(item,change,role).includes(currentEmployeeId)&&!isClassAssignedToCurrentAccount(item))continue;
       results.push({item,date,change});
+      break;
     }
   }
   for(const change of Object.values(sessionChanges)){
-    if(change.status!=='makeup'||!change.classId||!change.date)continue;
-    const date=new Date(change.date+'T00:00:00');
-    if(date<today)continue;
-    const item=classCatalog.find(row=>row.id===change.classId);
-    if(item&&(role==='admin'||role==='office'||!currentEmployeeId||assignedIdsFor(item,change,role).includes(currentEmployeeId))&&!results.some(row=>row.item.id===item.id&&row.date.toLocaleDateString('sv-SE')===change.date))results.push({item,date,change});
-  }
-  if(!results.length){
-    for(const item of classCatalog){
-      for(let offset=0;offset<14;offset++){
-        const date=new Date(today);
-        date.setDate(date.getDate()+offset);
-        if(date.getDay()!==item.weekday)continue;
-        results.push({item,date,change:getSessionChange(item.id,date)});
-      }
-    }
+    if(change?.status!=='makeup'||!change.date)continue;
+    const item=classCatalog.find(row=>row.id===change.classId),date=new Date(`${change.date}T00:00:00`);
+    if(item&&(role==='admin'||!currentEmployeeId||assignedIdsFor(item,change,role).includes(currentEmployeeId)||isClassAssignedToCurrentAccount(item))&&!results.some(row=>row.item.id===item.id&&row.date.toLocaleDateString('sv-SE')===change.date))results.push({item,date,change});
   }
   return results;
 }
@@ -619,8 +661,8 @@ function renderMainMenu(){
   $('#work-menu-nav').classList.toggle('active',workPanel&&!workPanel.hidden);
   $('#management-menu-nav').classList.toggle('active',!$('#management-menu-panel').hidden);
   const roleField={assistant:'assistantIds',office:'officeIds',teacher:'teacherIds'}[role];
-  const assignedClasses=classCatalog.filter(item=>role==='admin'||role==='office'||!currentEmployeeId||(item[roleField]||[]).includes(currentEmployeeId));
-  const myClasses=assignedClasses.length?assignedClasses:classCatalog;
+  const assignedClasses=getVisibleClassesForAccount();
+  const myClasses=role==='admin'?classCatalog:assignedClasses;
 
   const today=new Date();
   today.setHours(0,0,0,0);
@@ -640,7 +682,7 @@ function renderMainMenu(){
   }).join('')||`<div class="menu-empty compact-empty">Chưa có lớp phụ trách nào.</div>`;
 
   $('#management-scope-note').textContent=role==='admin'?'Admin có thể quản lý tất cả lớp và nhân viên.':`Bạn đang xem các lớp được phân công cho tài khoản ${({assistant:'trợ giảng',office:'văn phòng',teacher:'giáo viên'})[role]}.`;
-  const editable=classCatalog.filter(item=>role==='admin'||(item[roleField]||[]).includes(currentEmployeeId));
+  const editable=getVisibleClassesForAccount();
   $('#management-class-count').textContent=`${editable.length} lớp`;
   const allQuick = $('#all-classes-quick-list');
   if (allQuick) {
@@ -849,24 +891,32 @@ function reloadClassSessionData(classId, date) {
     const attHistEntry = (student.attendanceHistory || []).find(h => h.classId === CURRENT_CLASS_ID && h.date === checklistDate);
     const scoreEntry = (student.scores || []).find(sc => sc.classId === CURRENT_CLASS_ID && sc.date === checklistDate && sc.type !== 'BTVN');
 
+    const resolvedArrivalTime = seatedEntry?.attendance?.arrivalTime || attHistEntry?.time || attHistEntry?.arrivalTime || snapEntry?.attendance?.arrivalTime || null;
     if (seatedEntry) {
       student.attendance = seatedEntry.attendance || attHistEntry || { status: lateSet.has(student.id) ? 'late' : 'present' };
+      if (resolvedArrivalTime && student.attendance) student.attendance.arrivalTime = resolvedArrivalTime;
       student.homework = seatedEntry.homework || (savedNote?.homeworkStatus ? { status: savedNote.homeworkStatus, score: savedNote.homeworkScore ?? null, reason: savedNote.homeworkReason || '' } : { status: 'uncollected' });
+      student.arrivalTime = resolvedArrivalTime;
     } else if (lateSet.has(student.id)) {
-      student.attendance = attHistEntry || { status: 'late', lateMinutes: 10, minutesLate: 10 };
+      student.attendance = attHistEntry ? { ...attHistEntry, arrivalTime: resolvedArrivalTime } : { status: 'late', arrivalTime: resolvedArrivalTime, lateMinutes: 10, minutesLate: 10 };
       student.homework = savedNote?.homeworkStatus ? { status: savedNote.homeworkStatus, score: savedNote.homeworkScore ?? null, reason: savedNote.homeworkReason || '' } : { status: 'uncollected' };
+      student.arrivalTime = resolvedArrivalTime;
     } else if (attHistEntry) {
-      student.attendance = { status: attHistEntry.status, reason: attHistEntry.reason || '', lateMinutes: attHistEntry.lateMinutes || attHistEntry.minutesLate || 0, minutesLate: attHistEntry.minutesLate || attHistEntry.lateMinutes || 0 };
+      student.attendance = { status: attHistEntry.status, arrivalTime: resolvedArrivalTime, reason: attHistEntry.reason || '', lateMinutes: attHistEntry.lateMinutes || attHistEntry.minutesLate || 0, minutesLate: attHistEntry.minutesLate || attHistEntry.lateMinutes || 0 };
       student.homework = savedNote?.homeworkStatus ? { status: savedNote.homeworkStatus, score: savedNote.homeworkScore ?? null, reason: savedNote.homeworkReason || '' } : (attHistEntry.homework || { status: 'uncollected' });
+      student.arrivalTime = resolvedArrivalTime;
     } else if (snapEntry) {
       student.attendance = snapEntry.attendance || null;
       student.homework = snapEntry.homework || { status: 'uncollected' };
+      student.arrivalTime = resolvedArrivalTime;
     } else {
       student.attendance = null;
       student.homework = { status: 'uncollected' };
       student.arrivalTime = null;
       student.lateMinutes = 0;
     }
+    if (student.homework?.status === 'graded') student.homework.status = 'submitted';
+    if (seatedEntry?.homework?.status === 'graded') seatedEntry.homework.status = 'submitted';
 
     student.testScore = seatedEntry?.testScore ?? checklist.testScores?.[student.id] ?? snapEntry?.testScore ?? scoreEntry?.score ?? null;
   }
@@ -1205,7 +1255,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
             ? sn.homeworkScore
             : (snap?.homework?.score !== undefined ? snap.homework.score : btvnObj?.score);
           if (scoreVal !== null && scoreVal !== undefined && scoreVal !== '') {
-            return `<strong>${escapeHtml(formatScoreVN(scoreVal))}</strong>`;
+            return `<strong>${escapeHtml(formatScoreVN(scoreVal, '/'))}</strong>`;
           }
           const hwSt = sn?.homeworkStatus || snap?.homework?.status;
           if (hwSt === 'not_submitted') return `<span class="att-sym-absent" title="Không nộp BTVN">×</span>`;
@@ -1219,7 +1269,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
             ? sn.testScore
             : (snap?.testScore !== undefined ? snap.testScore : testObj?.score);
           if (testVal !== null && testVal !== undefined && testVal !== '') {
-            return `<strong>${escapeHtml(formatScoreVN(testVal))}</strong>`;
+            return `<strong>${escapeHtml(formatScoreVN(testVal, '/'))}</strong>`;
           }
           return `<span style="color:#9ca3af;">/</span>`;
         }
@@ -2018,7 +2068,7 @@ function renderStudentList(){
   if ($('#list-absent-count')) $('#list-absent-count').textContent=absent;
   if ($('#list-homework-count')) $('#list-homework-count').textContent=noHomework;
 
-  if (document.activeElement && host.contains(document.activeElement) && document.activeElement.matches('[data-session-note]')) {
+  if (document.activeElement && host.contains(document.activeElement) && document.activeElement.matches('[data-session-note], [data-live-list-hw-score], [data-live-list-test-score]')) {
     return;
   }
 
@@ -2071,12 +2121,37 @@ function renderStudentList(){
   const visibleMakeup = filterAndSort(makeupRecords);
   const visible = [...visibleRegular, ...visibleMakeup];
 
+  const getLiveTableColumnOrder = () => {
+    const defaultCols = ['family', 'name', 'school', 'seat', 'attendance', 'homework', 'score', 'note'];
+    try {
+      const saved = JSON.parse(localStorage.getItem('lopvui.column-order.live.v1') || 'null');
+      if (Array.isArray(saved) && saved.length) {
+        const valid = saved.filter(k => defaultCols.includes(k));
+        defaultCols.forEach(k => { if (!valid.includes(k)) valid.push(k); });
+        return valid;
+      }
+    } catch {}
+    return defaultCols;
+  };
+
   const renderUnifiedTable = (items) => {
     if (!items.length) {
       return `<div class="empty-list">${allSessionRecords.length ? 'Không có học sinh phù hợp với bộ lọc.' : 'Danh sách lớp hiện chưa có hồ sơ học sinh.'}</div>`;
     }
     const sortIcon = (key) => liveClassSortKey === key ? (liveClassSortOrder === 'asc' ? '▲' : '▼') : '⇅';
     const sortClass = (key) => liveClassSortKey === key ? (liveClassSortOrder === 'asc' ? 'sorted-asc' : 'sorted-desc') : '';
+    const colOrder = getLiveTableColumnOrder();
+
+    const colHeaderMap = {
+      family: `<th class="sortable-th ${sortClass('family')}" data-live-sort="family">Họ đệm <span class="sort-icon">${sortIcon('family')}</span></th>`,
+      name: `<th class="sortable-th ${sortClass('name')}" data-live-sort="name">Tên <span class="sort-icon">${sortIcon('name')}</span></th>`,
+      school: `<th class="sortable-th ${sortClass('school')}" data-live-sort="school">Trường <span class="sort-icon">${sortIcon('school')}</span></th>`,
+      seat: `<th class="sortable-th ${sortClass('seat')}" data-live-sort="seat">Vị trí ngồi <span class="sort-icon">${sortIcon('seat')}</span></th>`,
+      attendance: `<th class="sortable-th ${sortClass('attendance')}" data-live-sort="attendance">Trạng thái điểm danh <span class="sort-icon">${sortIcon('attendance')}</span></th>`,
+      homework: `<th class="sortable-th ${sortClass('homework')}" data-live-sort="homework">Trạng thái BTVN <span class="sort-icon">${sortIcon('homework')}</span></th>`,
+      score: `<th class="sortable-th ${sortClass('score')}" data-live-sort="score" style="text-align:center;">Điểm BTVN / Test <span class="sort-icon">${sortIcon('score')}</span></th>`,
+      note: `<th class="sortable-th ${sortClass('note')}" data-live-sort="note">Ghi chú buổi học <span class="sort-icon">${sortIcon('note')}</span></th>`
+    };
 
     const bulkBarHtml = `
       <div id="live-student-bulk-bar" class="bulk-actions-bar" ${selectedLiveClassStudentIds.size ? '' : 'hidden'} style="margin-bottom:10px;">
@@ -2101,72 +2176,60 @@ function renderStudentList(){
           <thead>
             <tr>
               <th style="width:36px; text-align:center;"><input type="checkbox" id="live-student-select-all" ${visible.length && visible.every(i => selectedLiveClassStudentIds.has(i.student.id)) ? 'checked' : ''} title="Chọn tất cả" /></th>
-              <th class="sortable-th ${sortClass('family')}" data-live-sort="family">Họ đệm <span class="sort-icon">${sortIcon('family')}</span></th>
-              <th class="sortable-th ${sortClass('name')}" data-live-sort="name">Tên <span class="sort-icon">${sortIcon('name')}</span></th>
-              <th class="sortable-th ${sortClass('school')}" data-live-sort="school">Trường <span class="sort-icon">${sortIcon('school')}</span></th>
-              <th class="sortable-th ${sortClass('seat')}" data-live-sort="seat">Vị trí ngồi <span class="sort-icon">${sortIcon('seat')}</span></th>
-              <th class="sortable-th ${sortClass('attendance')}" data-live-sort="attendance">Trạng thái điểm danh <span class="sort-icon">${sortIcon('attendance')}</span></th>
-              <th class="sortable-th ${sortClass('homework')}" data-live-sort="homework">Trạng thái BTVN <span class="sort-icon">${sortIcon('homework')}</span></th>
-              <th class="sortable-th ${sortClass('note')}" data-live-sort="note">Ghi chú buổi học <span class="sort-icon">${sortIcon('note')}</span></th>
+              ${colOrder.map(k => colHeaderMap[k] || '').join('')}
               <th style="width:110px; text-align:center;">Thao tác</th>
             </tr>
           </thead>
           <tbody>
             ${items.map(({student, familyName, givenName, isMakeupRow, attendance, homework, seat, testScore, note}) => {
               const attStatus = attendance?.status;
+              const arrTimeText = attendance?.arrivalTime || student.arrivalTime || '';
               const statusBadge = attStatus === 'present'
                 ? '<span class="student-state state-present">✓ Có mặt</span>'
                 : attStatus === 'late'
-                  ? `<span class="student-state state-late"> Đi muộn ${attendance?.lateMinutes ? `(${attendance.lateMinutes}p)` : ''}</span>`
+                  ? `<span class="student-state state-late">Đi muộn ${arrTimeText ? `${escapeHtml(arrTimeText)} · ` : ''}${attendance?.lateMinutes ? `(${attendance.lateMinutes}p)` : ''}</span>`
                   : (attStatus === 'absent' || attStatus === 'absent_excused' || attStatus === 'absent_unexcused')
                     ? `<span class="student-state state-missing">× ${attStatus === 'absent_excused' ? 'Vắng có phép' : 'Vắng mặt'}</span>`
                     : '<span class="student-state state-pending">Chưa điểm danh</span>';
 
-              const makeupStatePill = isMakeupRow
-                ? `<span class="makeup-status-badge" title="Học sinh học bù ở cuối danh sách"> Học bù${student.sourceClassName ? ` (${escapeHtml(student.sourceClassName)})` : ''}</span>`
-                : '';
-
+              const reasonMap = { not_done: 'Chưa làm', forgot: 'Quên vở', missed_previous: 'Nghỉ buổi trước' };
+              const reasonText = reasonMap[homework.reason] || homework.reason || '';
               const hwBadge = homework.status === 'not_submitted'
-                ? `<span class="student-state state-missing">× Không nộp ${homework.reason ? `(${escapeHtml(homework.reason)})` : ''}</span>`
-                : homework.status === 'submitted'
-                  ? '<span class="student-state state-collected">✓ Đã thu BTVN</span>'
-                  : homework.status === 'graded'
-                    ? `<span class="student-state state-collected">✓ Đã chấm · ${escapeHtml(homework.score ?? '')}đ</span>`
-                    : '<span class="student-state state-pending">· Chưa thu BTVN</span>';
+                ? `<span class="student-state state-missing">× Chưa nộp${reasonText ? ` (${escapeHtml(reasonText)})` : ''}</span>`
+                : (homework.status === 'submitted' || homework.status === 'graded')
+                  ? '<span class="student-state state-collected">✓ Đã nộp</span>'
+                  : '<span class="student-state state-pending">· Chưa thu</span>';
 
-              const scoreCell = (homework.score !== null && homework.score !== undefined) || (testScore !== null && testScore !== undefined)
-                ? `${homework.score !== null && homework.score !== undefined ? `BTVN: <strong>${homework.score}đ</strong> ` : ''}${testScore !== null && testScore !== undefined ? `Test: <strong style="color:#6d28d9;">${testScore}đ</strong>` : ''}`
-                : '<small style="color:#a8b4aa;">—</small>';
+              const hwScStr = (homework.score !== null && homework.score !== undefined && homework.score !== '') ? formatScoreVN(homework.score) : '';
+              const testScStr = (testScore !== null && testScore !== undefined && testScore !== '') ? formatScoreVN(testScore) : '';
+              const scoreCellHtml = `
+                <div style="display:inline-flex; align-items:center; gap:6px; justify-content:center;">
+                  <input type="text" inputmode="decimal" class="manual-score-input" data-live-list-hw-score="${escapeHtml(student.id)}" value="${escapeHtml(hwScStr)}" placeholder="BTVN" title="Nhập điểm BTVN (VD: 7,5)" style="width:62px; text-align:center;" />
+                  ${checklist?.testRequired || testScStr ? `<input type="text" inputmode="decimal" class="manual-score-input" data-live-list-test-score="${escapeHtml(student.id)}" value="${escapeHtml(testScStr)}" placeholder="Test" title="Nhập điểm Test (VD: 8,5)" style="width:62px; text-align:center;" />` : ''}
+                </div>
+              `;
 
               const schoolLabel = isMakeupRow
                 ? `Học Bù (${student.sourceClassName || student.school || 'T2'})`
                 : (student.school || '—');
+
+              const cellMap = {
+                family: `<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${isMakeupRow ? '#6d28d9' : '#395140'}; font-weight:${isMakeupRow ? '700' : '500'};">${escapeHtml(familyName || '—')}</button></td>`,
+                name: `<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;"><strong style="color:${isMakeupRow ? '#6d28d9' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>${renderInlineTags(student)}</button></td>`,
+                school: `<td>${isMakeupRow ? `<span class="makeup-school-tag">${escapeHtml(schoolLabel)}</span>` : escapeHtml(schoolLabel)}</td>`,
+                seat: `<td><span class="room-chip">${escapeHtml(seat)}</span></td>`,
+                attendance: `<td>${statusBadge}</td>`,
+                homework: `<td>${hwBadge}</td>`,
+                score: `<td style="text-align:center; white-space:nowrap;">${scoreCellHtml}</td>`,
+                note: `<td class="col-allow-wrap"><input class="attendance-note-input" data-session-note="${escapeHtml(student.id)}" aria-label="Ghi chú chung cho ${escapeHtml(student.name)}" placeholder="Nhập ghi chú buổi học..." value="${escapeHtml(note)}" style="width:100%; min-width:130px;" /></td>`
+              };
 
               return `
                 <tr class="${isMakeupRow ? 'makeup-row-tr' : ''}">
                   <td style="text-align:center;">
                     <input type="checkbox" class="live-student-cb" data-student-id="${escapeHtml(student.id)}" ${selectedLiveClassStudentIds.has(student.id) ? 'checked' : ''} />
                   </td>
-                  <td>
-                    <button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${isMakeupRow ? '#6d28d9' : '#395140'}; font-weight:${isMakeupRow ? '700' : '500'};">
-                      ${escapeHtml(familyName || '—')}
-                    </button>
-                  </td>
-                  <td>
-                    <button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;">
-                      <strong style="color:${isMakeupRow ? '#6d28d9' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>
-                      ${renderInlineTags(student)}
-                    </button>
-                  </td>
-                  <td>${isMakeupRow ? `<span class="makeup-school-tag">${escapeHtml(schoolLabel)}</span>` : escapeHtml(schoolLabel)}</td>
-                  <td>
-                    <span class="room-chip">${escapeHtml(seat)}</span>
-                  </td>
-                  <td>${statusBadge}</td>
-                  <td>${hwBadge}</td>
-                  <td class="col-allow-wrap">
-                    <input class="attendance-note-input" data-session-note="${escapeHtml(student.id)}" aria-label="Ghi chú chung cho ${escapeHtml(student.name)}" placeholder="Nhập ghi chú buổi học..." value="${escapeHtml(note)}" style="width:100%; min-width:130px;" />
-                  </td>
+                  ${colOrder.map(k => cellMap[k] || '').join('')}
                   <td style="text-align:center; white-space:nowrap;">
                     <button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(student.id)}" title="Mở sơ đồ lớp và tìm nhanh chỗ ngồi học sinh này">Tìm chỗ</button>
                   </td>
@@ -2178,8 +2241,19 @@ function renderStudentList(){
       </div>
     `;
   };
-
   host.innerHTML = renderUnifiedTable(visible);
+
+  // Wire inline score inputs in #student-list-items
+  host.querySelectorAll('[data-live-list-hw-score]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      applyStudentManualScore(inp.dataset.liveListHwScore, 'hw', inp.value);
+    });
+  });
+  host.querySelectorAll('[data-live-list-test-score]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      applyStudentManualScore(inp.dataset.liveListTestScore, 'test', inp.value);
+    });
+  });
 
   // Wire sort headers in #student-list-items
   host.querySelectorAll('th[data-live-sort]').forEach(th => {
@@ -2356,7 +2430,25 @@ function renderAttendanceExport(){
   `;
 }
 $('#export-attendance-button').onclick=()=>{if(window.__featuresApp?.renderReportCenter){window.__featuresApp.renderReportCenter('teacher-summary');}else{renderAttendanceExport();}$('#attendance-export-dialog').showModal();};
-document.addEventListener('input',event=>{const input=event.target.closest('[data-session-note]');if(!input)return;saveSessionNote(input.dataset.sessionNote,input.value);});
+document.addEventListener('input',event=>{
+  const input=event.target.closest('[data-session-note]');
+  if(input && input.dataset.sessionNote){
+    saveSessionNote(input.dataset.sessionNote,input.value);
+    return;
+  }
+  if(event.target?.id === 'seat-general-note'){
+    const targetId = selectedStudentId || currentEntry()?.studentId;
+    if(targetId){
+      event.target.dataset.sessionNote = targetId;
+      saveSessionNote(targetId, event.target.value);
+    }
+  } else if(event.target?.id === 'late-general-note'){
+    if(selectedLateId){
+      event.target.dataset.sessionNote = selectedLateId;
+      saveSessionNote(selectedLateId, event.target.value);
+    }
+  }
+});
 $('#close-attendance-export').onclick=()=>$('#attendance-export-dialog').close();if($('#close-attendance-export-secondary'))$('#close-attendance-export-secondary').onclick=()=>$('#attendance-export-dialog').close();$('#print-attendance-export').onclick=()=>window.print();
 function profileDate(item){return item.date||new Date(item.timestamp||Date.now()).toLocaleDateString('vi-VN');}
 let isGeneralProfileEditMode = false;
@@ -2397,16 +2489,19 @@ function openStudentProfile(id, origin = null){
   const parts=splitStudentName(student.name),familyName=student.familyName??parts.familyName,givenName=student.givenName??parts.givenName;
   const tags=student.tags||[];
   const tagBadges=tags.map(tag=>`<span class="profile-chip profile-tag-chip">${escapeHtml(tag)}</span>`).join('')||'<small style="color:#8a998c; font-style:italic;">Chưa gắn tag</small>';
-  const photo = student.photoURL;
+  const resolvedPhoto = resolveStudentPhotoUrls(student);
+  const photo = resolvedPhoto.thumbUrl;
+  const autoDriveFileName = buildStudentDrivePhotoFileName(student, classCatalog);
+  if (!student.photoDriveFileName) student.photoDriveFileName = autoDriveFileName;
   const officeNoteVal = student.officeNotes ?? '';
 
   const initialChar = escapeHtml((givenName || student.name || 'H').charAt(0).toUpperCase());
   const stEnrollment = (student.enrollmentStatus && String(student.enrollmentStatus).trim()) ? String(student.enrollmentStatus).trim() : 'Học';
   const portraitBlock = photo ? `
     <div class="student-portrait-showcase">
-      <button type="button" id="student-photo-expand" class="student-portrait-frame-btn" title="Bấm để phóng to ảnh chân dung ${escapeHtml(student.name)}" aria-label="Mở ảnh ${escapeHtml(student.name)} cỡ lớn">
+      <button type="button" id="student-photo-expand" class="student-portrait-frame-btn" title="Bấm để phóng to ảnh Full-size ${escapeHtml(student.name)}" aria-label="Mở ảnh ${escapeHtml(student.name)} cỡ lớn">
         <img class="profile-portrait profile-portrait-lg" id="profile-portrait-preview" src="${escapeHtml(photo)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" />
-        <span class="portrait-zoom-hint">🔍 Phóng to</span>
+        <span class="portrait-zoom-hint">🔍 Xem Full-size</span>
       </button>
       <div class="student-portrait-actions">
         <label id="profile-upload-portrait-label" class="outline-button" style="padding:5px 10px; font-size:13px; cursor:pointer; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
@@ -2415,20 +2510,22 @@ function openStudentProfile(id, origin = null){
         </label>
         <button type="button" id="profile-remove-photo-btn" class="outline-button text-danger" style="padding:5px 10px; font-size:13px;">Xóa</button>
       </div>
+      <small class="drive-photo-filename-badge" title="Tên file chuẩn trên Google Drive (Tự đổi tên khi cập nhật Mã HS/Họ tên)">📄 ${escapeHtml(student.photoDriveFileName || autoDriveFileName)}</small>
     </div>
   ` : `
     <div class="student-portrait-showcase">
       <div id="profile-portrait-preview" class="profile-portrait profile-portrait-lg profile-portrait-placeholder">
         <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.75;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg>
         <span class="portrait-placeholder-initial">${initialChar}</span>
-        <small class="portrait-placeholder-caption">Chưa có ảnh</small>
+        <small class="portrait-placeholder-caption">Chưa có ảnh (Có thể Ctrl+V)</small>
       </div>
       <div class="student-portrait-actions">
         <label id="profile-upload-portrait-label" class="primary-button" style="padding:6px 12px; font-size:13px; cursor:pointer; font-weight:700; width:100%; text-align:center;">
-          📷 Tải ảnh chân dung
+          📷 Tải ảnh Full-size
           <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
         </label>
       </div>
+      <small class="drive-photo-filename-badge" title="Tên file sẽ lưu trên Google Drive">📄 ${escapeHtml(autoDriveFileName)}</small>
     </div>
   `;
 
@@ -2439,7 +2536,6 @@ function openStudentProfile(id, origin = null){
 
   let enrolledClassIds = [...(student.classIds || [])];
 
-  // Single unified layout with prominent large portrait showcase on the left
   $('#student-profile-content').innerHTML=`
     <div class="profile-header student-profile-hero-card">
       ${portraitBlock}
@@ -2449,12 +2545,12 @@ function openStudentProfile(id, origin = null){
           <span class="enrollment-status-pill status-text-hoc">${escapeHtml(stEnrollment)}</span>
         </div>
         <div class="student-hero-badges">
-          <span class="room-chip" style="background:#eaf5ec; color:#1f5f33; font-weight:700;">Mã HS: ${escapeHtml(student.studentCode || '—')}</span>
+          <span class="room-chip" style="background:#eaf5ec; color:#1f5f33; font-weight:700;">Mã HS: ${escapeHtml(student.studentCode || 'Chưa có mã')}</span>
           <span class="room-chip">${escapeHtml(student.studentType==='makeup'?`Học bù từ: ${student.sourceClassName||'lớp chưa rõ'}`:student.school||'Chưa cập nhật trường học')}</span>
         </div>
         <div class="student-hero-contact-box">
           <div><span>Phụ huynh:</span> <strong>${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong></div>
-          <div><span>SĐT liên hệ:</span> <strong>${escapeHtml(student.parentContact?.phone || 'Chưa cập nhật')}</strong></div>
+          <div><span>File ảnh Google Drive:</span> <code style="font-size:12px; color:#166534;">${escapeHtml(student.photoDriveFileName || autoDriveFileName)}</code></div>
           ${officeNoteVal ? `<div class="student-hero-office-note"><span>Ghi chú VP:</span> <em>${escapeHtml(officeNoteVal)}</em></div>` : ''}
         </div>
       </div>
@@ -2463,9 +2559,9 @@ function openStudentProfile(id, origin = null){
       <label class="field-label">Họ và tên đệm<input id="profile-family-name" value="${escapeHtml(familyName)}" /></label>
       <label class="field-label">Tên<input id="profile-given-name" value="${escapeHtml(givenName)}" /></label>
       <label class="field-label">Trường học<input id="profile-school" value="${escapeHtml(student.school||'')}" /></label>
-      <label class="field-label">Mã học sinh<input id="profile-code" value="${escapeHtml(student.studentCode||'')}" placeholder="Ví dụ: K09.3049" style="text-transform:uppercase;" /></label>
-      <label class="field-label">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" /></label>
-      <label class="field-label">Số điện thoại phụ huynh<input id="profile-parent-phone" type="tel" value="${escapeHtml(student.parentContact?.phone||'')}" /></label>
+      <label class="field-label">Mã học sinh<input id="profile-code" value="${escapeHtml(student.studentCode||'')}" placeholder="Ví dụ: K09.3049 (Nếu đổi mã, tên file ảnh Drive tự đổi theo)" style="text-transform:uppercase;" /></label>
+      <label class="field-label profile-wide">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" placeholder="Không bắt buộc" /></label>
+      <input id="profile-parent-phone" type="hidden" value="" />
       <div class="field-label profile-wide">
         <span>Trạng thái theo học</span>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
@@ -2494,8 +2590,11 @@ function openStudentProfile(id, origin = null){
         <textarea id="profile-office-notes" rows="3" placeholder="Ghi chú hành chính / học phí / liên hệ phụ huynh của văn phòng...">${escapeHtml(officeNoteVal)}</textarea>
       </label>
 
-      <label class="field-label profile-wide" id="profile-photo-url-wrap" hidden>Link ảnh chân dung
-        <input id="profile-photo-url" value="${escapeHtml(student.photoURL||'')}" placeholder="https://... hoặc data:image/..." />
+      <label class="field-label profile-wide" id="profile-photo-url-wrap" hidden>Link ảnh Google Drive hoặc URL trực tiếp
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="profile-photo-url" value="${escapeHtml(student.photoDriveFileId ? `https://drive.google.com/file/d/${student.photoDriveFileId}/view` : (student.photoURL||''))}" placeholder="Dán link chia sẻ Google Drive (https://drive.google.com/file/d/...) hoặc link ảnh..." style="flex:1;" />
+          <button type="button" class="outline-button" id="open-drive-config-from-profile-btn" style="padding:7px 10px; font-size:12.5px; white-space:nowrap;">☁ Cấu hình Drive</button>
+        </div>
       </label>
     </div>`;
 
@@ -2582,6 +2681,10 @@ function openStudentProfile(id, origin = null){
   }
   setGeneralStudentProfileEditMode(false);
 
+  $('#open-drive-config-from-profile-btn')?.addEventListener('click', () => {
+    $('#google-sheets-sync-btn')?.click();
+  });
+
   if ($('#unlock-student-profile-btn')) {
     $('#unlock-student-profile-btn').onclick = () => {
       setGeneralStudentProfileEditMode(true);
@@ -2595,57 +2698,102 @@ function openStudentProfile(id, origin = null){
     };
   }
 
+  const handlePortraitImageFile = (file) => {
+    if (!file || !file.type.startsWith('image/')) {
+      toast('Vui lòng chọn file hình ảnh (PNG, JPG, WebP...).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (loadEvt) => {
+      const rawDataUrl = loadEvt.target.result;
+      const img = new Image();
+      img.onload = async () => {
+        let previewDataUrl = rawDataUrl;
+        let fullDataUrl = rawDataUrl;
+        try {
+          // 1. Build Full-size high resolution (up to 1440x1920) for Google Drive & Zoom modal
+          const maxFullW = 1440, maxFullH = 1920;
+          let fw = img.width || maxFullW, fh = img.height || maxFullH;
+          if (fw > maxFullW || fh > maxFullH) {
+            const r = Math.min(maxFullW / fw, maxFullH / fh);
+            fw = Math.round(fw * r);
+            fh = Math.round(fh * r);
+          }
+          const cFull = document.createElement('canvas');
+          cFull.width = fw; cFull.height = fh;
+          const ctxFull = cFull.getContext('2d');
+          ctxFull.fillStyle = '#ffffff';
+          ctxFull.fillRect(0, 0, fw, fh);
+          ctxFull.drawImage(img, 0, 0, fw, fh);
+          fullDataUrl = cFull.toDataURL('image/jpeg', 0.90);
+
+          // 2. Build fast card preview (480x640)
+          const maxPrevW = 480, maxPrevH = 640;
+          let pw = img.width || maxPrevW, ph = img.height || maxPrevH;
+          if (pw > maxPrevW || ph > maxPrevH) {
+            const r2 = Math.min(maxPrevW / pw, maxPrevH / ph);
+            pw = Math.round(pw * r2);
+            ph = Math.round(ph * r2);
+          }
+          const cPrev = document.createElement('canvas');
+          cPrev.width = pw; cPrev.height = ph;
+          const ctxPrev = cPrev.getContext('2d');
+          ctxPrev.fillStyle = '#ffffff';
+          ctxPrev.fillRect(0, 0, pw, ph);
+          ctxPrev.drawImage(img, 0, 0, pw, ph);
+          previewDataUrl = cPrev.toDataURL('image/jpeg', 0.85);
+        } catch {}
+
+        const res = await uploadStudentPhotoToDrive(student, fullDataUrl, previewDataUrl, classCatalog);
+        saveStudentRecords(students, makeupStudents);
+        save();
+        render();
+        toast(res?.uploadedToDrive
+          ? `Đã tải ảnh Full-size lên Google Drive: ${res.fileName}`
+          : `Đã lưu ảnh chân dung (${res?.fileName || student.name}).`);
+        openStudentProfile(student.id, origin);
+      };
+      img.onerror = async () => {
+        await uploadStudentPhotoToDrive(student, rawDataUrl, rawDataUrl, classCatalog);
+        saveStudentRecords(students, makeupStudents);
+        save();
+        render();
+        openStudentProfile(student.id, origin);
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const uploadInput = $('#profile-upload-portrait-input');
   if (uploadInput) {
     uploadInput.onchange = (e) => {
       const file = e.target.files?.[0];
-      if (!file) return;
-      if (!file.type.startsWith('image/')) {
-        toast('Vui lòng chọn file hình ảnh (PNG, JPG, WebP...).');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (loadEvt) => {
-        const rawDataUrl = loadEvt.target.result;
-        const img = new Image();
-        img.onload = () => {
-          let finalDataUrl = rawDataUrl;
-          try {
-            const maxW = 420, maxH = 560;
-            let w = img.width || maxW, h = img.height || maxH;
-            if (w > maxW || h > maxH) {
-              const ratio = Math.min(maxW / w, maxH / h);
-              w = Math.round(w * ratio);
-              h = Math.round(h * ratio);
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx2d = canvas.getContext('2d');
-            ctx2d.fillStyle = '#ffffff';
-            ctx2d.fillRect(0, 0, w, h);
-            ctx2d.drawImage(img, 0, 0, w, h);
-            finalDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-          } catch {}
-          student.photoURL = finalDataUrl;
-          student.updatedAt = Date.now();
-          saveStudentRecords(students, makeupStudents);
-          save();
-          render();
-          toast('Đã nén tối ưu & cập nhật ảnh chân dung học sinh.');
-          openStudentProfile(student.id, origin);
-        };
-        img.onerror = () => {
-          student.photoURL = rawDataUrl;
-          saveStudentRecords(students, makeupStudents);
-          save();
-          render();
-          openStudentProfile(student.id, origin);
-        };
-        img.src = rawDataUrl;
-      };
-      reader.readAsDataURL(file);
+      if (file) handlePortraitImageFile(file);
     };
+  }
+
+  // Support Ctrl+V pasting image directly while #student-profile-dialog is open
+  const dlgEl = $('#student-profile-dialog');
+  if (dlgEl && !dlgEl.dataset.pasteBound) {
+    dlgEl.dataset.pasteBound = '1';
+    dlgEl.addEventListener('paste', (e) => {
+      if (!dlgEl.open || !activeProfileId) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          const targetStu = studentById(activeProfileId);
+          if (file && targetStu) {
+            toast('Đang xử lý ảnh chân dung vừa dán (Ctrl+V)...');
+            handlePortraitImageFile(file);
+          }
+          break;
+        }
+      }
+    });
   }
 
   const removePhotoBtn = $('#profile-remove-photo-btn');
@@ -2653,6 +2801,8 @@ function openStudentProfile(id, origin = null){
     removePhotoBtn.onclick = () => {
       if (!confirm('Bạn có chắc muốn xóa ảnh chân dung này?')) return;
       student.photoURL = null;
+      student.photoFullURL = null;
+      student.photoDriveFileId = null;
       saveStudentRecords(students, makeupStudents);
       save();
       render();
@@ -2662,11 +2812,12 @@ function openStudentProfile(id, origin = null){
   }
 
   $('#student-profile-content').querySelector('#student-photo-expand')?.addEventListener('click',()=>{
-    const rawUrl = String($('#profile-photo-url')?.value || student.photoURL || '').trim();
+    const urls = resolveStudentPhotoUrls(student);
+    const rawUrl = String(urls.fullUrl || $('#profile-photo-url')?.value || student.photoURL || '').trim();
     const cleanUrl = rawUrl.startsWith('data:image/') ? rawUrl : safeHttpUrl(rawUrl);
     if(!cleanUrl)return;
     $('#student-photo-full').src=cleanUrl;
-    $('#student-photo-caption').textContent=student.name;
+    $('#student-photo-caption').textContent=`${student.name} (${student.photoDriveFileName || buildStudentDrivePhotoFileName(student, classCatalog)})`;
     $('#student-photo-dialog').showModal();
   });
 
@@ -2692,27 +2843,13 @@ $('#close-student-profile').onclick=closeStudentProfile;
 if($('#close-student-profile-secondary'))$('#close-student-profile-secondary').onclick=closeStudentProfile;
 $('#close-student-photo').onclick=()=>$('#student-photo-dialog').close();
 
-$('#save-student-profile').onclick=()=>{
+$('#save-student-profile').onclick=async ()=>{
   const student=studentById(activeProfileId);
   if(!student)return;
   const familyName=$('#profile-family-name').value.trim(),
         givenName=$('#profile-given-name').value.trim(),
         name=[familyName,givenName].filter(Boolean).join(' '),
-        photoValue=$('#profile-photo-url').value.trim();
-
-  let photo = null;
-  if (photoValue) {
-    if (photoValue.startsWith('data:image/')) {
-      photo = photoValue;
-    } else {
-      photo = safeHttpUrl(photoValue);
-      if (!photo) {
-        toast('Link ảnh cần bắt đầu bằng http:// hoặc https:// (hoặc tải trực tiếp từ máy tính).');
-        $('#profile-photo-url').focus();
-        return;
-      }
-    }
-  }
+        photoValue=($('#profile-photo-url')?.value || '').trim();
 
   if(!name){
     toast('Hãy nhập họ tên học sinh.');
@@ -2720,15 +2857,41 @@ $('#save-student-profile').onclick=()=>{
     return;
   }
 
+  let photo = student.photoURL || null;
+  const extractedDriveId = extractGoogleDriveFileId(photoValue);
+  if (extractedDriveId) {
+    student.photoDriveFileId = extractedDriveId;
+    photo = buildDrivePhotoUrl(extractedDriveId, 'w600');
+    student.photoFullURL = buildDrivePhotoUrl(extractedDriveId, 'w2400');
+  } else if (photoValue) {
+    if (photoValue.startsWith('data:image/')) {
+      photo = photoValue;
+    } else {
+      photo = safeHttpUrl(photoValue);
+      if (!photo) {
+        toast('Link ảnh cần là link Google Drive hoặc bắt đầu bằng http://, https://');
+        $('#profile-photo-url').focus();
+        return;
+      }
+    }
+  } else {
+    photo = null;
+    student.photoDriveFileId = null;
+    student.photoFullURL = null;
+  }
+
   const rawCode = $('#profile-code').value.trim();
+  const prevCode = student.studentCode || '';
+  const prevName = student.name || '';
+
   student.studentCode = rawCode ? rawCode.toUpperCase() : null;
   student.familyName = familyName;
   student.givenName = givenName;
   student.name = name;
   student.school = $('#profile-school').value.trim();
   student.parentContact = {
-    name: $('#profile-parent-name').value.trim(),
-    phone: $('#profile-parent-phone').value.trim()
+    name: ($('#profile-parent-name')?.value || '').trim(),
+    phone: ''
   };
   const statusSelVal = $('#profile-enrollment-status-select')?.value || 'Học';
   const statusCustomVal = ($('#profile-enrollment-status-custom')?.value || '').trim();
@@ -2744,11 +2907,18 @@ $('#save-student-profile').onclick=()=>{
     student.officeNotes = $('#profile-office-notes').value.trim();
   }
 
+  // Automatically rename Google Drive file if student name or studentCode changed while preserving the exact same fileId/link
+  const renameRes = await syncStudentDrivePhotoRename(student, classCatalog);
+
   saveStudentRecords(students, makeupStudents);
   save();
   render();
   openStudentProfile(student.id, previousStudentProfileOrigin);
-  toast('Đã lưu thông tin chung của học sinh.');
+  if (renameRes?.renamed && (prevCode !== (student.studentCode || '') || prevName !== student.name)) {
+    toast(`Đã lưu hồ sơ & tự động cập nhật tên file ảnh Drive: ${renameRes.fileName}`);
+  } else {
+    toast('Đã lưu thông tin chung của học sinh.');
+  }
 };
 
 // =========================================================================
@@ -2856,7 +3026,7 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
           <span class="room-chip" style="background:#eef2ff; color:#4338ca;">${escapeHtml(student.school || 'Chưa rõ trường')}</span>
         </div>
         <p style="margin:4px 0 0; font-size:13.5px; color:#526656;">
-          Phụ huynh: <strong>${escapeHtml(student.parentContact?.name || '—')}</strong> · SĐT: <strong>${escapeHtml(student.parentContact?.phone || '—')}</strong>
+          Phụ huynh: <strong>${escapeHtml(student.parentContact?.name || '—')}</strong>
           ${student.officeNotes ? ` · Ghi chú VP: <em>${escapeHtml(student.officeNotes)}</em>` : ''}
         </p>
       </div>
@@ -2888,9 +3058,8 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
         <label class="field-label">Trạng thái nộp BTVN
           <select id="sess-prof-hw-status">
             <option value="uncollected" ${curHwStatus === 'uncollected' ? 'selected' : ''}>Chưa thu</option>
-            <option value="submitted" ${curHwStatus === 'submitted' ? 'selected' : ''}>Đã thu</option>
-            <option value="graded" ${curHwStatus === 'graded' ? 'selected' : ''}>Đã chấm điểm</option>
-            <option value="not_submitted" ${curHwStatus === 'not_submitted' ? 'selected' : ''}>Không nộp</option>
+            <option value="submitted" ${curHwStatus === 'submitted' || curHwStatus === 'graded' ? 'selected' : ''}>Đã nộp</option>
+            <option value="not_submitted" ${curHwStatus === 'not_submitted' ? 'selected' : ''}>Chưa nộp</option>
           </select>
         </label>
 
@@ -2904,11 +3073,11 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
         </label>
 
         <label class="field-label" id="sess-prof-hw-score-wrap" ${isNoHwForSession ? 'hidden style="display:none!important;"' : ''}>Điểm BTVN (0 – 10)
-          <input type="number" id="sess-prof-hw-score" min="0" max="10" step="0.25" placeholder="Nhập điểm BTVN..." value="${escapeHtml(curHwScore)}" />
+          <input type="text" inputmode="decimal" id="sess-prof-hw-score" placeholder="VD: 7,5" value="${escapeHtml(formatScoreVN(curHwScore))}" />
         </label>
 
         <label class="field-label" id="sess-prof-test-score-wrap" ${hasTestForSession ? '' : 'hidden style="display:none!important;"'}>Điểm Test (0 – 10)
-          <input type="number" id="sess-prof-test-score" min="0" max="10" step="0.25" placeholder="Nhập điểm Test..." value="${escapeHtml(curTestScore)}" />
+          <input type="text" inputmode="decimal" id="sess-prof-test-score" placeholder="VD: 8,5" value="${escapeHtml(formatScoreVN(curTestScore))}" />
         </label>
 
         <label class="field-label profile-wide">Ghi chú trong buổi học
@@ -2932,11 +3101,14 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
     if ($('#sess-prof-late-mins-wrap')) $('#sess-prof-late-mins-wrap').hidden = (newAttStatus !== 'late');
     if ($('#sess-prof-hw-reason-wrap')) $('#sess-prof-hw-reason-wrap').hidden = (newHwStatus !== 'not_submitted');
 
-    const numHwScore = rawHwScore !== '' ? Number(rawHwScore) : null;
-    const numTestScore = rawTestScore !== '' ? Number(rawTestScore) : null;
-    if (numHwScore !== null && (newHwStatus === 'uncollected' || newHwStatus === 'submitted')) {
-      newHwStatus = 'graded';
-      if ($('#sess-prof-hw-status')) $('#sess-prof-hw-status').value = 'graded';
+    const parsedHw = parseScoreVN(rawHwScore);
+    const parsedTest = parseScoreVN(rawTestScore);
+    const numHwScore = (parsedHw !== null && !Number.isNaN(parsedHw)) ? parsedHw : null;
+    const numTestScore = (parsedTest !== null && !Number.isNaN(parsedTest)) ? parsedTest : null;
+    if (newHwStatus === 'graded') newHwStatus = 'submitted';
+    if (numHwScore !== null && newHwStatus === 'uncollected') {
+      newHwStatus = 'submitted';
+      if ($('#sess-prof-hw-status')) $('#sess-prof-hw-status').value = 'submitted';
     }
 
     const hwObj = {
@@ -3205,8 +3377,9 @@ function render(){
     $('#homework-count').textContent = '0';
     $('#homework-count-detail').textContent = 'Ca học này không có BTVN (Tự động/Đã chọn)';
   } else {
-    $('#homework-count').textContent=homeworkCounts.not_submitted+homeworkCounts.submitted+homeworkCounts.graded;
-    $('#homework-count-detail').textContent=`${homeworkCounts.not_submitted} không nộp · ${homeworkCounts.submitted} đã thu · ${homeworkCounts.graded} đã chấm`;
+    const totalSubmittedHw = homeworkCounts.submitted + homeworkCounts.graded;
+    $('#homework-count').textContent=homeworkCounts.not_submitted+totalSubmittedHw;
+    $('#homework-count-detail').textContent=`${totalSubmittedHw} đã nộp · ${homeworkCounts.not_submitted} chưa nộp · ${homeworkCounts.uncollected} chưa thu`;
   }
   $('#seat-count').textContent=`${desks().length} bàn`;
   $('#roster-count').textContent=`${classStudents().length} học sinh trong danh sách lớp`;
@@ -3379,8 +3552,8 @@ function buildPreviousHomeworkHistoryLines(student) {
     const hasScore = row.score !== null && row.score !== undefined && row.score !== '';
     const isSubmitted = hasScore || row.hwStatus === 'submitted' || row.hwStatus === 'graded' || row.hwStatus === 'completed';
     const hwLabel = isSubmitted
-      ? (hasScore ? `đã nộp (${row.score})` : 'đã nộp')
-      : 'không nộp';
+      ? (hasScore ? `đã nộp (${formatScoreVN(row.score)})` : 'đã nộp')
+      : 'chưa nộp';
 
     const cleanNote = String(row.note || '').trim();
     const notePart = cleanNote ? ` - (ghi chú: ${cleanNote})` : '';
@@ -3448,11 +3621,12 @@ function resetStudentSessionRecord(studentId) {
 }
 
 function setHomeworkFields(home={status:'uncollected'}){
-  $('#homework-status').value=home.status||'uncollected';
-  $('#homework-score').value=home.score??'';
+  const normStatus = home.status === 'graded' ? 'submitted' : (home.status || 'uncollected');
+  $('#homework-status').value=normStatus;
+  $('#homework-score').value=formatScoreVN(home.score ?? '');
   $('#homework-reason').value=home.reason||'';
-  toggleHomeworkFields($('#homework-status').value,'homework');
-  document.querySelectorAll('[data-homework-choice]').forEach(button=>button.classList.toggle('selected',button.dataset.homeworkChoice===($('#homework-status').value==='graded'?'submitted':$('#homework-status').value)));
+  toggleHomeworkFields(normStatus,'homework');
+  document.querySelectorAll('[data-homework-choice]').forEach(button=>button.classList.toggle('selected',button.dataset.homeworkChoice===normStatus));
 }
 
 function toggleHomeworkFields(status,prefix){
@@ -3470,7 +3644,8 @@ function showAttendance(att={}){if($('#attendance-status'))$('#attendance-status
 function identityPicker(query=''){
   const used=assignedIds();
   if(currentEntry()?.studentId)used.delete(currentEntry().studentId);
-  const matches=searchStudents([...classStudents(),...makeupStudents.filter(student=>student.attendingClassId===CURRENT_CLASS_ID)],query,{excludeIds:used});
+  const pool=[...classStudents(),...makeupStudents.filter(student=>student.attendingClassId===CURRENT_CLASS_ID)];
+  const matches=query.trim()?searchStudents(pool,query,{excludeIds:used}):pool.filter(s=>!used.has(s.id));
   $('#student-options').innerHTML=matches.map(s=>`<button type="button" class="student-option" data-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${studentSearchMeta(s)}</span><span class="student-check">Chọn</span></button>`).join('')||`<div class="empty-list">${query.trim()?'Chưa có hồ sơ phù hợp.':'Nhập tên để tìm học sinh trong danh sách.'}</div>`;
   $('#student-options').querySelectorAll('[data-student]').forEach(b=>b.onclick=()=>assignStudent(b.dataset.student));
 }
@@ -3480,7 +3655,7 @@ function showIdentityForm(kind='new'){
   $('#identity-kind-host').innerHTML=`<div class="identity-actions"><button type="button" class="outline-button ${!makeup?'active':''}" id="new-student-choice">Học sinh mới</button><button type="button" class="outline-button ${makeup?'active':''}" id="makeup-student-choice">Học bù</button></div>`;
   $('#new-student-choice').onclick=()=>showIdentityForm('new');
   $('#makeup-student-choice').onclick=()=>showIdentityForm('makeup');
-  $('#identity-form-host').innerHTML=`<div class="identity-form"><strong>${makeup?'Thông tin học sinh học bù':'Thông tin học sinh mới'}</strong><label class="field-label">Họ và tên<input id="identity-name" placeholder="Ví dụ: Nguyễn Minh Anh" /></label><label class="field-label">${makeup?'Học bù lớp':'Trường'}<input id="identity-school" placeholder="${makeup?'Ví dụ: Toán 8B':'Tên trường'}" /></label>${makeup?'':'<label class="field-label">Tên phụ huynh<input id="identity-parent-name" placeholder="Không bắt buộc" /></label><label class="field-label">Số điện thoại phụ huynh<input id="identity-parent-phone" type="tel" placeholder="Không bắt buộc" /></label>'}<button type="button" class="primary-button confirm-seat" id="save-identity">Xác nhận học sinh</button></div>`;
+  $('#identity-form-host').innerHTML=`<div class="identity-form"><strong>${makeup?'Thông tin học sinh học bù':'Thông tin học sinh mới'}</strong><label class="field-label">Họ và tên<input id="identity-name" placeholder="Ví dụ: Nguyễn Minh Anh" /></label><label class="field-label">${makeup?'Học bù lớp':'Trường'}<input id="identity-school" placeholder="${makeup?'Ví dụ: Toán 8B':'Tên trường'}" /></label>${makeup?'':'<label class="field-label">Tên phụ huynh<input id="identity-parent-name" placeholder="Không bắt buộc" /></label>'}<button type="button" class="primary-button confirm-seat" id="save-identity">Xác nhận học sinh</button></div>`;
   const formEl = $('#identity-form-host');
   setTimeout(() => {
     formEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3543,9 +3718,15 @@ function assignStudent(id){
   recordHistory(person,entry.attendance,entry.homework||person.homework);
   recordSeatHistory(person,activeSpot.deskId,activeSpot.index);
   const noteField=$('#seat-general-note');
-  noteField.value=sessionNoteFor(id);
-  noteField.dataset.sessionNote=id;
-  noteField.disabled=false;
+  const preTypedNote = (!noteField.dataset.sessionNote && noteField.value) ? noteField.value.trim() : '';
+  const existingNote = sessionNoteFor(id);
+  const resolvedNote = existingNote || preTypedNote;
+  noteField.value = resolvedNote;
+  noteField.dataset.sessionNote = id;
+  noteField.disabled = false;
+  if (resolvedNote) {
+    saveSessionNote(id, resolvedNote);
+  }
   save();
   render();
   $('#student-search').value=person.name;
@@ -3613,7 +3794,8 @@ $('#save-homework').onclick=()=>{
       school: idSchoolInp || (isMakeup ? 'Chưa rõ lớp' : 'Chưa rõ trường'),
       kind: isMakeup ? 'makeup' : 'regular',
       parentContact,
-      tags: []
+      tags: isMakeup ? ['Học bù'] : ['Mới'],
+      isNew: !isMakeup
     });
     if (isMakeup) makeupStudents.push(student);
     else students.push(student);
@@ -3624,23 +3806,25 @@ $('#save-homework').onclick=()=>{
   }
 
   let status=$('#homework-status').value;
+  if(status==='graded')status='submitted';
   const scoreValue=$('#homework-score').value.trim();
-  if(status==='submitted'&&scoreValue)status='graded';
+  const parsedScore=parseScoreVN(scoreValue);
+  if(status==='uncollected'&&parsedScore!==null&&!Number.isNaN(parsedScore))status='submitted';
   if(status==='not_submitted'&&!entry.studentId){
-    toast('Chọn tên học sinh ở mục Điểm danh trước khi lưu trạng thái không nộp.');
+    toast('Chọn tên học sinh ở mục Điểm danh trước khi lưu trạng thái chưa nộp.');
     $('#student-search').focus();
     return;
   }
   if(status==='not_submitted'&&!$('#homework-reason').value){
-    toast('Chọn lý do không nộp BTVN.');
+    toast('Chọn lý do chưa nộp BTVN.');
     return;
   }
-  if(scoreValue&&(Number(scoreValue)<0||Number(scoreValue)>10)){
-    toast('Điểm BTVN cần nằm trong khoảng 0 đến 10.');
+  if(scoreValue&&(Number.isNaN(parsedScore)||parsedScore<0||parsedScore>10)){
+    toast('Điểm BTVN cần nằm trong khoảng 0 đến 10 (VD: 7,5).');
     return;
   }
   const sharedNote=$('#seat-general-note').value.trim();
-  entry.homework={status,score:scoreValue?Number(scoreValue):null,reason:status==='not_submitted'?$('#homework-reason').value:null,note:sharedNote};
+  entry.homework={status,score:parsedScore!==null&&!Number.isNaN(parsedScore)?parsedScore:null,reason:status==='not_submitted'?$('#homework-reason').value:null,note:sharedNote};
   entry.homeworkSaved=true;
   const person=studentById(entry.studentId);
   if(person){
@@ -4006,13 +4190,14 @@ function syncLiveSessionData() {
       const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? null;
       const hwReason = seated?.entry.homework?.reason || s.homework?.reason || '';
       const testScore = seated?.entry.testScore ?? checklist?.testScores?.[s.id] ?? s.testScore ?? null;
+      const arrTime = seated?.entry.attendance?.arrivalTime || s.attendance?.arrivalTime || s.arrivalTime || attHist?.time || null;
       return {
         studentId: s.id,
         studentName: s.name,
         studentCode: s.studentCode || null,
         school: s.school || '',
-        attendance: { status: attStatus, minutesLate: isLate ? (minsLate || 10) : 0, lateMinutes: isLate ? (minsLate || 10) : 0 },
-        homework: { status: hwStatus, score: hwScore, reason: hwReason },
+        attendance: { status: attStatus, arrivalTime: arrTime, minutesLate: isLate ? (minsLate || 10) : 0, lateMinutes: isLate ? (minsLate || 10) : 0 },
+        homework: { status: hwStatus === 'graded' ? 'submitted' : hwStatus, score: hwScore, reason: hwReason },
         testScore,
         note: sessionNoteFor(s.id) || ''
       };
@@ -4061,14 +4246,14 @@ function syncLiveSessionData() {
   }
 }
 function drawLatePicker(query=''){
-  const normalized=query.trim(),excludeIds=[...assignedIds(),...lateQueue],candidates=searchStudents([...classStudents(),...makeupStudents.filter(student=>student.attendingClassId===CURRENT_CLASS_ID)],normalized,{excludeIds});
+  const normalized=query.trim(),excludeIds=[...assignedIds(),...lateQueue],exclSet=new Set(excludeIds),pool=[...classStudents(),...makeupStudents.filter(student=>student.attendingClassId===CURRENT_CLASS_ID)],candidates=normalized?searchStudents(pool,normalized,{excludeIds}):pool.filter(s=>!exclSet.has(s.id));
   $('#late-options').innerHTML=candidates.map(s=>`<button type="button" class="student-option" data-late-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${studentSearchMeta(s)}</span><span class="student-check">Chọn</span></button>`).join('')||`<div class="empty-list">${normalized?'Không tìm thấy hồ sơ.':'Nhập tên để tìm học sinh.'}</div>`;
   $('#late-options').querySelectorAll('[data-late-student]').forEach(b=>b.onclick=()=>selectLateStudent(b.dataset.lateStudent));
 }
 
 function showLateIdentityForm(kind='new'){
   const makeup=kind==='makeup';
-  $('#late-identity-host').innerHTML=`<div class="identity-actions"><button type="button" class="outline-button ${!makeup?'active':''}" id="late-new-student">Học sinh mới</button><button type="button" class="outline-button ${makeup?'active':''}" id="late-makeup-student">Học bù</button></div><div class="identity-form"><strong>${makeup?'Thông tin học sinh học bù':'Thông tin học sinh mới'}</strong><label class="field-label">Họ và tên<input id="late-full-name" placeholder="Ví dụ: Nguyễn Minh Anh" /></label><label class="field-label">${makeup?'Học bù lớp':'Trường'}<input id="late-school" placeholder="${makeup?'Ví dụ: Toán 8B':'Tên trường'}" /></label>${makeup?'':'<label class="field-label">Tên phụ huynh<input id="late-parent-name" placeholder="Không bắt buộc" /></label><label class="field-label">Số điện thoại phụ huynh<input id="late-parent-phone" type="tel" placeholder="Không bắt buộc" /></label>'}<button type="button" class="primary-button confirm-seat" id="create-late-student">Xác nhận học sinh</button></div>`;
+  $('#late-identity-host').innerHTML=`<div class="identity-actions"><button type="button" class="outline-button ${!makeup?'active':''}" id="late-new-student">Học sinh mới</button><button type="button" class="outline-button ${makeup?'active':''}" id="late-makeup-student">Học bù</button></div><div class="identity-form"><strong>${makeup?'Thông tin học sinh học bù':'Thông tin học sinh mới'}</strong><label class="field-label">Họ và tên<input id="late-full-name" placeholder="Ví dụ: Nguyễn Minh Anh" /></label><label class="field-label">${makeup?'Học bù lớp':'Trường'}<input id="late-school" placeholder="${makeup?'Ví dụ: Toán 8B':'Tên trường'}" /></label>${makeup?'':'<label class="field-label">Tên phụ huynh<input id="late-parent-name" placeholder="Không bắt buộc" /></label>'}<button type="button" class="primary-button confirm-seat" id="create-late-student">Xác nhận học sinh</button></div>`;
   $('#late-new-student').onclick=()=>showLateIdentityForm('new');
   $('#late-makeup-student').onclick=()=>showLateIdentityForm('makeup');
   const hostEl = $('#late-identity-host');
@@ -4105,35 +4290,43 @@ if ($('#late-new-or-makeup')) {
 }
 
 function setLateHomeworkFields(home={status:'uncollected'}){
-  $('#late-homework-status').value=home.status||'uncollected';
-  $('#late-homework-score').value=home.score??'';
+  const normStatus = home.status === 'graded' ? 'submitted' : (home.status || 'uncollected');
+  $('#late-homework-status').value=normStatus;
+  $('#late-homework-score').value=formatScoreVN(home.score ?? '');
   $('#late-homework-reason').value=home.reason||'';
-  toggleHomeworkFields($('#late-homework-status').value,'late');
-  document.querySelectorAll('[data-late-homework-choice]').forEach(button=>button.classList.toggle('selected',button.dataset.lateHomeworkChoice===($('#late-homework-status').value==='graded'?'submitted':$('#late-homework-status').value)));
+  toggleHomeworkFields(normStatus,'late');
+  document.querySelectorAll('[data-late-homework-choice]').forEach(button=>button.classList.toggle('selected',button.dataset.lateHomeworkChoice===normStatus));
 }
 
 function selectLateStudent(id){
   selectedLateId=id;
   lateHomeworkSelected=true;
   const student=studentById(id),noteField=$('#late-general-note');
+  const preTypedNote = (!noteField.dataset.sessionNote && noteField.value) ? noteField.value.trim() : '';
+  const existingNote = sessionNoteFor(id);
+  const resolvedNote = existingNote || preTypedNote;
   $('#late-search').value=student.name;
   $('#late-search').dispatchEvent(new Event('change'));
-  noteField.value=sessionNoteFor(id);
+  noteField.value=resolvedNote;
   noteField.dataset.sessionNote=id;
+  if (resolvedNote) saveSessionNote(id, resolvedNote);
   $('#late-options').hidden=true;
   $('#late-identity-host').innerHTML='';
   if ($('#late-new-or-makeup')) { $('#late-new-or-makeup').classList.remove('active'); $('#late-new-or-makeup').textContent = '+ Học sinh mới / Học bù'; }
   $('#late-detail-section').hidden=false;
   const tags=studentTagList(student);
   $('#late-history').innerHTML=`<div class="late-profile-meta"><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.school||'Chưa cập nhật trường/lớp')}</small>${tags.map(tag=>`<span class="student-tag ${tag==='Mới'?'new-tag':''}">${escapeHtml(tag)}</span>`).join('')}</div>`;
-  $('#arrival-time').value=roundTimeTo5Minutes(new Date().toTimeString().slice(0,5));
+  // Giữ nguyên thời gian thực tế chính xác từng phút (KHÔNG làm tròn 5 phút ở menu điểm danh muộn)
+  $('#arrival-time').value=student.arrivalTime || student.attendance?.arrivalTime || new Date().toTimeString().slice(0,5);
   setLateHomeworkFields(student.homework||{status:'uncollected'});
   renderHomeworkHistoryPanel('late');
   window.__featuresApp?.updateLateMinutesCalculation?.();
 }
 
-$('#arrival-time')?.addEventListener('change', (e) => {
-  e.target.value = roundTimeTo5Minutes(e.target.value);
+$('#arrival-time')?.addEventListener('change', () => {
+  window.__featuresApp?.updateLateMinutesCalculation?.();
+});
+$('#arrival-time')?.addEventListener('input', () => {
   window.__featuresApp?.updateLateMinutesCalculation?.();
 });
 
@@ -4217,21 +4410,29 @@ $('#save-late').onclick=()=>{
   }
   if(!selectedLateId){toast('Nhập và chọn tên học sinh trước khi xác nhận đi muộn.');$('#late-search').focus();return;}
   let status=$('#late-homework-status').value||'uncollected';
+  if(status==='graded')status='submitted';
   const scoreValue=$('#late-homework-score').value.trim();
-  if(status==='submitted'&&scoreValue)status='graded';
-  if(status==='not_submitted'&&!$('#late-homework-reason').value){toast('Chọn lý do không nộp BTVN.');return;}
-  if(scoreValue&&(Number(scoreValue)<0||Number(scoreValue)>10)){toast('Điểm BTVN cần nằm trong khoảng 0 đến 10.');return;}
-  const student=studentById(selectedLateId),sharedNote=$('#late-general-note').value.trim(),homework={status,score:scoreValue?Number(scoreValue):null,reason:status==='not_submitted'?$('#late-homework-reason').value:null,note:sharedNote};
+  const parsedScore=parseScoreVN(scoreValue);
+  if(status==='uncollected'&&parsedScore!==null&&!Number.isNaN(parsedScore))status='submitted';
+  if(status==='not_submitted'&&!$('#late-homework-reason').value){toast('Chọn lý do chưa nộp BTVN.');return;}
+  if(scoreValue&&(Number.isNaN(parsedScore)||parsedScore<0||parsedScore>10)){toast('Điểm BTVN cần nằm trong khoảng 0 đến 10 (VD: 7,5).');return;}
+  const student=studentById(selectedLateId),sharedNote=$('#late-general-note').value.trim(),homework={status,score:parsedScore!==null&&!Number.isNaN(parsedScore)?parsedScore:null,reason:status==='not_submitted'?$('#late-homework-reason').value:null,note:sharedNote};
   const lateMinutes = window.__featuresApp?.updateLateMinutesCalculation?.() || 0;
-  const arrivalVal = $('#save-arrival-time').checked ? roundTimeTo5Minutes($('#arrival-time').value) : null;
-  const attendance={status:'late',arrivalTime:arrivalVal,lateMinutes};
+  const arrivalVal = $('#save-arrival-time').checked ? ($('#arrival-time').value || new Date().toTimeString().slice(0,5)) : null;
+  const attendance={status:'late',arrivalTime:arrivalVal,lateMinutes,minutesLate:lateMinutes};
   saveSessionNote(student.id,sharedNote);
   student.homework=homework;
   recordStudentScore(student,homework.score,'BTVN');
   student.attendance=attendance;
   student.arrivalTime=attendance.arrivalTime;
+  // Also update if student is already seated on a desk
+  const existingSeat = allEntries().find(e => e.entry.studentId === student.id);
+  if (existingSeat) {
+    existingSeat.entry.attendance = attendance;
+    existingSeat.entry.homework = homework;
+  }
   recordHistory(student,attendance,homework);
-  if (!lateQueue.includes(student.id)) lateQueue.push(student.id);
+  if (!existingSeat && !lateQueue.includes(student.id)) lateQueue.push(student.id);
   save();
   render();
   $('#late-dialog').close();
@@ -4258,6 +4459,11 @@ const features = setupFeatures({
   createClassNotification,
   getMasterData: () => masterData,
   getClassCatalog: () => classCatalog,
+  getVisibleClassesForAccount: () => getVisibleClassesForAccount(),
+  formatScoreVN: (v, fb) => formatScoreVN(v, fb),
+  parseScoreVN: (r) => parseScoreVN(r),
+  renderStudentList: () => renderStudentList(),
+  renderScoresView: () => renderScoresView(),
   saveClassCatalog: (cats) => {
     classCatalog = cats;
     saveClassCatalog(cats);
@@ -4576,11 +4782,7 @@ document.addEventListener('click', (e) => {
 // v1.3: TAB NHẬP ĐIỂM (#scores-view) & HỘP THOẠI XEM KỸ ĐIỂM HỌC SINH (#student-score-history-dialog)
 // ============================================================================
 
-function formatScoreVN(val) {
-  if (val === null || val === undefined || val === '' || Number.isNaN(Number(val))) return '/';
-  const num = Number(val);
-  return String(num).replace('.', ',');
-}
+// formatScoreVN is defined at top of module
 
 function formatShortDayMonth(dateStr) {
   if (!dateStr) return '';
@@ -4655,7 +4857,7 @@ function getStudentScoreHistoryEntries(student, classId = CURRENT_CLASS_ID, incl
         date,
         kind: 'Test',
         scoreRaw: testVal,
-        scoreDisplay: formatScoreVN(testVal),
+        scoreDisplay: formatScoreVN(testVal, '/'),
         statusDisplay: testStatusText,
         lessonDisplay: `Test ${shortDM}: ${lessonTitle}`
       });
@@ -4684,7 +4886,7 @@ function getStudentScoreHistoryEntries(student, classId = CURRENT_CLASS_ID, incl
       date,
       kind: 'BTVN',
       scoreRaw: hwVal ?? null,
-      scoreDisplay: formatScoreVN(hwVal),
+      scoreDisplay: formatScoreVN(hwVal, '/'),
       statusDisplay: btvnStatusText,
       lessonDisplay: `BTVN ${shortDM}: ${lessonTitle}`
     });
@@ -4766,9 +4968,10 @@ function applyStudentManualScore(studentId, field, rawValue) {
   const seated = allEntries().find(e => e.entry.studentId === studentId);
   if (field === 'hw') {
     const prevHw = seated?.entry.homework || student.homework || { status: 'uncollected' };
+    const basePrevSt = prevHw.status === 'graded' ? 'submitted' : (prevHw.status || 'uncollected');
     const nextStatus = numVal !== null
-      ? 'graded'
-      : (prevHw.status === 'graded' ? 'submitted' : (prevHw.status || 'uncollected'));
+      ? (basePrevSt === 'not_submitted' ? 'not_submitted' : 'submitted')
+      : basePrevSt;
     const nextHw = {
       ...prevHw,
       status: nextStatus,
@@ -4986,11 +5189,11 @@ function renderScoresView() {
           <button type="button" class="recent-scores-btn" data-open-score-history="${escapeHtml(s.id)}" title="Click để xem chi tiết điểm các buổi trước của ${escapeHtml(s.name)}"><span>${escapeHtml(item.recentFour)}</span></button>
         </td>
         <td style="text-align:center;">
-          <input type="number" min="0" max="10" step="0.25" class="manual-score-input" data-score-tab-hw="${escapeHtml(s.id)}" value="${item.hwScore !== null && item.hwScore !== undefined ? escapeHtml(item.hwScore) : ''}" placeholder="0 - 10" aria-label="Điểm BTVN ${escapeHtml(s.name)}" />
+          <input type="text" inputmode="decimal" class="manual-score-input" data-score-tab-hw="${escapeHtml(s.id)}" value="${item.hwScore !== null && item.hwScore !== undefined ? escapeHtml(formatScoreVN(item.hwScore)) : ''}" placeholder="VD: 7,5" aria-label="Điểm BTVN ${escapeHtml(s.name)}" />
         </td>
         ${hasTest ? `
           <td style="text-align:center;">
-            <input type="number" min="0" max="10" step="0.25" class="manual-score-input" data-score-tab-test="${escapeHtml(s.id)}" value="${item.testScore !== null && item.testScore !== undefined ? escapeHtml(item.testScore) : ''}" placeholder="0 - 10" aria-label="Điểm Test ${escapeHtml(s.name)}" />
+            <input type="text" inputmode="decimal" class="manual-score-input" data-score-tab-test="${escapeHtml(s.id)}" value="${item.testScore !== null && item.testScore !== undefined ? escapeHtml(formatScoreVN(item.testScore)) : ''}" placeholder="VD: 8,5" aria-label="Điểm Test ${escapeHtml(s.name)}" />
           </td>
         ` : ''}
         <td>
@@ -5396,11 +5599,11 @@ function buildSeatingSnapshotHtml() {
           const hwSt = hw?.status || 'uncollected';
           const hwScore = (hw?.score !== null && hw?.score !== undefined && hw?.score !== '') ? hw.score : null;
           if (hwScore !== null) {
-            hwBadgeHtml = `<span class="snap-badge snap-hw-graded">BTVN: ${escapeHtml(hwScore)}đ</span>`;
+            hwBadgeHtml = `<span class="snap-badge snap-hw-graded">BTVN: ${escapeHtml(formatScoreVN(hwScore))}đ</span>`;
           } else if (hwSt === 'graded') {
-            hwBadgeHtml = `<span class="snap-badge snap-hw-graded">Đã chấm</span>`;
+            hwBadgeHtml = `<span class="snap-badge snap-hw-submitted">✓ Đã nộp</span>`;
           } else if (hwSt === 'submitted') {
-            hwBadgeHtml = `<span class="snap-badge snap-hw-submitted">✓ Đã thu</span>`;
+            hwBadgeHtml = `<span class="snap-badge snap-hw-submitted">✓ Đã nộp</span>`;
           } else if (hwSt === 'not_submitted') {
             hwBadgeHtml = `<span class="snap-badge snap-hw-missing">× K.Nộp</span>`;
           } else {
@@ -5412,14 +5615,17 @@ function buildSeatingSnapshotHtml() {
           ? entry.testScore
           : ((stu?.testScore !== null && stu?.testScore !== undefined && stu?.testScore !== '') ? stu.testScore : null);
         const testBadgeHtml = testScoreVal !== null
-          ? `<span class="snap-badge snap-test-score">Test: ${escapeHtml(testScoreVal)}đ</span>`
+          ? `<span class="snap-badge snap-test-score">Test: ${escapeHtml(formatScoreVN(testScoreVal))}đ</span>`
           : '';
 
         const makeupBadgeHtml = isMakeup ? `<span class="snap-badge snap-makeup-tag">BÙ</span>` : '';
+        const stuTags = stu ? studentTagList(stu) : [];
+        const tagsBadgesHtml = stuTags.map(tag => `<span class="snap-badge snap-stu-tag ${tag === 'Mới' ? 'snap-tag-new' : ''}">#${escapeHtml(tag)}</span>`).join('');
 
         return `
           <div class="snap-seat ${stateClass} ${isMakeup ? 'snap-seat-makeup' : ''}">
             <div class="snap-seat-name">${escapeHtml(stu ? stu.name : 'Chỗ trống')}</div>
+            ${tagsBadgesHtml ? `<div class="snap-seat-tags-row">${tagsBadgesHtml}</div>` : ''}
             <div class="snap-seat-badges">
               <span class="snap-badge snap-att-tag">${escapeHtml(attLabel)}</span>
               ${hwBadgeHtml}
@@ -5549,8 +5755,8 @@ function renderSeatingSnapshotCanvas() {
   const vnDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : checklistDate;
 
   const aisleCount = Math.max(1, data.displayLayout.length);
-  const seatW = 132;
-  const seatH = 56;
+  const seatW = 136;
+  const seatH = 68;
   const seatGap = 6;
   const deskPad = 8;
   const deskGap = 6;
@@ -5558,7 +5764,7 @@ function renderSeatingSnapshotCanvas() {
 
   const aisleWidths = data.displayLayout.map(aisle => {
     const maxOcc = Math.max(1, ...aisle.desks.map(d => (deskItems[d.id] || []).length));
-    return Math.max(168, maxOcc * seatW + Math.max(0, maxOcc - 1) * seatGap + deskPad * 2);
+    return Math.max(172, maxOcc * seatW + Math.max(0, maxOcc - 1) * seatGap + deskPad * 2);
   });
 
   const totalAislesW = aisleWidths.reduce((a, b) => a + b, 0) + Math.max(0, aisleCount - 1) * aisleGap;
@@ -5566,11 +5772,11 @@ function renderSeatingSnapshotCanvas() {
 
   const maxDesksCount = Math.max(1, ...data.displayLayout.map(a => a.desks.length));
   const aislesAreaH = 34 + maxDesksCount * (seatH + deskPad * 2 + deskGap) + 24;
-  const headerH = 86;
-  const boardBarH = 34;
-  const backBarH = 30;
-  const legendH = 64;
-  const canvasH = headerH + boardBarH + aislesAreaH + backBarH + legendH + 56;
+  const headerH = 68;
+  const boardBarH = 32;
+  const backBarH = 28;
+  const legendH = 56;
+  const canvasH = headerH + boardBarH + aislesAreaH + backBarH + legendH + 48;
 
   const dpr = 2;
   const canvas = document.createElement('canvas');
@@ -5592,49 +5798,50 @@ function renderSeatingSnapshotCanvas() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvasW, canvasH);
 
-  roundRect(20, 16, canvasW - 40, headerH - 12, 12);
+  roundRect(20, 12, canvasW - 40, headerH - 8, 10);
   ctx.fillStyle = '#f3f8f4';
   ctx.fill();
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.2;
   ctx.strokeStyle = '#cfe0d2';
   ctx.stroke();
 
+  // Smaller, balanced class title in exported image
   ctx.fillStyle = '#1e3a29';
-  ctx.font = '800 20px sans-serif';
-  ctx.fillText(`${clsName} (${clsCode}) · Phòng ${clsRoom}`, 36, 46);
+  ctx.font = '800 15px sans-serif';
+  ctx.fillText(`${clsName} (${clsCode}) · Phòng ${clsRoom}`, 32, 36);
 
   ctx.fillStyle = '#4b5e50';
-  ctx.font = '600 13px sans-serif';
-  ctx.fillText(`Ngày: ${vnDate}  |  GV: ${teacherName}  |  TA: ${assistantName}`, 36, 70);
+  ctx.font = '600 12px sans-serif';
+  ctx.fillText(`Ngày: ${vnDate}  |  GV: ${teacherName}  |  TA: ${assistantName}`, 32, 56);
 
   ctx.textAlign = 'right';
   ctx.fillStyle = '#1f5f33';
-  ctx.font = '800 15px sans-serif';
-  ctx.fillText(`Điểm danh: ${data.attendedCount}/${data.totalExpected} (Có mặt: ${data.presentCount} · Muộn: ${data.lateCount})`, canvasW - 36, 46);
+  ctx.font = '800 13.5px sans-serif';
+  ctx.fillText(`Điểm danh sơ đồ: ${data.attendedCount}/${data.totalExpected} (Có mặt: ${data.presentCount} · Muộn: ${data.lateCount})`, canvasW - 32, 36);
   ctx.fillStyle = '#334155';
-  ctx.font = '700 13px sans-serif';
+  ctx.font = '700 12px sans-serif';
   ctx.fillText(
     data.isNoHwActive
       ? 'BTVN: Ca học không có BTVN'
-      : `BTVN: ${data.hwDoneCount} đã thu/chấm · ${data.hwMissingCount} không nộp`,
-    canvasW - 36,
-    70
+      : `BTVN: ${data.hwDoneCount} đã nộp · ${data.hwMissingCount} chưa nộp`,
+    canvasW - 32,
+    56
   );
   ctx.textAlign = 'left';
 
-  let curY = headerH + 14;
-  const barW = Math.min(360, canvasW - 120);
-  roundRect((canvasW - barW) / 2, curY, barW, 26, 6);
+  let curY = headerH + 10;
+  const barW = Math.min(340, canvasW - 120);
+  roundRect((canvasW - barW) / 2, curY, barW, 24, 6);
   ctx.fillStyle = '#e8f3ea';
   ctx.fill();
   ctx.strokeStyle = '#9ec2a6';
   ctx.stroke();
   ctx.fillStyle = '#1e3a29';
-  ctx.font = '800 12px sans-serif';
+  ctx.font = '800 11.5px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(isTeacherView ? 'CUỐI LỚP (GÓC NHÌN GIÁO VIÊN)' : 'BẢNG · ĐẦU LỚP', canvasW / 2, curY + 17);
+  ctx.fillText(isTeacherView ? 'CUỐI LỚP (GÓC NHÌN GIÁO VIÊN)' : 'BẢNG · ĐẦU LỚP', canvasW / 2, curY + 16);
 
-  curY += 38;
+  curY += 34;
 
   let curX = (canvasW - totalAislesW) / 2;
 
@@ -5643,11 +5850,11 @@ function renderSeatingSnapshotCanvas() {
     const colW = aisleWidths[ci];
 
     ctx.fillStyle = '#4d6553';
-    ctx.font = '800 12px sans-serif';
+    ctx.font = '800 11.5px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`DÃY ${origAisleIdx + 1}`, curX + colW / 2, curY + 14);
+    ctx.fillText(`DÃY ${origAisleIdx + 1}`, curX + colW / 2, curY + 13);
 
-    let deskY = curY + 24;
+    let deskY = curY + 22;
     aisle.desks.forEach((desk, di) => {
       const list = deskItems[desk.id] || [];
       const displayList = isTeacherView ? [...list].reverse() : list;
@@ -5706,23 +5913,32 @@ function renderSeatingSnapshotCanvas() {
           ctx.font = '700 11.5px sans-serif';
           ctx.textAlign = 'center';
           const shortName = fullName.length > 18 ? fullName.slice(0, 17) + '…' : fullName;
-          ctx.fillText(shortName, seatX + seatW / 2, deskY + deskPad + 21);
+          ctx.fillText(shortName, seatX + seatW / 2, deskY + deskPad + 18);
+
+          // Render Student Tags (#Mới, #Học bù, etc.) in exported image
+          const stuTags = stu ? studentTagList(stu) : [];
+          if (stuTags.length) {
+            const tagLine = stuTags.map(t => `#${t}`).join(' ');
+            const shortTags = tagLine.length > 22 ? tagLine.slice(0, 21) + '…' : tagLine;
+            ctx.fillStyle = '#0f5132';
+            ctx.font = '700 9.5px sans-serif';
+            ctx.fillText(shortTags, seatX + seatW / 2, deskY + deskPad + 34);
+          }
 
           let hwTxt = '';
           if (!data.isNoHwActive && stu) {
             const hwSt = hw?.status || 'uncollected';
-            const hwScore = (hw?.score !== null && hw?.score !== undefined && hw?.score !== '') ? hw.score : null;
+            const hwScore = (hw?.score !== null && hw?.score !== undefined && hw?.score !== '') ? formatScoreVN(hw.score) : null;
             if (hwScore !== null) hwTxt = ` · BTVN:${hwScore}đ`;
-            else if (hwSt === 'graded') hwTxt = ' · Đã chấm';
-            else if (hwSt === 'submitted') hwTxt = ' · ✓BTVN';
-            else if (hwSt === 'not_submitted') hwTxt = ' · ×K.Nộp';
+            else if (hwSt === 'submitted' || hwSt === 'graded') hwTxt = ' · ✓Đã nộp';
+            else if (hwSt === 'not_submitted') hwTxt = ' · ×Chưa nộp';
             else hwTxt = ' · Chưa thu';
           }
           if (isMakeup) hwTxt += ' [BÙ]';
 
           ctx.fillStyle = '#475569';
-          ctx.font = '600 10px sans-serif';
-          ctx.fillText(`${attTxt}${hwTxt}`, seatX + seatW / 2, deskY + deskPad + 41);
+          ctx.font = '600 9.8px sans-serif';
+          ctx.fillText(`${attTxt}${hwTxt}`, seatX + seatW / 2, deskY + deskPad + (stuTags.length ? 52 : 42));
 
           seatX += seatW + seatGap;
         });
@@ -5746,25 +5962,25 @@ function renderSeatingSnapshotCanvas() {
   ctx.strokeStyle = '#cbd8cd';
   ctx.stroke();
   ctx.fillStyle = '#526356';
-  ctx.font = '800 11.5px sans-serif';
+  ctx.font = '800 11px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(isTeacherView ? 'BẢNG · ĐẦU LỚP' : 'CUỐI LỚP', canvasW / 2, curY + 16);
 
-  curY += 36;
+  curY += 32;
 
-  roundRect(20, curY, canvasW - 40, 44, 8);
+  roundRect(20, curY, canvasW - 40, 40, 8);
   ctx.fillStyle = '#f8faf8';
   ctx.fill();
   ctx.strokeStyle = '#d5e2d7';
   ctx.stroke();
 
   ctx.fillStyle = '#1e3a29';
-  ctx.font = '700 12px sans-serif';
+  ctx.font = '700 11.5px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(
-    'CHÚ THÍCH:  [Xanh lá] Có mặt  ·  [Vàng cam] Đi muộn  ·  [Đỏ hồng] Vắng mặt  ·  [✓BTVN] Đã thu  ·  [BTVN: điểm] Đã chấm  ·  [×K.Nộp] Không nộp  ·  [BÙ] Học bù  ·  [━] Vạch ngăn bàn',
+    'CHÚ THÍCH:  [Xanh lá] Có mặt  ·  [Vàng cam] Đi muộn  ·  [Đỏ hồng] Vắng mặt  ·  [✓Đã nộp] Đã nộp BTVN  ·  [BTVN: 7,5đ] Điểm BTVN  ·  [×Chưa nộp] Chưa nộp  ·  [#Tag] Nhãn HS',
     canvasW / 2,
-    curY + 26
+    curY + 24
   );
 
   return canvas.toDataURL('image/png');

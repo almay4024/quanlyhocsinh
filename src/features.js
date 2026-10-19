@@ -1,16 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=3.1';
+import { matchesAcronymOrText } from './student-search.js?v=3.2';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.1';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.1';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.2';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.2';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.2';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.1';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.2';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -27,7 +28,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=3.1';
+} from './excel-import-export.js?v=3.2';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -38,7 +39,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=3.1';
+} from './data/session-history-repository.js?v=3.2';
 
 export function setupFeatures(ctx) {
   const {
@@ -71,6 +72,36 @@ export function setupFeatures(ctx) {
   } = ctx;
 
   let activeRosterClassId = null;
+
+  const formatScoreVN = (val, fallback = '') => {
+    if (ctx.formatScoreVN) return ctx.formatScoreVN(val, fallback);
+    if (val === null || val === undefined || val === '') return fallback;
+    const clean = String(val).trim().replace(',', '.');
+    if (!clean) return fallback;
+    const num = Number(clean);
+    if (Number.isNaN(num)) return String(val);
+    return String(Math.round(num * 100) / 100).replace('.', ',');
+  };
+  const parseScoreVN = (raw) => {
+    if (ctx.parseScoreVN) return ctx.parseScoreVN(raw);
+    if (raw === null || raw === undefined) return null;
+    const clean = String(raw).trim().replace(',', '.');
+    if (clean === '') return null;
+    const num = Number(clean);
+    return Number.isNaN(num) ? NaN : num;
+  };
+  const getVisibleClasses = () => {
+    if (ctx.getVisibleClassesForAccount) return ctx.getVisibleClassesForAccount();
+    const acc = getSignedInAccount();
+    const all = getClassCatalog();
+    if (!acc || acc.role === 'admin' || !acc.employeeId) return all;
+    return all.filter(c =>
+      (c.teacherIds || []).includes(acc.employeeId) ||
+      c.teacherId === acc.employeeId ||
+      (c.assistantIds || []).includes(acc.employeeId) ||
+      (c.officeIds || []).includes(acc.employeeId)
+    );
+  };
 
   function renderStudentTagsBadges(student) {
     const rawTags = Array.isArray(student?.tags) ? [...student.tags].filter(Boolean) : [];
@@ -1474,7 +1505,6 @@ export function setupFeatures(ctx) {
           <td>${escapeHtml(s.studentCode || '—')}</td>
           <td>${escapeHtml(s.school || '—')}</td>
           <td>${escapeHtml(s.parentContact?.name || '—')}</td>
-          <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
           <td>
             <button type="button" class="text-danger" data-remove-from-roster="${escapeHtml(s.id)}" style="font-size:13.5px; padding:7px 12px;">Bỏ khỏi lớp</button>
           </td>
@@ -1656,6 +1686,55 @@ export function setupFeatures(ctx) {
   // ----------------------------------------------------
   // 7. TRUNG TÂM BÁO CÁO BUỔI HỌC & XUẤT FILE A4 / CSV (PRD §9)
   // ----------------------------------------------------
+  const REPORT_DEFAULT_COLUMNS = [
+    { key: 'family', label: 'Họ đệm' },
+    { key: 'given', label: 'Tên' },
+    { key: 'code', label: 'Mã HS' },
+    { key: 'school', label: 'Trường / Phân loại' },
+    { key: 'attendance', label: 'Điểm danh' },
+    { key: 'arrivalTime', label: 'Giờ đến' },
+    { key: 'homework', label: 'BTVN (Kèm lý do)' },
+    { key: 'hwScore', label: 'Điểm BTVN' },
+    { key: 'testScore', label: 'Điểm Test' },
+    { key: 'note', label: 'Ghi chú trong buổi' }
+  ];
+
+  function getReportColumnOrder() {
+    const defKeys = REPORT_DEFAULT_COLUMNS.map(c => c.key);
+    try {
+      const saved = JSON.parse(localStorage.getItem('lopvui.column-order.report.v1') || 'null');
+      if (Array.isArray(saved) && saved.length) {
+        const valid = saved.filter(k => defKeys.includes(k));
+        defKeys.forEach(k => { if (!valid.includes(k)) valid.push(k); });
+        return valid;
+      }
+    } catch {}
+    return defKeys;
+  }
+
+  function resolveStudentArrivalTime(s, seated, date, classId) {
+    if (seated?.entry?.attendance?.arrivalTime) return seated.entry.attendance.arrivalTime;
+    if (s?.attendance?.arrivalTime) return s.attendance.arrivalTime;
+    if (s?.arrivalTime) return s.arrivalTime;
+    const attHist = (s?.attendanceHistory || []).find(h => (h.classId === classId || !h.classId) && h.date === date);
+    if (attHist?.time) return attHist.time;
+    if (attHist?.arrivalTime) return attHist.arrivalTime;
+    return '';
+  }
+
+  function resolveHomeworkStatusWithReason(hwObj) {
+    const st = hwObj?.status || 'uncollected';
+    const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
+    if (st === 'not_submitted') {
+      const r = reasonMap[hwObj?.reason] || hwObj?.reason || '';
+      return r ? `Chưa nộp (${r})` : 'Chưa nộp';
+    }
+    if (st === 'submitted' || st === 'graded') {
+      return 'Đã nộp';
+    }
+    return 'Chưa thu';
+  }
+
   function renderReportCenter(tabName = 'a4-roster') {
     currentReportTab = tabName;
     document.querySelectorAll('.report-tab').forEach(t => {
@@ -1681,7 +1760,6 @@ export function setupFeatures(ctx) {
       lateQueueIds.includes(m.id)
     ).sort(byAlpha);
 
-    // Combined list with makeup students placed at the bottom
     const roster = [...regularRoster, ...sessionMakeups];
     const container = $('#attendance-export-content');
     if (!container) return;
@@ -1695,11 +1773,19 @@ export function setupFeatures(ctx) {
       };
     };
 
+    const getStudentSessionNote = (s, seated) => {
+      const fromCtx = ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : '';
+      if (fromCtx) return fromCtx;
+      if (seated?.entry?.homework?.note) return seated.entry.homework.note;
+      const sn = (s.sessionNotes || []).find(n => n.classId === currentClass.id && n.date === date);
+      return sn?.note || s.sessionNote || '';
+    };
+
     if (tabName === 'teacher-summary') {
       const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'present').length;
       const lateList = roster.filter(s => {
         const seated = entries.find(p => p.entry.studentId === s.id);
-        return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
+        return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
       });
       const absentList = regularRoster.filter(s => {
         const seated = entries.find(p => p.entry.studentId === s.id);
@@ -1713,11 +1799,14 @@ export function setupFeatures(ctx) {
       });
       const lowScores = roster.filter(s => {
         const seated = entries.find(p => p.entry.studentId === s.id);
-        const hwScore = seated?.entry.homework?.score ?? s.homework?.score;
-        const testScore = s.testScore ?? seated?.entry.testScore;
-        const lowest = Math.min(...[hwScore, testScore].filter(x => x !== null && x !== undefined));
+        const hwScore = parseScoreVN(seated?.entry.homework?.score ?? s.homework?.score);
+        const testScore = parseScoreVN(s.testScore ?? seated?.entry.testScore);
+        const validScores = [hwScore, testScore].filter(x => x !== null && !Number.isNaN(x));
+        if (!validScores.length) return false;
+        const lowest = Math.min(...validScores);
         return lowest < 7.0 && lowest >= 0;
       });
+
       let savedChk = {};
       try {
         savedChk = JSON.parse(localStorage.getItem(`lopvui.checklist.v1.${currentClass.id}.${date}`) || '{}') || {};
@@ -1752,7 +1841,7 @@ export function setupFeatures(ctx) {
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
             <strong style="font-size:14.5px; color:#166534;">📚 Bài tập về nhà (BTVN) & Tài liệu buổi học:</strong>
             <span class="room-chip" style="background:#dcfce7; color:#166534; font-weight:700;">
-              ${isNoHwSessionFlag ? 'Ca này không thu BTVN' : `Đã thu/chấm BTVN: ${submittedHWCount} HS · Không nộp: ${missingHW.length} HS`}
+              ${isNoHwSessionFlag ? 'Ca này không thu BTVN' : `Đã nộp BTVN: ${submittedHWCount} HS · Chưa nộp: ${missingHW.length} HS`}
             </span>
           </div>
           <div style="margin-top:4px; line-height:1.5;">
@@ -1791,19 +1880,20 @@ export function setupFeatures(ctx) {
 
         <div style="display:grid; gap:12px;">
           <div style="background:#fff; border:1px solid #fecaca; border-radius:8px; padding:12px;">
-            <strong style="color:#991b1b; font-size:14.5px;">× 1. Học sinh KHÔNG nộp bài tập về nhà (${missingHW.length} bạn):</strong>
+            <strong style="color:#991b1b; font-size:14.5px;">× 1. Học sinh CHƯA NỘP bài tập về nhà (${missingHW.length} bạn):</strong>
             ${missingHW.length ? `
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
-                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do không nộp</th><th>SĐT Phụ huynh</th></tr>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do chưa nộp</th><th>Ghi chú trong buổi</th></tr>
                 </thead>
                 <tbody>
                   ${missingHW.map((s) => {
                     const { fam, giv, isMakeup } = getFamGiv(s);
                     const seated = entries.find(p => p.entry.studentId === s.id);
                     const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
-                    const reason = reasonMap[seated?.entry.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
-                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
+                    const reason = reasonMap[seated?.entry.homework?.reason || s.homework?.reason] || seated?.entry.homework?.reason || s.homework?.reason || 'Chưa làm';
+                    const noteInSession = getStudentSessionNote(s, seated);
+                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -1811,16 +1901,20 @@ export function setupFeatures(ctx) {
           </div>
 
           <div style="background:#fff; border:1px solid #fed7aa; border-radius:8px; padding:12px;">
-            <strong style="color:#9a3412; font-size:14.5px;"> 2. Học sinh ĐI MUỘN (${lateList.length} bạn):</strong>
+            <strong style="color:#9a3412; font-size:14.5px;">2. Học sinh ĐI MUỘN (${lateList.length} bạn):</strong>
             ${lateList.length ? `
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
-                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Giờ đến lớp</th><th>Số phút muộn</th><th>SĐT Phụ huynh</th></tr>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Giờ đến lớp</th><th>Số phút muộn</th><th>Ghi chú trong buổi</th></tr>
                 </thead>
                 <tbody>
                   ${lateList.map((s) => {
                     const { fam, giv, isMakeup } = getFamGiv(s);
-                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td>${escapeHtml(s.arrivalTime||'—')}</td><td style="color:#c2410c; font-weight:700;">${entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.lateMinutes || entries.find(p => p.entry.studentId === s.id)?.entry.attendance?.minutesLate || s.attendance?.lateMinutes || s.lateMinutes || 10} phút</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
+                    const seated = entries.find(p => p.entry.studentId === s.id);
+                    const arrTime = resolveStudentArrivalTime(s, seated, date, currentClass.id);
+                    const mins = seated?.entry.attendance?.lateMinutes ?? seated?.entry.attendance?.minutesLate ?? s.attendance?.lateMinutes ?? s.lateMinutes ?? 10;
+                    const noteInSession = getStudentSessionNote(s, seated);
+                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td><strong>${escapeHtml(arrTime || '—')}</strong></td><td style="color:#c2410c; font-weight:700;">${mins} phút</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -1828,48 +1922,33 @@ export function setupFeatures(ctx) {
           </div>
 
           <div style="background:#fff; border:1px solid #fde047; border-radius:8px; padding:12px;">
-            <strong style="color:#854d0e; font-size:14.5px;">!️ 3. Học sinh CÓ ĐIỂM THẤP (< 7.0 điểm) (${lowScores.length} bạn):</strong>
+            <strong style="color:#854d0e; font-size:14.5px;">! 3. Học sinh CÓ ĐIỂM THẤP (&lt; 7,0 điểm) (${lowScores.length} bạn):</strong>
             ${lowScores.length ? `
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
-                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Điểm BTVN</th><th>Điểm Test</th><th>Ghi chú</th></tr>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Điểm BTVN</th><th>Điểm Test</th><th>Ghi chú trong buổi</th></tr>
                 </thead>
                 <tbody>
                   ${lowScores.map((s) => {
                     const { fam, giv, isMakeup } = getFamGiv(s);
                     const seated = entries.find(p => p.entry.studentId === s.id);
-                    const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '—';
-                    const testScore = s.testScore ?? seated?.entry.testScore ?? '—';
-                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b45309; font-weight:700;">${hwScore}</td><td style="color:#b45309; font-weight:700;">${testScore}</td><td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || 'Cần bám sát')}</td></tr>`;
+                    const hwScore = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
+                    const testScore = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
+                    const noteInSession = getStudentSessionNote(s, seated);
+                    return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(hwScore)}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(testScore)}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
-            ` : '<div style="color:#15803d; font-size:14px; font-weight:600; margin-top:6px;">✓ Không có học sinh nào có điểm dưới 7.0!</div>'}
+            ` : '<div style="color:#15803d; font-size:14px; font-weight:600; margin-top:6px;">✓ Không có học sinh nào có điểm dưới 7,0!</div>'}
           </div>
 
-          <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px;">
-            <strong style="color:#374151; font-size:14.5px;"> 4. Học sinh VẮNG MẶT (${absentList.length} bạn):</strong>
-            ${absentList.length ? `
+          <!-- Đẩy phần Học bù lên TRƯỚC phần Học sinh vắng mặt theo yêu cầu -->
+          <div style="background:#fcfaff; border:1px solid #d8b4fe; border-radius:8px; padding:12px;">
+            <strong style="color:#6b21a8; font-size:14.5px;">4. Học sinh HỌC BÙ trong buổi (${sessionMakeups.length} bạn):</strong>
+            ${sessionMakeups.length ? `
               <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
                 <thead>
-                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do</th><th>SĐT Phụ huynh</th></tr>
-                </thead>
-                <tbody>
-                  ${absentList.map((s) => {
-                    const { fam, giv } = getFamGiv(s);
-                    return `<tr><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong></td><td>${escapeHtml(s.school||'—')}</td><td>${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}</td><td>${escapeHtml(s.attendance?.reason||'Chưa có lý do')}</td><td>${escapeHtml(s.parentContact?.phone||'—')}</td></tr>`;
-                  }).join('')}
-                </tbody>
-              </table>
-            ` : '<div style="color:#15803d; font-size:14px; font-weight:600; margin-top:6px;">✓ 100% học sinh đều có mặt!</div>'}
-          </div>
-
-          ${sessionMakeups.length ? `
-            <div style="background:#fcfaff; border:1px solid #d8b4fe; border-radius:8px; padding:12px;">
-              <strong style="color:#6b21a8; font-size:14.5px;"> 5. Học sinh HỌC BÙ trong buổi (${sessionMakeups.length} bạn):</strong>
-              <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
-                <thead>
-                  <tr><th>Họ đệm</th><th>Tên</th><th>Mã HS</th><th>Học bù từ lớp</th><th>Trạng thái</th><th>Điểm BTVN / Test</th><th>Ghi chú</th></tr>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Mã HS</th><th>Học bù từ lớp</th><th>Trạng thái</th><th>Điểm BTVN / Test</th><th>Ghi chú trong buổi</th></tr>
                 </thead>
                 <tbody>
                   ${sessionMakeups.map((s) => {
@@ -1877,26 +1956,59 @@ export function setupFeatures(ctx) {
                     const seated = entries.find(p => p.entry.studentId === s.id);
                     const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
                     const isPresent = Boolean(seated);
-                    const stLabel = isLate ? 'Học bù (Đi muộn)' : isPresent ? 'Học bù (Có mặt)' : 'Học bù (Chưa vào bàn)';
-                    const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '—';
-                    const testScore = s.testScore ?? seated?.entry.testScore ?? '—';
-                    return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge"> Học bù</span></td><td>${escapeHtml(s.studentCode||'—')}</td><td>${escapeHtml(s.sourceClassName||'Lớp khác')}</td><td><strong>${stLabel}</strong></td><td>BTVN: ${hwScore} · Test: ${testScore}</td><td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '')}</td></tr>`;
+                    const arrTime = resolveStudentArrivalTime(s, seated, date, currentClass.id);
+                    const stLabel = isLate ? `Học bù (Đi muộn${arrTime ? ' ' + arrTime : ''})` : isPresent ? 'Học bù (Có mặt)' : 'Học bù (Chưa vào bàn)';
+                    const hwScore = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
+                    const testScore = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
+                    const noteInSession = getStudentSessionNote(s, seated);
+                    return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge"> Học bù</span></td><td>${escapeHtml(s.studentCode||'—')}</td><td>${escapeHtml(s.sourceClassName||'Lớp khác')}</td><td><strong>${escapeHtml(stLabel)}</strong></td><td>BTVN: ${escapeHtml(hwScore)} · Test: ${escapeHtml(testScore)}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
-            </div>
-          ` : ''}
+            ` : '<div style="color:#6b21a8; font-size:14px; font-weight:600; margin-top:6px;">Không có học sinh học bù trong buổi này.</div>'}
+          </div>
+
+          <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px;">
+            <strong style="color:#374151; font-size:14.5px;">5. Học sinh VẮNG MẶT (${absentList.length} bạn):</strong>
+            ${absentList.length ? `
+              <table class="attendance-report-table" style="font-size:14px; margin-top:8px;">
+                <thead>
+                  <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do</th><th>Ghi chú trong buổi</th></tr>
+                </thead>
+                <tbody>
+                  ${absentList.map((s) => {
+                    const { fam, giv } = getFamGiv(s);
+                    const noteInSession = getStudentSessionNote(s, null);
+                    return `<tr><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong></td><td>${escapeHtml(s.school||'—')}</td><td>${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}</td><td>${escapeHtml(s.attendance?.reason||'Chưa có lý do')}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            ` : '<div style="color:#15803d; font-size:14px; font-weight:600; margin-top:6px;">✓ 100% học sinh đều có mặt!</div>'}
+          </div>
 
           ${sessionNote ? `
             <div style="background:#f0fdf4; border-left:4px solid #22c55e; padding:10px 14px; border-radius:6px; font-size:14px; color:#166534;">
-              <strong> Nhận xét & Lưu ý của Trợ giảng trong ca:</strong>
+              <strong>Nhận xét & Lưu ý của Trợ giảng trong ca:</strong>
               <p style="margin:4px 0 0; white-space:pre-wrap;">${escapeHtml(sessionNote)}</p>
             </div>
           ` : ''}
         </div>
       `;
     } else if (tabName === 'a4-roster') {
-      // Standard printable A4 attendance sheet (No STT, Split Họ đệm & Tên, Makeup students at the bottom)
+      const colOrder = getReportColumnOrder();
+      const thMap = {
+        family: '<th>Họ đệm</th>',
+        given: '<th>Tên</th>',
+        code: '<th>Mã HS</th>',
+        school: '<th>Trường / Phân loại</th>',
+        attendance: '<th>Điểm danh</th>',
+        arrivalTime: '<th>Giờ đến</th>',
+        homework: '<th>BTVN</th>',
+        hwScore: '<th style="text-align:center;">Điểm BTVN</th>',
+        testScore: '<th style="text-align:center;">Điểm Test</th>',
+        note: '<th>Ghi chú</th>'
+      };
+
       container.innerHTML = `
         <div class="attendance-report-heading">
           <div>
@@ -1912,16 +2024,7 @@ export function setupFeatures(ctx) {
           <table class="attendance-report-table">
             <thead>
               <tr>
-                <th>Họ đệm</th>
-                <th>Tên</th>
-                <th>Mã HS</th>
-                <th>Trường / Phân loại</th>
-                <th>Điểm danh</th>
-                <th>Giờ đến</th>
-                <th>BTVN</th>
-                <th>Điểm BTVN</th>
-                <th>Điểm Test</th>
-                <th>Ghi chú</th>
+                ${colOrder.map(k => thMap[k] || '').join('')}
               </tr>
             </thead>
             <tbody>
@@ -1932,22 +2035,30 @@ export function setupFeatures(ctx) {
                 const isPresent = Boolean(seated);
                 const baseAttStatus = isLate ? 'Đi muộn' : isPresent ? 'Có mặt' : (s.attendance?.status === 'absent_excused' ? 'Vắng có phép' : s.attendance?.status === 'absent_unexcused' ? 'Vắng K.phép' : 'Chưa điểm danh');
                 const attStatus = isMakeup ? `Học bù (${baseAttStatus})` : baseAttStatus;
-                const hwStatus = homeworkLabel(seated?.entry.homework?.status || s.homework?.status);
-                const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '';
-                const testScore = seated?.entry.testScore ?? s.testScore ?? '';
+                const hwObj = seated?.entry.homework || s.homework || { status: 'uncollected' };
+                const hwStatusText = resolveHomeworkStatusWithReason(hwObj);
+                const hwScore = formatScoreVN(hwObj.score ?? '', '');
+                const testScore = formatScoreVN(seated?.entry.testScore ?? s.testScore ?? '', '');
                 const schoolText = isMakeup ? `Học bù từ: ${s.sourceClassName || s.school || 'Lớp khác'}` : (s.school || '');
+                const arrTime = resolveStudentArrivalTime(s, seated, date, currentClass.id);
+                const noteText = getStudentSessionNote(s, seated);
+
+                const tdMap = {
+                  family: `<td>${escapeHtml(fam)}</td>`,
+                  given: `<td><strong style="color:${isMakeup ? '#581c87' : 'inherit'};">${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>`,
+                  code: `<td>${escapeHtml(s.studentCode || '—')}</td>`,
+                  school: `<td>${escapeHtml(schoolText)}</td>`,
+                  attendance: `<td><span class="student-state ${isPresent ? (isLate ? 'state-late' : 'state-present') : 'state-missing'}">${escapeHtml(attStatus)}</span></td>`,
+                  arrivalTime: `<td>${escapeHtml(arrTime || (isLate ? 'Đi muộn' : isPresent ? 'Đúng giờ' : '—'))}</td>`,
+                  homework: `<td>${escapeHtml(hwStatusText)}</td>`,
+                  hwScore: `<td style="text-align:center; font-weight:700;">${escapeHtml(hwScore)}</td>`,
+                  testScore: `<td style="text-align:center; font-weight:700;">${escapeHtml(testScore)}</td>`,
+                  note: `<td>${escapeHtml(noteText)}</td>`
+                };
+
                 return `
                   <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
-                    <td>${escapeHtml(fam)}</td>
-                    <td><strong style="color:${isMakeup ? '#581c87' : 'inherit'};">${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>
-                    <td>${escapeHtml(s.studentCode || '—')}</td>
-                    <td>${escapeHtml(schoolText)}</td>
-                    <td><span class="student-state ${isPresent ? (isLate ? 'state-late' : 'state-present') : 'state-missing'}">${escapeHtml(attStatus)}</span></td>
-                    <td>${escapeHtml(s.arrivalTime || (isLate ? 'Đi muộn' : isPresent ? 'Đúng giờ' : '—'))}</td>
-                    <td>${escapeHtml(hwStatus)}</td>
-                    <td style="text-align:center;">${escapeHtml(hwScore)}</td>
-                    <td style="text-align:center;">${escapeHtml(testScore)}</td>
-                    <td>${escapeHtml((ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '')}</td>
+                    ${colOrder.map(k => tdMap[k] || '').join('')}
                   </tr>
                 `;
               }).join('')}
@@ -1973,30 +2084,30 @@ export function setupFeatures(ctx) {
       });
 
       container.innerHTML = `
-        <h3>Danh sách học sinh KHÔNG nộp bài tập về nhà (${missingHW.length} bạn)</h3>
-        <p class="dialog-hint">Danh sách tự động lọc các học sinh chưa hoàn thành BTVN kèm lý do và ghi chú để gửi phụ huynh hoặc nhắc nhở buổi sau.</p>
+        <h3>Danh sách học sinh CHƯA NỘP bài tập về nhà (${missingHW.length} bạn)</h3>
+        <p class="dialog-hint">Danh sách tự động lọc các học sinh chưa nộp BTVN kèm lý do và ghi chú trong buổi.</p>
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do không nộp</th><th>SĐT Phụ huynh</th><th>Ghi chú</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do chưa nộp</th><th>Ghi chú trong buổi</th></tr>
             </thead>
             <tbody>
               ${missingHW.length ? missingHW.map((s) => {
                 const { fam, giv, isMakeup } = getFamGiv(s);
                 const seated = entries.find(p => p.entry.studentId === s.id);
                 const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
-                const reason = reasonMap[seated?.entry.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
+                const reason = reasonMap[seated?.entry.homework?.reason || s.homework?.reason] || seated?.entry.homework?.reason || s.homework?.reason || 'Chưa làm';
+                const noteText = getStudentSessionNote(s, seated);
                 return `
                   <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
                     <td>${escapeHtml(fam)}</td>
                     <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
                     <td><strong class="text-danger">${escapeHtml(reason)}</strong></td>
-                    <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
-                    <td>${escapeHtml(seated?.entry.homework?.note || '—')}</td>
+                    <td>${escapeHtml(noteText || '—')}</td>
                   </tr>
                 `;
-              }).join('') : `<tr><td colspan="6" style="text-align:center; padding:18px; color:#497955;">Tuyệt vời! Tất cả học sinh có mặt đều đã nộp BTVN.</td></tr>`}
+              }).join('') : `<tr><td colspan="5" style="text-align:center; padding:18px; color:#497955;">Tuyệt vời! Tất cả học sinh có mặt đều đã nộp BTVN.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -2004,28 +2115,32 @@ export function setupFeatures(ctx) {
     } else if (tabName === 'late-students') {
       const lateList = roster.filter(s => {
         const seated = entries.find(p => p.entry.studentId === s.id);
-        return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
+        return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
       });
 
       container.innerHTML = `
         <h3>Danh sách học sinh ĐI MUỘN (${lateList.length} bạn)</h3>
-        <p class="dialog-hint">Thời gian đến lớp và số phút muộn so với giờ bắt đầu ca học (${currentClass.startTime}).</p>
+        <p class="dialog-hint">Thời gian đến lớp chính xác từng phút và số phút muộn so với giờ bắt đầu ca học (${currentClass.startTime}).</p>
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Giờ đến lớp</th><th>Số phút đi muộn</th><th>SĐT Phụ huynh</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Giờ đến lớp</th><th>Số phút đi muộn</th><th>Ghi chú trong buổi</th></tr>
             </thead>
             <tbody>
               ${lateList.length ? lateList.map((s) => {
                 const { fam, giv, isMakeup } = getFamGiv(s);
+                const seated = entries.find(p => p.entry.studentId === s.id);
+                const arrTime = resolveStudentArrivalTime(s, seated, date, currentClass.id);
+                const mins = seated?.entry.attendance?.lateMinutes ?? seated?.entry.attendance?.minutesLate ?? s.attendance?.lateMinutes ?? 10;
+                const noteText = getStudentSessionNote(s, seated);
                 return `
                   <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
                     <td>${escapeHtml(fam)}</td>
                     <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
-                    <td>${escapeHtml(s.arrivalTime || '—')}</td>
-                    <td><strong style="color:#ab5d18;">${s.attendance?.lateMinutes ? `Muộn ${s.attendance.lateMinutes} phút` : 'Đến muộn'}</strong></td>
-                    <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
+                    <td><strong>${escapeHtml(arrTime || '—')}</strong></td>
+                    <td><strong style="color:#ab5d18;">Muộn ${mins} phút</strong></td>
+                    <td>${escapeHtml(noteText || '—')}</td>
                   </tr>
                 `;
               }).join('') : `<tr><td colspan="6" style="text-align:center; padding:18px; color:#497955;">Không có học sinh nào đi muộn trong ca học này.</td></tr>`}
@@ -2042,16 +2157,17 @@ export function setupFeatures(ctx) {
 
       container.innerHTML = `
         <h3>Danh sách học sinh VẮNG MẶT (${absentList.length} bạn)</h3>
-        <p class="dialog-hint">Đối chiếu sĩ số lớp gốc để liên hệ phụ huynh và sắp xếp ca học bù kịp thời.</p>
+        <p class="dialog-hint">Đối chiếu sĩ số lớp gốc để sắp xếp ca học bù kịp thời.</p>
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do vắng</th><th>SĐT Phụ huynh</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do vắng</th><th>Ghi chú trong buổi</th></tr>
             </thead>
             <tbody>
               ${absentList.length ? absentList.map((s) => {
                 const { fam, giv } = getFamGiv(s);
                 const isExcused = s.attendance?.status === 'absent_excused';
+                const noteText = getStudentSessionNote(s, null);
                 return `
                   <tr>
                     <td>${escapeHtml(fam)}</td>
@@ -2059,7 +2175,7 @@ export function setupFeatures(ctx) {
                     <td>${escapeHtml(s.school || '—')}</td>
                     <td><span class="student-state ${isExcused ? 'state-late' : 'state-missing'}">${isExcused ? 'Có phép' : 'Không phép'}</span></td>
                     <td>${escapeHtml(s.attendance?.reason || 'Chưa ghi nhận')}</td>
-                    <td>${escapeHtml(s.parentContact?.phone || '—')}</td>
+                    <td>${escapeHtml(noteText || '—')}</td>
                   </tr>
                 `;
               }).join('') : `<tr><td colspan="6" style="text-align:center; padding:18px; color:#497955;">100% học sinh đã có mặt tại lớp!</td></tr>`}
@@ -2090,14 +2206,15 @@ export function setupFeatures(ctx) {
               ${roster.map((s) => {
                 const { fam, giv, isMakeup } = getFamGiv(s);
                 const seated = entries.find(p => p.entry.studentId === s.id);
+                const tScore = formatScoreVN(seated?.entry.testScore ?? s.testScore ?? '', '—');
                 return `
                   <tr class="${isMakeup ? 'makeup-row-tr' : ''}">
                     <td>${escapeHtml(fam)}</td>
                     <td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge"> Học bù</span>' : ''}</td>
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
                     <td><span class="student-state ${seated ? 'state-collected' : 'state-pending'}">${seated ? 'Đã thu bài test' : 'Vắng mặt'}</span></td>
-                    <td style="text-align:center;">${escapeHtml(seated?.entry.testScore ?? s.testScore ?? '—')}</td>
-                    <td>${escapeHtml(s.testNote || '')}</td>
+                    <td style="text-align:center; font-weight:700;">${escapeHtml(tScore)}</td>
+                    <td>${escapeHtml(getStudentSessionNote(s, seated) || '')}</td>
                   </tr>
                 `;
               }).join('')}
@@ -2129,7 +2246,10 @@ export function setupFeatures(ctx) {
     ).sort(byAlpha);
     const roster = [...regularRoster, ...sessionMakeups];
 
-    const headers = ['Họ đệm', 'Tên', 'Mã HS', 'Trường / Lớp gốc', 'Phân loại', 'Điểm danh', 'Giờ đến', 'Trạng thái BTVN', 'Điểm BTVN', 'Điểm Test', 'SĐT Phụ huynh', 'Ghi chú'];
+    const colOrder = getReportColumnOrder();
+    const headerLabelMap = Object.fromEntries(REPORT_DEFAULT_COLUMNS.map(c => [c.key, c.label]));
+    const headers = colOrder.map(k => headerLabelMap[k] || k);
+
     const rows = roster.map((s) => {
       const seated = entries.find(p => p.entry.studentId === s.id);
       const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
@@ -2137,33 +2257,35 @@ export function setupFeatures(ctx) {
       const isMakeup = s.studentType === 'makeup' || !(s.classIds || []).includes(currentClass.id);
       const baseAtt = isLate ? 'Đi muộn' : isPresent ? 'Có mặt' : (s.attendance?.status === 'absent_excused' ? 'Vắng có phép' : s.attendance?.status === 'absent_unexcused' ? 'Vắng không phép' : 'Chưa điểm danh');
       const att = isMakeup ? `Học bù (${baseAtt})` : baseAtt;
-      const hw = homeworkLabel(seated?.entry.homework?.status || s.homework?.status);
-      const hwScore = seated?.entry.homework?.score ?? s.homework?.score ?? '';
-      const testScore = seated?.entry.testScore ?? s.testScore ?? '';
+      const hwObj = seated?.entry.homework || s.homework || { status: 'uncollected' };
+      const hwText = resolveHomeworkStatusWithReason(hwObj);
+      const hwScore = formatScoreVN(hwObj.score ?? '', '');
+      const testScore = formatScoreVN(seated?.entry.testScore ?? s.testScore ?? '', '');
       const fam = s.familyName || splitVietnameseName(s.name).familyName;
       const giv = s.givenName || splitVietnameseName(s.name).givenName;
-      return [
-        fam,
-        giv,
-        s.studentCode || '',
-        isMakeup ? (s.sourceClassName || s.school || '') : (s.school || ''),
-        isMakeup ? 'Học bù' : 'Chính thức',
-        att,
-        s.arrivalTime || (isLate ? 'Đi muộn' : isPresent ? 'Đúng giờ' : ''),
-        hw,
+      const arrTime = resolveStudentArrivalTime(s, seated, date, currentClass.id);
+      const noteText = (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '';
+
+      const valMap = {
+        family: fam,
+        given: giv,
+        code: s.studentCode || '',
+        school: isMakeup ? `Học bù (${s.sourceClassName || s.school || ''})` : (s.school || ''),
+        attendance: att,
+        arrivalTime: arrTime || (isLate ? 'Đi muộn' : isPresent ? 'Đúng giờ' : ''),
+        homework: hwText,
         hwScore,
         testScore,
-        s.parentContact?.phone || '',
-        (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || ''
-      ];
+        note: noteText
+      };
+      return colOrder.map(k => valMap[k] ?? '');
     });
 
     const fileName = `DiemDanh_${(currentClass.code || currentClass.name).replace(/\s+/g, '_')}_${date}.csv`;
     exportToCsv(headers, rows, fileName);
-    toast(`Đã tải về file Excel (gồm cả Học bù ở cuối danh sách): ${fileName}`);
+    toast(`Đã tải về file Excel (theo đúng thứ tự cột đã chọn): ${fileName}`);
   }
 
-  // ----------------------------------------------------
   // 8. TRANG CÁ NHÂN TRỢ GIẢNG & CHẤM CÔNG (PRD §10: TA PORTAL)
   // ----------------------------------------------------
   function renderTAPortal() {
@@ -3206,18 +3328,57 @@ export function setupFeatures(ctx) {
     });
   }, 100);
 
+  const MASTER_DEFAULT_COLUMNS = [
+    { key: 'code', label: 'Mã HS' },
+    { key: 'family', label: 'Họ đệm' },
+    { key: 'given', label: 'Tên' },
+    { key: 'school', label: 'Trường học' },
+    { key: 'parent', label: 'Phụ huynh' },
+    { key: 'status', label: 'Trạng thái' },
+    { key: 'classes', label: 'Các lớp theo học' }
+  ];
+
+  function getMasterColumnOrder() {
+    const defKeys = MASTER_DEFAULT_COLUMNS.map(c => c.key);
+    try {
+      const saved = JSON.parse(localStorage.getItem('lopvui.column-order.master.v1') || 'null');
+      if (Array.isArray(saved) && saved.length) {
+        const valid = saved.filter(k => defKeys.includes(k));
+        defKeys.forEach(k => { if (!valid.includes(k)) valid.push(k); });
+        return valid;
+      }
+    } catch {}
+    return defKeys;
+  }
+
+  function getScopedMasterStudents() {
+    const allStudents = getStudents();
+    const acc = getSignedInAccount();
+    if (!acc || acc.role === 'admin' || !acc.employeeId) return allStudents;
+    const visibleClasses = getVisibleClasses();
+    const visibleIds = new Set(visibleClasses.map(c => c.id));
+    // Non-admin accounts only see students enrolled in classes they are assigned to!
+    return allStudents.filter(s =>
+      (s.classIds || []).some(cid => visibleIds.has(cid)) ||
+      (s.attendingClassId && visibleIds.has(s.attendingClassId))
+    );
+  }
+
   function renderMasterStudentDirectory() {
-    const students = getStudents();
-    const catalog = getClassCatalog();
+    const students = getScopedMasterStudents();
+    const visibleCatalog = getVisibleClasses();
+    const fullCatalog = getClassCatalog();
 
     const classFilter = $('#master-class-filter');
     if (classFilter) {
       const prevVal = classFilter.value || 'all';
-      classFilter.innerHTML = '<option value="all">Tất cả các lớp</option>' + catalog.map(c =>
+      classFilter.innerHTML = '<option value="all">Tất cả các lớp phụ trách</option>' + visibleCatalog.map(c =>
         `<option value="${escapeHtml(c.id)}">${escapeHtml(c.code || c.id)} (${escapeHtml(formatBirthYearLabel(c.grade))})</option>`
       ).join('');
-      if (prevVal === 'all' || catalog.some(c => c.id === prevVal)) {
+      if (prevVal === 'all' || visibleCatalog.some(c => c.id === prevVal)) {
         classFilter.value = prevVal;
+      } else {
+        classFilter.value = 'all';
       }
     }
 
@@ -3245,7 +3406,7 @@ export function setupFeatures(ctx) {
       if (selectedGrade !== 'all') {
         const normTarget = normalizeGradeToBirthYear(selectedGrade);
         const hasMatchingGrade = (s.classIds || []).some(cid => {
-          const c = catalog.find(x => x.id === cid);
+          const c = fullCatalog.find(x => x.id === cid);
           return c && normalizeGradeToBirthYear(c.grade) === normTarget;
         });
         if (!hasMatchingGrade) return false;
@@ -3255,17 +3416,38 @@ export function setupFeatures(ctx) {
         return false;
       }
       if (searchQuery) {
-        const full = `${s.name} ${s.familyName || ''} ${s.givenName || ''} ${s.studentCode || ''} ${s.school || ''} ${s.parentContact?.phone || ''} ${s.parentContact?.name || ''} ${stVal}`;
+        const full = `${s.name} ${s.familyName || ''} ${s.givenName || ''} ${s.studentCode || ''} ${s.school || ''} ${s.parentContact?.name || ''} ${stVal}`;
         if (!matchesAcronymOrText(full, searchQuery)) return false;
       }
       return true;
     });
 
     const tbody = $('#master-student-tbody');
+    const theadRow = document.querySelector('#master-student-table thead tr');
     if (!tbody) return;
 
     let masterSortKey = window._masterSortKey || 'index';
     let masterSortOrder = window._masterSortOrder || 'asc';
+    const colOrder = getMasterColumnOrder();
+
+    if (theadRow) {
+      const sortIcon = (k) => masterSortKey === k ? (masterSortOrder === 'asc' ? '▲' : '▼') : '⇅';
+      const sortCls = (k) => masterSortKey === k ? (masterSortOrder === 'asc' ? 'sorted-asc' : 'sorted-desc') : '';
+      const thHtmlMap = {
+        code: `<th class="sortable-th ${sortCls('code')}" data-master-sort="code">Mã HS <span class="sort-icon">${sortIcon('code')}</span></th>`,
+        family: `<th class="sortable-th ${sortCls('family')}" data-master-sort="family">Họ đệm <span class="sort-icon">${sortIcon('family')}</span></th>`,
+        given: `<th class="sortable-th ${sortCls('given')}" data-master-sort="given">Tên <span class="sort-icon">${sortIcon('given')}</span></th>`,
+        school: `<th class="sortable-th ${sortCls('school')}" data-master-sort="school">Trường học <span class="sort-icon">${sortIcon('school')}</span></th>`,
+        parent: `<th class="sortable-th ${sortCls('parent')}" data-master-sort="parent">Phụ huynh <span class="sort-icon">${sortIcon('parent')}</span></th>`,
+        status: `<th class="sortable-th ${sortCls('status')}" data-master-sort="status">Trạng thái <span class="sort-icon">${sortIcon('status')}</span></th>`,
+        classes: `<th class="sortable-th ${sortCls('classes')}" data-master-sort="classes">Các lớp theo học <span class="sort-icon">${sortIcon('classes')}</span></th>`
+      };
+      theadRow.innerHTML = `
+        <th style="width:30px; text-align:center;"><input type="checkbox" id="master-bulk-select-all" title="Chọn tất cả" /></th>
+        ${colOrder.map(k => thHtmlMap[k] || '').join('')}
+        <th style="text-align:center;">Hành động</th>
+      `;
+    }
 
     filtered.sort((a, b) => {
       let cmp = 0;
@@ -3294,16 +3476,8 @@ export function setupFeatures(ctx) {
     });
 
     document.querySelectorAll('#master-student-table th[data-master-sort]').forEach(th => {
-      const key = th.dataset.masterSort;
-      th.classList.remove('sorted-asc', 'sorted-desc');
-      const icon = th.querySelector('.sort-icon');
-      if (key === masterSortKey) {
-        th.classList.add(masterSortOrder === 'asc' ? 'sorted-asc' : 'sorted-desc');
-        if (icon) icon.textContent = masterSortOrder === 'asc' ? '▲' : '▼';
-      } else {
-        if (icon) icon.textContent = '⇅';
-      }
       th.onclick = () => {
+        const key = th.dataset.masterSort;
         if (window._masterSortKey === key) {
           window._masterSortOrder = window._masterSortOrder === 'asc' ? 'desc' : 'asc';
         } else {
@@ -3315,9 +3489,12 @@ export function setupFeatures(ctx) {
     });
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:18px; color:#879389;">Không tìm thấy học sinh nào phù hợp.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="${colOrder.length + 2}" style="text-align:center; padding:18px; color:#879389;">Không tìm thấy học sinh nào trong các lớp bạn đang phụ trách.</td></tr>`;
       return;
     }
+
+    const visibleClassIdsSet = new Set(visibleCatalog.map(c => c.id));
+    const isAdmin = getSignedInAccount()?.role === 'admin';
 
     tbody.innerHTML = filtered.map((s) => {
       const parts = splitVietnameseName(s.name);
@@ -3331,28 +3508,30 @@ export function setupFeatures(ctx) {
       else if (stVal === 'Nghỉ') stClass = 'status-text-stopped';
       else if (stVal === 'Trùng') stClass = 'status-text-duplicate';
 
-      const classPlainLinks = (s.classIds || []).map(cid => {
-        const c = catalog.find(x => x.id === cid);
+      const displayClassIds = isAdmin
+        ? (s.classIds || [])
+        : (s.classIds || []).filter(cid => visibleClassIdsSet.has(cid));
+
+      const classPlainLinks = displayClassIds.map(cid => {
+        const c = fullCatalog.find(x => x.id === cid);
         const cCode = c ? (c.code || c.name) : cid;
         return `<span class="plain-class-link" data-open-student-class="${escapeHtml(s.id)}" data-class-id="${escapeHtml(cid)}" title="Bấm xem tình hình học lớp ${escapeHtml(cCode)}">${escapeHtml(cCode)}</span>`;
       }).join(', ') || '<small style="color:#a8b4aa;">Chưa gán lớp</small>';
 
+      const cellMap = {
+        code: `<td><strong>${escapeHtml(s.studentCode || '—')}</strong></td>`,
+        family: `<td style="cursor:pointer;" data-view-student-detail="${escapeHtml(s.id)}" title="Bấm mở Hồ sơ thông tin chung">${escapeHtml(fam || '—')}</td>`,
+        given: `<td style="cursor:pointer;" data-view-student-detail="${escapeHtml(s.id)}" title="Bấm mở Hồ sơ thông tin chung"><strong style="color:#1b522c; text-decoration:underline;">${escapeHtml(giv || s.name)}</strong>${renderStudentTagsBadges(s)}</td>`,
+        school: `<td>${escapeHtml(s.school || '—')}</td>`,
+        parent: `<td><div>${escapeHtml(s.parentContact?.name || '—')}</div></td>`,
+        status: `<td style="white-space:nowrap;"><span class="enrollment-status-pill ${stClass}">${escapeHtml(stVal)}</span></td>`,
+        classes: `<td class="col-allow-wrap plain-class-cell">${classPlainLinks}</td>`
+      };
+
       return `
         <tr>
           <td style="text-align:center;"><input type="checkbox" class="master-student-cb" data-student-id="${escapeHtml(s.id)}" ${selectedMasterStudentIds.has(s.id) ? 'checked' : ''} /></td>
-          <td><strong>${escapeHtml(s.studentCode || '—')}</strong></td>
-          <td style="cursor:pointer;" data-view-student-detail="${escapeHtml(s.id)}" title="Bấm mở Hồ sơ thông tin chung">${escapeHtml(fam || '—')}</td>
-          <td style="cursor:pointer;" data-view-student-detail="${escapeHtml(s.id)}" title="Bấm mở Hồ sơ thông tin chung">
-            <strong style="color:#1b522c; text-decoration:underline;">${escapeHtml(giv || s.name)}</strong>
-            ${renderStudentTagsBadges(s)}
-          </td>
-          <td>${escapeHtml(s.school || '—')}</td>
-          <td>
-            <div>${escapeHtml(s.parentContact?.name || 'Phụ huynh')}</div>
-            <small style="color:#56785f; font-weight:600;">${escapeHtml(s.parentContact?.phone || '—')}</small>
-          </td>
-          <td style="white-space:nowrap;"><span class="enrollment-status-pill ${stClass}">${escapeHtml(stVal)}</span></td>
-          <td class="col-allow-wrap plain-class-cell">${classPlainLinks}</td>
+          ${colOrder.map(k => cellMap[k] || '').join('')}
           <td style="text-align:center; white-space:nowrap;">
             <button type="button" class="primary-button" data-view-student-detail="${escapeHtml(s.id)}" style="padding:7px 12px; font-size:13px; font-weight:700;">Chi tiết</button>
           </td>
@@ -3399,8 +3578,12 @@ export function setupFeatures(ctx) {
   }
 
   function exportAllStudentsCsv() {
-    const students = getStudents();
-    const catalog = getClassCatalog();
+    const students = getScopedMasterStudents();
+    const visibleCatalog = getVisibleClasses();
+    const visibleIds = new Set(visibleCatalog.map(c => c.id));
+    const isAdmin = getSignedInAccount()?.role === 'admin';
+    const fullCatalog = getClassCatalog();
+
     const sorted = [...students].sort((a, b) => {
       const aGiven = a.givenName || splitVietnameseName(a.name).givenName;
       const bGiven = b.givenName || splitVietnameseName(b.name).givenName;
@@ -3408,32 +3591,38 @@ export function setupFeatures(ctx) {
       const bFamily = b.familyName || splitVietnameseName(b.name).familyName;
       return aGiven.localeCompare(bGiven, 'vi') || aFamily.localeCompare(bFamily, 'vi');
     });
-    const headers = ['STT', 'Mã học sinh', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường học', 'Tên phụ huynh', 'SĐT phụ huynh', 'Các lớp theo học', 'Học sinh mới'];
+
+    const colOrder = getMasterColumnOrder();
+    const labelMap = Object.fromEntries(MASTER_DEFAULT_COLUMNS.map(c => [c.key, c.label]));
+    const headers = ['STT', ...colOrder.map(k => labelMap[k] || k), 'Học sinh mới'];
+
     const rows = sorted.map((s, idx) => {
-      const classNames = (s.classIds || []).map(cid => {
-        const c = catalog.find(x => x.id === cid);
+      const scopedCids = isAdmin ? (s.classIds || []) : (s.classIds || []).filter(cid => visibleIds.has(cid));
+      const classNames = scopedCids.map(cid => {
+        const c = fullCatalog.find(x => x.id === cid);
         return c ? (c.code || c.name) : cid;
       }).join('; ');
       const fam = s.familyName || splitVietnameseName(s.name).familyName;
       const giv = s.givenName || splitVietnameseName(s.name).givenName;
+      const valMap = {
+        code: s.studentCode || '',
+        family: fam,
+        given: giv,
+        school: s.school || '',
+        parent: s.parentContact?.name || '',
+        status: s.enrollmentStatus || 'Học',
+        classes: classNames
+      };
       return [
         idx + 1,
-        s.studentCode || '',
-        fam,
-        giv,
-        s.name,
-        s.school || '',
-        s.parentContact?.name || '',
-        s.parentContact?.phone || '',
-        classNames,
+        ...colOrder.map(k => valMap[k] ?? ''),
         s.isNew || (s.tags && s.tags.includes('Mới')) ? 'Có' : 'Không'
       ];
     });
-    exportToCsv(headers, rows, `danh-sach-hoc-sinh-toan-trung-tam-${new Date().toISOString().slice(0, 10)}.csv`);
-    toast('Đã xuất danh sách toàn bộ học sinh theo alphabet (chuẩn UTF-8 mở trên Excel).');
+    exportToCsv(headers, rows, `danh-sach-hoc-sinh-${new Date().toISOString().slice(0, 10)}.csv`);
+    toast('Đã xuất danh sách học sinh (theo đúng thứ tự cột hiển thị).');
   }
 
-  // ----------------------------------------------------
   // TÍNH NĂNG MỚI: HỒ SƠ HỌC SINH THEO TỪNG LỚP (REQ 7)
   // ----------------------------------------------------
   function openStudentClassProfile(studentId, preferredClassId = null) {
@@ -3796,7 +3985,6 @@ export function setupFeatures(ctx) {
             </div>
             <div class="student-hero-contact-box">
               <div><span>Phụ huynh:</span> <strong>${escapeHtml(student.parentContact?.name || '—')}</strong></div>
-              <div><span>SĐT liên hệ:</span> <strong>${escapeHtml(student.parentContact?.phone || '—')}</strong></div>
               ${student.officeNotes ? `<div class="student-hero-office-note"><span>Ghi chú văn phòng:</span> <em>${escapeHtml(student.officeNotes)}</em></div>` : ''}
             </div>
           </div>
@@ -4435,7 +4623,7 @@ export function setupFeatures(ctx) {
     const cls = getActiveClassConfig();
     const allStudents = classStudents();
     const list = allStudents.length ? allStudents : records.map(r => r.student).filter(Boolean);
-    const headers = ['STT', 'Mã HS', 'Họ đệm', 'Tên', 'Trường học', 'Phụ huynh', 'SĐT Phụ huynh', 'Ghi chú học lực'];
+    const headers = ['STT', 'Mã HS', 'Họ đệm', 'Tên', 'Trường học', 'Phụ huynh', 'Ghi chú học lực'];
     const rows = list.map((s, idx) => {
       const parts = splitVietnameseName(s.name);
       return [
@@ -4445,7 +4633,6 @@ export function setupFeatures(ctx) {
         s.givenName ?? parts.givenName,
         s.school || '',
         s.parentContact?.name || '',
-        s.parentContact?.phone || '',
         (s.classLearningNotes && cls && s.classLearningNotes[cls.id]) || s.learningNotes || ''
       ];
     });
@@ -4472,7 +4659,7 @@ export function setupFeatures(ctx) {
     const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'present').length;
     const lateList = roster.filter(s => {
       const seated = entries.find(p => p.entry.studentId === s.id);
-      return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
+      return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
     });
     const absentList = regularRoster.filter(s => {
       const seated = entries.find(p => p.entry.studentId === s.id);
@@ -4495,6 +4682,11 @@ export function setupFeatures(ctx) {
     const notebookLink = $('#notebook-link')?.value?.trim() || savedChk.notebookLink || histSession.notebookLink || '';
     const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
 
+    const getNote = (s, seated) => {
+      const n = (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : '') || seated?.entry?.homework?.note || '';
+      return n ? ` (Ghi chú: ${n})` : '';
+    };
+
     const lines = [
       `📋 BÁO CÁO CA HỌC: ${currentClass.name} (${currentClass.code || currentClass.id})`,
       `• Ngày: ${date} (${currentClass.startTime}–${currentClass.endTime}) · Phòng: ${currentClass.room}`,
@@ -4505,25 +4697,34 @@ export function setupFeatures(ctx) {
       ...(notebookLink ? [`• Link vở ghi / Bài giảng: ${notebookLink}`] : []),
       `• Sĩ số: Có mặt ${presentCount + lateList.length}/${regularRoster.length} (Đúng giờ: ${presentCount}, Đi muộn: ${lateList.length}, Vắng: ${absentList.length}${sessionMakeups.length ? `, Học bù: +${sessionMakeups.length}` : ''})`,
       ``,
-      `1. Không nộp BTVN (${missingHW.length} HS):`,
+      `1. Chưa nộp BTVN (${missingHW.length} HS):`,
       ...(missingHW.length
         ? missingHW.map(s => {
             const seated = entries.find(p => p.entry.studentId === s.id);
-            const r = reasonMap[seated?.entry.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
-            return `   - ${s.name} (${s.school || '—'}): ${r}`;
+            const r = reasonMap[seated?.entry.homework?.reason || s.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
+            return `   - ${s.name} (${s.school || '—'}): ${r}${getNote(s, seated)}`;
           })
         : ['   - 100% học sinh có mặt đã nộp đủ BTVN.']),
       `2. Đi muộn (${lateList.length} HS):`,
       ...(lateList.length
         ? lateList.map(s => {
             const seated = entries.find(p => p.entry.studentId === s.id);
+            const arrTime = resolveStudentArrivalTime(s, seated, date, currentClass.id);
             const mins = seated?.entry.attendance?.lateMinutes || s.attendance?.lateMinutes || 10;
-            return `   - ${s.name}: muộn ${mins} phút`;
+            return `   - ${s.name}: ${arrTime ? `đến lúc ${arrTime} (` : ''}muộn ${mins} phút${arrTime ? ')' : ''}${getNote(s, seated)}`;
           })
         : ['   - Không có học sinh đi muộn.']),
-      `3. Vắng mặt (${absentList.length} HS):`,
+      `3. Học sinh học bù (${sessionMakeups.length} HS):`,
+      ...(sessionMakeups.length
+        ? sessionMakeups.map(s => {
+            const seated = entries.find(p => p.entry.studentId === s.id);
+            const hwSc = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '');
+            return `   - ${s.name} (Bù từ: ${s.sourceClassName || 'Lớp khác'})${hwSc ? ` · BTVN: ${hwSc}đ` : ''}${getNote(s, seated)}`;
+          })
+        : ['   - Không có học sinh học bù.']),
+      `4. Vắng mặt (${absentList.length} HS):`,
       ...(absentList.length
-        ? absentList.map(s => `   - ${s.name} (${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}${s.attendance?.reason ? ': ' + s.attendance.reason : ''})`)
+        ? absentList.map(s => `   - ${s.name} (${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}${s.attendance?.reason ? ': ' + s.attendance.reason : ''})${getNote(s, null)}`)
         : ['   - 100% học sinh có mặt đầy đủ.'])
     ];
     if (sessionNote) {
@@ -4979,7 +5180,164 @@ export function setupFeatures(ctx) {
       confirmSwitchWithPassword();
     }
   });
+
+  // ====================================================
+  // TÙY CHỈNH & ĐỔI THỨ TỰ CỘT HIỂN THỊ / XUẤT FILE (v3.2)
+  // ====================================================
+  const COLUMN_SCHEMAS = {
+    live: {
+      storageKey: 'lopvui.column-order.live.v1',
+      title: 'Đổi thứ tự cột: Danh sách học sinh của lớp',
+      defaults: ['family', 'name', 'school', 'seat', 'attendance', 'homework', 'score', 'note'],
+      scoreNextToName: ['family', 'name', 'score', 'homework', 'note', 'attendance', 'seat', 'school'],
+      labels: {
+        family: 'Họ đệm',
+        name: 'Tên học sinh',
+        school: 'Trường học',
+        seat: 'Vị trí ngồi',
+        attendance: 'Trạng thái điểm danh',
+        homework: 'Trạng thái BTVN',
+        score: 'Điểm BTVN / Test (Nhập trực tiếp)',
+        note: 'Ghi chú buổi học'
+      }
+    },
+    report: {
+      storageKey: 'lopvui.column-order.report.v1',
+      title: 'Đổi thứ tự cột: Bảng điểm danh A4 & Xuất file CSV',
+      defaults: ['family', 'given', 'code', 'school', 'attendance', 'arrivalTime', 'homework', 'hwScore', 'testScore', 'note'],
+      scoreNextToName: ['family', 'given', 'hwScore', 'testScore', 'homework', 'note', 'attendance', 'arrivalTime', 'code', 'school'],
+      labels: {
+        family: 'Họ đệm',
+        given: 'Tên học sinh',
+        code: 'Mã học sinh',
+        school: 'Trường / Phân loại',
+        attendance: 'Trạng thái điểm danh',
+        arrivalTime: 'Giờ đến lớp',
+        homework: 'Trạng thái BTVN (Kèm lý do)',
+        hwScore: 'Điểm BTVN',
+        testScore: 'Điểm Test',
+        note: 'Ghi chú trong buổi'
+      }
+    },
+    master: {
+      storageKey: 'lopvui.column-order.master.v1',
+      title: 'Đổi thứ tự cột: Danh bạ học sinh & Xuất CSV tổng',
+      defaults: ['code', 'family', 'given', 'school', 'parent', 'status', 'classes'],
+      scoreNextToName: ['family', 'given', 'code', 'classes', 'status', 'school', 'parent'],
+      labels: {
+        code: 'Mã học sinh',
+        family: 'Họ đệm',
+        given: 'Tên học sinh',
+        school: 'Trường học',
+        parent: 'Phụ huynh',
+        status: 'Trạng thái theo học',
+        classes: 'Các lớp theo học'
+      }
+    }
+  };
+
+  let activeColumnOrderScope = 'live';
+  let draftColumnOrder = [];
+
+  function openColumnOrderDialog(scope = 'live') {
+    const schema = COLUMN_SCHEMAS[scope] || COLUMN_SCHEMAS.live;
+    activeColumnOrderScope = scope;
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(schema.storageKey) || 'null');
+    } catch {}
+    if (Array.isArray(saved) && saved.length) {
+      draftColumnOrder = saved.filter(k => schema.defaults.includes(k));
+      schema.defaults.forEach(k => { if (!draftColumnOrder.includes(k)) draftColumnOrder.push(k); });
+    } else {
+      draftColumnOrder = [...schema.defaults];
+    }
+
+    const dlg = $('#column-order-dialog');
+    if (!dlg) return;
+    if ($('#column-order-dialog-title')) $('#column-order-dialog-title').textContent = schema.title;
+
+    const renderList = () => {
+      const listEl = $('#column-order-list');
+      if (!listEl) return;
+      listEl.innerHTML = draftColumnOrder.map((key, idx) => `
+        <div class="column-order-item" data-col-key="${escapeHtml(key)}">
+          <span class="column-order-index">${idx + 1}</span>
+          <strong class="column-order-name">${escapeHtml(schema.labels[key] || key)}</strong>
+          <div class="column-order-btns">
+            <button type="button" class="outline-button" data-move-col-up="${idx}" ${idx === 0 ? 'disabled' : ''} style="padding:4px 10px; font-size:12.5px;" title="Đẩy cột sang trái / lên trên">⬅ Lên</button>
+            <button type="button" class="outline-button" data-move-col-down="${idx}" ${idx === draftColumnOrder.length - 1 ? 'disabled' : ''} style="padding:4px 10px; font-size:12.5px;" title="Đẩy cột sang phải / xuống dưới">➡ Xuống</button>
+          </div>
+        </div>
+      `).join('');
+
+      listEl.querySelectorAll('[data-move-col-up]').forEach(btn => {
+        btn.onclick = () => {
+          const i = Number(btn.dataset.moveColUp);
+          if (i > 0) {
+            const tmp = draftColumnOrder[i - 1];
+            draftColumnOrder[i - 1] = draftColumnOrder[i];
+            draftColumnOrder[i] = tmp;
+            renderList();
+          }
+        };
+      });
+      listEl.querySelectorAll('[data-move-col-down]').forEach(btn => {
+        btn.onclick = () => {
+          const i = Number(btn.dataset.moveColDown);
+          if (i < draftColumnOrder.length - 1) {
+            const tmp = draftColumnOrder[i + 1];
+            draftColumnOrder[i + 1] = draftColumnOrder[i];
+            draftColumnOrder[i] = tmp;
+            renderList();
+          }
+        };
+      });
+    };
+
+    renderList();
+
+    if ($('#col-preset-score-next-name')) {
+      $('#col-preset-score-next-name').onclick = () => {
+        draftColumnOrder = [...schema.scoreNextToName];
+        renderList();
+      };
+    }
+    if ($('#col-preset-reset-default')) {
+      $('#col-preset-reset-default').onclick = () => {
+        draftColumnOrder = [...schema.defaults];
+        renderList();
+      };
+    }
+
+    try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); }
+  }
+
+  $('#customize-live-columns-btn')?.addEventListener('click', () => openColumnOrderDialog('live'));
+  $('#customize-scores-columns-btn')?.addEventListener('click', () => openColumnOrderDialog('live'));
+  $('#customize-master-columns-btn')?.addEventListener('click', () => openColumnOrderDialog('master'));
+  $('#customize-report-columns-btn')?.addEventListener('click', () => openColumnOrderDialog('report'));
+  $('#close-column-order-dialog')?.addEventListener('click', () => $('#column-order-dialog')?.close());
+  $('#cancel-column-order-btn')?.addEventListener('click', () => $('#column-order-dialog')?.close());
+  $('#save-column-order-btn')?.addEventListener('click', () => {
+    const schema = COLUMN_SCHEMAS[activeColumnOrderScope] || COLUMN_SCHEMAS.live;
+    localStorage.setItem(schema.storageKey, JSON.stringify(draftColumnOrder));
+    $('#column-order-dialog')?.close();
+    if (activeColumnOrderScope === 'live') {
+      ctx.renderStudentList?.();
+      ctx.renderScoresView?.();
+    } else if (activeColumnOrderScope === 'master') {
+      renderMasterStudentDirectory();
+    } else if (activeColumnOrderScope === 'report') {
+      renderReportCenter(currentReportTab || 'a4-roster');
+    }
+    toast('✓ Đã áp dụng thứ tự cột mới cho bảng hiển thị và xuất file.');
+  });
+
   $('#google-sheets-sync-btn')?.addEventListener('click', () => {
+    const driveCfg = loadGoogleDrivePhotoConfig();
+    if ($('#drive-script-url-input')) $('#drive-script-url-input').value = driveCfg.scriptUrl || '';
+    if ($('#drive-folder-id-input')) $('#drive-folder-id-input').value = driveCfg.folderId || '';
     const cfg = loadGoogleSheetsConfig();
     if ($('#sheets-spreadsheet-id')) $('#sheets-spreadsheet-id').value = cfg.spreadsheetId || '';
     if ($('#sheets-tab-name')) $('#sheets-tab-name').value = cfg.sheetName || 'DiemDanh';
@@ -4988,6 +5346,12 @@ export function setupFeatures(ctx) {
   });
   $('#close-sheets-sync-dialog')?.addEventListener('click', () => $('#google-sheets-sync-dialog')?.close());
   $('#close-sheets-sync-btn')?.addEventListener('click', () => $('#google-sheets-sync-dialog')?.close());
+  $('#save-drive-photo-config-btn')?.addEventListener('click', () => {
+    const scriptUrl = ($('#drive-script-url-input')?.value || '').trim();
+    const folderId = ($('#drive-folder-id-input')?.value || '').trim();
+    saveGoogleDrivePhotoConfig({ scriptUrl, folderId });
+    toast('✓ Đã lưu cấu hình kết nối kho ảnh chân dung Google Drive.');
+  });
   $('#system-help-btn')?.addEventListener('click', () => {
     toast('Lớp học vui v3.1: Chọn lớp tại Menu Đi làm → Sơ đồ lớp (Thu BTVN & Điểm danh) → Nhập điểm → Checklist & Kết ca.');
   });

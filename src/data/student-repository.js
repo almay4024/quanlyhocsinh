@@ -49,8 +49,8 @@ export const seedStudents = [
     ],
     sessionNotes: [
       { classId: 'class-math-8a-algebra', date: '2026-10-26', lessonTitle: 'Hình học không gian', attendanceStatusOverride: 'Đi học', homeworkStatus: 'not_submitted', homeworkScore: null, note: 'nói chuyện' },
-      { classId: 'class-math-8a-algebra', date: '2026-10-19', lessonTitle: 'Giao tuyến 2 mặt phẳng', attendanceStatusOverride: 'Vắng', homeworkStatus: 'graded', homeworkScore: 7, note: 'đi học bù t3' },
-      { classId: 'class-math-8a-algebra', date: '2026-10-12', lessonTitle: 'Đường thẳng song song mặt phẳng', attendanceStatusOverride: 'Đi học', homeworkStatus: 'graded', homeworkScore: 5, note: '' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-19', lessonTitle: 'Giao tuyến 2 mặt phẳng', attendanceStatusOverride: 'Vắng', homeworkStatus: 'submitted', homeworkScore: 7, note: 'đi học bù t3' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-12', lessonTitle: 'Đường thẳng song song mặt phẳng', attendanceStatusOverride: 'Đi học', homeworkStatus: 'submitted', homeworkScore: 5, note: '' },
       { classId: 'class-math-8a-algebra', date: '2026-10-05', lessonTitle: 'Đại cương hình không gian', attendanceStatusOverride: 'Vắng', homeworkStatus: 'not_submitted', homeworkScore: null, note: '' }
     ],
     tags: [],
@@ -92,14 +92,14 @@ export const seedStudents = [
     ],
     sessionNotes: [
       { classId: 'class-math-8a-algebra', date: '2026-10-26', lessonTitle: 'Hình học không gian', attendanceStatusOverride: 'Đi học', homeworkStatus: 'not_submitted', homeworkScore: null, note: 'nói chuyện' },
-      { classId: 'class-math-8a-algebra', date: '2026-10-19', lessonTitle: 'Giao tuyến 2 mặt phẳng', attendanceStatusOverride: 'Vắng', homeworkStatus: 'graded', homeworkScore: 7, note: 'đi học bù t3' },
-      { classId: 'class-math-8a-algebra', date: '2026-10-12', lessonTitle: 'Đường thẳng song song mặt phẳng', attendanceStatusOverride: 'Đi học', homeworkStatus: 'graded', homeworkScore: 5, note: '' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-19', lessonTitle: 'Giao tuyến 2 mặt phẳng', attendanceStatusOverride: 'Vắng', homeworkStatus: 'submitted', homeworkScore: 7, note: 'đi học bù t3' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-12', lessonTitle: 'Đường thẳng song song mặt phẳng', attendanceStatusOverride: 'Đi học', homeworkStatus: 'submitted', homeworkScore: 5, note: '' },
       { classId: 'class-math-8a-algebra', date: '2026-10-05', lessonTitle: 'Đại cương hình không gian', attendanceStatusOverride: 'Vắng', homeworkStatus: 'not_submitted', homeworkScore: null, note: '' },
-      { classId: 'class-math-8a-algebra', date: '2026-10-14', lessonTitle: 'Hình học: Đường thẳng song song với mặt phẳng', homeworkStatus: 'graded', homeworkScore: 9, note: 'Hăng hái phát biểu' },
+      { classId: 'class-math-8a-algebra', date: '2026-10-14', lessonTitle: 'Hình học: Đường thẳng song song với mặt phẳng', homeworkStatus: 'submitted', homeworkScore: 9, note: 'Hăng hái phát biểu' },
       { classId: 'class-math-8a-algebra', date: '2026-10-07', lessonTitle: 'Kiểm tra chuyên đề: Giao tuyến và thiết diện', homeworkStatus: 'uncollected', testScore: 9, note: '' },
       { classId: 'class-math-8a-algebra', date: '2026-09-30', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'not_submitted', homeworkScore: 7, homeworkStatusNote: 'Có đi học (Không làm BTVN) - Đã làm bù BTVN', note: 'Đã làm bù BTVN' },
-      { classId: 'class-math-8a-algebra', date: '2026-09-23', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'graded', homeworkScore: 8.5, testScore: 9, attendanceStatusOverride: 'Có đi học', homeworkStatusNote: 'Vắng - Đã học bù T5', note: '' },
-      { classId: 'class-math-8a-algebra', date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'graded', homeworkScore: 8.5, testScore: 9, attendanceStatusOverride: 'Có đi học', homeworkStatusNote: 'Vắng - Đã học bù T5', note: '' },
+      { classId: 'class-math-8a-algebra', date: '2026-09-23', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'submitted', homeworkScore: 8.5, testScore: 9, attendanceStatusOverride: 'Có đi học', homeworkStatusNote: 'Vắng - Đã học bù T5', note: '' },
+      { classId: 'class-math-8a-algebra', date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'submitted', homeworkScore: 8.5, testScore: 9, attendanceStatusOverride: 'Có đi học', homeworkStatusNote: 'Vắng - Đã học bù T5', note: '' },
       { classId: 'class-math-8a-algebra', date: '2026-09-19', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'not_submitted', homeworkScore: 7, homeworkStatusNote: 'Có đi học (Không làm BTVN) - Đã làm bù BTVN', note: 'Đã làm bù BTVN' },
       { classId: 'class-math-8a-algebra', date: '2026-09-12', lessonTitle: 'Giới thiệu hình không gian (buổi 1)', homeworkStatus: 'uncollected', homeworkScore: null, homeworkStatusNote: 'Vắng', note: '' },
       { classId: 'class-tutoring', date: '2026-10-05', tutoringId: 'tutor-20261005-01', tutoringType: 'giasu', lessonTitle: 'Dạy kèm gia sư 1-1: Rút gọn phân thức đại số nâng cao và tìm điều kiện xác định', previousHomeworkCheck: 'Đã hoàn thành 10/10 câu BTVN buổi trước; sai câu 4 về phân thức đã được chữa kỹ và hiểu bài.', homeworkStatus: 'completed', homeworkScore: 8.5, note: 'Nắm chắc phương pháp phân tích đa thức thành nhân tử để rút gọn. Bài test tại chỗ đạt 8.5/10.', assistantName: 'Anh Linh' },
@@ -136,9 +136,9 @@ export const seedStudents = [
       { classId: 'class-math-8a-algebra', date: '2026-09-12', aisle: 1, desk: 2, position: 1 }
     ],
     sessionNotes: [
-      { classId: 'class-math-8a-algebra', date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'graded', homeworkScore: 8, testScore: 9, note: 'Ghi chép cẩn thận' },
+      { classId: 'class-math-8a-algebra', date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'submitted', homeworkScore: 8, testScore: 9, note: 'Ghi chép cẩn thận' },
       { classId: 'class-math-8a-algebra', date: '2026-09-19', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'uncollected', homeworkScore: null, homeworkStatusNote: 'Vắng - Xin phép nghỉ ốm', note: 'Xin phép nghỉ ốm' },
-      { classId: 'class-math-8a-algebra', date: '2026-09-12', lessonTitle: 'Giới thiệu hình không gian (buổi 1)', homeworkStatus: 'graded', homeworkScore: 7.5, note: 'Làm bài cẩn thận' },
+      { classId: 'class-math-8a-algebra', date: '2026-09-12', lessonTitle: 'Giới thiệu hình không gian (buổi 1)', homeworkStatus: 'submitted', homeworkScore: 7.5, note: 'Làm bài cẩn thận' },
       { classId: 'class-tutoring', date: '2026-10-04', tutoringId: 'tutor-20261004-02', tutoringType: 'tutoring', lessonTitle: 'Bổ trợ hình học: Tính chất đường trung bình và hình thang cân', previousHomeworkCheck: 'Quên vở bài tập buổi trước, đã kiểm tra bù trực tiếp trên lớp và làm đúng 4/5 bài.', homeworkStatus: 'assigned_more', homeworkScore: 7.5, note: 'Hiểu tính chất nhưng vẽ hình còn chậm.', assistantName: 'Mai Anh' }
     ],
     tags: ['HS Giỏi'],
@@ -168,7 +168,7 @@ export const seedStudents = [
     seatingHistory: [{ classId: 'class-math-12-exam', date: '2026-09-26', aisle: 2, desk: 1, position: 1 }],
     sessionNotes: [
       { classId: 'class-tutoring', date: '2026-10-02', tutoringId: 'tutor-20261002-03', tutoringType: 'giasu', lessonTitle: 'Dạy kèm gia sư 1-1: Cực trị hàm hợp và hàm ẩn nâng cao ôn thi ĐH', previousHomeworkCheck: 'Làm đầy đủ bài tập khảo sát hàm số, trình bày chuẩn xác.', homeworkStatus: 'completed', homeworkScore: 9.5, note: 'Tư duy giải toán tốt.', assistantName: 'Anh Linh' },
-      { classId: 'class-math-12-exam', date: '2026-09-26', lessonTitle: 'Cực trị hàm số bậc ba', homeworkStatus: 'graded', homeworkScore: 9, testScore: 9.5 }
+      { classId: 'class-math-12-exam', date: '2026-09-26', lessonTitle: 'Cực trị hàm số bậc ba', homeworkStatus: 'submitted', homeworkScore: 9, testScore: 9.5 }
     ],
     tags: ['Mục tiêu 9+'],
     isNew: false
@@ -220,8 +220,8 @@ export const seedStudents = [
     ],
     sessionNotes: [
       { classId: 'class-math-8a-algebra', date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'not_submitted', homeworkReason: 'Quên vở', homeworkScore: null, testScore: 7.5, homeworkStatusNote: 'Có đi học (Không làm BTVN) - Quên mang vở', note: 'Đi muộn 10p do kẹt xe' },
-      { classId: 'class-math-8a-algebra', date: '2026-09-19', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'graded', homeworkScore: 8, note: 'Cần chú ý bài tính nhanh' },
-      { classId: 'class-math-8a-algebra', date: '2026-09-12', lessonTitle: 'Giới thiệu hình không gian (buổi 1)', homeworkStatus: 'graded', homeworkScore: 6.5, note: 'Cần rèn thêm biến đổi' }
+      { classId: 'class-math-8a-algebra', date: '2026-09-19', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'submitted', homeworkScore: 8, note: 'Cần chú ý bài tính nhanh' },
+      { classId: 'class-math-8a-algebra', date: '2026-09-12', lessonTitle: 'Giới thiệu hình không gian (buổi 1)', homeworkStatus: 'submitted', homeworkScore: 6.5, note: 'Cần rèn thêm biến đổi' }
     ],
     tags: [],
     isNew: false
@@ -242,7 +242,7 @@ export const seedStudents = [
     ],
     attendanceHistory: [{ classId: 'class-physics-11b', date: '2026-10-04', status: 'present' }],
     seatingHistory: [{ classId: 'class-physics-11b', date: '2026-10-04', aisle: 1, desk: 1, position: 1 }],
-    sessionNotes: [{ classId: 'class-physics-11b', date: '2026-10-04', lessonTitle: 'Định luật Cu-lông và điện trường', homeworkStatus: 'graded', homeworkScore: 9.5, testScore: 10 }],
+    sessionNotes: [{ classId: 'class-physics-11b', date: '2026-10-04', lessonTitle: 'Định luật Cu-lông và điện trường', homeworkStatus: 'submitted', homeworkScore: 9.5, testScore: 10 }],
     tags: ['HS Giỏi'],
     isNew: false
   }
@@ -271,8 +271,8 @@ export const seedMakeupStudents = [
     ],
     seatingHistory: [],
     sessionNotes: [
-      { classId: 'class-math-8a-algebra', date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'graded', homeworkScore: 8, note: 'Đi học bù đúng giờ' },
-      { classId: 'class-math-8a-algebra', date: '2026-09-19', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'graded', homeworkScore: 7.5, note: '' }
+      { classId: 'class-math-8a-algebra', date: '2026-09-26', lessonTitle: 'Tìm giao tuyến 2 mặt phẳng', homeworkStatus: 'submitted', homeworkScore: 8, note: 'Đi học bù đúng giờ' },
+      { classId: 'class-math-8a-algebra', date: '2026-09-19', lessonTitle: 'Giới thiệu hình không gian (buổi 2)', homeworkStatus: 'submitted', homeworkScore: 7.5, note: '' }
     ],
     tags: ['Học bù'],
     studentType: 'makeup',
@@ -470,4 +470,206 @@ export function saveStudentRecords(students, makeupStudents, storage = getStorag
     storage.setItem(STUDENTS_KEY, JSON.stringify(cleanStudents));
     storage.setItem(MAKEUP_KEY, JSON.stringify(cleanMakeups));
   }
+}
+
+
+// ============================================================================
+// GOOGLE DRIVE FULL-SIZE PORTRAIT INTEGRATION (v3.2)
+// ============================================================================
+const DRIVE_CONFIG_KEY = 'lopvui.google-drive-photo-config.v1';
+const DRIVE_RENAME_QUEUE_KEY = 'lopvui.google-drive-rename-queue.v1';
+
+export function loadGoogleDrivePhotoConfig(storage = getStorage()) {
+  try {
+    if (!storage) return { scriptUrl: '', folderId: '' };
+    const saved = JSON.parse(storage.getItem(DRIVE_CONFIG_KEY) || 'null');
+    if (saved && typeof saved === 'object') return { scriptUrl: saved.scriptUrl || '', folderId: saved.folderId || '' };
+  } catch {}
+  return { scriptUrl: '', folderId: '' };
+}
+
+export function saveGoogleDrivePhotoConfig(config, storage = getStorage()) {
+  try {
+    if (storage) {
+      storage.setItem(DRIVE_CONFIG_KEY, JSON.stringify({
+        scriptUrl: String(config?.scriptUrl || '').trim(),
+        folderId: String(config?.folderId || '').trim(),
+        updatedAt: Date.now()
+      }));
+    }
+  } catch {}
+}
+
+export function toAsciiFileNamePart(str = '') {
+  return String(str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+export function extractGoogleDriveFileId(rawUrlOrId = '') {
+  const s = String(rawUrlOrId || '').trim();
+  if (!s || s.startsWith('data:image/') || s.startsWith('@photo:')) return null;
+  if (/^[a-zA-Z0-9_-]{20,60}$/.test(s)) return s;
+  const m1 = s.match(/\/file\/d\/([a-zA-Z0-9_-]{15,})/);
+  if (m1) return m1[1];
+  const m2 = s.match(/[?&]id=([a-zA-Z0-9_-]{15,})/);
+  if (m2) return m2[1];
+  const m3 = s.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]{15,})/);
+  if (m3) return m3[1];
+  return null;
+}
+
+export function buildDrivePhotoUrl(fileId, size = 'w600') {
+  if (!fileId) return null;
+  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=${encodeURIComponent(size)}`;
+}
+
+/**
+ * Đặt tên file ảnh trên Google Drive chuẩn xác cho cả HS đã có mã, chưa có mã (CHUAMA) và học bù (HOCBU).
+ * Kèm hậu tố 4 ký tự cuối của student.id để không bao giờ trùng tên file khi 2 HS trùng họ tên.
+ */
+export function buildStudentDrivePhotoFileName(student, classCatalog = []) {
+  if (!student) return 'CHUAMA_HocSinh.jpg';
+  const idRaw = String(student.id || '0000').replace(/[^a-zA-Z0-9]/g, '');
+  const id4 = (idRaw.slice(-4) || '0000').toLowerCase();
+  const cleanName = toAsciiFileNamePart(student.name || 'Hoc_Sinh') || 'Hoc_Sinh';
+
+  const isMakeup = student.studentType === 'makeup';
+  const rawCode = (student.studentCode && String(student.studentCode).trim())
+    ? toAsciiFileNamePart(String(student.studentCode).trim().toUpperCase())
+    : '';
+
+  let classPart = '';
+  if (isMakeup) {
+    classPart = toAsciiFileNamePart(student.sourceClassName || student.school || 'LOP_GOC');
+  } else {
+    const firstClassId = Array.isArray(student.classIds) && student.classIds.length ? student.classIds[0] : '';
+    const matchedCls = (classCatalog || []).find(c => c.id === firstClassId);
+    classPart = toAsciiFileNamePart(matchedCls?.code || matchedCls?.name || firstClassId || 'CHUA_XEP_LOP');
+  }
+
+  const prefix = isMakeup
+    ? 'HOCBU'
+    : (rawCode ? rawCode : 'CHUAMA');
+
+  return `${prefix}_${cleanName}_${classPart || 'LOP'}_${id4}.jpg`;
+}
+
+export function resolveStudentPhotoUrls(student) {
+  if (!student) return { thumbUrl: null, fullUrl: null, driveFileId: null, driveFileName: null };
+  const driveFileId = student.photoDriveFileId || extractGoogleDriveFileId(student.photoURL);
+  if (driveFileId) {
+    return {
+      thumbUrl: buildDrivePhotoUrl(driveFileId, 'w600'),
+      fullUrl: buildDrivePhotoUrl(driveFileId, 'w2400'),
+      driveFileId,
+      driveFileName: student.photoDriveFileName || buildStudentDrivePhotoFileName(student)
+    };
+  }
+  const rawUrl = student.photoURL || null;
+  return {
+    thumbUrl: rawUrl,
+    fullUrl: student.photoFullURL || rawUrl,
+    driveFileId: null,
+    driveFileName: student.photoDriveFileName || (rawUrl ? buildStudentDrivePhotoFileName(student) : null)
+  };
+}
+
+/**
+ * Tự động đổi tên file ảnh trên Google Drive khi học sinh được cập nhật Mã HS mới hoặc đổi Họ tên,
+ * trong khi vẫn giữ nguyên 100% fileId và đường link hiển thị ảnh cũ.
+ */
+export async function syncStudentDrivePhotoRename(student, classCatalog = [], storage = getStorage()) {
+  if (!student) return null;
+  const newFileName = buildStudentDrivePhotoFileName(student, classCatalog);
+  const oldFileName = student.photoDriveFileName || '';
+  const hasPhoto = Boolean(student.photoURL || student.photoDriveFileId);
+  if (!hasPhoto) return null;
+
+  student.photoDriveFileName = newFileName;
+  const driveFileId = student.photoDriveFileId || extractGoogleDriveFileId(student.photoURL);
+  if (driveFileId) {
+    student.photoDriveFileId = driveFileId;
+    // Keep exact same Drive URL based on immutable fileId
+    student.photoURL = buildDrivePhotoUrl(driveFileId, 'w600');
+    student.photoFullURL = buildDrivePhotoUrl(driveFileId, 'w2400');
+  }
+
+  if (oldFileName && oldFileName === newFileName) {
+    return { renamed: false, fileName: newFileName, fileId: driveFileId };
+  }
+
+  const cfg = loadGoogleDrivePhotoConfig(storage);
+  if (driveFileId && cfg.scriptUrl) {
+    try {
+      await fetch(cfg.scriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'renameStudentPhoto',
+          studentId: student.id,
+          fileId: driveFileId,
+          newFileName
+        })
+      });
+      return { renamed: true, fileName: newFileName, fileId: driveFileId, remoteSynced: true };
+    } catch {}
+  }
+
+  // Queue rename for next sync if offline or scriptUrl not yet connected
+  if (driveFileId && storage) {
+    try {
+      const queue = JSON.parse(storage.getItem(DRIVE_RENAME_QUEUE_KEY) || '{}') || {};
+      queue[student.id] = { fileId: driveFileId, newFileName, queuedAt: Date.now() };
+      storage.setItem(DRIVE_RENAME_QUEUE_KEY, JSON.stringify(queue));
+    } catch {}
+  }
+  return { renamed: true, fileName: newFileName, fileId: driveFileId, remoteSynced: false };
+}
+
+/**
+ * Upload ảnh Full-size gốc lên Google Drive thông qua Google Apps Script (nếu đã cấu hình),
+ * đồng thời giữ bản xem nhanh để hiển thị tức thì.
+ */
+export async function uploadStudentPhotoToDrive(student, fullSizeDataUrl, previewDataUrl, classCatalog = [], storage = getStorage()) {
+  if (!student) return null;
+  const fileName = buildStudentDrivePhotoFileName(student, classCatalog);
+  const oldFileId = student.photoDriveFileId || extractGoogleDriveFileId(student.photoURL) || null;
+  student.photoDriveFileName = fileName;
+  student.photoURL = previewDataUrl || fullSizeDataUrl;
+  student.photoFullURL = fullSizeDataUrl || previewDataUrl;
+  student.updatedAt = Date.now();
+
+  const cfg = loadGoogleDrivePhotoConfig(storage);
+  if (cfg.scriptUrl && fullSizeDataUrl) {
+    try {
+      const res = await fetch(cfg.scriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'uploadStudentPhoto',
+          studentId: student.id,
+          fileName,
+          oldFileId,
+          folderId: cfg.folderId || '',
+          dataUrl: fullSizeDataUrl
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.fileId) {
+          student.photoDriveFileId = data.fileId;
+          student.photoURL = buildDrivePhotoUrl(data.fileId, 'w600');
+          student.photoFullURL = buildDrivePhotoUrl(data.fileId, 'w2400');
+          return { uploadedToDrive: true, fileId: data.fileId, fileName };
+        }
+      }
+    } catch {}
+  }
+  return { uploadedToDrive: false, fileId: oldFileId, fileName };
 }

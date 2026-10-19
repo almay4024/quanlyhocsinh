@@ -7828,3 +7828,79 @@ dialog .close-button,
   opacity: 0.65;
   background: #fafafa;
 }
+
+
+/* === v3.2 Upgrades: Snapshot Tags, Smaller Snapshot Title, Drive Badge & Column Reordering === */
+.snap-header {
+  padding: 8px 14px !important;
+}
+.snap-title-row h3 {
+  font-size: 15px !important;
+  line-height: 1.25 !important;
+  margin: 0 !important;
+}
+.snap-seat-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  margin: 2px 0;
+}
+.snap-badge.snap-stu-tag {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.snap-badge.snap-stu-tag.snap-tag-new {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+}
+.drive-photo-filename-badge {
+  display: block;
+  max-width: 154px;
+  font-size: 11px;
+  color: #3b5a44;
+  background: #f1f7f3;
+  border: 1px solid #d5e5d9;
+  border-radius: 6px;
+  padding: 3px 6px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.column-order-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #f8fbf9;
+  border: 1px solid #d8e5da;
+}
+.column-order-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2f6f44;
+  color: #fff;
+  font: 800 12px/1 Manrope, sans-serif;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.column-order-name {
+  flex: 1;
+  font-size: 14px;
+  color: #1e3a29;
+}
+.column-order-btns {
+  display: flex;
+  gap: 6px;
+}

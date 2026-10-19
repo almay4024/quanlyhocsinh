@@ -31,8 +31,8 @@ export const seedSessionHistory = [
       {id:'aisle-3',desks:[{id:'d31',seats:2,dividerAfter:false},{id:'d32',seats:2,dividerAfter:false}]}
     ],
     deskItems: {
-      'd11': [{ studentId: 'stu-seed-01', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.0 } }],
-      'd12': [{ studentId: 'stu-seed-02', attendance: { status: 'present' }, homework: { status: 'graded', score: 8.5 } }],
+      'd11': [{ studentId: 'stu-seed-01', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 } }],
+      'd12': [{ studentId: 'stu-seed-02', attendance: { status: 'present' }, homework: { status: 'submitted', score: 8.5 } }],
       'd22': [{ studentId: 'stu-seed-05', attendance: { status: 'late', lateMinutes: 10 }, homework: { status: 'not_submitted', reason: 'Quên vở', score: null } }]
     },
     checklistSummary: [
@@ -42,8 +42,8 @@ export const seedSessionHistory = [
     ],
     stats: { total: 3, present: 2, late: 1, absent: 0, homeworkDone: 2, testsCollected: 0 },
     studentsSnapshot: [
-      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', studentCode: 'K09.3049', school: 'THPT Việt Đức', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.0 }, testScore: null, note: 'Hăng hái phát biểu' },
-      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', studentCode: '2K9.H4.GIANGNH', school: 'THCS Yên Hòa', attendance: { status: 'present' }, homework: { status: 'graded', score: 8.5 }, testScore: null, note: 'Làm bài cẩn thận' },
+      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', studentCode: 'K09.3049', school: 'THPT Việt Đức', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 }, testScore: null, note: 'Hăng hái phát biểu' },
+      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', studentCode: '2K9.H4.GIANGNH', school: 'THCS Yên Hòa', attendance: { status: 'present' }, homework: { status: 'submitted', score: 8.5 }, testScore: null, note: 'Làm bài cẩn thận' },
       { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', studentCode: null, school: 'THCS Nghĩa Tân', attendance: { status: 'late', lateMinutes: 10, minutesLate: 10 }, homework: { status: 'not_submitted', reason: 'Quên vở', score: null }, testScore: null, note: 'Đi muộn 10p do kẹt xe' }
     ]
   },
@@ -105,7 +105,7 @@ export const seedSessionHistory = [
     studentsSnapshot: [
       { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'present' }, homework: { status: 'not_submitted', score: 7 }, testScore: null, note: 'Đã làm bù BTVN' },
       { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'absent_excused' }, homework: { status: 'uncollected', score: null }, testScore: null, note: 'Xin phép nghỉ ốm' },
-      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'graded', score: 8 }, testScore: null, note: '' }
+      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'submitted', score: 8 }, testScore: null, note: '' }
     ]
   },
   {
@@ -126,9 +126,9 @@ export const seedSessionHistory = [
     finalNote: 'Cả lớp làm bài kiểm tra 15p và thu chấm BTVN.',
     stats: { total: 3, present: 3, late: 0, absent: 0, homeworkDone: 3, testsCollected: 3 },
     studentsSnapshot: [
-      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'present' }, homework: { status: 'graded', score: 8.5 }, testScore: 9, note: '' },
-      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'present' }, homework: { status: 'graded', score: 8 }, testScore: 8.5, note: 'Ghi chép cẩn thận' },
-      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'graded', score: 6.5 }, testScore: 7, note: '' }
+      { studentId: 'stu-seed-01', studentName: 'Nguyễn Minh Quân', attendance: { status: 'present' }, homework: { status: 'submitted', score: 8.5 }, testScore: 9, note: '' },
+      { studentId: 'stu-seed-02', studentName: 'Trần Bảo Ngọc', attendance: { status: 'present' }, homework: { status: 'submitted', score: 8 }, testScore: 8.5, note: 'Ghi chép cẩn thận' },
+      { studentId: 'stu-seed-05', studentName: 'Đặng Tuấn Kiệt', attendance: { status: 'present' }, homework: { status: 'submitted', score: 6.5 }, testScore: 7, note: '' }
     ]
   },
   {
@@ -156,8 +156,8 @@ export const seedSessionHistory = [
       {id:'aisle-2',desks:[{id:'d21',seats:2,dividerAfter:false},{id:'d22',seats:2,dividerAfter:false}]}
     ],
     deskItems: {
-      'd11': [{ studentId: 'stu-seed-03', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.0 } }],
-      'd12': [{ studentId: 'stu-seed-06', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.5 } }]
+      'd11': [{ studentId: 'stu-seed-03', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 } }],
+      'd12': [{ studentId: 'stu-seed-06', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.5 } }]
     },
     checklistSummary: [
       { label: 'Lau bảng', done: true, doneBy: 'Anh Linh' },
@@ -165,8 +165,8 @@ export const seedSessionHistory = [
     ],
     stats: { total: 4, present: 4, late: 0, absent: 0, homeworkDone: 4, testsCollected: 4 },
     studentsSnapshot: [
-      { studentId: 'stu-seed-03', studentName: 'Lê Hoàng Nam', studentCode: 'CONGNT', school: 'THPT Chu Văn An', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.0 }, testScore: 9.0, note: '' },
-      { studentId: 'stu-seed-06', studentName: 'Vũ Hải Yến', studentCode: null, school: 'THPT Chuyên Hà Nội - Amsterdam', attendance: { status: 'present' }, homework: { status: 'graded', score: 9.5 }, testScore: 10, note: 'Làm đúng 100%' }
+      { studentId: 'stu-seed-03', studentName: 'Lê Hoàng Nam', studentCode: 'CONGNT', school: 'THPT Chu Văn An', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.0 }, testScore: 9.0, note: '' },
+      { studentId: 'stu-seed-06', studentName: 'Vũ Hải Yến', studentCode: null, school: 'THPT Chuyên Hà Nội - Amsterdam', attendance: { status: 'present' }, homework: { status: 'submitted', score: 9.5 }, testScore: 10, note: 'Làm đúng 100%' }
     ]
   }
 ];
@@ -581,7 +581,7 @@ export function getStudentClassDeepDive(student, classId, currentRoster = [], st
     const hwStatus = snap?.homework?.status || sn?.homeworkStatus || 'uncollected';
     const hwReason = snap?.homework?.reason || sn?.homeworkReason || '';
     const hwScore = snap?.homework?.score ?? sn?.homeworkScore ?? null;
-    if (hwStatus === 'submitted' || hwStatus === 'graded') hwSubmitted++;
+    if (hwStatus === 'submitted' || hwStatus === 'submitted' || hwStatus === 'submitted' || hwStatus === 'graded') hwSubmitted++;
     else if (hwStatus === 'not_submitted') hwMissing++;
 
     const testScore = snap?.testScore ?? sc?.score ?? null;
@@ -631,7 +631,7 @@ export function getStudentClassDeepDive(student, classId, currentRoster = [], st
   });
 
   const avgScore = scoresInClass.length
-    ? (scoresInClass.reduce((sum, item) => sum + (Number(item.score) || 0), 0) / scoresInClass.length).toFixed(1)
+    ? (scoresInClass.reduce((sum, item) => sum + (Number(item.score) || 0), 0) / scoresInClass.length).toFixed(1).replace('.', ',').replace('.', ',')
     : '—';
 
   return {

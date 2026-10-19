@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Lớp học vui (v3.1) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=3.1" />
+  <link rel="stylesheet" href="/src/styles.css?v=3.2" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.1</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.2</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -220,7 +220,7 @@
             <!-- Search & Filters -->
             <div class="tutoring-filter-bar" style="margin-top:14px; gap:8px;">
               <label class="student-list-search">
-                <input id="master-student-search" type="search" placeholder="Tìm theo tên học sinh, họ đệm, mã HS, trường hoặc SĐT phụ huynh..." autocomplete="off" />
+                <input id="master-student-search" type="search" placeholder="Tìm theo tên học sinh, họ đệm, mã HS hoặc trường học..." autocomplete="off" />
               </label>
               <select id="master-grade-filter" aria-label="Lọc theo năm sinh" style="min-width:140px;">
                 <option value="all">Tất cả năm sinh</option>
@@ -242,6 +242,7 @@
                 </button>
                 <div class="excel-status-filter-dropdown" id="master-status-filter-dropdown" hidden></div>
               </div>
+              <button type="button" class="outline-button" id="customize-master-columns-btn" title="Đổi thứ tự cột hiển thị và xuất file">⚙ Đổi thứ tự cột</button>
             </div>
 
             <!-- Floating / Top Bulk Actions Bar -->
@@ -269,7 +270,7 @@
                     <th class="sortable-th" data-master-sort="family">Họ đệm <span class="sort-icon">⇅</span></th>
                     <th class="sortable-th" data-master-sort="given">Tên <span class="sort-icon">⇅</span></th>
                     <th class="sortable-th" data-master-sort="school">Trường học <span class="sort-icon">⇅</span></th>
-                    <th class="sortable-th" data-master-sort="parent">Phụ huynh & SĐT <span class="sort-icon">⇅</span></th>
+                    <th class="sortable-th" data-master-sort="parent">Phụ huynh <span class="sort-icon">⇅</span></th>
                     <th class="sortable-th" data-master-sort="status">Trạng thái <span class="sort-icon">⇅</span></th>
                     <th class="sortable-th" data-master-sort="classes">Các lớp theo học <span class="sort-icon">⇅</span></th>
                     <th style="text-align:center;">Hành động</th>
@@ -630,7 +631,7 @@
             </div>
             <div class="banner-progress homework-progress">
               <strong id="homework-count">0</strong>
-              <small id="homework-count-detail">BTVN đã thu · 0 không nộp · 0 đã chấm</small>
+              <small id="homework-count-detail">0 đã nộp · 0 chưa nộp · 0 chưa thu</small>
             </div>
             <div class="banner-no-hw-box">
               <label class="no-hw-toggle" title="Đánh dấu ca này không có BTVN (ví dụ buổi thi/ôn tập). Tự động nhận diện từ buổi trước và có thể sửa lại.">
@@ -690,9 +691,9 @@
             </div>
             <div class="seat-legend homework-legend">
               <span><i class="legend-icon">·</i> Chưa thu</span>
-              <span><i class="legend-icon absent">×</i> Không nộp</span>
-              <span><i class="legend-icon present">✓</i> Đã thu</span>
-              <span><i class="legend-icon graded">8</i> Đã chấm (điểm)</span>
+              <span><i class="legend-icon absent">×</i> Chưa nộp</span>
+              <span><i class="legend-icon present">✓</i> Đã nộp</span>
+              <span><i class="legend-icon graded">7,5</i> Có điểm BTVN</span>
               <span><i class="legend-icon makeup">BÙ</i> Học sinh học bù</span>
               <span><i class="legend-icon divider-mark">━</i> Vạch phân cách bàn</span>
               <span><i class="legend-icon warn-uncollected">!</i> Quên thu BTVN</span>
@@ -731,11 +732,12 @@
             </label>
             <select id="scores-tab-filter" aria-label="Lọc danh sách nhập điểm">
               <option value="all">Tất cả học sinh (Sắp xếp theo 3 nhóm ưu tiên)</option>
-              <option value="group1">Nhóm 1: Đã điểm danh + Đã thu BTVN</option>
-              <option value="group2">Nhóm 2: Đã điểm danh - Chưa thu / Không nộp BTVN</option>
+              <option value="group1">Nhóm 1: Đã điểm danh + Đã nộp BTVN</option>
+              <option value="group2">Nhóm 2: Đã điểm danh - Chưa thu / Chưa nộp BTVN</option>
               <option value="group3">Nhóm 3: Chưa điểm danh / Vắng mặt</option>
               <option value="makeup">Chỉ học sinh Học bù</option>
             </select>
+            <button type="button" class="outline-button" id="customize-scores-columns-btn" title="Đổi thứ tự cột bảng Nhập điểm (VD: đưa cột Điểm BTVN/Test sát cạnh cột Tên)">⚙ Đổi thứ tự cột</button>
           </div>
 
           <div class="attendance-table-wrap">
@@ -936,9 +938,10 @@
               <option value="late">Đi muộn</option>
               <option value="absent">Vắng mặt</option>
               <option value="unmarked">Chưa điểm danh</option>
-              <option value="homework">Không nộp BTVN</option>
+              <option value="homework">Chưa nộp BTVN</option>
               <option value="makeup">Học bù trong buổi</option>
             </select>
+            <button type="button" class="outline-button" id="customize-live-columns-btn" title="Đổi thứ tự cột hiển thị và xuất file (VD: đặt cột Điểm cạnh cột Tên)">⚙ Đổi thứ tự cột</button>
           </div>
 
           <section class="student-roster-section">
@@ -1126,8 +1129,8 @@
           <label class="field-label">Trường
             <input id="new-roster-student-school" placeholder="THCS Cầu Giấy" />
           </label>
-          <label class="field-label">Số ĐT phụ huynh
-            <input id="new-roster-parent-phone" placeholder="0987654321" />
+          <label class="field-label" hidden style="display:none!important;">Số ĐT phụ huynh
+            <input id="new-roster-parent-phone" placeholder="" />
           </label>
           <label class="field-label">Mã học sinh
             <input id="new-roster-student-code" placeholder="HS001" />
@@ -1148,7 +1151,6 @@
               <th>Mã HS</th>
               <th>Trường</th>
               <th>Phụ huynh</th>
-              <th>SĐT Phụ huynh</th>
               <th>Hành động</th>
             </tr>
           </thead>
@@ -1296,7 +1298,7 @@
           <textarea id="tutoring-evaluation" rows="2" placeholder="Ghi nhận thái độ học tập, điểm bài kiểm tra nhanh hoặc nhắc nhở..."></textarea>
         </label>
         <label class="field-label">Điểm số bài test nếu có (0-10)
-          <input id="tutoring-score" type="number" min="0" max="10" step="0.25" placeholder="Để trống nếu không chấm điểm" />
+          <input id="tutoring-score" type="text" inputmode="decimal" placeholder="VD: 8,5 (Để trống nếu không chấm điểm)" />
         </label>
       </div>
 
@@ -1329,8 +1331,74 @@
         Chưa thực hiện đồng bộ.
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+      <div style="margin-top:16px; padding-top:14px; border-top:1.5px dashed #cfe0d2;">
+        <div class="eyebrow" style="color:#166534;">KHO ẢNH CHÂN DUNG FULL-SIZE TRÊN GOOGLE DRIVE</div>
+        <h3 style="margin:4px 0 6px; font-size:16px; color:#1e3a29;">Kết nối Google Drive tự động lưu & đổi tên ảnh học sinh</h3>
+        <p class="dialog-hint" style="margin-bottom:10px;">
+          Ảnh tải lên được đặt tên tự động theo quy tắc <code>{Mã_HS}_{Họ_Tên}_{Lớp}_{ID4}.jpg</code> (hoặc <code>CHUAMA_...</code> nếu chưa có mã HS). Khi đổi tên hoặc cập nhật mã HS trên web, file trên Drive tự động đổi tên theo mà vẫn giữ nguyên link cũ.
+        </p>
+        <label class="field-label">Google Apps Script Web App URL (Dùng chung cho Ảnh Drive & Sheets):
+          <input id="drive-script-url-input" placeholder="https://script.google.com/macros/s/.../exec" />
+        </label>
+        <label class="field-label">ID Thư mục Google Drive chứa ảnh học sinh (Không bắt buộc):
+          <input id="drive-folder-id-input" placeholder="Ví dụ: 1aBcDeFgHiJkLmNoPqRsTuVwXyZ (Để trống sẽ tự tạo thư mục LopHocVui_AnhHocSinh)" />
+        </label>
+        <details style="margin-top:8px; background:#f8fbf9; border:1px solid #d5e4d8; border-radius:8px; padding:8px 12px; font-size:13px;">
+          <summary style="cursor:pointer; font-weight:700; color:#1f5f33;">📋 Xem mã Google Apps Script mẫu (Copy dán vào script.google.com)</summary>
+          <pre style="margin:8px 0 0; padding:10px; background:#1e293b; color:#f8fafc; border-radius:6px; overflow-x:auto; font-size:12px; line-height:1.45;">function doPost(e) {
+  var data = JSON.parse(e.postData.contents || '{}');
+  if (data.action === 'uploadStudentPhoto') {
+    var folder = data.folderId ? DriveApp.getFolderById(data.folderId) : getOrCreateFolder_('LopHocVui_AnhHocSinh');
+    if (data.oldFileId) { try { DriveApp.getFileById(data.oldFileId).setTrashed(true); } catch (err) {} }
+    var parts = String(data.dataUrl || '').split(',');
+    var mime = (parts[0].match(/:(.*?);/) || [,'image/jpeg'])[1];
+    var bytes = Utilities.base64Decode(parts[1] || '');
+    var file = folder.createFile(Utilities.newBlob(bytes, mime, data.fileName || 'student.jpg'));
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return jsonOut_({ ok: true, fileId: file.getId(), fileName: file.getName() });
+  }
+  if (data.action === 'renameStudentPhoto' && data.fileId && data.newFileName) {
+    var f = DriveApp.getFileById(data.fileId);
+    f.setName(data.newFileName);
+    return jsonOut_({ ok: true, fileId: f.getId(), fileName: f.getName() });
+  }
+  return jsonOut_({ ok: false });
+}
+function getOrCreateFolder_(name) {
+  var it = DriveApp.getFoldersByName(name);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(name);
+}
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}</pre>
+        </details>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <button type="button" class="outline-button" id="save-drive-photo-config-btn">Lưu cấu hình Google Drive</button>
         <button type="button" class="primary-button" id="trigger-sheets-sync-btn">Đồng bộ ngay bây giờ</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Hộp thoại Tùy chỉnh & Đổi thứ tự cột khi Hiển thị / Xuất file (#column-order-dialog) -->
+  <dialog id="column-order-dialog" class="class-config-dialog" style="width:min(540px, calc(100vw - 24px));">
+    <div class="dialog-form">
+      <button type="button" class="close-button" id="close-column-order-dialog" aria-label="Đóng">×</button>
+      <div class="eyebrow">TÙY CHỈNH BẢNG & XUẤT FILE</div>
+      <h2 id="column-order-dialog-title">Đổi thứ tự cột hiển thị & xuất file</h2>
+      <p class="dialog-hint">Sắp xếp lại vị trí các cột (ví dụ: đặt cột <strong>Điểm số</strong> và <strong>BTVN</strong> ngay sát cạnh cột <strong>Tên</strong> để dễ nhìn và nhập nhanh). Thứ tự này được áp dụng cho cả bảng hiển thị lẫn khi Xuất file Excel/CSV.</p>
+
+      <div class="column-preset-buttons" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+        <button type="button" class="outline-button" id="col-preset-score-next-name" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">⚡ Đặt cột Điểm & BTVN sát cạnh Tên</button>
+        <button type="button" class="outline-button" id="col-preset-reset-default">🔄 Khôi phục thứ tự mặc định</button>
+      </div>
+
+      <div id="column-order-list" class="column-order-list" style="display:grid; gap:6px; max-height:52vh; overflow-y:auto;"></div>
+
+      <div class="class-config-actions" style="margin-top:16px;">
+        <button type="button" class="outline-button" id="cancel-column-order-btn">Đóng</button>
+        <button type="button" class="primary-button" id="save-column-order-btn">✓ Áp dụng thứ tự cột</button>
       </div>
     </div>
   </dialog>
@@ -1510,6 +1578,7 @@
 
     <div class="attendance-export-actions">
       <button type="button" class="outline-button" id="copy-teacher-report-btn" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">Sao chép báo cáo gửi GV (Zalo)</button>
+      <button type="button" class="outline-button" id="customize-report-columns-btn">⚙ Đổi cột hiển thị / Xuất file</button>
       <button type="button" class="outline-button" id="export-csv-button">Xuất file Excel (CSV)</button>
       <button type="button" class="primary-button" id="print-attendance-export">In / Lưu PDF (A4)</button>
     </div>
@@ -1547,17 +1616,16 @@
           <div class="eyebrow">TRẠNG THÁI BTVN</div>
           <div class="homework-choice" role="group" aria-label="Chọn trạng thái BTVN">
             <button type="button" data-homework-choice="uncollected">Chưa thu</button>
-            <button type="button" data-homework-choice="submitted">Đã thu</button>
-            <button type="button" data-homework-choice="not_submitted">Không nộp</button>
+            <button type="button" data-homework-choice="submitted">Đã nộp</button>
+            <button type="button" data-homework-choice="not_submitted">Chưa nộp</button>
           </div>
           <select id="homework-status" class="visually-hidden" aria-hidden="true" tabindex="-1">
             <option value="uncollected">Chưa thu</option>
-            <option value="submitted">Đã thu</option>
-            <option value="not_submitted">Không nộp</option>
-            <option value="graded">Đã chấm điểm</option>
+            <option value="submitted">Đã nộp</option>
+            <option value="not_submitted">Chưa nộp</option>
           </select>
-          <label class="field-label" id="grade-field">Điểm BTVN (0 – 10)
-            <input id="homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm BTVN trực tiếp (nếu đã chấm)..." />
+          <label class="field-label" id="grade-field">Ghi điểm BTVN (0 – 10, dùng dấu phẩy VD: 7,5)
+            <input id="homework-score" type="text" inputmode="decimal" placeholder="Nhập điểm BTVN (VD: 7,5 hoặc 8)..." />
           </label>
 
           <div id="no-homework-fields" hidden>
@@ -1650,8 +1718,8 @@
               <input type="checkbox" id="save-arrival-time" checked /> Lưu giờ học sinh đến lớp
             </label>
 
-            <label class="field-label" id="arrival-time-field">Giờ đến (làm tròn 5p)
-              <input type="time" id="arrival-time" step="300" />
+            <label class="field-label" id="arrival-time-field">Giờ học sinh đến lớp (chính xác từng phút)
+              <input type="time" id="arrival-time" step="60" />
             </label>
 
             <div id="late-calc-box" class="late-calc-box">
@@ -1673,17 +1741,16 @@
           <div class="eyebrow">TRẠNG THÁI BTVN</div>
           <div class="homework-choice" role="group" aria-label="Chọn trạng thái BTVN đi muộn">
             <button type="button" data-late-homework-choice="uncollected">Chưa thu</button>
-            <button type="button" data-late-homework-choice="submitted">Đã thu</button>
-            <button type="button" data-late-homework-choice="not_submitted">Không nộp</button>
+            <button type="button" data-late-homework-choice="submitted">Đã nộp</button>
+            <button type="button" data-late-homework-choice="not_submitted">Chưa nộp</button>
           </div>
           <select id="late-homework-status" class="visually-hidden" aria-hidden="true" tabindex="-1">
             <option value="uncollected">Chưa thu</option>
-            <option value="submitted">Đã thu</option>
-            <option value="not_submitted">Không nộp</option>
-            <option value="graded">Đã chấm điểm</option>
+            <option value="submitted">Đã nộp</option>
+            <option value="not_submitted">Chưa nộp</option>
           </select>
-          <label class="field-label" id="late-grade-field">Điểm BTVN (0 – 10)
-            <input id="late-homework-score" type="number" min="0" max="10" step="0.25" placeholder="Nhập điểm BTVN trực tiếp (nếu đã chấm)..." />
+          <label class="field-label" id="late-grade-field">Ghi điểm BTVN (0 – 10, dùng dấu phẩy VD: 7,5)
+            <input id="late-homework-score" type="text" inputmode="decimal" placeholder="Nhập điểm BTVN (VD: 7,5 hoặc 8)..." />
           </label>
           <div id="late-no-homework-fields" hidden>
             <label class="field-label">Lý do
@@ -2101,7 +2168,7 @@
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.1</span></strong>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.2</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2274,6 +2341,6 @@
   </div>
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=3.1"></script>
+  <script type="module" src="/src/app.js?v=3.2"></script>
 </body>
 </html>
