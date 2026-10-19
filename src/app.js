@@ -1983,8 +1983,18 @@ function renderStudentList(){
   const late=allSessionRecords.filter(r=>r.attendance?.status==='late').length;
   const absent=records.filter(r=>r.attendance?.status==='absent'||r.attendance?.status==='absent_excused'||r.attendance?.status==='absent_unexcused').length;
   const noHomework=allSessionRecords.filter(r=>r.homework.status==='not_submitted').length;
+  const attendedRegularCount=records.filter(r=>r.attendance?.status==='present'||r.attendance?.status==='late').length;
+  const attendedTotalCount=present+late;
 
-  $('#session-student-total').textContent=`${records.length} học sinh${makeupRecords.length ? ` (+${makeupRecords.length} học bù)` : ''}`;
+  $('#session-student-total').textContent=`Đã điểm danh ${attendedRegularCount}/${records.length} học sinh trong danh sách${makeupRecords.length ? ` (+${makeupRecords.length} học bù)` : ''}`;
+  if ($('#list-roster-attendance-count')) {
+    $('#list-roster-attendance-count').textContent = `${attendedRegularCount} / ${records.length}`;
+  }
+  if ($('#list-roster-attendance-sub')) {
+    $('#list-roster-attendance-sub').textContent = makeupRecords.length
+      ? `Trong DS lớp (+${makeupRecords.length} học bù · Tổng có mặt: ${attendedTotalCount})`
+      : 'Đã điểm danh / Sĩ số danh sách lớp';
+  }
   if ($('#list-present-count')) $('#list-present-count').textContent=present;
   if ($('#list-late-count')) $('#list-late-count').textContent=late;
   if ($('#list-absent-count')) $('#list-absent-count').textContent=absent;
@@ -2347,7 +2357,7 @@ function setGeneralStudentProfileEditMode(editable = false) {
   if (actionsBar) {
     actionsBar.hidden = !isGeneralProfileEditMode;
   }
-  dlg.querySelectorAll('.profile-edit-grid input, .profile-edit-grid textarea, .profile-edit-grid select, #profile-upload-portrait-label, #profile-remove-photo-btn').forEach(el => {
+  dlg.querySelectorAll('.profile-edit-grid input, .profile-edit-grid textarea, .profile-edit-grid select').forEach(el => {
     if (el.tagName === 'LABEL') {
       el.hidden = !isGeneralProfileEditMode;
     } else {
@@ -2372,26 +2382,35 @@ function openStudentProfile(id, origin = null){
   const photo = student.photoURL;
   const officeNoteVal = student.officeNotes ?? '';
 
+  const initialChar = escapeHtml((givenName || student.name || 'H').charAt(0).toUpperCase());
+  const stEnrollment = (student.enrollmentStatus && String(student.enrollmentStatus).trim()) ? String(student.enrollmentStatus).trim() : 'Học';
   const portraitBlock = photo ? `
-    <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
-      <button type="button" id="student-photo-expand" class="profile-avatar-button" style="border:none; background:none; padding:0; cursor:pointer;" aria-label="Mở ảnh ${escapeHtml(student.name)} cỡ lớn">
-        <img class="profile-portrait" id="profile-portrait-preview" src="${escapeHtml(photo)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" />
+    <div class="student-portrait-showcase">
+      <button type="button" id="student-photo-expand" class="student-portrait-frame-btn" title="Bấm để phóng to ảnh chân dung ${escapeHtml(student.name)}" aria-label="Mở ảnh ${escapeHtml(student.name)} cỡ lớn">
+        <img class="profile-portrait profile-portrait-lg" id="profile-portrait-preview" src="${escapeHtml(photo)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" />
+        <span class="portrait-zoom-hint">🔍 Phóng to</span>
       </button>
-      <div style="display:flex; gap:4px; margin-top:2px;">
-        <label id="profile-upload-portrait-label" class="primary-button" style="padding:4px 8px; font-size:13.5px; cursor:pointer; font-weight:600;" hidden>
-          Đổi ảnh
+      <div class="student-portrait-actions">
+        <label id="profile-upload-portrait-label" class="outline-button" style="padding:5px 10px; font-size:13px; cursor:pointer; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
+          📷 Đổi ảnh
           <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
         </label>
-        <button type="button" id="profile-remove-photo-btn" class="outline-button text-danger" style="padding:7px 12px; font-size:13.5px;" hidden>Xóa</button>
+        <button type="button" id="profile-remove-photo-btn" class="outline-button text-danger" style="padding:5px 10px; font-size:13px;">Xóa</button>
       </div>
     </div>
   ` : `
-    <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
-      <div id="profile-portrait-preview" class="profile-portrait profile-portrait-placeholder">${escapeHtml((givenName || student.name || 'H').charAt(0).toUpperCase())}</div>
-      <label id="profile-upload-portrait-label" class="primary-button" style="padding:5px 9px; font-size:14px; cursor:pointer; font-weight:600;" hidden>
-        Tải ảnh chân dung
-        <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
-      </label>
+    <div class="student-portrait-showcase">
+      <div id="profile-portrait-preview" class="profile-portrait profile-portrait-lg profile-portrait-placeholder">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.75;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg>
+        <span class="portrait-placeholder-initial">${initialChar}</span>
+        <small class="portrait-placeholder-caption">Chưa có ảnh</small>
+      </div>
+      <div class="student-portrait-actions">
+        <label id="profile-upload-portrait-label" class="primary-button" style="padding:6px 12px; font-size:13px; cursor:pointer; font-weight:700; width:100%; text-align:center;">
+          📷 Tải ảnh chân dung
+          <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
+        </label>
+      </div>
     </div>
   `;
 
@@ -2402,14 +2421,24 @@ function openStudentProfile(id, origin = null){
 
   let enrolledClassIds = [...(student.classIds || [])];
 
-  // Single unified layout without duplicating "Các lớp đang theo học" or "Tag"
+  // Single unified layout with prominent large portrait showcase on the left
   $('#student-profile-content').innerHTML=`
-    <div class="profile-header">
+    <div class="profile-header student-profile-hero-card">
       ${portraitBlock}
-      <div>
-        <strong>${escapeHtml(student.name)}</strong>
-        <small>${escapeHtml(student.studentType==='makeup'?`Học sinh học bù từ ${student.sourceClassName||'lớp chưa rõ'}`:student.school||'Chưa cập nhật trường học')}</small>
-        <small>Mã HS: <strong>${escapeHtml(student.studentCode || '—')}</strong></small>
+      <div class="student-hero-info">
+        <div class="student-hero-title-row">
+          <strong class="student-hero-name">${escapeHtml(student.name)}</strong>
+          <span class="enrollment-status-pill status-text-hoc">${escapeHtml(stEnrollment)}</span>
+        </div>
+        <div class="student-hero-badges">
+          <span class="room-chip" style="background:#eaf5ec; color:#1f5f33; font-weight:700;">Mã HS: ${escapeHtml(student.studentCode || '—')}</span>
+          <span class="room-chip">${escapeHtml(student.studentType==='makeup'?`Học bù từ: ${student.sourceClassName||'lớp chưa rõ'}`:student.school||'Chưa cập nhật trường học')}</span>
+        </div>
+        <div class="student-hero-contact-box">
+          <div><span>Phụ huynh:</span> <strong>${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong></div>
+          <div><span>SĐT liên hệ:</span> <strong>${escapeHtml(student.parentContact?.phone || 'Chưa cập nhật')}</strong></div>
+          ${officeNoteVal ? `<div class="student-hero-office-note"><span>Ghi chú VP:</span> <em>${escapeHtml(officeNoteVal)}</em></div>` : ''}
+        </div>
       </div>
     </div>
     <div class="profile-edit-grid">
@@ -2574,7 +2603,6 @@ function openStudentProfile(id, origin = null){
   const removePhotoBtn = $('#profile-remove-photo-btn');
   if (removePhotoBtn) {
     removePhotoBtn.onclick = () => {
-      if (!isGeneralProfileEditMode) return;
       if (!confirm('Bạn có chắc muốn xóa ảnh chân dung này?')) return;
       student.photoURL = null;
       saveStudentRecords(students, makeupStudents);
@@ -2586,7 +2614,8 @@ function openStudentProfile(id, origin = null){
   }
 
   $('#student-profile-content').querySelector('#student-photo-expand')?.addEventListener('click',()=>{
-    const cleanUrl=safeHttpUrl($('#profile-photo-url')?.value||student.photoURL||'');
+    const rawUrl = String($('#profile-photo-url')?.value || student.photoURL || '').trim();
+    const cleanUrl = rawUrl.startsWith('data:image/') ? rawUrl : safeHttpUrl(rawUrl);
     if(!cleanUrl)return;
     $('#student-photo-full').src=cleanUrl;
     $('#student-photo-caption').textContent=student.name;
@@ -2759,8 +2788,18 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
 
   $('#student-session-profile-content').innerHTML = `
     <div class="session-profile-general-box">
-      <div class="profile-portrait profile-portrait-placeholder" style="width:52px; height:52px; font-size:20px; flex-shrink:0;">
-        ${student.photoURL ? `<img src="${escapeHtml(student.photoURL)}" alt="${escapeHtml(student.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : escapeHtml(initial)}
+      <div class="student-portrait-showcase student-portrait-showcase-sm">
+        ${student.photoURL ? `
+          <button type="button" class="student-portrait-frame-btn" id="sess-prof-photo-expand" title="Bấm để phóng to ảnh chân dung">
+            <img src="${escapeHtml(student.photoURL)}" alt="${escapeHtml(student.name)}" class="profile-portrait profile-portrait-md" />
+            <span class="portrait-zoom-hint">🔍 Phóng to</span>
+          </button>
+        ` : `
+          <div class="profile-portrait profile-portrait-md profile-portrait-placeholder">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.75;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg>
+            <span class="portrait-placeholder-initial" style="font-size:18px;">${escapeHtml(initial)}</span>
+          </div>
+        `}
       </div>
       <div style="flex:1; min-width:0;">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -2940,6 +2979,12 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
     }
   });
 
+  $('#sess-prof-photo-expand')?.addEventListener('click', () => {
+    if (!student.photoURL) return;
+    $('#student-photo-full').src = student.photoURL;
+    $('#student-photo-caption').textContent = student.name;
+    $('#student-photo-dialog')?.showModal();
+  });
   if ($('#close-student-session-profile')) {
     $('#close-student-session-profile').onclick = () => dlg.close();
   }
@@ -3082,22 +3127,19 @@ function render(){
   const homeworkCounts={uncollected:0,not_submitted:0,submitted:0,graded:0};named.forEach(({entry})=>{const status=(entry.homework||studentById(entry.studentId)?.homework)?.status||'uncollected';homeworkCounts[status]=(homeworkCounts[status]||0)+1;});
   const rosterList = classStudents();
   const rosterIds = new Set(rosterList.map(s => s.id));
-  const rosterTotal = rosterList.length;
-  const extraMakeupIds = new Set([
-    ...named.map(x => x.entry.studentId).filter(id => id && !rosterIds.has(id)),
-    ...lateQueue.filter(id => id && !rosterIds.has(id))
-  ]);
-  const makeupInSessionCount = extraMakeupIds.size;
-  const effectiveSessionTotal = rosterTotal + makeupInSessionCount;
-  const attendanceDenominator = effectiveSessionTotal > 0 ? effectiveSessionTotal : named.length;
-  $('#attendance-count').textContent=`${attended} / ${attendanceDenominator}`;
+  const makeupOnMapCount = new Set(named.map(x => x.entry.studentId).filter(id => id && !rosterIds.has(id))).size;
+  const presentOnMapCount = occupants.length;
+  const unmarkedOnMapCount = Math.max(0, presentOnMapCount - attended);
+  $('#attendance-count').textContent=`${attended} / ${presentOnMapCount}`;
   const countSub = $('#attendance-count-sub');
   if (countSub) {
-    countSub.textContent = makeupInSessionCount > 0
-      ? `đã điểm danh · ${named.length}/${attendanceDenominator} vào chỗ (sĩ số ${rosterTotal} + ${makeupInSessionCount} bù)`
-      : `đã điểm danh · ${named.length}/${rosterTotal} vào chỗ (sĩ số ${rosterTotal})`;
+    if (unmarkedOnMapCount > 0) {
+      countSub.textContent = `đã điểm danh / có mặt trên sơ đồ · còn ${unmarkedOnMapCount} chỗ chưa điểm danh${makeupOnMapCount > 0 ? ` (+${makeupOnMapCount} học bù)` : ''}`;
+    } else {
+      countSub.textContent = `đã điểm danh / có mặt trên sơ đồ${makeupOnMapCount > 0 ? ` (gồm ${makeupOnMapCount} học bù)` : ''}`;
+    }
   }
-  $('#remaining-count').textContent=`${Math.max(0, named.length - attended)} học sinh vào chỗ chưa điểm danh`;
+  $('#remaining-count').textContent=`${unmarkedOnMapCount} học sinh trên sơ đồ chưa điểm danh (Đã điểm danh ${attended}/${presentOnMapCount} trên sơ đồ)`;
   const roomTplPill = $('#room-template-pill'); if (roomTplPill) roomTplPill.textContent = configClass?.room || 'Phòng học';
   const rosterListForAuto = classStudents();
   const allRosterMarked = rosterListForAuto.length > 0 && rosterListForAuto.every(stu => {
@@ -3946,6 +3988,8 @@ function syncLiveSessionData() {
       lessonTitle: checklist?.lessonTitle || '',
       sessionNote: checklist?.classNote || '',
       homeworkAssignment: checklist?.homeworkAssignment || '',
+      homeworkLink: checklist?.homeworkLink || '',
+      notebookLink: checklist?.notebookLink || '',
       checklistSummary,
       layout,
       deskItems,
@@ -5200,7 +5244,7 @@ function getSeatingSnapshotData() {
     ...lateQueue.filter(id => id && !rosterIds.has(id))
   ]);
   const makeupCount = extraMakeupIds.size;
-  const totalExpected = (rosterTotal + makeupCount) || named.length;
+  const totalExpected = occupants.length;
 
   let presentCount = 0;
   let lateCount = 0;

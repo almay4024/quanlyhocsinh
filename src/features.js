@@ -1387,8 +1387,22 @@ export function setupFeatures(ctx) {
         const lowest = Math.min(...[hwScore, testScore].filter(x => x !== null && x !== undefined));
         return lowest < 7.0 && lowest >= 0;
       });
-      const lessonTitle = $('#lesson-title')?.value.trim() || 'Bài học hôm nay';
-      const sessionNote = $('#session-note')?.value.trim() || '';
+      let savedChk = {};
+      try {
+        savedChk = JSON.parse(localStorage.getItem(`lopvui.checklist.v1.${currentClass.id}.${date}`) || '{}') || {};
+      } catch {}
+      const histSession = getSessionRecord(currentClass.id, date) || {};
+      const lessonTitle = $('#lesson-title')?.value?.trim() || savedChk.lessonTitle || histSession.lessonTitle || 'Bài học hôm nay';
+      const sessionNote = $('#session-note')?.value?.trim() || savedChk.classNote || histSession.finalNote || '';
+      const homeworkAssignment = $('#homework-assignment')?.value?.trim() || savedChk.homeworkAssignment || histSession.homeworkAssignment || '';
+      const homeworkLink = $('#homework-link')?.value?.trim() || savedChk.homeworkLink || histSession.homeworkLink || '';
+      const notebookLink = $('#notebook-link')?.value?.trim() || savedChk.notebookLink || histSession.notebookLink || '';
+      const isNoHwSessionFlag = isNoHomeworkSession();
+      const submittedHWCount = roster.filter(s => {
+        const seated = entries.find(p => p.entry.studentId === s.id);
+        const st = seated?.entry.homework?.status || s.homework?.status;
+        return st === 'submitted' || st === 'graded';
+      }).length;
 
       container.innerHTML = `
         <div class="attendance-report-heading" style="background:#f8faf8; border:1px solid #dce5dd; border-radius:8px; padding:12px 14px; margin-bottom:12px;">
@@ -1401,6 +1415,24 @@ export function setupFeatures(ctx) {
             <div>Ngày: <strong>${escapeHtml(date)}</strong> (${escapeHtml(currentClass.startTime)}–${escapeHtml(currentClass.endTime)})</div>
             <div>GV: <strong>${escapeHtml(currentClass.teacherName)}</strong> · TA: <strong>${escapeHtml(currentClass.assistantName)}</strong></div>
           </div>
+        </div>
+
+        <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 14px; margin-bottom:14px; font-size:14px; color:#14532d;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
+            <strong style="font-size:14.5px; color:#166534;">📚 Bài tập về nhà (BTVN) & Tài liệu buổi học:</strong>
+            <span class="room-chip" style="background:#dcfce7; color:#166534; font-weight:700;">
+              ${isNoHwSessionFlag ? 'Ca này không thu BTVN' : `Đã thu/chấm BTVN: ${submittedHWCount} HS · Không nộp: ${missingHW.length} HS`}
+            </span>
+          </div>
+          <div style="margin-top:4px; line-height:1.5;">
+            <strong>Nội dung BTVN giao về nhà:</strong> ${homeworkAssignment ? `<span style="white-space:pre-wrap;">${escapeHtml(homeworkAssignment)}</span>` : '<em style="color:#4b5563;">Chưa ghi nội dung BTVN giao về nhà</em>'}
+          </div>
+          ${(homeworkLink || notebookLink) ? `
+            <div style="display:flex; flex-wrap:wrap; gap:14px; margin-top:8px; padding-top:8px; border-top:1px dashed #86efac;">
+              ${homeworkLink ? `<div><strong>🔗 Link phiếu BTVN:</strong> <a href="${escapeHtml(homeworkLink)}" target="_blank" rel="noopener noreferrer" style="color:#15803d; font-weight:700; text-decoration:underline; word-break:break-all;">${escapeHtml(homeworkLink)} ↗</a></div>` : ''}
+              ${notebookLink ? `<div><strong>📓 Link vở ghi / Bài giảng:</strong> <a href="${escapeHtml(notebookLink)}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8; font-weight:700; text-decoration:underline; word-break:break-all;">${escapeHtml(notebookLink)} ↗</a></div>` : ''}
+            </div>
+          ` : ''}
         </div>
 
         <div class="class-metrics-summary" style="margin-bottom:14px;">
@@ -3110,24 +3142,34 @@ export function setupFeatures(ctx) {
         </div>
       ` : '<div class="menu-empty" style="margin:12px 0; padding:12px;">Học sinh chưa được xếp vào lớp nào.</div>';
 
+      const initialChar = escapeHtml((student.givenName || student.name || 'H').trim().split(/\s+/).slice(-1)[0][0]?.toUpperCase() || 'H');
       const portraitHtml = student.photoURL ? `
-        <div style="display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0;">
-          <img src="${escapeHtml(student.photoURL)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" class="profile-portrait" id="class-profile-portrait-img" />
-          <div style="display:flex; gap:3px;">
-            <label class="outline-button" style="padding:3px 7px; font-size:13.5px; cursor:pointer; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
-               Đổi ảnh
+        <div class="student-portrait-showcase">
+          <button type="button" id="class-profile-photo-expand" class="student-portrait-frame-btn" title="Bấm để phóng to ảnh chân dung ${escapeHtml(student.name)}">
+            <img src="${escapeHtml(student.photoURL)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" class="profile-portrait profile-portrait-lg" id="class-profile-portrait-img" />
+            <span class="portrait-zoom-hint">🔍 Phóng to</span>
+          </button>
+          <div class="student-portrait-actions">
+            <label class="outline-button" style="padding:5px 10px; font-size:13px; cursor:pointer; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
+              📷 Đổi ảnh
               <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
             </label>
-            <button type="button" id="class-profile-remove-photo-btn" class="text-danger" style="padding:6px 10px; font-size:13.5px; background:none; border:none; cursor:pointer;">Xóa</button>
+            <button type="button" id="class-profile-remove-photo-btn" class="outline-button text-danger" style="padding:5px 10px; font-size:13px;">Xóa</button>
           </div>
         </div>
       ` : `
-        <div style="display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0;">
-          <div class="profile-portrait profile-portrait-placeholder"></div>
-          <label class="primary-button" style="padding:4px 8px; font-size:13.5px; cursor:pointer; font-weight:600;">
-             Tải ảnh chân dung
-            <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
-          </label>
+        <div class="student-portrait-showcase">
+          <div class="profile-portrait profile-portrait-lg profile-portrait-placeholder">
+            <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.75;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg>
+            <span class="portrait-placeholder-initial">${initialChar}</span>
+            <small class="portrait-placeholder-caption">Chưa có ảnh</small>
+          </div>
+          <div class="student-portrait-actions">
+            <label class="primary-button" style="padding:6px 12px; font-size:13px; cursor:pointer; font-weight:700; width:100%; text-align:center;">
+              📷 Tải ảnh chân dung
+              <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
+            </label>
+          </div>
         </div>
       `;
 
@@ -3407,13 +3449,22 @@ export function setupFeatures(ctx) {
       }
 
       const html = `
-        <div class="student-profile-header" style="align-items:flex-start; gap:16px;">
+        <div class="student-profile-header student-profile-hero-card">
           ${portraitHtml}
-          <div style="flex:1; min-width:0;">
-            <h3 style="margin:0 0 4px; font:800 16.5px Manrope,sans-serif; color:#233d31;">${escapeHtml(student.name)} ${student.isNew ? '<span class="student-tag new-tag">MỚI</span>' : ''}</h3>
-            <p style="margin:2px 0; font-size:14px; color:#5c6b60;">Mã HS: <strong>${escapeHtml(student.studentCode || '—')}</strong> · Trường: <strong>${escapeHtml(student.school || '—')}</strong></p>
-            <p style="margin:2px 0; font-size:14px; color:#5c6b60;">Phụ huynh: <strong>${escapeHtml(student.parentContact?.name || '—')}</strong> · SĐT: <strong>${escapeHtml(student.parentContact?.phone || '—')}</strong></p>
-            ${student.officeNotes ? `<p style="margin:2px 0; font-size:13.5px; color:#4b5563;">Ghi chú văn phòng: <em>${escapeHtml(student.officeNotes)}</em></p>` : ''}
+          <div class="student-hero-info">
+            <div class="student-hero-title-row">
+              <h3 class="student-hero-name" style="margin:0;">${escapeHtml(student.name)} ${student.isNew ? '<span class="student-tag new-tag">MỚI</span>' : ''}</h3>
+              <span class="enrollment-status-pill status-text-hoc">${escapeHtml(student.enrollmentStatus || 'Học')}</span>
+            </div>
+            <div class="student-hero-badges">
+              <span class="room-chip" style="background:#eaf5ec; color:#1f5f33; font-weight:700;">Mã HS: ${escapeHtml(student.studentCode || '—')}</span>
+              <span class="room-chip">${escapeHtml(student.school || 'Chưa cập nhật trường')}</span>
+            </div>
+            <div class="student-hero-contact-box">
+              <div><span>Phụ huynh:</span> <strong>${escapeHtml(student.parentContact?.name || '—')}</strong></div>
+              <div><span>SĐT liên hệ:</span> <strong>${escapeHtml(student.parentContact?.phone || '—')}</strong></div>
+              ${student.officeNotes ? `<div class="student-hero-office-note"><span>Ghi chú văn phòng:</span> <em>${escapeHtml(student.officeNotes)}</em></div>` : ''}
+            </div>
           </div>
         </div>
 
@@ -3489,6 +3540,14 @@ export function setupFeatures(ctx) {
             }
           }
         };
+      });
+
+      // Wire click-to-expand portrait in class profile
+      $('#class-profile-photo-expand')?.addEventListener('click', () => {
+        if (!student.photoURL) return;
+        $('#student-photo-full').src = student.photoURL;
+        $('#student-photo-caption').textContent = student.name;
+        $('#student-photo-dialog')?.showModal();
       });
 
       // Wire photo upload in class profile
@@ -4090,8 +4149,16 @@ export function setupFeatures(ctx) {
       const st = seated?.entry.homework?.status || s.homework?.status;
       return st === 'not_submitted';
     });
-    const lessonTitle = $('#lesson-title')?.value?.trim() || 'Chưa ghi tên bài học';
-    const sessionNote = $('#session-note')?.value?.trim() || '';
+    let savedChk = {};
+    try {
+      savedChk = JSON.parse(localStorage.getItem(`lopvui.checklist.v1.${currentClass.id}.${date}`) || '{}') || {};
+    } catch {}
+    const histSession = getSessionRecord(currentClass.id, date) || {};
+    const lessonTitle = $('#lesson-title')?.value?.trim() || savedChk.lessonTitle || histSession.lessonTitle || 'Chưa ghi tên bài học';
+    const sessionNote = $('#session-note')?.value?.trim() || savedChk.classNote || histSession.finalNote || '';
+    const homeworkAssignment = $('#homework-assignment')?.value?.trim() || savedChk.homeworkAssignment || histSession.homeworkAssignment || '';
+    const homeworkLink = $('#homework-link')?.value?.trim() || savedChk.homeworkLink || histSession.homeworkLink || '';
+    const notebookLink = $('#notebook-link')?.value?.trim() || savedChk.notebookLink || histSession.notebookLink || '';
     const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
 
     const lines = [
@@ -4099,6 +4166,9 @@ export function setupFeatures(ctx) {
       `• Ngày: ${date} (${currentClass.startTime}–${currentClass.endTime}) · Phòng: ${currentClass.room}`,
       `• Giáo viên: ${currentClass.teacherName} · Trợ giảng: ${currentClass.assistantName}`,
       `• Bài học: ${lessonTitle}`,
+      `• BTVN giao về nhà: ${homeworkAssignment || 'Chưa ghi / Không có'}`,
+      ...(homeworkLink ? [`• Link phiếu BTVN: ${homeworkLink}`] : []),
+      ...(notebookLink ? [`• Link vở ghi / Bài giảng: ${notebookLink}`] : []),
       `• Sĩ số: Có mặt ${presentCount + lateList.length}/${regularRoster.length} (Đúng giờ: ${presentCount}, Đi muộn: ${lateList.length}, Vắng: ${absentList.length}${sessionMakeups.length ? `, Học bù: +${sessionMakeups.length}` : ''})`,
       ``,
       `1. Không nộp BTVN (${missingHW.length} HS):`,
