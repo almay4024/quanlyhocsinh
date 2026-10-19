@@ -226,3 +226,20 @@ Web App quản lý lớp học thời gian thực (real-time) và ngoại tuyế
 ### 1. Tích hợp Trực tiếp Bộ máy Real-time vào `src/app.js` (Zero-External-Dependency)
 - Nhúng trực tiếp bộ đồng bộ thời gian thực (`initRealtimeSync`, `forceSyncNow`) và hàm đồng bộ ca học (`syncActiveClassSessionRecord`) ngay bên trong `src/app.js`, loại bỏ hoàn toàn sự phụ thuộc vào file rời bên ngoài để tránh lỗi `Failed to load module script` trên Firebase Hosting.
 - Không bao giờ ghi đè dữ liệu `localStorage` sẵn có trên máy người dùng khi khởi động trang; toàn bộ dữ liệu học sinh, lớp học, nhân sự và lịch sử ca làm trên trình duyệt của bạn được giữ nguyên 100%.
+
+---
+
+## 🛠️ Phiên bản v3.1 (Khắc phục Triệt để Lỗi Runtime & Hoàn thiện Nghiệp vụ Cốt lõi)
+
+### 1. Sửa lỗi `ReferenceError` và Khôi phục Toàn bộ Hàm Nghiệp vụ trong `src/features.js` & `src/app.js`
+- Khôi phục đầy đủ các hàm điều phối ca học và lịch học trong `src/features.js`: `handleOpenSession`, `handleCloseSessionPrompt`, `confirmCloseSession`, `updateSessionStateUI`, `initSessionNoHomework`, `isNoHomeworkSession`, `handleNoHomeworkToggle`, `openSessionScheduleDialog`, `openStaffDetailDialog`, `renderSchedMakeupAssistants`, `renderSchedNextAssistants`.
+- Bổ sung import `searchRecords` và `matchesAcronymOrText` trong `src/app.js` giúp tìm kiếm nhân sự khi cấu hình lớp và tìm nhanh chỗ ngồi học sinh trên sơ đồ hoạt động mượt mà không lỗi.
+- Đồng bộ khóa lưu trữ lịch sử ca học `lopvui.session-history.v2` và tham số chống cache `?v=3.1` trên toàn bộ hệ thống.
+
+### 2. Kết nối Đầy đủ Sự kiện Giao diện (Event Listeners) cho Toàn bộ Tính năng
+- **Nhập danh sách học sinh từ bảng Excel / CSV (`initFlexibleColumnMappingImport`)**: Tự động dựng bảng xem trước và nhận diện cột ngay khi dán dữ liệu (Ctrl+V) hoặc chọn file.
+- **Chốt sĩ số & Rà soát vắng mặt (`#finalize-dialog`)**: Bổ sung nút **✓ Chốt sĩ số** ngay trên thanh công cụ Sơ đồ lớp và cuối sơ đồ để tự động quét học sinh vắng mặt, phân loại *Vắng có phép* / *Vắng không phép* kèm lý do.
+- **Trung tâm Báo cáo Buổi học 6 Tab (`#attendance-export-dialog`)**: Kết nối đầy đủ 6 tab báo cáo (Báo cáo gửi Giáo viên, Bảng điểm danh A4, DS Chưa nộp BTVN, DS Đi muộn, DS Vắng mặt, Bài kiểm tra & Bàn giao), nút **Sao chép báo cáo gửi GV (Zalo)** và nút **Xuất file Excel (CSV)**.
+- **Thao tác hàng loạt trực quan (`openBulkStudentActionDialog`)**: Thay thế hộp thoại `prompt()` mặc định của trình duyệt bằng cửa sổ Modal chọn lớp đích và chọn Tag phân loại trực quan trên cả Danh bạ Học sinh toàn trung tâm và Danh sách học sinh trong ca.
+- **Quản lý Nhân sự & Chấm công TA**: Kết nối đầy đủ form thêm/sửa nhân sự, xem hồ sơ chi tiết ca làm của nhân sự và xuất file CSV bảng chấm công tháng của Trợ giảng.
+

@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Lớp học vui (v3.0) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=2.3" />
+  <title>Lớp học vui (v3.1) · Quản lý lớp học trung tâm</title>
+  <link rel="stylesheet" href="/src/styles.css?v=3.1" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.0</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.1</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -498,7 +498,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
             <div>
               <h3 style="margin:0; font:700 17px Manrope,sans-serif; color:#233d31;">Danh sách học sinh & Theo dõi 4 buổi gần nhất</h3>
-              <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào <strong>Tên học sinh</strong> để xem kỹ toàn bộ lịch sử điểm, trạng thái đi học và tên bài học từng buổi. Ký hiệu điểm danh: <strong>✓</strong> Có mặt · <strong></strong> Đi muộn · <strong>×</strong> Vắng.</p>
+              <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào <strong>Tên học sinh</strong> để xem kỹ toàn bộ lịch sử điểm, trạng thái đi học và tên bài học từng buổi. Ký hiệu điểm danh: <strong>✓</strong> Có mặt · <strong>M</strong> Đi muộn · <strong>×</strong> Vắng.</p>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
               <button type="button" class="outline-button" id="general-export-roster-btn" style="padding:8px 14px; font-size:14px;">Xuất Excel</button>
@@ -658,6 +658,7 @@
               <button type="button" class="outline-button" id="teacher-view-button" title="Chuyển đổi góc nhìn của Giáo viên từ bục giảng (lật ngược trên-dưới và trái-phải)">Góc nhìn Giáo viên</button>
               <button type="button" class="outline-button" id="export-seating-image-btn" title="Mở chế độ chụp màn hình gọn trong 1 khung hình hoặc tải ảnh PNG sơ đồ lớp">Xuất ảnh sơ đồ</button>
               <button type="button" class="outline-button late-button" id="late-button">Điểm danh muộn</button>
+              <button type="button" class="primary-button" id="toolbar-finalize-btn" style="padding:8px 12px; font-size:13px;">✓ Chốt sĩ số</button>
               <button type="button" class="outline-button" id="edit-layout">Điều chỉnh layout</button>
             </div>
           </section>
@@ -699,7 +700,7 @@
             </div>
           </section>
 
-          <section class="bottom-actions" hidden style="display:none!important;">
+          <section class="bottom-actions">
             <div>
               <strong id="remaining-count">0 học sinh đã vào chỗ chưa điểm danh</strong>
               <small id="bottom-status-note">Nhấn "Chốt sĩ số" sau 15 phút đầu giờ để hệ thống tự động quét học sinh vắng mặt.</small>
@@ -2027,7 +2028,7 @@
         <div class="login-brand">
           
           <div>
-            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.0</span></strong>
+            <strong style="font:800 19px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.1</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2161,6 +2162,6 @@
   </div>
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=2.3"></script>
+  <script type="module" src="/src/app.js?v=3.1"></script>
 </body>
 </html>

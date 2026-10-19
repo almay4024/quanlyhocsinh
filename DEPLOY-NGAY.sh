@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 cd "$(dirname "$0")"
 echo "========================================================"
-echo "  TU DONG PUSH GITHUB & DEPLOY FIREBASE (LOP HOC VUI v3.0)"
+echo "  TU DONG PUSH GITHUB & DEPLOY FIREBASE (LOP HOC VUI v3.1)"
 echo "========================================================"
 echo ""
 echo "[1/2] Dang day code moi len GitHub..."
 git add -A
-git commit -m "Release Lop Hoc Vui v3.0" || true
+git commit -m "Release Lop Hoc Vui v3.1" || true
 git push || true
 echo ""
 echo "[2/2] Dang deploy len Firebase Hosting..."
