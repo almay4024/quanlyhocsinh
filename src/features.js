@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=3.8';
+import { matchesAcronymOrText } from './student-search.js?v=3.9.1';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.8';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.8';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.8';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.9.1';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.9.1';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.9.1';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.8';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.9.1';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -30,7 +30,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=3.8';
+} from './excel-import-export.js?v=3.9.1';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -41,7 +41,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=3.8';
+} from './data/session-history-repository.js?v=3.9.1';
 
 export function setupFeatures(ctx) {
   const {
@@ -106,8 +106,8 @@ export function setupFeatures(ctx) {
   };
 
   function renderStudentTagsBadges(student) {
-    const rawTags = Array.isArray(student?.tags) ? [...student.tags].filter(Boolean) : [];
-    if (student?.isNew && !rawTags.some(t => String(t).toLowerCase() === 'mới')) {
+    const rawTags = (Array.isArray(student?.tags) ? [...student.tags].filter(Boolean) : []).filter(t => String(t || '').trim().toLowerCase() !== 'học bù');
+    if (student?.isNew && student?.studentType !== 'makeup' && !rawTags.some(t => String(t).toLowerCase() === 'mới')) {
       rawTags.unshift('Mới');
     }
     if (!rawTags.length) return '';
@@ -780,6 +780,12 @@ export function setupFeatures(ctx) {
       if ($('#staff-active-status')) $('#staff-active-status').value = 'active';
     }
 
+    const addPastBtn = listContainer.querySelector('#history-dialog-add-past-btn');
+    if (addPastBtn) {
+      addPastBtn.onclick = () => {
+        ctx.openManagePastSessionDialog?.(classId, null);
+      };
+    }
     dialog.showModal();
   }
 
@@ -1549,17 +1555,50 @@ export function setupFeatures(ctx) {
   // ----------------------------------------------------
   // 6. TỰ ĐỘNG TÍNH SỐ PHÚT ĐI MUỘN (PRD §5 TAB 3)
   // ----------------------------------------------------
-  function updateLateMinutesCalculation() {
+  function updateLateMinutesCalculation(source = 'auto') {
     const currentClass = getActiveClassConfig();
-    const startTimeStr = currentClass?.startTime || '15:30';
-    const arrivalTimeStr = $('#arrival-time')?.value || new Date().toTimeString().slice(0, 5);
-
+    let startTimeStr = currentClass?.startTime || '';
+    if (!startTimeStr || !/^\d{1,2}:\d{2}$/.test(String(startTimeStr).trim())) {
+      const m = String(currentClass?.scheduleText || '').match(/(\d{1,2}:\d{2})/);
+      startTimeStr = m ? m[1] : '18:00';
+    }
     const [startH, startM] = startTimeStr.split(':').map(Number);
-    const [arrH, arrM] = arrivalTimeStr.split(':').map(Number);
+    const startTotal = (startH || 0) * 60 + (startM || 0);
 
-    const startTotal = startH * 60 + startM;
-    const arrTotal = arrH * 60 + arrM;
-    const diff = arrTotal - startTotal;
+    const arrInput = $('#arrival-time');
+    const minsInput = $('#late-minutes-input');
+
+    let arrivalTimeStr = arrInput?.value || new Date().toTimeString().slice(0, 5);
+    let [arrH, arrM] = arrivalTimeStr.split(':').map(Number);
+    let arrTotal = (arrH || 0) * 60 + (arrM || 0);
+    let diff = arrTotal - startTotal;
+
+    if (source === 'minutes' && minsInput) {
+      const typedMins = Math.max(1, Math.min(300, Number(minsInput.value) || 10));
+      diff = typedMins;
+      const computedTotal = ((startTotal + typedMins) % 1440 + 1440) % 1440;
+      const hh = String(Math.floor(computedTotal / 60)).padStart(2, '0');
+      const mm = String(computedTotal % 60).padStart(2, '0');
+      arrivalTimeStr = `${hh}:${mm}`;
+      if (arrInput) arrInput.value = arrivalTimeStr;
+    } else {
+      if (diff <= 0 || diff > 360) {
+        const fallbackMins = Math.max(1, Number(minsInput?.value) || 10);
+        diff = fallbackMins;
+        if (source === 'arrival' && arrInput?.value) {
+          diff = Math.max(1, Number(minsInput?.value) || 5);
+        } else {
+          const computedTotal = ((startTotal + fallbackMins) % 1440 + 1440) % 1440;
+          const hh = String(Math.floor(computedTotal / 60)).padStart(2, '0');
+          const mm = String(computedTotal % 60).padStart(2, '0');
+          arrivalTimeStr = `${hh}:${mm}`;
+          if (arrInput) arrInput.value = arrivalTimeStr;
+        }
+      }
+      if (minsInput && document.activeElement !== minsInput) {
+        minsInput.value = String(diff);
+      }
+    }
 
     const startLabel = $('#late-class-start-label');
     const arrLabel = $('#late-arrival-display');
@@ -1569,18 +1608,12 @@ export function setupFeatures(ctx) {
     if (arrLabel) arrLabel.textContent = arrivalTimeStr;
 
     if (badge) {
-      if (diff > 0) {
-        badge.textContent = `Đi muộn ${diff} phút`;
-        badge.style.background = '#ffecd4';
-        badge.style.color = '#ab5d18';
-      } else {
-        badge.textContent = `Đến đúng giờ (0 phút)`;
-        badge.style.background = '#eaf5ec';
-        badge.style.color = '#386f4a';
-      }
+      badge.textContent = `Đi muộn ${diff} phút (${arrivalTimeStr})`;
+      badge.style.background = '#ffecd4';
+      badge.style.color = '#ab5d18';
     }
 
-    return Math.max(0, diff);
+    return Math.max(1, diff);
   }
 
   // ----------------------------------------------------
@@ -1622,13 +1655,18 @@ export function setupFeatures(ctx) {
   }
 
   function formatMergedAttendanceAndArrival(s, seated, isLate, isPresent, isMakeup, date, classId) {
-    const arrTime = resolveStudentArrivalTime(s, seated, date, classId);
-    const mins = seated?.entry?.attendance?.lateMinutes ?? seated?.entry?.attendance?.minutesLate ?? s?.attendance?.lateMinutes ?? s?.lateMinutes ?? 0;
     if (isLate) {
+      if (ctx.resolveLateDetails) {
+        const det = ctx.resolveLateDetails(s, seated?.entry || null, getActiveClassConfig(), date);
+        return `muộn ${det.lateMinutes}’ - ${det.arrivalTime}`;
+      }
+      const arrTime = resolveStudentArrivalTime(s, seated, date, classId);
+      const attHist = (s?.attendanceHistory || []).find(h => (h.classId === classId || !h.classId) && h.date === date);
+      const mins = seated?.entry?.attendance?.lateMinutes ?? seated?.entry?.attendance?.minutesLate ?? s?.attendance?.lateMinutes ?? s?.lateMinutes ?? attHist?.lateMinutes ?? attHist?.minutesLate ?? 10;
       if (mins && arrTime) return `muộn ${mins}’ - ${arrTime}`;
       if (mins) return `muộn ${mins}’`;
       if (arrTime) return `muộn - ${arrTime}`;
-      return 'muộn';
+      return 'muộn 10’';
     }
     if (isPresent) {
       return 'Có mặt';
@@ -1861,8 +1899,9 @@ export function setupFeatures(ctx) {
                     ${lateList.map((s) => {
                       const { fam, giv, isMakeup } = getFamGiv(s);
                       const seated = entries.find(p => p.entry.studentId === s.id);
-                      const arrTime = resolveStudentArrivalTime(s, seated, date, currentClass.id);
-                      const mins = seated?.entry.attendance?.lateMinutes ?? seated?.entry.attendance?.minutesLate ?? s.attendance?.lateMinutes ?? s.lateMinutes ?? 10;
+                      const lateDet = ctx.resolveLateDetails ? ctx.resolveLateDetails(s, seated?.entry || null, currentClass, date) : null;
+                      const arrTime = lateDet?.arrivalTime || resolveStudentArrivalTime(s, seated, date, currentClass.id) || '—';
+                      const mins = lateDet?.lateMinutes ?? seated?.entry.attendance?.lateMinutes ?? seated?.entry.attendance?.minutesLate ?? s.attendance?.lateMinutes ?? s.lateMinutes ?? 10;
                       const noteInSession = getStudentSessionNote(s, seated);
                       return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td><strong>${escapeHtml(arrTime || '—')}</strong></td><td style="color:#c2410c; font-weight:700;">muộn ${mins}’</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
                     }).join('')}
@@ -2794,9 +2833,7 @@ export function setupFeatures(ctx) {
       $('#roster-add-form').hidden = true;
 
       renderRosterAdminTable(targetClassId);
-      renderMasterStudentDirectory();
-      renderMainMenu();
-      render();
+      ctx.refreshAllActiveViews?.();
       toast(`Đã thêm ${name} vào danh sách lớp gốc.`);
     };
   }
@@ -3166,12 +3203,10 @@ export function setupFeatures(ctx) {
       });
 
       saveStudentRecords(currentStudents, currentMakeups);
-      $('#import-roster-dialog')?.close();
-      toast(`Đã nhập thành công: ${addedCount} học sinh mới, cập nhật ${updatedCount} học sinh.`);
-      render();
+      ctx.closeDialogSafely ? ctx.closeDialogSafely('#import-roster-dialog') : $('#import-roster-dialog')?.close();
       if (activeRosterClassId) renderRosterAdminTable(activeRosterClassId);
-      renderMasterStudentDirectory();
-      renderMainMenu();
+      ctx.refreshAllActiveViews?.();
+      toast(`✓ Đã nhập thành công: ${addedCount} học sinh mới, cập nhật ${updatedCount} học sinh.`);
     });
   }
 
@@ -4923,9 +4958,7 @@ export function setupFeatures(ctx) {
       }
 
       if (typeof onComplete === 'function') onComplete();
-      renderMasterStudentDirectory();
-      renderMainMenu();
-      render();
+      ctx.refreshAllActiveViews?.();
     };
 
     dlg.showModal();
@@ -5679,11 +5712,19 @@ export function setupFeatures(ctx) {
               <h3 style="margin:4px 0; color:#223d2b; font-size:16px;">${escapeHtml(session.lessonTitle || 'Buổi học ' + session.date)}</h3>
               <p style="margin:2px 0; font-size:14px; color:#78867c;">Phòng: <strong>${escapeHtml(session.room || cls.room || '—')}</strong> · GV: <strong>${escapeHtml(session.teacherName || cls.teacherName || '—')}</strong> · TA: <strong>${escapeHtml(session.assistantName || cls.assistantName || '—')}</strong></p>
             </div>
-            <div style="text-align:right;">
+            <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
               <div>${statusBadge}</div>
-              <button type="button" class="primary-button" data-reopen-class-date="${escapeHtml(session.date)}" style="margin-top:8px; padding:7px 12px; font-size:14px; font-weight:700; background:#2e6d42;">
-                ▶ Mở ca học này trên sơ đồ
-              </button>
+              <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                <button type="button" class="primary-button" data-reopen-class-date="${escapeHtml(session.date)}" style="padding:7px 12px; font-size:13.5px; font-weight:700; background:#2e6d42;">
+                  ▶ Mở ca học này
+                </button>
+                <button type="button" class="outline-button" data-edit-history-session="${escapeHtml(session.date)}" style="padding:7px 11px; font-size:13.5px; font-weight:700; color:#1e40af; border-color:#bfdbfe; background:#eff6ff;">
+                  ✎ Sửa ca
+                </button>
+                <button type="button" class="outline-button text-danger" data-delete-history-session="${escapeHtml(session.date)}" style="padding:7px 11px; font-size:13.5px; font-weight:700; color:#b91c1c; border-color:#fca5a5; background:#fef2f2;">
+                  🗑 Xoá ca
+                </button>
+              </div>
             </div>
           </div>
 
@@ -5766,7 +5807,7 @@ export function setupFeatures(ctx) {
         </div>
       `;
 
-      // Handle "Mở ca học này trên sơ đồ"
+      // Handle "Mở ca học này", "Sửa ca", "Xoá ca"
       const reopenBtn = detailContainer.querySelector('[data-reopen-class-date]');
       if (reopenBtn) {
         reopenBtn.onclick = () => {
@@ -5776,14 +5817,27 @@ export function setupFeatures(ctx) {
           }
         };
       }
+      const editSessBtn = detailContainer.querySelector('[data-edit-history-session]');
+      if (editSessBtn) {
+        editSessBtn.onclick = () => {
+          ctx.openManagePastSessionDialog?.(classId, session.date);
+        };
+      }
+      const delSessBtn = detailContainer.querySelector('[data-delete-history-session]');
+      if (delSessBtn) {
+        delSessBtn.onclick = () => {
+          ctx.deleteClassSessionAndStudentData?.(classId, session.date);
+        };
+      }
     }
 
+    const addPastBtnHtml = `<button type="button" class="primary-button" id="history-dialog-add-past-btn" style="width:100%; margin-bottom:8px; padding:8px 12px; font-size:13.5px; font-weight:700; background:#2e6d42;">+ Thêm ca học trong quá khứ</button>`;
     // Render sidebar session cards
     if (!classSessions.length) {
-      listContainer.innerHTML = '<div style="padding:20px 10px; color:#8a998c; font-size:14px; text-align:center;">Lớp chưa có buổi học nào được ghi nhận trong lịch sử.</div>';
+      listContainer.innerHTML = addPastBtnHtml + '<div style="padding:20px 10px; color:#8a998c; font-size:14px; text-align:center;">Lớp chưa có buổi học nào được ghi nhận trong lịch sử.</div>';
       renderSelectedSessionDetail(null);
     } else {
-      listContainer.innerHTML = classSessions.map((s, idx) => {
+      listContainer.innerHTML = addPastBtnHtml + classSessions.map((s, idx) => {
         const isClosed = s.status === 'closed';
         const dateDisplay = new Date(`${s.date}T00:00:00`).toLocaleDateString('vi-VN', { month: '2-digit', day: '2-digit', year: 'numeric' });
         return `
@@ -5876,18 +5930,4 @@ export function setupFeatures(ctx) {
   };
 }
 
-// v1.8: Universal backdrop click-to-close for all <dialog> elements (mobile bottom-sheet & desktop modal)
-document.addEventListener("click", (e) => {
-  if (e.target && e.target.tagName === "DIALOG" && e.target.open) {
-    const rect = e.target.getBoundingClientRect();
-    const clickedInDialog = (
-      e.clientX >= rect.left &&
-      e.clientX <= rect.right &&
-      e.clientY >= rect.top &&
-      e.clientY <= rect.bottom
-    );
-    if (!clickedInDialog) {
-      e.target.close();
-    }
-  }
-});
+// Backdrop click-to-close is safely managed via pointerdown/click in src/app.js

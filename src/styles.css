@@ -8733,3 +8733,67 @@ footer.attendance-export-actions.report-sticky-bottom-bar {
     padding: 10px 12px !important;
   }
 }
+
+
+/* ==========================================================================
+   v3.9 UPDATES:
+   - Prevent Mobile Auto-Zoom on Search/Form Focus (16px font floor + manipulation)
+   - Instant Tactile Active-Press Feedback on All Interactive Buttons
+   - Late Pill on Seat Token & Selected Student Option Highlight
+   ========================================================================== */
+
+html, body, button, input, select, textarea, .seat, .student-option {
+  touch-action: manipulation;
+}
+
+/* Prevent iOS Safari & Android Chrome from zooming in when focusing search/inputs */
+input[type="search"],
+input[type="text"],
+input[type="number"],
+input[type="time"],
+input[type="date"],
+input[type="password"],
+input[type="tel"],
+input[type="email"],
+select,
+textarea,
+#student-search,
+#late-search,
+#seating-map-search-input,
+#student-list-search,
+#scores-tab-search,
+#master-student-search {
+  font-size: 16px !important;
+}
+
+/* Instant tactile feedback when pressing any button or option */
+button:active,
+.btn-active-press,
+.student-option:active,
+.homework-choice button:active {
+  transform: scale(0.96) !important;
+  filter: brightness(0.93);
+  transition: transform 0.05s ease, filter 0.05s ease !important;
+}
+
+.student-option.selected-option {
+  background: #dcfce7 !important;
+  border-color: #22c55e !important;
+  color: #14532d !important;
+  font-weight: 800 !important;
+}
+
+.seat-late-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  margin-left: 3px;
+  border-radius: 5px;
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}

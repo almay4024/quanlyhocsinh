@@ -2,15 +2,15 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=3.8" />
+  <link rel="stylesheet" href="/src/styles.css?v=3.9.1" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v3.8</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v3.9.1</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -485,10 +485,13 @@
 
         <!-- Tab 1 (Default): Lịch sử các buổi học -->
         <div id="general-panel-history" class="portal-stat-card" style="padding:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
             <div>
               <h3 style="margin:0; font:700 17px Manrope,sans-serif; color:#233d31;">Lịch sử các buổi học của lớp</h3>
-              <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào từng ca học để xem lại sơ đồ/checklist hoặc <strong>nhập/sửa điểm của học sinh buổi hôm đó</strong>.</p>
+              <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào từng ca học để xem lại sơ đồ/checklist, sửa/xoá ca hoặc <strong>nhập/sửa điểm của học sinh buổi hôm đó</strong>.</p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <button type="button" class="primary-button" id="general-add-past-session-btn" style="background:#2e6d42; font-weight:700; padding:9px 15px; font-size:14px;">+ Thêm ca trong quá khứ</button>
             </div>
           </div>
           <div id="general-history-sessions-list" style="display:grid; gap:10px;"></div>
@@ -1722,12 +1725,17 @@ function jsonOut_(obj) {
               <input type="checkbox" id="save-arrival-time" checked /> Lưu giờ học sinh đến lớp
             </label>
 
-            <label class="field-label" id="arrival-time-field">Giờ học sinh đến lớp (chính xác từng phút)
-              <input type="time" id="arrival-time" step="60" />
-            </label>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; align-items:end;" id="arrival-time-field">
+              <label class="field-label" style="margin:0;">Giờ đến lớp
+                <input type="time" id="arrival-time" step="60" />
+              </label>
+              <label class="field-label" style="margin:0;">Số phút đi muộn (phút)
+                <input type="number" id="late-minutes-input" min="1" max="300" step="1" inputmode="numeric" placeholder="VD: 10" />
+              </label>
+            </div>
 
             <div id="late-calc-box" class="late-calc-box">
-              <span>Giờ ca học: <strong id="late-class-start-label">15:30</strong></span>
+              <span>Giờ vào ca: <strong id="late-class-start-label">15:30</strong></span>
               <span>·</span>
               <span>Giờ đến: <strong id="late-arrival-display">15:45</strong></span>
               <span>→</span>
@@ -2172,7 +2180,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v3.8</span></strong>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v3.9.1</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2307,6 +2315,76 @@ function jsonOut_(obj) {
   
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=3.8"></script>
+  <script type="module" src="/src/app.js?v=3.9.1"></script>
+
+  <!-- Hộp thoại Thêm / Sửa Ca Học Trong Quá Khứ -->
+  <dialog id="past-session-manage-dialog" class="class-config-dialog">
+    <form id="past-session-manage-form" class="dialog-form">
+      <button type="button" class="close-button" id="close-past-session-manage-dialog" aria-label="Đóng">×</button>
+      <div class="eyebrow" id="past-session-manage-eyebrow">QUẢN LÝ CA HỌC CỦA LỚP</div>
+      <h2 id="past-session-manage-title">Thêm ca học trong quá khứ</h2>
+      <p class="dialog-hint" id="past-session-manage-hint">Tạo bổ sung ca học cũ hoặc chỉnh sửa thông tin ngày học, tên bài học, trạng thái BTVN/Test của ca học.</p>
+
+      <input type="hidden" id="manage-session-class-id" />
+      <input type="hidden" id="manage-session-orig-date" />
+
+      <div class="class-config-fields" style="margin-top:10px;">
+        <label class="field-label">Ngày diễn ra ca học
+          <input type="date" id="manage-session-date" required />
+        </label>
+        <label class="field-label">Trạng thái ca học
+          <select id="manage-session-status">
+            <option value="closed">Đã đóng ca (Lưu vào lịch sử)</option>
+            <option value="active">Đang mở (Ca trực hoạt động)</option>
+          </select>
+        </label>
+        <label class="field-label class-config-wide">Tên bài học / Nội dung buổi học
+          <input type="text" id="manage-session-lesson-title" placeholder="Ví dụ: Đại số - Phương trình bậc nhất" required />
+        </label>
+        <label class="field-label">Giáo viên đứng lớp
+          <input type="text" id="manage-session-teacher" placeholder="Tên giáo viên..." />
+        </label>
+        <label class="field-label">Trợ giảng phụ trách
+          <input type="text" id="manage-session-assistant" placeholder="Tên trợ giảng..." />
+        </label>
+        <label class="field-label">Phòng học
+          <input type="text" id="manage-session-room" placeholder="Ví dụ: P1-T3-CS1" />
+        </label>
+        <label class="field-label">BTVN giao về nhà (nếu có)
+          <input type="text" id="manage-session-hw-assignment" placeholder="Nội dung BTVN giao cuối buổi..." />
+        </label>
+
+        <div class="field-label class-config-wide" style="display:flex; flex-direction:column; gap:8px; background:#f7faf8; border:1px solid #dce5dd; border-radius:10px; padding:12px;">
+          <strong style="color:#1e3a29; font-size:14px;">Cấu hình học tập & Điểm danh của buổi học:</strong>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:600; color:#2b4231; cursor:pointer;">
+            <input type="checkbox" id="manage-session-has-btvn" checked style="width:18px; height:18px;" />
+            <span>Buổi học này có thu / chấm điểm BTVN</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:600; color:#2b4231; cursor:pointer;">
+            <input type="checkbox" id="manage-session-has-test" style="width:18px; height:18px;" />
+            <span>Buổi học này có bài Kiểm tra (Test) trên lớp</span>
+          </label>
+          <label id="manage-session-init-present-wrap" style="display:flex; align-items:center; gap:8px; font-weight:600; color:#15803d; cursor:pointer;">
+            <input type="checkbox" id="manage-session-init-present" checked style="width:18px; height:18px;" />
+            <span>Mặc định đánh dấu Có mặt cho danh sách lớp (để nhập điểm BTVN/Test nhanh)</span>
+          </label>
+        </div>
+
+        <label class="field-label class-config-wide">Ghi chú chung của ca học
+          <textarea id="manage-session-note" rows="2" placeholder="Ghi chú tình hình lớp trong buổi học..."></textarea>
+        </label>
+      </div>
+
+      <div class="class-config-actions" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:14px;">
+        <button type="button" class="outline-button text-danger" id="manage-session-delete-btn" hidden style="background:#fef2f2; border-color:#fca5a5; color:#b91c1c; font-weight:700;">🗑 Xoá ca học này</button>
+        <div style="display:flex; gap:8px; margin-left:auto; flex-wrap:wrap;">
+          <button type="button" class="outline-button" id="cancel-past-session-manage-btn">Hủy</button>
+          <button type="submit" class="outline-button" id="save-past-session-only-btn" style="background:#eef6f0; color:#1f5130; border-color:#86c292; font-weight:700;">Lưu thông tin ca</button>
+          <button type="button" class="primary-button" id="save-and-open-past-session-btn" style="background:#2e6d42; font-weight:700;">Lưu & Mở ca / Nhập điểm</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
 </body>
 </html>
