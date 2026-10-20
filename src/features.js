@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=3.7';
+import { matchesAcronymOrText } from './student-search.js?v=3.8';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.7';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.7';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.7';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.8';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.8';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.8';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.7';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.8';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -30,7 +30,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=3.7';
+} from './excel-import-export.js?v=3.8';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -41,7 +41,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=3.7';
+} from './data/session-history-repository.js?v=3.8';
 
 export function setupFeatures(ctx) {
   const {
@@ -3673,30 +3673,31 @@ export function setupFeatures(ctx) {
       ` : '<div class="menu-empty" style="margin:12px 0; padding:12px;">Học sinh chưa được xếp vào lớp nào.</div>';
 
       const initialChar = escapeHtml((student.givenName || student.name || 'H').trim().split(/\s+/).slice(-1)[0][0]?.toUpperCase() || 'H');
-      const portraitHtml = student.photoURL ? `
+      const resolvedClsPhoto = resolveStudentPhotoUrls(student);
+      const clsThumbUrl = resolvedClsPhoto.thumbUrl || student.photoURL;
+      const portraitHtml = clsThumbUrl ? `
         <div class="student-portrait-showcase">
           <button type="button" id="class-profile-photo-expand" class="student-portrait-frame-btn" title="Bấm để phóng to ảnh chân dung ${escapeHtml(student.name)}">
-            <img src="${escapeHtml(student.photoURL)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" class="profile-portrait profile-portrait-lg" id="class-profile-portrait-img" />
+            <img src="${escapeHtml(clsThumbUrl)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" class="profile-portrait profile-portrait-lg" id="class-profile-portrait-img" />
             <span class="portrait-zoom-hint">🔍 Phóng to</span>
           </button>
-          <div class="student-portrait-actions">
-            <label class="outline-button" style="padding:5px 10px; font-size:13px; cursor:pointer; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
+          <div class="student-portrait-actions has-photo">
+            <label class="portrait-action-btn edit" title="Đổi ảnh chân dung khác">
               📷 Đổi ảnh
               <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
             </label>
-            <button type="button" id="class-profile-remove-photo-btn" class="outline-button text-danger" style="padding:5px 10px; font-size:13px;">Xóa</button>
+            <button type="button" id="class-profile-remove-photo-btn" class="portrait-action-btn remove" title="Xóa ảnh chân dung">Xóa</button>
           </div>
         </div>
       ` : `
         <div class="student-portrait-showcase">
           <div class="profile-portrait profile-portrait-lg profile-portrait-placeholder">
-            <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.75;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg>
-            <span class="portrait-placeholder-initial">${initialChar}</span>
+            <div class="portrait-placeholder-circle">${initialChar}</div>
             <small class="portrait-placeholder-caption">Chưa có ảnh</small>
           </div>
-          <div class="student-portrait-actions">
-            <label class="primary-button" style="padding:6px 12px; font-size:13px; cursor:pointer; font-weight:700; width:100%; text-align:center;">
-              📷 Tải ảnh chân dung
+          <div class="student-portrait-actions no-photo">
+            <label class="portrait-action-btn upload">
+              📷 Tải ảnh lên
               <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
             </label>
           </div>
@@ -3978,21 +3979,48 @@ export function setupFeatures(ctx) {
         `;
       }
 
+      const enrolledNamesList = classIds
+        .map(cid => {
+          if (cid === TUTORING_CLASS_ID) return 'BOTRO';
+          const c = catalog.find(x => x.id === cid);
+          return c ? (c.code || c.name) : cid;
+        })
+        .filter(Boolean);
+
       const html = `
-        <div class="student-profile-header student-profile-hero-card">
+        <div class="student-profile-hero-card">
           ${portraitHtml}
           <div class="student-hero-info">
             <div class="student-hero-title-row">
-              <h3 class="student-hero-name" style="margin:0;">${escapeHtml(student.name)} ${student.isNew ? '<span class="student-tag new-tag">MỚI</span>' : ''}</h3>
-              <span class="enrollment-status-pill status-text-hoc">${escapeHtml(student.enrollmentStatus || 'Học')}</span>
+              <div class="student-hero-name-wrap">
+                <strong class="student-hero-name">${escapeHtml(student.name)}</strong>
+                ${renderStudentTagsBadges(student)}
+              </div>
+              <span class="enrollment-status-pill status-text-hoc">● ${escapeHtml(student.enrollmentStatus || 'Học')}</span>
             </div>
-            <div class="student-hero-badges">
-              <span class="room-chip" style="background:#eaf5ec; color:#1f5f33; font-weight:700;">Mã HS: ${escapeHtml(student.studentCode || '—')}</span>
-              <span class="room-chip">${escapeHtml(student.school || 'Chưa cập nhật trường')}</span>
-            </div>
-            <div class="student-hero-contact-box">
-              <div><span>Phụ huynh:</span> <strong>${escapeHtml(student.parentContact?.name || '—')}</strong></div>
-              ${student.officeNotes ? `<div class="student-hero-office-note"><span>Ghi chú văn phòng:</span> <em>${escapeHtml(student.officeNotes)}</em></div>` : ''}
+            <div class="student-hero-meta-grid">
+              <div class="hero-meta-item">
+                <span class="hero-meta-label">Mã học sinh</span>
+                <strong class="hero-meta-value code">${escapeHtml(student.studentCode || 'Chưa cấp mã')}</strong>
+              </div>
+              <div class="hero-meta-item">
+                <span class="hero-meta-label">Trường học</span>
+                <strong class="hero-meta-value">${escapeHtml(student.school || 'Chưa cập nhật')}</strong>
+              </div>
+              <div class="hero-meta-item">
+                <span class="hero-meta-label">Phụ huynh</span>
+                <strong class="hero-meta-value">${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong>
+              </div>
+              <div class="hero-meta-item">
+                <span class="hero-meta-label">Các lớp đang học</span>
+                <strong class="hero-meta-value">${escapeHtml(enrolledNamesList.length ? enrolledNamesList.join(', ') : 'Chưa xếp lớp')}</strong>
+              </div>
+              ${student.officeNotes ? `
+                <div class="hero-meta-item hero-meta-wide">
+                  <span class="hero-meta-label">Ghi chú văn phòng</span>
+                  <span class="hero-meta-note">${escapeHtml(student.officeNotes)}</span>
+                </div>
+              ` : ''}
             </div>
           </div>
         </div>

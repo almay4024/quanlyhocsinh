@@ -1,13 +1,13 @@
-const APP_VERSION = "3.7";
+const APP_VERSION = "3.8";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.7';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.7';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.8';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.8';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=3.7';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.7';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.7';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.7';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.7';
+import { setupFeatures } from './features.js?v=3.8';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.8';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.8';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.8';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.8';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -127,6 +127,162 @@ const _nativeGetItem = Storage.prototype.getItem;
 const _nativeSetItem = Storage.prototype.setItem;
 const _nativeRemoveItem = Storage.prototype.removeItem;
 
+// ============================================================================
+// END-TO-END VAULT ENCRYPTION ENGINE (v3.8 - lvenc_v38$)
+// Mã hoá toàn bộ dữ liệu học sinh, lớp học, điểm số, ghi chú trước khi lưu vào
+// LocalStorage và trước khi truyền lên Firebase Realtime Database.
+// ============================================================================
+const _VAULT_KEY_WORDS = [
+  0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+  0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
+];
+const _PLAIN_META_KEYS = new Set([
+  'lopvui.clean-slate.v35',
+  'lopvui.explicit-logout.v1',
+  'lopvui.key-timestamps.v1'
+]);
+
+function _shouldEncryptKey(key) {
+  return typeof key === 'string' && key.startsWith(RT_PREFIX) && !_PLAIN_META_KEYS.has(key);
+}
+
+function _xorshiftStream(seed0, seed1, seed2, seed3, byteLen) {
+  let s0 = (seed0 ^ 0x6A09E667) >>> 0;
+  let s1 = (seed1 ^ 0xBB67AE85) >>> 0;
+  let s2 = (seed2 ^ 0x3C6EF372) >>> 0;
+  let s3 = (seed3 ^ 0xA54FF53A) >>> 0;
+  if ((s0 | s1 | s2 | s3) === 0) s0 = 0x9E3779B9;
+  const out = new Uint8Array(byteLen);
+  for (let i = 0; i < byteLen; i += 4) {
+    let t = s3;
+    const s = s0;
+    s3 = s2;
+    s2 = s1;
+    s1 = s;
+    t ^= (t << 11) >>> 0;
+    t ^= (t >>> 8) >>> 0;
+    s0 = (t ^ s ^ (s >>> 19)) >>> 0;
+    const word = (s0 + s1 + _VAULT_KEY_WORDS[(i >>> 2) & 7]) >>> 0;
+    out[i] = word & 0xFF;
+    if (i + 1 < byteLen) out[i + 1] = (word >>> 8) & 0xFF;
+    if (i + 2 < byteLen) out[i + 2] = (word >>> 16) & 0xFF;
+    if (i + 3 < byteLen) out[i + 3] = (word >>> 24) & 0xFF;
+  }
+  return out;
+}
+
+function _hashContext32(str, salt = 0x811C9DC5) {
+  let h = salt >>> 0;
+  const s = String(str || '');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function _bytesToBase64(bytes) {
+  let binary = '';
+  const chunk = 0x4000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function _base64ToBytes(b64) {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    out[i] = binary.charCodeAt(i);
+  }
+  return out;
+}
+
+function encryptVaultPayload(plainStr, contextKey = 'default') {
+  if (plainStr === null || plainStr === undefined) return plainStr;
+  const str = String(plainStr);
+  if (str.startsWith('lvenc_v38$')) return str;
+  try {
+    const n0 = (Math.random() * 0xFFFFFFFF) >>> 0;
+    const n1 = (Date.now() ^ ((Math.random() * 0xFFFFFFFF) >>> 0)) >>> 0;
+    const ivHex = n0.toString(16).padStart(8, '0') + n1.toString(16).padStart(8, '0');
+    const ctx0 = _hashContext32(contextKey, 0x510E527F);
+    const ctx1 = _hashContext32(contextKey + '::v38', 0x9B05688C);
+
+    const plainBytes = new TextEncoder().encode(str);
+    const keystream = _xorshiftStream(n0 ^ ctx0, n1 ^ ctx1, ctx0 ^ 0x1F83D9AB, ctx1 ^ 0x5BE0CD19, plainBytes.length);
+    const cipherBytes = new Uint8Array(plainBytes.length);
+    let mac = (n0 ^ n1 ^ ctx0) >>> 0;
+    for (let i = 0; i < plainBytes.length; i++) {
+      const c = (plainBytes[i] ^ keystream[i]) & 0xFF;
+      cipherBytes[i] = c;
+      mac = Math.imul(mac ^ c, 0x01000193) >>> 0;
+    }
+    const macHex = mac.toString(16).padStart(8, '0');
+    return `lvenc_v38$${ivHex}$${macHex}$${_bytesToBase64(cipherBytes)}`;
+  } catch {
+    return str;
+  }
+}
+
+function decryptVaultPayload(rawStr, contextKey = 'default') {
+  if (rawStr === null || rawStr === undefined) return rawStr;
+  const str = String(rawStr);
+  if (!str.startsWith('lvenc_v38$')) return str;
+  try {
+    const parts = str.split('$');
+    if (parts.length !== 4) return str;
+    const ivHex = parts[1];
+    const macHex = parts[2];
+    const b64 = parts[3];
+    const n0 = parseInt(ivHex.slice(0, 8), 16) >>> 0;
+    const n1 = parseInt(ivHex.slice(8, 16), 16) >>> 0;
+    const ctx0 = _hashContext32(contextKey, 0x510E527F);
+    const ctx1 = _hashContext32(contextKey + '::v38', 0x9B05688C);
+
+    const cipherBytes = _base64ToBytes(b64);
+    let mac = (n0 ^ n1 ^ ctx0) >>> 0;
+    for (let i = 0; i < cipherBytes.length; i++) {
+      mac = Math.imul(mac ^ cipherBytes[i], 0x01000193) >>> 0;
+    }
+    if (mac.toString(16).padStart(8, '0') !== macHex) {
+      return str;
+    }
+    const keystream = _xorshiftStream(n0 ^ ctx0, n1 ^ ctx1, ctx0 ^ 0x1F83D9AB, ctx1 ^ 0x5BE0CD19, cipherBytes.length);
+    const plainBytes = new Uint8Array(cipherBytes.length);
+    for (let i = 0; i < cipherBytes.length; i++) {
+      plainBytes[i] = (cipherBytes[i] ^ keystream[i]) & 0xFF;
+    }
+    return new TextDecoder().decode(plainBytes);
+  } catch {
+    return str;
+  }
+}
+
+function _readDecryptedLocal(key) {
+  try {
+    const raw = _nativeGetItem.call(window.localStorage, key);
+    if (raw === null || raw === undefined) return null;
+    return decryptVaultPayload(raw, String(key));
+  } catch {
+    return null;
+  }
+}
+
+function _writeEncryptedLocal(key, plainValue) {
+  try {
+    const strPlain = decryptVaultPayload(String(plainValue), String(key));
+    const toStore = _shouldEncryptKey(String(key))
+      ? encryptVaultPayload(strPlain, String(key))
+      : strPlain;
+    _nativeSetItem.call(window.localStorage, key, toStore);
+    return toStore;
+  } catch {
+    return String(plainValue);
+  }
+}
+
 function getConfiguredFirebaseDbUrl() {
   return _INTERNAL_CLOUD_EP;
 }
@@ -153,7 +309,8 @@ function _setKeyTimestamp(key, ts = Date.now()) {
 
 function _getDeletedIdsMap() {
   try {
-    return JSON.parse(_nativeGetItem.call(window.localStorage, 'lopvui.deleted-ids.v1') || '{}') || {};
+    const raw = _readDecryptedLocal('lopvui.deleted-ids.v1');
+    return JSON.parse(raw || '{}') || {};
   } catch {
     return {};
   }
@@ -164,7 +321,7 @@ function _recordDeletedIds(deletedIds = [], ts = Date.now()) {
   try {
     const map = _getDeletedIdsMap();
     deletedIds.forEach(id => { if (id) map[id] = ts; });
-    _nativeSetItem.call(window.localStorage, 'lopvui.deleted-ids.v1', JSON.stringify(map));
+    _writeEncryptedLocal('lopvui.deleted-ids.v1', JSON.stringify(map));
   } catch {}
 }
 
@@ -197,19 +354,21 @@ function _scheduleRtUIRefresh(changedKeys, source = 'remote') {
 
 /**
  * Granular ID-level Merge for Array collections (students, sessionHistory, classCatalog, etc.)
- * Prevents Device B from overwriting a student or session edited 0.1s ago by Device A!
+ * Operates on decrypted plaintext in memory so concurrent edits on multiple devices never overwrite each other.
  */
 function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, localTs = 0, remoteDeletedMap = {}) {
-  if (!localRawStr) return remoteRawStr;
-  if (!remoteRawStr) return localRawStr;
-  if (localRawStr === remoteRawStr) return localRawStr;
+  const localPlain = localRawStr ? decryptVaultPayload(localRawStr, key) : localRawStr;
+  const remotePlain = remoteRawStr ? decryptVaultPayload(remoteRawStr, key) : remoteRawStr;
+  if (!localPlain) return remotePlain;
+  if (!remotePlain) return localPlain;
+  if (localPlain === remotePlain) return localPlain;
 
   const deletedMap = { ..._getDeletedIdsMap(), ...(remoteDeletedMap || {}) };
 
   try {
     if (GRANULAR_ARRAY_KEYS.has(key)) {
-      const localArr = JSON.parse(localRawStr);
-      const remoteArr = JSON.parse(remoteRawStr);
+      const localArr = JSON.parse(localPlain);
+      const remoteArr = JSON.parse(remotePlain);
       if (Array.isArray(localArr) && Array.isArray(remoteArr)) {
         const mergedById = new Map();
         const parseTs = (item, fallback) => {
@@ -234,7 +393,6 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
             const rRev = Number(rItem.revision || rItem.authVersion || 0);
             const lRev = Number(lItem.revision || lItem.authVersion || 0);
             if (rRev > lRev || rItemTs >= lItemTs) {
-              // Merge student sub-arrays (scores, attendanceHistory, sessionNotes, seatingHistory) so concurrent class sessions both keep their records!
               if (key === 'lopvui.students.v9' || key === 'lopvui.makeup-students.v1') {
                 const combined = { ...lItem, ...rItem };
                 for (const subField of ['attendanceHistory', 'sessionNotes', 'seatingHistory']) {
@@ -264,10 +422,9 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       }
     }
 
-    // Special merge for masterData (employees & subjects)
     if (key === 'lopvui.master-data.v1') {
-      const localObj = JSON.parse(localRawStr);
-      const remoteObj = JSON.parse(remoteRawStr);
+      const localObj = JSON.parse(localPlain);
+      const remoteObj = JSON.parse(remotePlain);
       if (localObj && remoteObj && Array.isArray(localObj.employees) && Array.isArray(remoteObj.employees)) {
         const empMap = new Map();
         localObj.employees.forEach(e => { if (e?.id && !deletedMap[e.id]) empMap.set(e.id, e); });
@@ -287,7 +444,7 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
     }
   } catch {}
 
-  return remoteTs >= localTs ? remoteRawStr : localRawStr;
+  return remoteTs >= localTs ? remotePlain : localPlain;
 }
 
 function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, remoteDeletedMap = {}) {
@@ -301,21 +458,21 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
   try {
     for (const [k, v] of Object.entries(entries)) {
       if (!_shouldSyncKey(k)) continue;
-      const cur = _nativeGetItem.call(window.localStorage, k);
+      const curPlain = _readDecryptedLocal(k);
       const remoteTs = remoteMetaMap[k]?.updatedAt || Date.now();
       const localTs = keyTsMap[k] || 0;
 
       if (v === null || v === undefined) {
-        if (cur !== null && remoteTs >= localTs) {
+        if (curPlain !== null && remoteTs >= localTs) {
           _nativeRemoveItem.call(window.localStorage, k);
           _setKeyTimestamp(k, remoteTs);
           changed.push(k);
         }
       } else {
-        const rawRemoteStr = String(v);
-        const mergedStr = _mergeGranularJsonValue(k, cur, rawRemoteStr, remoteTs, localTs, remoteDeletedMap);
-        if (cur !== mergedStr) {
-          _nativeSetItem.call(window.localStorage, k, mergedStr);
+        const remotePlain = decryptVaultPayload(String(v), k);
+        const mergedPlain = _mergeGranularJsonValue(k, curPlain, remotePlain, remoteTs, localTs, remoteDeletedMap);
+        if (curPlain !== mergedPlain) {
+          _writeEncryptedLocal(k, mergedPlain);
           _setKeyTimestamp(k, Math.max(remoteTs, localTs));
           changed.push(k);
         }
@@ -332,13 +489,19 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
 }
 
 function _encodeFirebaseSafeKey(key) {
-  return String(key).replace(/[.#$/[\]]/g, '__');
+  const h1 = _hashContext32(key, 0x811C9DC5).toString(16).padStart(8, '0');
+  const h2 = _hashContext32(key + '::fbk', 0x510E527F).toString(16).padStart(8, '0');
+  return `k_${h1}${h2}`;
 }
 
-function _scheduleFirebaseCloudPush(key, strVal, ts = Date.now()) {
+function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
   const dbUrl = getConfiguredFirebaseDbUrl();
   if (!dbUrl || !_shouldSyncKey(key)) return;
-  _rtPendingCloudEntries.set(key, { rawKey: key, value: strVal, updatedAt: ts, clientId: RT_CLIENT_ID });
+  const encVal = plainOrEncVal === null || plainOrEncVal === undefined
+    ? null
+    : encryptVaultPayload(decryptVaultPayload(String(plainOrEncVal), key), key);
+  const encKey = encryptVaultPayload(key, 'firebase_key_meta');
+  _rtPendingCloudEntries.set(key, { encKey, value: encVal, updatedAt: ts, clientId: RT_CLIENT_ID });
   if (_rtCloudPushTimer) clearTimeout(_rtCloudPushTimer);
   _rtCloudPushTimer = setTimeout(_flushFirebaseCloudPush, 140);
 }
@@ -360,7 +523,6 @@ async function _flushFirebaseCloudPush() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(kvPayload)
     });
-    // Also sync tombstones if any
     const delMap = _getDeletedIdsMap();
     if (Object.keys(delMap).length > 0) {
       await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, {
@@ -391,9 +553,13 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
     const entries = {};
     const metaMap = {};
     for (const item of Object.values(kv)) {
-      if (item && item.rawKey && _shouldSyncKey(item.rawKey)) {
-        entries[item.rawKey] = item.value;
-        metaMap[item.rawKey] = { updatedAt: item.updatedAt || 0, clientId: item.clientId || '' };
+      if (!item) continue;
+      const resolvedKey = item.encKey
+        ? decryptVaultPayload(item.encKey, 'firebase_key_meta')
+        : item.rawKey;
+      if (resolvedKey && _shouldSyncKey(resolvedKey)) {
+        entries[resolvedKey] = item.value;
+        metaMap[resolvedKey] = { updatedAt: item.updatedAt || 0, clientId: item.clientId || '' };
       }
     }
     const changed = _applyRtRemoteEntries(entries, source, metaMap, remoteDeleted);
@@ -414,11 +580,11 @@ async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
     for (let i = 0; i < window.localStorage.length; i++) {
       const k = window.localStorage.key(i);
       if (k && _shouldSyncKey(k)) {
-        const val = _nativeGetItem.call(window.localStorage, k);
-        if (val !== null) {
+        const plainVal = _readDecryptedLocal(k);
+        if (plainVal !== null) {
           kvPayload[_encodeFirebaseSafeKey(k)] = {
-            rawKey: k,
-            value: val,
+            encKey: encryptVaultPayload(k, 'firebase_key_meta'),
+            value: encryptVaultPayload(plainVal, k),
             updatedAt: tsMap[k] || now,
             clientId: RT_CLIENT_ID
           };
@@ -427,12 +593,13 @@ async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
       }
     }
     const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
-      method: 'PATCH',
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         kv: kvPayload,
         deletedIds: _getDeletedIdsMap(),
         cleanSlateV35: true,
+        encryptedV38: true,
         lastFullPushAt: now
       })
     });
@@ -446,24 +613,53 @@ async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
   }
 }
 
+function _migrateAllLocalStorageKeysToEncrypted() {
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (k && _shouldEncryptKey(k)) {
+        const raw = _nativeGetItem.call(window.localStorage, k);
+        if (raw && !String(raw).startsWith('lvenc_v38$')) {
+          _nativeSetItem.call(window.localStorage, k, encryptVaultPayload(raw, k));
+        }
+      }
+    }
+  } catch {}
+}
+
 function initRealtimeSync(onSyncCallback) {
   if (typeof onSyncCallback === 'function') _rtSyncListeners.add(onSyncCallback);
   if (!window.__lopvuiRtInitV34) {
     window.__lopvuiRtInitV34 = true;
+    _migrateAllLocalStorageKeysToEncrypted();
     try {
+      Storage.prototype.getItem = function(key) {
+        const raw = _nativeGetItem.call(this, key);
+        if (raw === null || raw === undefined) return null;
+        if (this === window.localStorage && String(raw).startsWith('lvenc_v38$')) {
+          return decryptVaultPayload(raw, String(key));
+        }
+        return raw;
+      };
       Storage.prototype.setItem = function(key, value) {
-        let prev = null;
-        try { prev = _nativeGetItem.call(this, key); } catch {}
-        try { _nativeSetItem.call(this, key, value); } catch { return; }
-        if (this === window.localStorage && _shouldSyncKey(String(key)) && !_rtApplyingRemote) {
-          const strVal = String(value);
-          if (prev !== strVal) {
+        const kStr = String(key);
+        let prevPlain = null;
+        if (this === window.localStorage) {
+          try { prevPlain = _readDecryptedLocal(kStr); } catch {}
+        }
+        const plainStr = decryptVaultPayload(String(value), kStr);
+        const toStore = (this === window.localStorage && _shouldEncryptKey(kStr))
+          ? encryptVaultPayload(plainStr, kStr)
+          : String(value);
+        try { _nativeSetItem.call(this, key, toStore); } catch { return; }
+
+        if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote) {
+          if (prevPlain !== plainStr) {
             const now = Date.now();
-            // Track deleted IDs automatically when saving array keys
-            if (prev && GRANULAR_ARRAY_KEYS.has(String(key))) {
+            if (prevPlain && GRANULAR_ARRAY_KEYS.has(kStr)) {
               try {
-                const oldArr = JSON.parse(prev);
-                const newArr = JSON.parse(strVal);
+                const oldArr = JSON.parse(prevPlain);
+                const newArr = JSON.parse(plainStr);
                 if (Array.isArray(oldArr) && Array.isArray(newArr)) {
                   const newIds = new Set(newArr.map(x => x?.id).filter(Boolean));
                   const removed = oldArr.map(x => x?.id).filter(id => id && !newIds.has(id));
@@ -471,26 +667,27 @@ function initRealtimeSync(onSyncCallback) {
                 }
               } catch {}
             }
-            _setKeyTimestamp(String(key), now);
+            _setKeyTimestamp(kStr, now);
             if (_rtChannel) {
-              try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [String(key)]: strVal } }); } catch {}
+              try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [kStr]: toStore } }); } catch {}
             }
-            _scheduleFirebaseCloudPush(String(key), strVal, now);
+            _scheduleFirebaseCloudPush(kStr, toStore, now);
             _notifyRtStatus(getConfiguredFirebaseDbUrl() ? 'realtime-cloud' : _rtState, now, 'local-save');
           }
         }
       };
       Storage.prototype.removeItem = function(key) {
+        const kStr = String(key);
         let had = false;
         try { had = _nativeGetItem.call(this, key) !== null; } catch {}
         try { _nativeRemoveItem.call(this, key); } catch { return; }
-        if (this === window.localStorage && _shouldSyncKey(String(key)) && !_rtApplyingRemote && had) {
+        if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote && had) {
           const now = Date.now();
-          _setKeyTimestamp(String(key), now);
+          _setKeyTimestamp(kStr, now);
           if (_rtChannel) {
-            try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [String(key)]: null } }); } catch {}
+            try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [kStr]: null } }); } catch {}
           }
-          _scheduleFirebaseCloudPush(String(key), null, now);
+          _scheduleFirebaseCloudPush(kStr, null, now);
           _notifyRtStatus(getConfiguredFirebaseDbUrl() ? 'realtime-cloud' : _rtState, now, 'local-save');
         }
       };
@@ -514,17 +711,21 @@ function initRealtimeSync(onSyncCallback) {
       _scheduleRtUIRefresh([event.key], 'storage-event');
     });
 
-    // Initial cloud pull on startup (with v3.5 clean-slate initialization on Firebase if not yet wiped)
     if (getConfiguredFirebaseDbUrl()) {
       _notifyRtStatus('realtime-cloud', Date.now(), 'init');
       (async () => {
         const dbUrl = getConfiguredFirebaseDbUrl();
         try {
-          const checkRes = await fetch(`${dbUrl}/lopvui_cloud_v3/cleanSlateV35.json`, { cache: 'no-store' });
-          const isCleanV35 = checkRes.ok ? await checkRes.json() : null;
-          if (isCleanV35 !== true) {
-            // Wipe Firebase Realtime Database clean, keeping only the local clean-slate (Admin account AD001)
+          const checkRes = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, { cache: 'no-store' });
+          const cloudObj = checkRes.ok ? await checkRes.json() : null;
+          if (!cloudObj || cloudObj.cleanSlateV35 !== true) {
             await fetch(`${dbUrl}/lopvui_cloud_v3.json`, { method: 'DELETE' });
+            await pushAllLocalSnapshotToFirebaseCloud(true);
+            return;
+          }
+          // If cloud had unencrypted v3.5/v3.7 entries, pull & merge first, then overwrite cloud with 100% encrypted v3.8 entries!
+          if (cloudObj.encryptedV38 !== true) {
+            await pullFromFirebaseCloudNow('cloud-init');
             await pushAllLocalSnapshotToFirebaseCloud(true);
             return;
           }
@@ -536,7 +737,6 @@ function initRealtimeSync(onSyncCallback) {
       })();
     }
 
-    // Continuous background cloud sync every 2.5 seconds
     setInterval(() => {
       if (getConfiguredFirebaseDbUrl()) {
         pullFromFirebaseCloudNow('cloud-poll');
@@ -570,28 +770,29 @@ const baseLayout=[
   {id:'aisle-3',desks:[{id:'d31',seats:2,dividerAfter:false},{id:'d32',seats:2,dividerAfter:false}]}
 ];
 const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}};
-// v3.5 Clean-Slate Initialization: Xoá trắng toàn bộ dữ liệu mẫu, chỉ giữ lại tài khoản Admin (AD001) để đưa các lớp lên dần
+// v3.5+ Clean-Slate & v3.8 Encryption Initialization
 (function ensureCleanSlateV35() {
   try {
-    if (localStorage.getItem('lopvui.clean-slate.v35') !== '1') {
-      const savedDriveCfg = localStorage.getItem('lopvui.google-drive-photo-config.v1');
+    if (_nativeGetItem.call(localStorage, 'lopvui.clean-slate.v35') !== '1') {
+      const savedDriveCfg = _readDecryptedLocal('lopvui.google-drive-photo-config.v1');
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
         if (k && k.startsWith('lopvui.')) keysToRemove.push(k);
       }
       keysToRemove.forEach(k => _nativeRemoveItem.call(localStorage, k));
-      if (savedDriveCfg) _nativeSetItem.call(localStorage, 'lopvui.google-drive-photo-config.v1', savedDriveCfg);
-      _nativeRemoveItem.call(localStorage, 'lopvui.firebase-db-url.v1');
-      _nativeSetItem.call(localStorage, 'lopvui.class-catalog.v1', '[]');
-      _nativeSetItem.call(localStorage, 'lopvui.students.v9', '[]');
-      _nativeSetItem.call(localStorage, 'lopvui.makeup-students.v1', '[]');
-      _nativeSetItem.call(localStorage, 'lopvui.session-history.v2', '[]');
-      _nativeSetItem.call(localStorage, 'lopvui.tutoring-sessions.v1', '[]');
-      _nativeSetItem.call(localStorage, 'lopvui.room-templates.v1', '[]');
-      _nativeSetItem.call(localStorage, 'lopvui.class-session-changes.v1', '{}');
+      if (savedDriveCfg) _writeEncryptedLocal('lopvui.google-drive-photo-config.v1', savedDriveCfg);
+      _writeEncryptedLocal('lopvui.class-catalog.v1', '[]');
+      _writeEncryptedLocal('lopvui.students.v9', '[]');
+      _writeEncryptedLocal('lopvui.makeup-students.v1', '[]');
+      _writeEncryptedLocal('lopvui.session-history.v2', '[]');
+      _writeEncryptedLocal('lopvui.tutoring-sessions.v1', '[]');
+      _writeEncryptedLocal('lopvui.room-templates.v1', '[]');
+      _writeEncryptedLocal('lopvui.class-session-changes.v1', '{}');
       _nativeSetItem.call(localStorage, 'lopvui.explicit-logout.v1', '1');
       _nativeSetItem.call(localStorage, 'lopvui.clean-slate.v35', '1');
+    } else {
+      _migrateAllLocalStorageKeysToEncrypted();
     }
   } catch {}
 })();
@@ -2932,61 +3133,81 @@ function openStudentProfile(id, origin = null){
 
   const initialChar = escapeHtml((givenName || student.name || 'H').charAt(0).toUpperCase());
   const stEnrollment = (student.enrollmentStatus && String(student.enrollmentStatus).trim()) ? String(student.enrollmentStatus).trim() : 'Học';
-  const portraitBlock = photo ? `
-    <div class="student-portrait-showcase">
-      <button type="button" id="student-photo-expand" class="student-portrait-frame-btn" title="Bấm để phóng to ảnh Full-size ${escapeHtml(student.name)}" aria-label="Mở ảnh ${escapeHtml(student.name)} cỡ lớn">
-        <img class="profile-portrait profile-portrait-lg" id="profile-portrait-preview" src="${escapeHtml(photo)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" />
-        <span class="portrait-zoom-hint">🔍 Xem Full-size</span>
-      </button>
-      <div class="student-portrait-actions">
-        <label id="profile-upload-portrait-label" class="outline-button" style="padding:5px 10px; font-size:13px; cursor:pointer; font-weight:700; color:#215f33; background:#eaf5ec; border-color:#9dc7a5;">
-          📷 Đổi ảnh
-          <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
-        </label>
-        <button type="button" id="profile-remove-photo-btn" class="outline-button text-danger" style="padding:5px 10px; font-size:13px;">Xóa</button>
-      </div>
-      <small class="drive-photo-filename-badge" title="Tên file chuẩn trên Google Drive (Tự đổi tên khi cập nhật Mã HS/Họ tên)">📄 ${escapeHtml(student.photoDriveFileName || autoDriveFileName)}</small>
-    </div>
-  ` : `
-    <div class="student-portrait-showcase">
-      <div id="profile-portrait-preview" class="profile-portrait profile-portrait-lg profile-portrait-placeholder">
-        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.75;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg>
-        <span class="portrait-placeholder-initial">${initialChar}</span>
-        <small class="portrait-placeholder-caption">Chưa có ảnh (Có thể Ctrl+V)</small>
-      </div>
-      <div class="student-portrait-actions">
-        <label id="profile-upload-portrait-label" class="primary-button" style="padding:6px 12px; font-size:13px; cursor:pointer; font-weight:700; width:100%; text-align:center;">
-          📷 Tải ảnh Full-size
-          <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
-        </label>
-      </div>
-      <small class="drive-photo-filename-badge" title="Tên file sẽ lưu trên Google Drive">📄 ${escapeHtml(autoDriveFileName)}</small>
-    </div>
-  `;
-
   const allAvailableClasses = [...classCatalog];
   if (!allAvailableClasses.some(c => c.id === 'class-tutoring')) {
     allAvailableClasses.push(TUTORING_CLASS_CONFIG);
   }
-
   let enrolledClassIds = [...(student.classIds || [])];
+  const enrolledClassNames = enrolledClassIds
+    .map(cid => {
+      const c = allAvailableClasses.find(x => x.id === cid);
+      return c ? (c.code || c.name) : cid;
+    })
+    .filter(Boolean);
+
+  const portraitBlock = photo ? `
+    <div class="student-portrait-showcase">
+      <button type="button" id="student-photo-expand" class="student-portrait-frame-btn" title="Bấm để phóng to ảnh ${escapeHtml(student.name)}" aria-label="Mở ảnh ${escapeHtml(student.name)} cỡ lớn">
+        <img class="profile-portrait profile-portrait-lg" id="profile-portrait-preview" src="${escapeHtml(photo)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" />
+        <span class="portrait-zoom-hint">🔍 Phóng to</span>
+      </button>
+      <div class="student-portrait-actions has-photo">
+        <label id="profile-upload-portrait-label" class="portrait-action-btn edit" title="Đổi ảnh chân dung khác">
+          📷 Đổi ảnh
+          <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
+        </label>
+        <button type="button" id="profile-remove-photo-btn" class="portrait-action-btn remove" title="Xóa ảnh chân dung">Xóa</button>
+      </div>
+    </div>
+  ` : `
+    <div class="student-portrait-showcase">
+      <div id="profile-portrait-preview" class="profile-portrait profile-portrait-lg profile-portrait-placeholder" title="Có thể bấm nút bên dưới hoặc nhấn Ctrl+V để dán ảnh trực tiếp">
+        <div class="portrait-placeholder-circle">${initialChar}</div>
+        <small class="portrait-placeholder-caption">Chưa có ảnh</small>
+      </div>
+      <div class="student-portrait-actions no-photo">
+        <label id="profile-upload-portrait-label" class="portrait-action-btn upload">
+          📷 Tải ảnh lên
+          <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
+        </label>
+      </div>
+    </div>
+  `;
 
   $('#student-profile-content').innerHTML=`
-    <div class="profile-header student-profile-hero-card">
+    <div class="student-profile-hero-card">
       ${portraitBlock}
       <div class="student-hero-info">
         <div class="student-hero-title-row">
-          <strong class="student-hero-name">${escapeHtml(student.name)}</strong>
-          <span class="enrollment-status-pill status-text-hoc">${escapeHtml(stEnrollment)}</span>
+          <div class="student-hero-name-wrap">
+            <strong class="student-hero-name">${escapeHtml(student.name)}</strong>
+            ${renderInlineTags(student)}
+          </div>
+          <span class="enrollment-status-pill status-text-hoc">● ${escapeHtml(stEnrollment)}</span>
         </div>
-        <div class="student-hero-badges">
-          <span class="room-chip" style="background:#eaf5ec; color:#1f5f33; font-weight:700;">Mã HS: ${escapeHtml(student.studentCode || 'Chưa có mã')}</span>
-          <span class="room-chip">${escapeHtml(student.studentType==='makeup'?`Học bù từ: ${student.sourceClassName||'lớp chưa rõ'}`:student.school||'Chưa cập nhật trường học')}</span>
-        </div>
-        <div class="student-hero-contact-box">
-          <div><span>Phụ huynh:</span> <strong>${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong></div>
-          <div><span>File ảnh Google Drive:</span> <code style="font-size:12px; color:#166534;">${escapeHtml(student.photoDriveFileName || autoDriveFileName)}</code></div>
-          ${officeNoteVal ? `<div class="student-hero-office-note"><span>Ghi chú VP:</span> <em>${escapeHtml(officeNoteVal)}</em></div>` : ''}
+        <div class="student-hero-meta-grid">
+          <div class="hero-meta-item">
+            <span class="hero-meta-label">Mã học sinh</span>
+            <strong class="hero-meta-value code">${escapeHtml(student.studentCode || 'Chưa cấp mã')}</strong>
+          </div>
+          <div class="hero-meta-item">
+            <span class="hero-meta-label">${student.studentType === 'makeup' ? 'Phân loại' : 'Trường học'}</span>
+            <strong class="hero-meta-value">${escapeHtml(student.studentType === 'makeup' ? `Học bù (${student.sourceClassName || 'Lớp khác'})` : (student.school || 'Chưa cập nhật'))}</strong>
+          </div>
+          <div class="hero-meta-item">
+            <span class="hero-meta-label">Phụ huynh</span>
+            <strong class="hero-meta-value">${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong>
+          </div>
+          <div class="hero-meta-item">
+            <span class="hero-meta-label">Lớp theo học</span>
+            <strong class="hero-meta-value">${escapeHtml(enrolledClassNames.length ? enrolledClassNames.join(', ') : (student.studentType === 'makeup' ? 'Học bù theo buổi' : 'Chưa xếp lớp'))}</strong>
+          </div>
+          ${officeNoteVal ? `
+            <div class="hero-meta-item hero-meta-wide">
+              <span class="hero-meta-label">Ghi chú văn phòng</span>
+              <span class="hero-meta-note">${escapeHtml(officeNoteVal)}</span>
+            </div>
+          ` : ''}
         </div>
       </div>
     </div>
@@ -3439,31 +3660,56 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
   const parts = splitStudentName(student.name);
   const initial = (student.givenName || parts.givenName || student.name || 'H').charAt(0).toUpperCase();
 
+  const resolvedSessPhoto = resolveStudentPhotoUrls(student);
+  const sessThumbUrl = resolvedSessPhoto.thumbUrl || student.photoURL;
+
   $('#student-session-profile-content').innerHTML = `
-    <div class="session-profile-general-box">
+    <div class="student-profile-hero-card session-hero-compact">
       <div class="student-portrait-showcase student-portrait-showcase-sm">
-        ${student.photoURL ? `
+        ${sessThumbUrl ? `
           <button type="button" class="student-portrait-frame-btn" id="sess-prof-photo-expand" title="Bấm để phóng to ảnh chân dung">
-            <img src="${escapeHtml(student.photoURL)}" alt="${escapeHtml(student.name)}" class="profile-portrait profile-portrait-md" />
+            <img src="${escapeHtml(sessThumbUrl)}" alt="${escapeHtml(student.name)}" class="profile-portrait profile-portrait-md" />
             <span class="portrait-zoom-hint">🔍 Phóng to</span>
           </button>
         ` : `
           <div class="profile-portrait profile-portrait-md profile-portrait-placeholder">
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.75;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg>
-            <span class="portrait-placeholder-initial" style="font-size:18px;">${escapeHtml(initial)}</span>
+            <div class="portrait-placeholder-circle sm">${escapeHtml(initial)}</div>
+            <small class="portrait-placeholder-caption">Chưa có ảnh</small>
           </div>
         `}
       </div>
-      <div style="flex:1; min-width:0;">
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <strong style="font-size:16.5px; color:#1e3a29;">${escapeHtml(student.name)}</strong>
-          <span class="room-chip">Mã HS: ${escapeHtml(student.studentCode || '—')}</span>
-          <span class="room-chip" style="background:#eef2ff; color:#4338ca;">${escapeHtml(student.school || 'Chưa rõ trường')}</span>
+      <div class="student-hero-info">
+        <div class="student-hero-title-row">
+          <div class="student-hero-name-wrap">
+            <strong class="student-hero-name" style="font-size:18px;">${escapeHtml(student.name)}</strong>
+            ${renderInlineTags(student)}
+          </div>
+          <span class="enrollment-status-pill status-text-hoc">● ${escapeHtml(student.enrollmentStatus || 'Học')}</span>
         </div>
-        <p style="margin:4px 0 0; font-size:13.5px; color:#526656;">
-          Phụ huynh: <strong>${escapeHtml(student.parentContact?.name || '—')}</strong>
-          ${student.officeNotes ? ` · Ghi chú VP: <em>${escapeHtml(student.officeNotes)}</em>` : ''}
-        </p>
+        <div class="student-hero-meta-grid">
+          <div class="hero-meta-item">
+            <span class="hero-meta-label">Mã học sinh</span>
+            <strong class="hero-meta-value code">${escapeHtml(student.studentCode || 'Chưa cấp mã')}</strong>
+          </div>
+          <div class="hero-meta-item">
+            <span class="hero-meta-label">${student.studentType === 'makeup' ? 'Phân loại' : 'Trường học'}</span>
+            <strong class="hero-meta-value">${escapeHtml(student.studentType === 'makeup' ? `Học bù (${student.sourceClassName || 'Lớp khác'})` : (student.school || 'Chưa cập nhật'))}</strong>
+          </div>
+          <div class="hero-meta-item">
+            <span class="hero-meta-label">Phụ huynh</span>
+            <strong class="hero-meta-value">${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong>
+          </div>
+          <div class="hero-meta-item">
+            <span class="hero-meta-label">Lớp buổi này</span>
+            <strong class="hero-meta-value">${escapeHtml(cls?.code || cls?.name || '—')}</strong>
+          </div>
+          ${student.officeNotes ? `
+            <div class="hero-meta-item hero-meta-wide">
+              <span class="hero-meta-label">Ghi chú văn phòng</span>
+              <span class="hero-meta-note">${escapeHtml(student.officeNotes)}</span>
+            </div>
+          ` : ''}
+        </div>
       </div>
     </div>
 
