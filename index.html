@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>=Quản lý học sinh</title>
-  <link rel="stylesheet" href="/src/styles.css?v=3.6" />
+  <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm</title>
+  <link rel="stylesheet" href="/src/styles.css?v=3.7" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Quản lý Học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v3.6</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v3.7</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -2172,7 +2172,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.6</span></strong>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v3.7</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2227,9 +2227,8 @@ function jsonOut_(obj) {
         </button>
       </form>
 
-      <div class="login-footer" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-        <small>Mật khẩu được mã hóa & đồng bộ thời gian thực qua Firebase.</small>
-        <button type="button" class="outline-button" id="login-open-firebase-config-btn" style="padding:5px 10px; font-size:12px;">☁ Kết nối Firebase DB</button>
+      <div class="login-footer" style="display:flex; justify-content:center; align-items:center;">
+        <small>Hệ thống Quản lý học sinh · Bảo mật & Đồng bộ thời gian thực</small>
       </div>
     </div>
   </section>
@@ -2305,50 +2304,9 @@ function jsonOut_(obj) {
   </div>
 
 
-  <!-- Hộp thoại Kết nối & Đồng bộ Đa thiết bị Firebase Realtime Database (#firebase-cloud-config-dialog) -->
-  <dialog id="firebase-cloud-config-dialog" class="class-config-dialog" style="width:min(560px, calc(100vw - 24px));">
-    <div class="dialog-form">
-      <button type="button" class="close-button" id="close-firebase-config-dialog" aria-label="Đóng">×</button>
-      <div class="eyebrow">ĐỒNG BỘ ĐA THIẾT BỊ REAL-TIME (FIREBASE CLOUD)</div>
-      <h2>Kết nối Firebase Realtime Database</h2>
-      <p class="dialog-hint">
-        Dán đường dẫn <strong>Firebase Realtime Database URL</strong> của dự án để kích hoạt đồng bộ thời gian thực giữa nhiều máy tính, iPad và điện thoại cùng lúc (có cơ chế <strong>Granular Merge</strong> chống ghi đè khi nhiều trợ giảng thao tác đồng thời).
-      </p>
-
-      <label class="field-label">Firebase Realtime Database URL:
-        <input
-          id="firebase-db-url-input"
-          type="url"
-          placeholder="https://ten-du-an-default-rtdb.asia-southeast1.firebasedatabase.app"
-          style="font-family:monospace; font-size:13.5px;"
-        />
-      </label>
-
-      <div id="firebase-sync-status-banner" class="checklist-log" style="margin-top:10px; font-weight:600;">
-        Trạng thái: Đang kiểm tra kết nối...
-      </div>
-
-      <details style="margin-top:10px; background:#f8fbf9; border:1px solid #d5e4d8; border-radius:8px; padding:8px 12px; font-size:13px;">
-        <summary style="cursor:pointer; font-weight:700; color:#1f5f33;">📋 Hướng dẫn lấy URL & bật Rules trên Firebase Console (30 giây)</summary>
-        <ol style="margin:8px 0 0; padding-left:18px; line-height:1.55; color:#2c4233;">
-          <li>Vào <strong>Firebase Console</strong> → Mở dự án của bạn → Chọn mục <strong>Build → Realtime Database</strong> → Bấm <strong>Create Database</strong>.</li>
-          <li>Chọn vùng máy chủ <strong>Singapore (asia-southeast1)</strong> → Chọn chế độ <strong>Start in test mode</strong> → Bấm <strong>Enable</strong>.</li>
-          <li>Copy đường link <code>https://...-default-rtdb.asia-southeast1.firebasedatabase.app</code> ở đầu trang dán vào ô bên trên.</li>
-          <li>Trong tab <strong>Rules</strong> của Realtime Database, đảm bảo để: <code>{ "rules": { ".read": True, ".write": True } }</code> rồi bấm <strong>Publish</strong>.</li>
-        </ol>
-      </details>
-
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:16px;">
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button type="button" class="outline-button" id="firebase-push-all-btn" title="Đẩy toàn bộ dữ liệu hiện có trên máy này lên Firebase Cloud">⬆ Đẩy dữ liệu máy này lên Cloud</button>
-          <button type="button" class="outline-button" id="firebase-pull-all-btn" title="Tải dữ liệu mới nhất từ Firebase Cloud về máy này">⬇ Tải từ Cloud về máy</button>
-        </div>
-        <button type="button" class="primary-button" id="save-firebase-db-url-btn">✓ Lưu & Kết nối Real-time</button>
-      </div>
-    </div>
-  </dialog>
+  
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=3.6"></script>
+  <script type="module" src="/src/app.js?v=3.7"></script>
 </body>
 </html>

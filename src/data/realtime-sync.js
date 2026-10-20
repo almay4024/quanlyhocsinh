@@ -1,4 +1,4 @@
-// Real-time synchronization engine for Lớp học vui (v1.0)
+// Real-time synchronization engine for Quản lý học sinh (v1.0)
 // Safe, non-blocking, event-driven synchronization across tabs, LAN server, and cloud.
 
 const CHANNEL_NAME = 'lopvui_realtime_sync_v10';

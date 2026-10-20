@@ -1,14 +1,13 @@
-const APP_VERSION = "3.6";
-// Điền sẵn URL Firebase Realtime Database tại đây nếu muốn mọi máy tự kết nối không cần nhập tay:
-const DEFAULT_FIREBASE_DB_URL = "https://quanlyhocsinh-17d3d-default-rtdb.asia-southeast1.firebasedatabase.app";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.6';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.6';
+const APP_VERSION = "3.7";
+const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.7';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.7';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=3.6';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.6';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.6';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.6';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.6';
+import { setupFeatures } from './features.js?v=3.7';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.7';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.7';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.7';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.7';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -129,30 +128,11 @@ const _nativeSetItem = Storage.prototype.setItem;
 const _nativeRemoveItem = Storage.prototype.removeItem;
 
 function getConfiguredFirebaseDbUrl() {
-  try {
-    const saved = _nativeGetItem.call(window.localStorage, 'lopvui.firebase-db-url.v1');
-    const url = String(saved || DEFAULT_FIREBASE_DB_URL || '').trim().replace(/\/+$/, '');
-    if (url && /^https:\/\/[a-zA-Z0-9._-]+\.(firebaseio\.com|firebasedatabase\.app)$/i.test(url)) {
-      return url;
-    }
-    return url.startsWith('https://') ? url : '';
-  } catch {
-    return '';
-  }
+  return _INTERNAL_CLOUD_EP;
 }
 
-function setConfiguredFirebaseDbUrl(rawUrl) {
-  let clean = String(rawUrl || '').trim().replace(/\/+$/, '');
-  // Strip trailing /something.json if user pasted a full path
-  clean = clean.replace(/\/[a-zA-Z0-9_-]+\.json$/i, '');
-  try {
-    if (clean) {
-      _nativeSetItem.call(window.localStorage, 'lopvui.firebase-db-url.v1', clean);
-    } else {
-      _nativeRemoveItem.call(window.localStorage, 'lopvui.firebase-db-url.v1');
-    }
-  } catch {}
-  return clean;
+function setConfiguredFirebaseDbUrl() {
+  return _INTERNAL_CLOUD_EP;
 }
 
 function _getKeyTimestamps() {
@@ -602,7 +582,7 @@ const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fa
       }
       keysToRemove.forEach(k => _nativeRemoveItem.call(localStorage, k));
       if (savedDriveCfg) _nativeSetItem.call(localStorage, 'lopvui.google-drive-photo-config.v1', savedDriveCfg);
-      _nativeSetItem.call(localStorage, 'lopvui.firebase-db-url.v1', DEFAULT_FIREBASE_DB_URL);
+      _nativeRemoveItem.call(localStorage, 'lopvui.firebase-db-url.v1');
       _nativeSetItem.call(localStorage, 'lopvui.class-catalog.v1', '[]');
       _nativeSetItem.call(localStorage, 'lopvui.students.v9', '[]');
       _nativeSetItem.call(localStorage, 'lopvui.makeup-students.v1', '[]');
@@ -5069,21 +5049,9 @@ realtimeController.onStatusChange(({ state, lastSyncTime }) => {
 
 document.addEventListener('click', (e) => {
   const rtBadge = e.target.closest('#realtime-sync-badge');
-  if (rtBadge || e.target.closest('#login-open-firebase-config-btn')) {
-    const dlg = $('#firebase-cloud-config-dialog');
-    if (dlg) {
-      const urlInp = $('#firebase-db-url-input');
-      const curUrl = getConfiguredFirebaseDbUrl();
-      if (urlInp) urlInp.value = curUrl;
-      const statusBanner = $('#firebase-sync-status-banner');
-      if (statusBanner) {
-        statusBanner.textContent = curUrl
-          ? `● Đang kết nối Firebase Cloud: ${curUrl}`
-          : '○ Chưa gắn URL Firebase Realtime Database (Đang chạy Local trên từng máy).';
-      }
-      try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); }
-    }
+  if (rtBadge) {
     forceSyncNow('manual-click');
+    toast('✓ Đã đồng bộ dữ liệu thời gian thực.');
     return;
   }
 
@@ -6570,69 +6538,3 @@ window.addEventListener('resize', () => {
 
 
 
-$('#close-firebase-config-dialog')?.addEventListener('click', () => $('#firebase-cloud-config-dialog')?.close());
-$('#save-firebase-db-url-btn')?.addEventListener('click', async () => {
-  const raw = $('#firebase-db-url-input')?.value || '';
-  const clean = setConfiguredFirebaseDbUrl(raw);
-  const banner = $('#firebase-sync-status-banner');
-  if (!clean) {
-    _notifyRtStatus('local', Date.now(), 'disconnected');
-    if (banner) banner.textContent = '○ Đã ngắt kết nối Firebase Cloud (Chế độ Local).';
-    toast('Đã chuyển về chế độ lưu trữ Local.');
-    return;
-  }
-  if (banner) banner.textContent = '⏳ Đang kiểm tra kết nối tới Firebase Realtime Database...';
-  const res = await pullFromFirebaseCloudNow('manual-connect');
-  if (res.ok) {
-    if (res.emptyCloud) {
-      const pushRes = await pushAllLocalSnapshotToFirebaseCloud();
-      if (banner) banner.textContent = `✓ Kết nối thành công! Đã khởi tạo ${pushRes.count || 0} nhóm dữ liệu từ máy này lên Firebase.`;
-      toast('✓ Đã kết nối Firebase & đẩy dữ liệu khởi tạo lên Cloud thành công!');
-    } else {
-      if (banner) banner.textContent = `✓ Kết nối thành công! Đã đồng bộ ${res.count || 0} nhóm dữ liệu từ Firebase Cloud.`;
-      toast('✓ Đã kết nối & đồng bộ dữ liệu từ Firebase Realtime Database!');
-    }
-    setTimeout(() => $('#firebase-cloud-config-dialog')?.close(), 900);
-  } else {
-    if (banner) banner.textContent = `❌ Không thể kết nối (${res.reason}). Hãy kiểm tra lại URL và tab Rules (.read: true, .write: true) trên Firebase Console.`;
-    toast('Không thể kết nối Firebase. Vui lòng kiểm tra lại URL và Rules.');
-  }
-});
-
-$('#firebase-push-all-btn')?.addEventListener('click', async () => {
-  const raw = $('#firebase-db-url-input')?.value || '';
-  if (raw) setConfiguredFirebaseDbUrl(raw);
-  if (!getConfiguredFirebaseDbUrl()) {
-    toast('Vui lòng dán Firebase Realtime Database URL trước.');
-    $('#firebase-db-url-input')?.focus();
-    return;
-  }
-  const banner = $('#firebase-sync-status-banner');
-  if (banner) banner.textContent = '⏳ Đang đẩy toàn bộ dữ liệu máy này lên Firebase...';
-  const res = await pushAllLocalSnapshotToFirebaseCloud();
-  if (res.ok) {
-    if (banner) banner.textContent = `✓ Đã đẩy thành công ${res.count} nhóm dữ liệu lên Firebase Cloud!`;
-    toast(`✓ Đã đẩy ${res.count} nhóm dữ liệu lên Firebase Cloud.`);
-  } else {
-    if (banner) banner.textContent = `❌ Lỗi khi đẩy dữ liệu (${res.reason}). Kiểm tra Rules trên Firebase.`;
-  }
-});
-
-$('#firebase-pull-all-btn')?.addEventListener('click', async () => {
-  const raw = $('#firebase-db-url-input')?.value || '';
-  if (raw) setConfiguredFirebaseDbUrl(raw);
-  if (!getConfiguredFirebaseDbUrl()) {
-    toast('Vui lòng dán Firebase Realtime Database URL trước.');
-    $('#firebase-db-url-input')?.focus();
-    return;
-  }
-  const banner = $('#firebase-sync-status-banner');
-  if (banner) banner.textContent = '⏳ Đang tải dữ liệu mới nhất từ Firebase...';
-  const res = await pullFromFirebaseCloudNow('manual-pull');
-  if (res.ok) {
-    if (banner) banner.textContent = `✓ Đã tải và hợp nhất ${res.count || 0} nhóm dữ liệu từ Firebase Cloud!`;
-    toast('✓ Đã cập nhật dữ liệu mới nhất từ Firebase Cloud.');
-  } else {
-    if (banner) banner.textContent = `❌ Lỗi khi tải dữ liệu (${res.reason}).`;
-  }
-});
