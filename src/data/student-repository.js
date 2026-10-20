@@ -170,19 +170,24 @@ function loadPhotoStore(storage = getStorage()) {
 function sanitizeStudentForStorage(s, photoStore) {
   if (!s || typeof s !== 'object') return null;
   const copy = { ...s };
-  // Strip transient per-session UI state so multi-class/multi-device saves never conflict
+  // Strip transient per-session UI state & duplicate history alias to cut payload size by 50%
   delete copy.attendance;
   delete copy.homework;
   delete copy.testScore;
   delete copy.arrivalTime;
   delete copy.lateMinutes;
+  delete copy.history;
 
   copy.studentCode = (copy.studentCode && String(copy.studentCode).trim())
     ? String(copy.studentCode).trim().toUpperCase()
     : null;
 
-  // Offload base64 data URLs to separate key lopvui.student-photos.v1 to keep student roster payload small
-  if (copy.photoURL && String(copy.photoURL).startsWith('data:image/')) {
+  // Nếu học sinh đã có ảnh trên Google Drive (photoDriveFileId), chỉ lưu link Drive nhẹ, xoá ảnh Base64 nặng
+  if (copy.photoDriveFileId) {
+    copy.photoURL = `https://drive.google.com/thumbnail?id=${encodeURIComponent(copy.photoDriveFileId)}&sz=w600`;
+    delete photoStore[copy.id];
+    copy.hasStoredPhoto = false;
+  } else if (copy.photoURL && String(copy.photoURL).startsWith('data:image/')) {
     photoStore[copy.id] = copy.photoURL;
     copy.hasStoredPhoto = true;
     copy.photoURL = `@photo:${copy.id}`;
@@ -207,12 +212,16 @@ export function hydrateStudentPhoto(student, photoStore) {
 
 export function saveStudentRecords(students, makeupStudents, storage = getStorage()) {
   const photoStore = loadPhotoStore(storage);
+  const prevPhotoJson = JSON.stringify(photoStore);
   const cleanStudents = (students || []).filter(Boolean).map(s => sanitizeStudentForStorage(s, photoStore)).filter(Boolean);
   const cleanMakeups = (makeupStudents || []).filter(Boolean).map(s => sanitizeStudentForStorage(s, photoStore)).filter(Boolean);
 
   if (storage) {
     try {
-      storage.setItem(PHOTOS_KEY, JSON.stringify(photoStore));
+      const nextPhotoJson = JSON.stringify(photoStore);
+      if (nextPhotoJson !== prevPhotoJson) {
+        storage.setItem(PHOTOS_KEY, nextPhotoJson);
+      }
     } catch {}
     storage.setItem(STUDENTS_KEY, JSON.stringify(cleanStudents));
     storage.setItem(MAKEUP_KEY, JSON.stringify(cleanMakeups));

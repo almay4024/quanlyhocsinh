@@ -1,13 +1,13 @@
-const APP_VERSION = "3.9.1";
+const APP_VERSION = "3.9.2";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.9.1';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.9.1';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.9.2';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.9.2';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=3.9.1';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.9.1';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.9.1';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.9.1';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.9.1';
+import { setupFeatures } from './features.js?v=3.9.2';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.9.2';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.9.2';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.9.2';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.9.2';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -523,15 +523,25 @@ function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
   _rtCloudPushTimer = setTimeout(_flushFirebaseCloudPush, 140);
 }
 
+let _lastSeenCloudMetaTs = 0;
+let _seenSafeKeyTimestamps = {};
+let _lastSyncedDeletedCount = 0;
+
 async function _flushFirebaseCloudPush() {
   const dbUrl = getConfiguredFirebaseDbUrl();
   if (!dbUrl || !_rtPendingCloudEntries.size) return;
   const batch = Array.from(_rtPendingCloudEntries.entries());
   _rtPendingCloudEntries.clear();
 
+  const now = Date.now();
   const kvPayload = {};
+  const metaKeyTsPatch = {};
   for (const [k, item] of batch) {
-    kvPayload[_encodeFirebaseSafeKey(k)] = item;
+    const safeK = _encodeFirebaseSafeKey(k);
+    const itemTs = item.updatedAt || now;
+    kvPayload[safeK] = item;
+    metaKeyTsPatch[safeK] = itemTs;
+    _seenSafeKeyTimestamps[safeK] = itemTs;
   }
 
   _rtIsPushingCloud = true;
@@ -542,22 +552,48 @@ async function _flushFirebaseCloudPush() {
       body: JSON.stringify(kvPayload)
     });
     const delMap = _getDeletedIdsMap();
-    if (Object.keys(delMap).length > 0) {
+    const delCount = Object.keys(delMap).length;
+    if (delCount > _lastSyncedDeletedCount) {
+      _lastSyncedDeletedCount = delCount;
       await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(delMap)
       });
     }
+    // Cập nhật bảng chỉ mục siêu nhẹ /lopvui_cloud_v3/meta (~200 bytes) để các máy khác chỉ tải đúng key thay đổi
+    await Promise.all([
+      fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cleanSlateV35: true,
+          encryptedV38: true,
+          deltaSyncV392: true,
+          lastUpdatedAt: now,
+          lastClientId: RT_CLIENT_ID,
+          deletedCount: delCount
+        })
+      }),
+      fetch(`${dbUrl}/lopvui_cloud_v3/meta/keyTimestamps.json`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(metaKeyTsPatch)
+      })
+    ]);
+    _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, now);
     if (res.ok) {
-      _notifyRtStatus('realtime-cloud', Date.now(), 'cloud-pushed');
+      _notifyRtStatus('realtime-cloud', now, 'cloud-pushed');
     }
   } catch {} finally {
     _rtIsPushingCloud = false;
   }
 }
 
-async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
+/**
+ * Tải toàn bộ 1 lần duy nhất khi khởi tạo thiết bị mới hoặc nâng cấp cấu trúc meta
+ */
+async function _pullFullCloudSnapshotOnce(source = 'cloud-init') {
   const dbUrl = getConfiguredFirebaseDbUrl();
   if (!dbUrl) return { ok: false, reason: 'no-url' };
   try {
@@ -570,20 +606,129 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
     }
     const kv = data.kv || {};
     const remoteDeleted = data.deletedIds || {};
+    _lastSyncedDeletedCount = Object.keys(remoteDeleted).length;
     const entries = {};
     const metaMap = {};
-    for (const item of Object.values(kv)) {
+    const keyTimestamps = {};
+    let maxTs = data.meta?.lastUpdatedAt || data.lastFullPushAt || Date.now();
+    for (const [safeK, item] of Object.entries(kv)) {
       if (!item) continue;
+      const itemTs = item.updatedAt || maxTs;
+      keyTimestamps[safeK] = itemTs;
+      _seenSafeKeyTimestamps[safeK] = itemTs;
+      if (itemTs > maxTs) maxTs = itemTs;
       const resolvedKey = item.encKey
         ? decryptVaultPayload(item.encKey, 'firebase_key_meta')
         : item.rawKey;
       if (resolvedKey && _shouldSyncKey(resolvedKey)) {
         entries[resolvedKey] = item.value;
-        metaMap[resolvedKey] = { updatedAt: item.updatedAt || 0, clientId: item.clientId || '' };
+        metaMap[resolvedKey] = { updatedAt: itemTs, clientId: item.clientId || '' };
       }
+    }
+    _lastSeenCloudMetaTs = maxTs;
+    // Nếu trên Cloud chưa có nhánh /meta (từ bản v3.8/v3.9 cũ), tự động ghi nhánh /meta nhẹ lên Cloud
+    if (!data.meta || !data.meta.deltaSyncV392) {
+      fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cleanSlateV35: true,
+          encryptedV38: true,
+          deltaSyncV392: true,
+          lastUpdatedAt: maxTs,
+          lastClientId: RT_CLIENT_ID,
+          deletedCount: _lastSyncedDeletedCount,
+          keyTimestamps
+        })
+      }).catch(() => {});
     }
     const changed = _applyRtRemoteEntries(entries, source, metaMap, remoteDeleted);
     return { ok: true, emptyCloud: Object.keys(entries).length === 0, changed, count: Object.keys(entries).length };
+  } catch (err) {
+    return { ok: false, reason: String(err?.message || 'network-error') };
+  }
+}
+
+/**
+ * Đồng bộ Delta siêu tiết kiệm băng thông (v3.9.2):
+ * Bước 1: Chỉ tải /lopvui_cloud_v3/meta.json (~250 bytes).
+ * Bước 2: Nếu lastUpdatedAt không đổi -> DỪNG NGAY (0 KB tải thêm!).
+ * Bước 3: Nếu có thay đổi -> chỉ tải đúng những safeKey có timestamp mới hơn máy hiện tại!
+ */
+async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
+  const dbUrl = getConfiguredFirebaseDbUrl();
+  if (!dbUrl) return { ok: false, reason: 'no-url' };
+  try {
+    const metaRes = await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, { cache: 'no-store' });
+    if (!metaRes.ok) return { ok: false, reason: `HTTP ${metaRes.status}` };
+    const meta = await metaRes.json();
+    _notifyRtStatus('realtime-cloud', Date.now(), 'connected');
+
+    // Nếu chưa có nhánh meta trên Cloud, chạy đồng bộ đầy đủ 1 lần để khởi tạo meta
+    if (!meta || typeof meta !== 'object' || !meta.deltaSyncV392) {
+      return await _pullFullCloudSnapshotOnce(source);
+    }
+
+    const remoteLastUpdated = Number(meta.lastUpdatedAt) || 0;
+    const remoteKeyTsMap = meta.keyTimestamps || {};
+
+    // Nếu không phải lần khởi động đầu tiên và không có thay đổi nào mới trên Cloud -> tốn đúng ~250 bytes!
+    if (source === 'cloud-poll' && _lastSeenCloudMetaTs > 0 && remoteLastUpdated <= _lastSeenCloudMetaTs) {
+      return { ok: true, emptyCloud: false, changed: false, count: 0 };
+    }
+
+    // Xác định danh sách các safeKey thực sự có thay đổi mới hơn bản máy đang giữ
+    const changedSafeKeys = Object.keys(remoteKeyTsMap).filter(safeK => {
+      const rTs = Number(remoteKeyTsMap[safeK]) || 0;
+      const seenTs = Number(_seenSafeKeyTimestamps[safeK]) || 0;
+      return rTs > seenTs;
+    });
+
+    if (!changedSafeKeys.length && _lastSeenCloudMetaTs > 0) {
+      _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, remoteLastUpdated);
+      return { ok: true, emptyCloud: Object.keys(remoteKeyTsMap).length === 0, changed: false, count: 0 };
+    }
+
+    // Nếu là lần đầu mở trang và có nhiều hơn 8 key cần tải -> tải 1 lần gói tổng hợp cho nhanh
+    if (_lastSeenCloudMetaTs === 0 && changedSafeKeys.length > 8) {
+      return await _pullFullCloudSnapshotOnce(source);
+    }
+
+    // Chỉ tải từng key vừa thay đổi (vài KB thay vì cả cục nhiều MB)
+    const entries = {};
+    const metaMap = {};
+    await Promise.all(changedSafeKeys.map(async (safeK) => {
+      try {
+        const kRes = await fetch(`${dbUrl}/lopvui_cloud_v3/kv/${safeK}.json`, { cache: 'no-store' });
+        if (!kRes.ok) return;
+        const item = await kRes.json();
+        const rTs = Number(remoteKeyTsMap[safeK]) || Date.now();
+        _seenSafeKeyTimestamps[safeK] = rTs;
+        if (!item) return;
+        const resolvedKey = item.encKey
+          ? decryptVaultPayload(item.encKey, 'firebase_key_meta')
+          : item.rawKey;
+        if (resolvedKey && _shouldSyncKey(resolvedKey)) {
+          entries[resolvedKey] = item.value;
+          metaMap[resolvedKey] = { updatedAt: item.updatedAt || rTs, clientId: item.clientId || '' };
+        }
+      } catch {}
+    }));
+
+    let remoteDeleted = {};
+    if ((Number(meta.deletedCount) || 0) > _lastSyncedDeletedCount) {
+      try {
+        const delRes = await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, { cache: 'no-store' });
+        if (delRes.ok) {
+          remoteDeleted = (await delRes.json()) || {};
+          _lastSyncedDeletedCount = Object.keys(remoteDeleted).length;
+        }
+      } catch {}
+    }
+
+    _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, remoteLastUpdated);
+    const changed = _applyRtRemoteEntries(entries, source, metaMap, remoteDeleted);
+    return { ok: true, emptyCloud: Object.keys(remoteKeyTsMap).length === 0, changed, count: Object.keys(entries).length };
   } catch (err) {
     return { ok: false, reason: String(err?.message || 'network-error') };
   }
@@ -593,6 +738,7 @@ async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
   const dbUrl = getConfiguredFirebaseDbUrl();
   if (!dbUrl) return { ok: false, reason: 'no-url' };
   const kvPayload = {};
+  const keyTimestamps = {};
   const tsMap = _getKeyTimestamps();
   const now = Date.now();
   let count = 0;
@@ -602,29 +748,45 @@ async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
       if (k && _shouldSyncKey(k)) {
         const plainVal = _readDecryptedLocal(k);
         if (plainVal !== null) {
-          kvPayload[_encodeFirebaseSafeKey(k)] = {
+          const safeK = _encodeFirebaseSafeKey(k);
+          const kTs = tsMap[k] || now;
+          kvPayload[safeK] = {
             encKey: encryptVaultPayload(k, 'firebase_key_meta'),
             value: encryptVaultPayload(plainVal, k),
-            updatedAt: tsMap[k] || now,
+            updatedAt: kTs,
             clientId: RT_CLIENT_ID
           };
+          keyTimestamps[safeK] = kTs;
+          _seenSafeKeyTimestamps[safeK] = kTs;
           count++;
         }
       }
     }
+    const delMap = _getDeletedIdsMap();
+    _lastSyncedDeletedCount = Object.keys(delMap).length;
     const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        meta: {
+          cleanSlateV35: true,
+          encryptedV38: true,
+          deltaSyncV392: true,
+          lastUpdatedAt: now,
+          lastClientId: RT_CLIENT_ID,
+          deletedCount: _lastSyncedDeletedCount,
+          keyTimestamps
+        },
         kv: kvPayload,
-        deletedIds: _getDeletedIdsMap(),
+        deletedIds: delMap,
         cleanSlateV35: true,
         encryptedV38: true,
         lastFullPushAt: now
       })
     });
+    _lastSeenCloudMetaTs = now;
     if (res.ok) {
-      _notifyRtStatus('realtime-cloud', Date.now(), 'full-push');
+      _notifyRtStatus('realtime-cloud', now, 'full-push');
       return { ok: true, count };
     }
     return { ok: false, reason: `HTTP ${res.status}` };
@@ -744,22 +906,6 @@ function initRealtimeSync(onSyncCallback) {
     if (getConfiguredFirebaseDbUrl()) {
       _notifyRtStatus('realtime-cloud', Date.now(), 'init');
       (async () => {
-        const dbUrl = getConfiguredFirebaseDbUrl();
-        try {
-          const checkRes = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, { cache: 'no-store' });
-          const cloudObj = checkRes.ok ? await checkRes.json() : null;
-          if (!cloudObj || cloudObj.cleanSlateV35 !== true) {
-            await fetch(`${dbUrl}/lopvui_cloud_v3.json`, { method: 'DELETE' });
-            await pushAllLocalSnapshotToFirebaseCloud(true);
-            return;
-          }
-          // If cloud had unencrypted v3.5/v3.7 entries, pull & merge first, then overwrite cloud with 100% encrypted v3.8 entries!
-          if (cloudObj.encryptedV38 !== true) {
-            await pullFromFirebaseCloudNow('cloud-init');
-            await pushAllLocalSnapshotToFirebaseCloud(true);
-            return;
-          }
-        } catch {}
         const res = await pullFromFirebaseCloudNow('cloud-init');
         if (res.ok && res.emptyCloud) {
           await pushAllLocalSnapshotToFirebaseCloud(true);
@@ -767,15 +913,26 @@ function initRealtimeSync(onSyncCallback) {
       })();
     }
 
+    // Khi tab quay lại hiển thị (visibilitychange), kiểm tra meta ngay lập tức
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && getConfiguredFirebaseDbUrl()) {
+        if (!_rtIsPushingCloud && _rtPendingCloudEntries.size === 0) {
+          pullFromFirebaseCloudNow('cloud-poll');
+        }
+      }
+    });
+
     setInterval(() => {
       if (getConfiguredFirebaseDbUrl()) {
+        // Tạm ngưng hỏi thăm khi tab đang bị ẩn dưới nền để tiết kiệm 100% băng thông
+        if (typeof document !== 'undefined' && document.hidden) return;
         // Không poll đè khi người dùng vừa bấm nút lưu (đang đẩy dữ liệu lên Firebase)
         if (_rtIsPushingCloud || _rtPendingCloudEntries.size > 0 || (Date.now() - _rtLastLocalWriteAt < 2000)) {
           return;
         }
         pullFromFirebaseCloudNow('cloud-poll');
       }
-    }, 2500);
+    }, 4000);
   }
   return {
     clientId: RT_CLIENT_ID,
