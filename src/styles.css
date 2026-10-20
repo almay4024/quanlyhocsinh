@@ -8028,3 +8028,441 @@ dialog#attendance-export-dialog.report-fullscreen-dialog[open] {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ==========================================================================
+   v3.5 REPORT CENTER MOBILE & DESKTOP FULLSCREEN FIX + LIFTED BOTTOM BAR
+   ========================================================================== */
+dialog#attendance-export-dialog.report-fullscreen-dialog {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  min-height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: #f4f7f5 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+dialog#attendance-export-dialog.report-fullscreen-dialog::before {
+  display: none !important;
+  content: none !important;
+}
+
+dialog#attendance-export-dialog.report-fullscreen-dialog[open] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.report-fullscreen-shell {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.report-fullscreen-header {
+  flex: 0 0 auto !important;
+  background: #ffffff !important;
+  border-bottom: 1.5px solid #d5e3d8 !important;
+  padding: max(10px, env(safe-area-inset-top, 10px)) 24px 0 !important;
+  box-shadow: 0 2px 8px rgba(20, 45, 30, 0.04) !important;
+  z-index: 40 !important;
+  box-sizing: border-box !important;
+}
+
+.report-fullscreen-top-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin-bottom: 8px !important;
+}
+
+.report-fullscreen-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.report-title-text-wrap {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.report-fullscreen-title-group h2 {
+  margin: 0 !important;
+  font-size: 18.5px !important;
+  color: #1c3124 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.report-top-close-btn {
+  position: static !important;
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+}
+
+.report-fullscreen-body {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 16px 24px 24px !important;
+  box-sizing: border-box !important;
+}
+
+.report-fullscreen-content {
+  max-width: 1320px !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  border: 1px solid #d8e5da !important;
+  padding: 16px 20px !important;
+  box-shadow: 0 4px 16px rgba(20, 45, 30, 0.04) !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+}
+
+/* Lifted Bottom Action Bar: Always 100% visible above screen bottom */
+footer.attendance-export-actions.report-sticky-bottom-bar {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  bottom: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 12px 24px calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+  background: #ffffff !important;
+  border-top: 1.5px solid #cfe0d2 !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex-wrap: wrap !important;
+  box-shadow: 0 -6px 20px rgba(20, 45, 30, 0.08) !important;
+  z-index: 60 !important;
+  box-sizing: border-box !important;
+}
+
+/* Report Center Inner Components */
+.report-compact-heading {
+  background: #f8faf8 !important;
+  border: 1px solid #dce5dd !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  margin: 0 0 12px !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+  gap: 10px !important;
+  flex-wrap: wrap !important;
+}
+.report-heading-eyebrow {
+  font-size: 12px !important;
+  color: #21442a !important;
+  letter-spacing: 0.3px !important;
+  display: block !important;
+}
+.report-heading-main {
+  font-size: 14px !important;
+  margin-top: 2px !important;
+  color: #1e3a29 !important;
+}
+.report-heading-sub {
+  font-size: 13.5px !important;
+  color: #526456 !important;
+  margin-top: 2px !important;
+}
+.report-heading-right {
+  text-align: right !important;
+  font-size: 13.5px !important;
+  color: #3b4e40 !important;
+}
+
+.report-btvn-summary-box {
+  background: #f0fdf4 !important;
+  border: 1px solid #bbf7d0 !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  margin-bottom: 12px !important;
+  font-size: 13.5px !important;
+  color: #14532d !important;
+}
+.report-btvn-top {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+.report-btvn-links {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px 14px !important;
+  margin-top: 6px !important;
+  padding-top: 6px !important;
+  border-top: 1px dashed #86efac !important;
+}
+
+#attendance-export-dialog .report-metrics-4col {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  margin: 0 0 12px !important;
+}
+#attendance-export-dialog .report-metrics-4col .class-metric-box {
+  padding: 8px 10px !important;
+  text-align: center !important;
+}
+#attendance-export-dialog .report-metrics-4col .class-metric-box strong {
+  font-size: 18px !important;
+  display: block !important;
+}
+
+.report-sections-stack {
+  display: grid !important;
+  gap: 10px !important;
+}
+.report-section-card {
+  background: #ffffff !important;
+  border-radius: 8px !important;
+  padding: 10px 12px !important;
+  border: 1px solid #e5e7eb !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+.report-section-card.border-danger { border-color: #fecaca !important; }
+.report-section-card.border-warning { border-color: #fed7aa !important; }
+.report-section-card.border-yellow { border-color: #fde047 !important; }
+.report-section-card.border-purple { background: #fcfaff !important; border-color: #d8b4fe !important; }
+.report-section-title {
+  font-size: 14px !important;
+  display: block !important;
+  margin-bottom: 6px !important;
+}
+.report-empty-ok {
+  color: #15803d !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  margin-top: 4px !important;
+}
+
+/* Customizable Low Score Threshold Bar */
+.low-score-header-bar {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  margin-bottom: 6px !important;
+}
+.low-score-header-bar .report-section-title {
+  margin-bottom: 0 !important;
+}
+.low-score-threshold-controls {
+  display: inline-flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 5px !important;
+  font-size: 12.5px !important;
+  color: #713f12 !important;
+  font-weight: 600 !important;
+}
+.low-score-preset-btn {
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid #fcd34d !important;
+  background: #fffbeb !important;
+  color: #92400e !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  cursor: pointer !important;
+  min-height: 28px !important;
+}
+.low-score-preset-btn.active {
+  background: #d97706 !important;
+  color: #ffffff !important;
+  border-color: #b45309 !important;
+}
+.low-score-custom-box {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  background: #fefce8 !important;
+  border: 1.5px solid #f59e0b !important;
+  border-radius: 6px !important;
+  padding: 2px 6px !important;
+  color: #713f12 !important;
+  font-weight: 800 !important;
+  min-height: 28px !important;
+}
+.low-score-custom-box input {
+  width: 36px !important;
+  border: none !important;
+  background: transparent !important;
+  font-weight: 800 !important;
+  color: #854d0e !important;
+  text-align: center !important;
+  font-size: 13px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  outline: none !important;
+}
+
+.report-signature-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  margin-top: 20px !important;
+  padding: 0 24px !important;
+  font-size: 13.5px !important;
+  color: #506256 !important;
+}
+
+/* Mobile Optimization for Report Center (<= 768px) */
+@media (max-width: 768px) {
+  .report-fullscreen-header {
+    padding: max(8px, env(safe-area-inset-top, 8px)) 10px 0 !important;
+  }
+  .report-eyebrow-desktop {
+    display: none !important;
+  }
+  .report-fullscreen-top-row {
+    margin-bottom: 6px !important;
+    gap: 6px !important;
+  }
+  .report-back-btn {
+    padding: 6px 10px !important;
+    font-size: 12.5px !important;
+    min-height: 32px !important;
+    white-space: nowrap !important;
+  }
+  .report-fullscreen-title-group {
+    gap: 8px !important;
+  }
+  .report-fullscreen-title-group h2 {
+    font-size: 15px !important;
+  }
+  .report-fullscreen-header .report-nav-tabs {
+    gap: 5px !important;
+    padding: 0 0 6px !important;
+  }
+  .report-fullscreen-header .report-tab {
+    padding: 6px 10px !important;
+    font-size: 12.5px !important;
+    min-height: 32px !important;
+    border-radius: 7px !important;
+  }
+  .report-fullscreen-body {
+    padding: 8px 8px 14px !important;
+  }
+  .report-fullscreen-content {
+    padding: 10px !important;
+    border-radius: 10px !important;
+  }
+  .report-compact-heading {
+    flex-direction: column !important;
+    padding: 8px 10px !important;
+    gap: 4px !important;
+  }
+  .report-heading-right {
+    text-align: left !important;
+    font-size: 12.5px !important;
+  }
+  .report-btvn-summary-box {
+    padding: 8px 10px !important;
+    font-size: 12.5px !important;
+  }
+  #attendance-export-dialog .report-metrics-4col {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 5px !important;
+  }
+  #attendance-export-dialog .report-metrics-4col .class-metric-box {
+    padding: 6px 4px !important;
+  }
+  #attendance-export-dialog .report-metrics-4col .class-metric-box span {
+    font-size: 11px !important;
+  }
+  #attendance-export-dialog .report-metrics-4col .class-metric-box strong {
+    font-size: 15px !important;
+  }
+  #attendance-export-dialog .report-metrics-4col .class-metric-box small {
+    font-size: 10.5px !important;
+  }
+  .report-section-card {
+    padding: 8px 9px !important;
+  }
+  /* Fit report tables cleanly inside mobile screen without overflowing */
+  #attendance-export-dialog .attendance-table-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  #attendance-export-dialog .attendance-report-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: 12.5px !important;
+  }
+  #attendance-export-dialog .attendance-report-table th,
+  #attendance-export-dialog .attendance-report-table td {
+    padding: 6px 7px !important;
+    font-size: 12px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .report-signature-row {
+    padding: 0 8px !important;
+    font-size: 12.5px !important;
+  }
+  /* Compact 2x2 lifted bottom action bar on mobile */
+  footer.attendance-export-actions.report-sticky-bottom-bar {
+    padding: 8px 10px calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+  }
+  .report-bottom-left,
+  .report-bottom-right {
+    display: contents !important;
+  }
+  .report-bottom-close-desktop {
+    display: none !important;
+  }
+  footer.attendance-export-actions.report-sticky-bottom-bar button {
+    width: 100% !important;
+    min-height: 36px !important;
+    padding: 7px 8px !important;
+    font-size: 12px !important;
+    justify-content: center !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+}

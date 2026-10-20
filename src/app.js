@@ -1,12 +1,14 @@
-const APP_VERSION = "3.3";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.3';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.3';
+const APP_VERSION = "3.5";
+// Điền sẵn URL Firebase Realtime Database tại đây nếu muốn mọi máy tự kết nối không cần nhập tay:
+const DEFAULT_FIREBASE_DB_URL = "https://quanlyhocsinh-17d3d-default-rtdb.asia-southeast1.firebasedatabase.app";
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.5';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.5';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=3.3';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.3';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.3';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.3';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.3';
+import { setupFeatures } from './features.js?v=3.5';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.5';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.5';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.5';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.5';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -91,23 +93,100 @@ function syncActiveClassSessionRecord(classId, date, currentUser, snapshotData) 
   }
 }
 
-// Built-in self-contained Real-time Sync Engine (zero external file dependency)
-const RT_CHANNEL_NAME = 'lopvui_realtime_sync_v11';
+// Built-in Multi-Device Firebase Realtime Database + BroadcastChannel Sync Engine (v3.4)
+// Supports Granular ID-level Merge (chống ghi đè khi nhiều máy điểm danh/nhập điểm cùng lúc)
+const RT_CHANNEL_NAME = 'lopvui_realtime_sync_v34';
 const RT_PREFIX = 'lopvui.';
-const RT_EXCLUDED = new Set(['lopvui.signed-in-account.v1']);
+const RT_EXCLUDED = new Set([
+  'lopvui.signed-in-account.v1',
+  'lopvui.explicit-logout.v1',
+  'lopvui.firebase-db-url.v1',
+  'lopvui.key-timestamps.v1',
+  'lopvui.deleted-ids.v1'
+]);
+const GRANULAR_ARRAY_KEYS = new Set([
+  'lopvui.students.v9',
+  'lopvui.makeup-students.v1',
+  'lopvui.session-history.v2',
+  'lopvui.class-catalog.v1',
+  'lopvui.tutoring-sessions.v1',
+  'lopvui.room-templates.v1'
+]);
 const RT_CLIENT_ID = `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 let _rtChannel = null;
 let _rtApplyingRemote = false;
 let _rtSyncListeners = new Set();
 let _rtStatusListeners = new Set();
 let _rtDebounceTimer = null;
+let _rtCloudPushTimer = null;
 let _rtPendingKeys = new Set();
+let _rtPendingCloudEntries = new Map();
 let _rtLastSyncTime = Date.now();
 let _rtState = 'local';
 
 const _nativeGetItem = Storage.prototype.getItem;
 const _nativeSetItem = Storage.prototype.setItem;
 const _nativeRemoveItem = Storage.prototype.removeItem;
+
+function getConfiguredFirebaseDbUrl() {
+  try {
+    const saved = _nativeGetItem.call(window.localStorage, 'lopvui.firebase-db-url.v1');
+    const url = String(saved || DEFAULT_FIREBASE_DB_URL || '').trim().replace(/\/+$/, '');
+    if (url && /^https:\/\/[a-zA-Z0-9._-]+\.(firebaseio\.com|firebasedatabase\.app)$/i.test(url)) {
+      return url;
+    }
+    return url.startsWith('https://') ? url : '';
+  } catch {
+    return '';
+  }
+}
+
+function setConfiguredFirebaseDbUrl(rawUrl) {
+  let clean = String(rawUrl || '').trim().replace(/\/+$/, '');
+  // Strip trailing /something.json if user pasted a full path
+  clean = clean.replace(/\/[a-zA-Z0-9_-]+\.json$/i, '');
+  try {
+    if (clean) {
+      _nativeSetItem.call(window.localStorage, 'lopvui.firebase-db-url.v1', clean);
+    } else {
+      _nativeRemoveItem.call(window.localStorage, 'lopvui.firebase-db-url.v1');
+    }
+  } catch {}
+  return clean;
+}
+
+function _getKeyTimestamps() {
+  try {
+    return JSON.parse(_nativeGetItem.call(window.localStorage, 'lopvui.key-timestamps.v1') || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+
+function _setKeyTimestamp(key, ts = Date.now()) {
+  try {
+    const map = _getKeyTimestamps();
+    map[key] = ts;
+    _nativeSetItem.call(window.localStorage, 'lopvui.key-timestamps.v1', JSON.stringify(map));
+  } catch {}
+}
+
+function _getDeletedIdsMap() {
+  try {
+    return JSON.parse(_nativeGetItem.call(window.localStorage, 'lopvui.deleted-ids.v1') || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+
+function _recordDeletedIds(deletedIds = [], ts = Date.now()) {
+  if (!deletedIds.length) return;
+  try {
+    const map = _getDeletedIdsMap();
+    deletedIds.forEach(id => { if (id) map[id] = ts; });
+    _nativeSetItem.call(window.localStorage, 'lopvui.deleted-ids.v1', JSON.stringify(map));
+  } catch {}
+}
 
 function _shouldSyncKey(key) {
   return typeof key === 'string' && key.startsWith(RT_PREFIX) && !RT_EXCLUDED.has(key);
@@ -136,23 +215,128 @@ function _scheduleRtUIRefresh(changedKeys, source = 'remote') {
   }, 80);
 }
 
-function _applyRtRemoteEntries(entries, source = 'remote') {
+/**
+ * Granular ID-level Merge for Array collections (students, sessionHistory, classCatalog, etc.)
+ * Prevents Device B from overwriting a student or session edited 0.1s ago by Device A!
+ */
+function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, localTs = 0, remoteDeletedMap = {}) {
+  if (!localRawStr) return remoteRawStr;
+  if (!remoteRawStr) return localRawStr;
+  if (localRawStr === remoteRawStr) return localRawStr;
+
+  const deletedMap = { ..._getDeletedIdsMap(), ...(remoteDeletedMap || {}) };
+
+  try {
+    if (GRANULAR_ARRAY_KEYS.has(key)) {
+      const localArr = JSON.parse(localRawStr);
+      const remoteArr = JSON.parse(remoteRawStr);
+      if (Array.isArray(localArr) && Array.isArray(remoteArr)) {
+        const mergedById = new Map();
+        const parseTs = (item, fallback) => {
+          if (!item) return 0;
+          if (typeof item.updatedAt === 'number') return item.updatedAt;
+          if (typeof item.updatedAt === 'string') return Date.parse(item.updatedAt) || fallback;
+          if (typeof item.createdAt === 'number') return item.createdAt;
+          return fallback;
+        };
+        for (const item of localArr) {
+          if (!item || !item.id || deletedMap[item.id]) continue;
+          mergedById.set(item.id, item);
+        }
+        for (const rItem of remoteArr) {
+          if (!rItem || !rItem.id || deletedMap[rItem.id]) continue;
+          const lItem = mergedById.get(rItem.id);
+          if (!lItem) {
+            mergedById.set(rItem.id, rItem);
+          } else {
+            const lItemTs = parseTs(lItem, localTs);
+            const rItemTs = parseTs(rItem, remoteTs);
+            const rRev = Number(rItem.revision || rItem.authVersion || 0);
+            const lRev = Number(lItem.revision || lItem.authVersion || 0);
+            if (rRev > lRev || rItemTs >= lItemTs) {
+              // Merge student sub-arrays (scores, attendanceHistory, sessionNotes, seatingHistory) so concurrent class sessions both keep their records!
+              if (key === 'lopvui.students.v9' || key === 'lopvui.makeup-students.v1') {
+                const combined = { ...lItem, ...rItem };
+                for (const subField of ['attendanceHistory', 'sessionNotes', 'seatingHistory']) {
+                  const a1 = Array.isArray(rItem[subField]) ? rItem[subField] : [];
+                  const a2 = Array.isArray(lItem[subField]) ? lItem[subField] : [];
+                  const mapSub = new Map();
+                  [...a2, ...a1].forEach(entry => {
+                    if (entry && entry.date) mapSub.set(`${entry.classId || ''}_${entry.date}`, entry);
+                  });
+                  combined[subField] = Array.from(mapSub.values());
+                }
+                if (Array.isArray(rItem.scores) || Array.isArray(lItem.scores)) {
+                  const sMap = new Map();
+                  [...(lItem.scores || []), ...(rItem.scores || [])].forEach(sc => {
+                    if (sc && sc.date) sMap.set(`${sc.classId || ''}_${sc.date}_${sc.type || 'BTVN'}`, sc);
+                  });
+                  combined.scores = Array.from(sMap.values());
+                }
+                mergedById.set(rItem.id, combined);
+              } else {
+                mergedById.set(rItem.id, rItem);
+              }
+            }
+          }
+        }
+        return JSON.stringify(Array.from(mergedById.values()));
+      }
+    }
+
+    // Special merge for masterData (employees & subjects)
+    if (key === 'lopvui.master-data.v1') {
+      const localObj = JSON.parse(localRawStr);
+      const remoteObj = JSON.parse(remoteRawStr);
+      if (localObj && remoteObj && Array.isArray(localObj.employees) && Array.isArray(remoteObj.employees)) {
+        const empMap = new Map();
+        localObj.employees.forEach(e => { if (e?.id && !deletedMap[e.id]) empMap.set(e.id, e); });
+        remoteObj.employees.forEach(re => {
+          if (!re?.id || deletedMap[re.id]) return;
+          const le = empMap.get(re.id);
+          if (!le || (Number(re.authVersion) || 1) >= (Number(le.authVersion) || 1) || (re.updatedAt || 0) >= (le.updatedAt || 0)) {
+            empMap.set(re.id, re);
+          }
+        });
+        return JSON.stringify({
+          ...localObj,
+          ...remoteObj,
+          employees: Array.from(empMap.values())
+        });
+      }
+    }
+  } catch {}
+
+  return remoteTs >= localTs ? remoteRawStr : localRawStr;
+}
+
+function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, remoteDeletedMap = {}) {
   if (!entries || typeof entries !== 'object') return false;
+  if (remoteDeletedMap && Object.keys(remoteDeletedMap).length) {
+    _recordDeletedIds(Object.keys(remoteDeletedMap));
+  }
   const changed = [];
+  const keyTsMap = _getKeyTimestamps();
   _rtApplyingRemote = true;
   try {
     for (const [k, v] of Object.entries(entries)) {
       if (!_shouldSyncKey(k)) continue;
       const cur = _nativeGetItem.call(window.localStorage, k);
+      const remoteTs = remoteMetaMap[k]?.updatedAt || Date.now();
+      const localTs = keyTsMap[k] || 0;
+
       if (v === null || v === undefined) {
-        if (cur !== null) {
+        if (cur !== null && remoteTs >= localTs) {
           _nativeRemoveItem.call(window.localStorage, k);
+          _setKeyTimestamp(k, remoteTs);
           changed.push(k);
         }
       } else {
-        const strVal = String(v);
-        if (cur !== strVal) {
-          _nativeSetItem.call(window.localStorage, k, strVal);
+        const rawRemoteStr = String(v);
+        const mergedStr = _mergeGranularJsonValue(k, cur, rawRemoteStr, remoteTs, localTs, remoteDeletedMap);
+        if (cur !== mergedStr) {
+          _nativeSetItem.call(window.localStorage, k, mergedStr);
+          _setKeyTimestamp(k, Math.max(remoteTs, localTs));
           changed.push(k);
         }
       }
@@ -167,10 +351,125 @@ function _applyRtRemoteEntries(entries, source = 'remote') {
   return false;
 }
 
+function _encodeFirebaseSafeKey(key) {
+  return String(key).replace(/[.#$/[\]]/g, '__');
+}
+
+function _scheduleFirebaseCloudPush(key, strVal, ts = Date.now()) {
+  const dbUrl = getConfiguredFirebaseDbUrl();
+  if (!dbUrl || !_shouldSyncKey(key)) return;
+  _rtPendingCloudEntries.set(key, { rawKey: key, value: strVal, updatedAt: ts, clientId: RT_CLIENT_ID });
+  if (_rtCloudPushTimer) clearTimeout(_rtCloudPushTimer);
+  _rtCloudPushTimer = setTimeout(_flushFirebaseCloudPush, 140);
+}
+
+async function _flushFirebaseCloudPush() {
+  const dbUrl = getConfiguredFirebaseDbUrl();
+  if (!dbUrl || !_rtPendingCloudEntries.size) return;
+  const batch = Array.from(_rtPendingCloudEntries.entries());
+  _rtPendingCloudEntries.clear();
+
+  const kvPayload = {};
+  for (const [k, item] of batch) {
+    kvPayload[_encodeFirebaseSafeKey(k)] = item;
+  }
+
+  try {
+    const res = await fetch(`${dbUrl}/lopvui_cloud_v3/kv.json`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(kvPayload)
+    });
+    // Also sync tombstones if any
+    const delMap = _getDeletedIdsMap();
+    if (Object.keys(delMap).length > 0) {
+      await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(delMap)
+      });
+    }
+    if (res.ok) {
+      _notifyRtStatus('realtime-cloud', Date.now(), 'cloud-pushed');
+    }
+  } catch {}
+}
+
+async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
+  const dbUrl = getConfiguredFirebaseDbUrl();
+  if (!dbUrl) return { ok: false, reason: 'no-url' };
+  try {
+    const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, { cache: 'no-store' });
+    if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+    const data = await res.json();
+    _notifyRtStatus('realtime-cloud', Date.now(), 'connected');
+    if (!data || typeof data !== 'object') {
+      return { ok: true, emptyCloud: true, changed: false };
+    }
+    const kv = data.kv || {};
+    const remoteDeleted = data.deletedIds || {};
+    const entries = {};
+    const metaMap = {};
+    for (const item of Object.values(kv)) {
+      if (item && item.rawKey && _shouldSyncKey(item.rawKey)) {
+        entries[item.rawKey] = item.value;
+        metaMap[item.rawKey] = { updatedAt: item.updatedAt || 0, clientId: item.clientId || '' };
+      }
+    }
+    const changed = _applyRtRemoteEntries(entries, source, metaMap, remoteDeleted);
+    return { ok: true, emptyCloud: Object.keys(entries).length === 0, changed, count: Object.keys(entries).length };
+  } catch (err) {
+    return { ok: false, reason: String(err?.message || 'network-error') };
+  }
+}
+
+async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
+  const dbUrl = getConfiguredFirebaseDbUrl();
+  if (!dbUrl) return { ok: false, reason: 'no-url' };
+  const kvPayload = {};
+  const tsMap = _getKeyTimestamps();
+  const now = Date.now();
+  let count = 0;
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (k && _shouldSyncKey(k)) {
+        const val = _nativeGetItem.call(window.localStorage, k);
+        if (val !== null) {
+          kvPayload[_encodeFirebaseSafeKey(k)] = {
+            rawKey: k,
+            value: val,
+            updatedAt: tsMap[k] || now,
+            clientId: RT_CLIENT_ID
+          };
+          count++;
+        }
+      }
+    }
+    const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kv: kvPayload,
+        deletedIds: _getDeletedIdsMap(),
+        cleanSlateV35: true,
+        lastFullPushAt: now
+      })
+    });
+    if (res.ok) {
+      _notifyRtStatus('realtime-cloud', Date.now(), 'full-push');
+      return { ok: true, count };
+    }
+    return { ok: false, reason: `HTTP ${res.status}` };
+  } catch (err) {
+    return { ok: false, reason: String(err?.message || 'network-error') };
+  }
+}
+
 function initRealtimeSync(onSyncCallback) {
   if (typeof onSyncCallback === 'function') _rtSyncListeners.add(onSyncCallback);
-  if (!window.__lopvuiRtInitV11) {
-    window.__lopvuiRtInitV11 = true;
+  if (!window.__lopvuiRtInitV34) {
+    window.__lopvuiRtInitV34 = true;
     try {
       Storage.prototype.setItem = function(key, value) {
         let prev = null;
@@ -179,10 +478,25 @@ function initRealtimeSync(onSyncCallback) {
         if (this === window.localStorage && _shouldSyncKey(String(key)) && !_rtApplyingRemote) {
           const strVal = String(value);
           if (prev !== strVal) {
-            if (_rtChannel) {
-              try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: Date.now(), entries: { [String(key)]: strVal } }); } catch {}
+            const now = Date.now();
+            // Track deleted IDs automatically when saving array keys
+            if (prev && GRANULAR_ARRAY_KEYS.has(String(key))) {
+              try {
+                const oldArr = JSON.parse(prev);
+                const newArr = JSON.parse(strVal);
+                if (Array.isArray(oldArr) && Array.isArray(newArr)) {
+                  const newIds = new Set(newArr.map(x => x?.id).filter(Boolean));
+                  const removed = oldArr.map(x => x?.id).filter(id => id && !newIds.has(id));
+                  if (removed.length) _recordDeletedIds(removed, now);
+                }
+              } catch {}
             }
-            _notifyRtStatus(_rtState, Date.now(), 'local-save');
+            _setKeyTimestamp(String(key), now);
+            if (_rtChannel) {
+              try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [String(key)]: strVal } }); } catch {}
+            }
+            _scheduleFirebaseCloudPush(String(key), strVal, now);
+            _notifyRtStatus(getConfiguredFirebaseDbUrl() ? 'realtime-cloud' : _rtState, now, 'local-save');
           }
         }
       };
@@ -191,10 +505,13 @@ function initRealtimeSync(onSyncCallback) {
         try { had = _nativeGetItem.call(this, key) !== null; } catch {}
         try { _nativeRemoveItem.call(this, key); } catch { return; }
         if (this === window.localStorage && _shouldSyncKey(String(key)) && !_rtApplyingRemote && had) {
+          const now = Date.now();
+          _setKeyTimestamp(String(key), now);
           if (_rtChannel) {
-            try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: Date.now(), entries: { [String(key)]: null } }); } catch {}
+            try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [String(key)]: null } }); } catch {}
           }
-          _notifyRtStatus(_rtState, Date.now(), 'local-save');
+          _scheduleFirebaseCloudPush(String(key), null, now);
+          _notifyRtStatus(getConfiguredFirebaseDbUrl() ? 'realtime-cloud' : _rtState, now, 'local-save');
         }
       };
     } catch {}
@@ -216,18 +533,54 @@ function initRealtimeSync(onSyncCallback) {
       if (!event.key || !_shouldSyncKey(event.key) || _rtApplyingRemote) return;
       _scheduleRtUIRefresh([event.key], 'storage-event');
     });
+
+    // Initial cloud pull on startup (with v3.5 clean-slate initialization on Firebase if not yet wiped)
+    if (getConfiguredFirebaseDbUrl()) {
+      _notifyRtStatus('realtime-cloud', Date.now(), 'init');
+      (async () => {
+        const dbUrl = getConfiguredFirebaseDbUrl();
+        try {
+          const checkRes = await fetch(`${dbUrl}/lopvui_cloud_v3/cleanSlateV35.json`, { cache: 'no-store' });
+          const isCleanV35 = checkRes.ok ? await checkRes.json() : null;
+          if (isCleanV35 !== true) {
+            // Wipe Firebase Realtime Database clean, keeping only the local clean-slate (Admin account AD001)
+            await fetch(`${dbUrl}/lopvui_cloud_v3.json`, { method: 'DELETE' });
+            await pushAllLocalSnapshotToFirebaseCloud(true);
+            return;
+          }
+        } catch {}
+        const res = await pullFromFirebaseCloudNow('cloud-init');
+        if (res.ok && res.emptyCloud) {
+          await pushAllLocalSnapshotToFirebaseCloud(true);
+        }
+      })();
+    }
+
+    // Continuous background cloud sync every 2.5 seconds
+    setInterval(() => {
+      if (getConfiguredFirebaseDbUrl()) {
+        pullFromFirebaseCloudNow('cloud-poll');
+      }
+    }, 2500);
   }
   return {
     clientId: RT_CLIENT_ID,
     forceSyncNow,
+    getConfiguredFirebaseDbUrl,
+    setConfiguredFirebaseDbUrl,
+    pullFromFirebaseCloudNow,
+    pushAllLocalSnapshotToFirebaseCloud,
     onStatusChange: (cb) => {
       _rtStatusListeners.add(cb);
-      cb({ state: _rtState, lastSyncTime: _rtLastSyncTime, clientId: RT_CLIENT_ID });
+      cb({ state: getConfiguredFirebaseDbUrl() ? 'realtime-cloud' : _rtState, lastSyncTime: _rtLastSyncTime, clientId: RT_CLIENT_ID });
     }
   };
 }
 
-function forceSyncNow(reason = 'manual-click') {
+async function forceSyncNow(reason = 'manual-click') {
+  if (getConfiguredFirebaseDbUrl()) {
+    await pullFromFirebaseCloudNow(reason);
+  }
   _scheduleRtUIRefresh(['*'], reason);
 }
 // Mỗi bàn chứa danh sách học sinh riêng; kéo thả chỉ sắp xếp trong bàn đích.
@@ -237,6 +590,31 @@ const baseLayout=[
   {id:'aisle-3',desks:[{id:'d31',seats:2,dividerAfter:false},{id:'d32',seats:2,dividerAfter:false}]}
 ];
 const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}};
+// v3.5 Clean-Slate Initialization: Xoá trắng toàn bộ dữ liệu mẫu, chỉ giữ lại tài khoản Admin (AD001) để đưa các lớp lên dần
+(function ensureCleanSlateV35() {
+  try {
+    if (localStorage.getItem('lopvui.clean-slate.v35') !== '1') {
+      const savedDriveCfg = localStorage.getItem('lopvui.google-drive-photo-config.v1');
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('lopvui.')) keysToRemove.push(k);
+      }
+      keysToRemove.forEach(k => _nativeRemoveItem.call(localStorage, k));
+      if (savedDriveCfg) _nativeSetItem.call(localStorage, 'lopvui.google-drive-photo-config.v1', savedDriveCfg);
+      _nativeSetItem.call(localStorage, 'lopvui.firebase-db-url.v1', DEFAULT_FIREBASE_DB_URL);
+      _nativeSetItem.call(localStorage, 'lopvui.class-catalog.v1', '[]');
+      _nativeSetItem.call(localStorage, 'lopvui.students.v9', '[]');
+      _nativeSetItem.call(localStorage, 'lopvui.makeup-students.v1', '[]');
+      _nativeSetItem.call(localStorage, 'lopvui.session-history.v2', '[]');
+      _nativeSetItem.call(localStorage, 'lopvui.tutoring-sessions.v1', '[]');
+      _nativeSetItem.call(localStorage, 'lopvui.room-templates.v1', '[]');
+      _nativeSetItem.call(localStorage, 'lopvui.class-session-changes.v1', '{}');
+      _nativeSetItem.call(localStorage, 'lopvui.explicit-logout.v1', '1');
+      _nativeSetItem.call(localStorage, 'lopvui.clean-slate.v35', '1');
+    }
+  } catch {}
+})();
 let masterData=loadMasterData();
 let sessionChanges=loadClassSessionChanges();
 let signedInAccount=read('lopvui.signed-in-account.v1',{employeeId:'employee-ta-001',role:'assistant'});
@@ -298,7 +676,26 @@ function undoSeating() {
 let currentEmployeeId=signedInAccount?.employeeId||'employee-ta-001';
 const requestedClassId=new URLSearchParams(location.search).get('class');
 let CURRENT_CLASS_ID=classCatalog.some(item=>item.id===requestedClassId)?requestedClassId:defaultClassId;
-const activeClassConfig=()=>classCatalog.find(item=>item.id===CURRENT_CLASS_ID)||classCatalog[0];
+const EMPTY_CLASS_FALLBACK = {
+  id: 'empty-class',
+  code: 'CHUA_CO_LOP',
+  name: 'Chưa có lớp học',
+  subject: 'Toán',
+  grade: '2013',
+  room: 'Chưa xếp phòng',
+  weekday: 1,
+  startTime: '15:30',
+  endTime: '17:00',
+  teacherIds: [],
+  assistantIds: [],
+  officeIds: [],
+  teacherName: '—',
+  assistantName: '—',
+  defaultLayout: baseLayout,
+  defaultChecklist: { startItems: ['Lau bảng', 'Bật đèn và kiểm tra quạt/điều hòa', 'Chuẩn bị tài liệu và bài tập'], endItems: [] },
+  defaultNotifications: []
+};
+const activeClassConfig=()=>classCatalog.find(item=>item.id===CURRENT_CLASS_ID)||classCatalog[0]||EMPTY_CLASS_FALLBACK;
 let configClass=activeClassConfig();
 const loadedStudentRecords=loadStudentRecords(CURRENT_CLASS_ID);
 let students=loadedStudentRecords.students;
@@ -377,6 +774,15 @@ function saveSessionNote(id,value){
 }
 for(const student of [...students,...makeupStudents])if(!(student.id in attendanceNotes)){const saved=student.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate);if(saved)attendanceNotes[student.id]=saved.note;}
 const classStudents=()=>students.filter(student=>(student.classIds||[]).includes(CURRENT_CLASS_ID));
+const isMakeupInCurrentSession=(student, placementsMap=null, lateSetOrArr=null)=>{
+  if (!student) return false;
+  if (placementsMap && placementsMap.has(student.id)) return true;
+  if (lateSetOrArr) {
+    if (lateSetOrArr instanceof Set && lateSetOrArr.has(student.id)) return true;
+    if (Array.isArray(lateSetOrArr) && lateSetOrArr.includes(student.id)) return true;
+  }
+  return student.attendingClassId === CURRENT_CLASS_ID && student.attendingSessionDate === checklistDate;
+};
 const splitStudentName=name=>{const parts=String(name||'').trim().split(/\s+/).filter(Boolean);return {familyName:parts.slice(0,-1).join(' '),givenName:parts.at(-1)||''};};
 function createStudentProfile({name,familyName=undefined,givenName=undefined,school='',kind='regular',parentContact={name:'',phone:''},studentCode=null,classIds=null,enrollmentStatus='Học',tags=[],isNew=undefined}){
   const makeup=kind==='makeup';
@@ -402,6 +808,7 @@ function createStudentProfile({name,familyName=undefined,givenName=undefined,sch
     school:makeup?'':school,
     sourceClassName:makeup?school:'',
     attendingClassId:makeup?CURRENT_CLASS_ID:null,
+    attendingSessionDate:makeup?checklistDate:null,
     classIds:resolvedClassIds,
     courseIds:[],
     parentContact:{name:parentContact?.name||'',phone:''},
@@ -1019,7 +1426,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
   if ($('#general-class-schedule')) $('#general-class-schedule').textContent = `${weekdayNames[cls.weekday] || 'Lịch'} · ${cls.startTime}–${cls.endTime}`;
 
   const roster = students.filter(s => (s.classIds || []).includes(cls.id));
-  const classMakeupsForGeneral = makeupStudents.filter(m => m.attendingClassId === cls.id);
+  const classMakeupsForGeneral = []; // Học sinh học bù chỉ xuất hiện trong đúng buổi học hôm đó, không hiện trong danh sách lớp cố định
   if ($('#general-roster-count')) $('#general-roster-count').textContent = `${roster.length} học sinh${classMakeupsForGeneral.length ? ` (+${classMakeupsForGeneral.length} học bù)` : ''}`;
   if ($('#general-stat-total')) $('#general-stat-total').textContent = roster.length;
 
@@ -2017,7 +2424,7 @@ function renderStudentList(){
   const lateIds=new Set(lateQueue);
   const byGivenName=(a,b)=>{const aGiven=a.givenName||splitStudentName(a.name).givenName,bGiven=b.givenName||splitStudentName(b.name).givenName,aFamily=a.familyName||splitStudentName(a.name).familyName,bFamily=b.familyName||splitStudentName(b.name).familyName;return aGiven.localeCompare(bGiven,'vi')||aFamily.localeCompare(bFamily,'vi');};
   const roster=classStudents();
-  const classMakeups=makeupStudents.filter(student=>student.attendingClassId===CURRENT_CLASS_ID||placements.has(student.id)||lateIds.has(student.id));
+  const classMakeups=makeupStudents.filter(student=>isMakeupInCurrentSession(student, placements, lateIds));
 
   const buildRecord=(student, idx, isMakeupRow = false)=>{
     const id=student.id;
@@ -2426,7 +2833,7 @@ function renderAttendanceExport(){
     return `<tr><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong></td><td>${escapeHtml(student.studentCode || '—')}</td><td>${escapeHtml(student.school || '')}</td><td>${escapeHtml(status)}</td><td><input class="attendance-note-input" data-session-note="${escapeHtml(student.id)}" aria-label="Ghi chú chung cho ${escapeHtml(student.name)}" value="${escapeHtml(sessionNoteFor(student.id))}" /></td></tr>`;
   }).join('');
 
-  const sessionMakeups = makeupStudents.filter(student=>student.attendingClassId===CURRENT_CLASS_ID&&(placements.has(student.id)||lateQueue.includes(student.id))).sort((a,b)=>{
+  const sessionMakeups = makeupStudents.filter(student=>isMakeupInCurrentSession(student, placements, lateQueue)).sort((a,b)=>{
     const aGiven = a.givenName || splitStudentName(a.name).givenName;
     const bGiven = b.givenName || splitStudentName(b.name).givenName;
     return aGiven.localeCompare(bGiven,'vi') || (a.familyName||'').localeCompare(b.familyName||'','vi');
@@ -3440,7 +3847,7 @@ function render(){
     const isMakeup = s.studentType === 'makeup' || !(s.classIds || []).includes(CURRENT_CLASS_ID);
     return `<button type="button" class="late-token ${isMakeup ? 'late-makeup' : ''}" data-late-key="${id}" aria-label="${s.name}; kéo vào bàn"><span></span><span class="late-name">${isMakeup ? '<span class="makeup-seat-badge">BÙ</span>' : ''}${escapeHtml(s.name)}</span><small>${s.arrivalTime||'đến muộn'}</small></button>`;
   }).join('')||'<span class="late-empty">Học sinh đến muộn sẽ chờ tại đây. Kéo vào chỗ ngồi khi sẵn sàng (kể cả khi đã khóa sửa sơ đồ).</span>';
-  const allRosterAndMakeup = [...classStudents(), ...makeupStudents.filter(m => m.attendingClassId === CURRENT_CLASS_ID)];
+  const allRosterAndMakeup = [...classStudents(), ...makeupStudents.filter(m => isMakeupInCurrentSession(m, placements, lateSet))];
   $('#roster-list').innerHTML=allRosterAndMakeup.map(s=>{
     const parts = splitStudentName(s.name);
     const fam = s.familyName ?? parts.familyName;
@@ -3692,7 +4099,7 @@ function showAttendance(att={}){if($('#attendance-status'))$('#attendance-status
 function identityPicker(query=''){
   const used=assignedIds();
   if(currentEntry()?.studentId)used.delete(currentEntry().studentId);
-  const pool=[...classStudents(),...makeupStudents.filter(student=>student.attendingClassId===CURRENT_CLASS_ID)];
+  const pool=[...classStudents(),...makeupStudents.filter(student=>isMakeupInCurrentSession(student, null, lateQueue))];
   const matches=query.trim()?searchStudents(pool,query,{excludeIds:used}):pool.filter(s=>!used.has(s.id));
   $('#student-options').innerHTML=matches.map(s=>`<button type="button" class="student-option" data-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${studentSearchMeta(s)}</span><span class="student-check">Chọn</span></button>`).join('')||`<div class="empty-list">${query.trim()?'Chưa có hồ sơ phù hợp.':'Nhập tên để tìm học sinh trong danh sách.'}</div>`;
   $('#student-options').querySelectorAll('[data-student]').forEach(b=>b.onclick=()=>assignStudent(b.dataset.student));
@@ -4294,7 +4701,7 @@ function syncLiveSessionData() {
   }
 }
 function drawLatePicker(query=''){
-  const normalized=query.trim(),excludeIds=[...assignedIds(),...lateQueue],exclSet=new Set(excludeIds),pool=[...classStudents(),...makeupStudents.filter(student=>student.attendingClassId===CURRENT_CLASS_ID)],candidates=normalized?searchStudents(pool,normalized,{excludeIds}):pool.filter(s=>!exclSet.has(s.id));
+  const normalized=query.trim(),excludeIds=[...assignedIds(),...lateQueue],exclSet=new Set(excludeIds),pool=[...classStudents(),...makeupStudents.filter(student=>isMakeupInCurrentSession(student, null, lateQueue))],candidates=normalized?searchStudents(pool,normalized,{excludeIds}):pool.filter(s=>!exclSet.has(s.id));
   $('#late-options').innerHTML=candidates.map(s=>`<button type="button" class="student-option" data-late-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${studentSearchMeta(s)}</span><span class="student-check">Chọn</span></button>`).join('')||`<div class="empty-list">${normalized?'Không tìm thấy hồ sơ.':'Nhập tên để tìm học sinh.'}</div>`;
   $('#late-options').querySelectorAll('[data-late-student]').forEach(b=>b.onclick=()=>selectLateStudent(b.dataset.lateStudent));
 }
@@ -4575,6 +4982,10 @@ window.__featuresApp = features;
 // Initialize continuous Real-time Sync across tabs, LAN devices, and views
 function refreshUIOnRealtimeUpdate(changedKeys = [], source = 'remote') {
   if (source === 'local-save') return;
+  // Always reload masterData & classCatalog even on login screen so new devices receive Admin's accounts immediately
+  masterData = loadMasterData();
+  classCatalog = loadClassCatalog(localStorage, masterData);
+  sessionChanges = loadClassSessionChanges();
   const loginScr = document.getElementById('login-screen');
   if (loginScr && !loginScr.hidden && loginScr.style.display !== 'none') return;
   if (document.querySelector('dialog[open]')) return;
@@ -4658,9 +5069,21 @@ realtimeController.onStatusChange(({ state, lastSyncTime }) => {
 
 document.addEventListener('click', (e) => {
   const rtBadge = e.target.closest('#realtime-sync-badge');
-  if (rtBadge) {
+  if (rtBadge || e.target.closest('#login-open-firebase-config-btn')) {
+    const dlg = $('#firebase-cloud-config-dialog');
+    if (dlg) {
+      const urlInp = $('#firebase-db-url-input');
+      const curUrl = getConfiguredFirebaseDbUrl();
+      if (urlInp) urlInp.value = curUrl;
+      const statusBanner = $('#firebase-sync-status-banner');
+      if (statusBanner) {
+        statusBanner.textContent = curUrl
+          ? `● Đang kết nối Firebase Cloud: ${curUrl}`
+          : '○ Chưa gắn URL Firebase Realtime Database (Đang chạy Local trên từng máy).';
+      }
+      try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); }
+    }
     forceSyncNow('manual-click');
-    toast('Đã đồng bộ dữ liệu thời gian thực mới nhất.');
     return;
   }
 
@@ -4742,7 +5165,7 @@ function renderSeatingMapSearchResults() {
 
   const placements = new Map(allEntries().filter(({ entry }) => entry.studentId).map(place => [place.entry.studentId, place]));
   const lateSet = new Set(lateQueue);
-  const pool = [...classStudents(), ...makeupStudents.filter(m => m.attendingClassId === CURRENT_CLASS_ID || placements.has(m.id) || lateSet.has(m.id))];
+  const pool = [...classStudents(), ...makeupStudents.filter(m => isMakeupInCurrentSession(m, placements, lateSet))];
   const matches = searchStudents(pool, rawQuery).slice(0, 10);
 
   if (!matches.length) {
@@ -5093,7 +5516,7 @@ function renderScoresView() {
   };
 
   const regularList = [...classStudents()];
-  const makeupList = makeupStudents.filter(m => m.attendingClassId === CURRENT_CLASS_ID || placements.has(m.id) || lateSet.has(m.id));
+  const makeupList = makeupStudents.filter(m => isMakeupInCurrentSession(m, placements, lateSet));
   const combinedStudents = [...regularList, ...makeupList];
 
   const buildScoreRowItem = (s) => {
@@ -5168,7 +5591,37 @@ function renderScoresView() {
     return byGivenName(a.student, b.student);
   });
 
-  const colCount = hasTest ? 9 : 8;
+  const getScoresTableColumnOrder = () => {
+    const defaultCols = ['family', 'name', 'school', 'status', 'recentScores', 'hwScore', 'testScore', 'note', 'learningNote'];
+    try {
+      const saved = JSON.parse(localStorage.getItem('lopvui.column-order.scores.v1') || 'null');
+      if (Array.isArray(saved) && saved.length) {
+        const valid = saved.filter(k => defaultCols.includes(k));
+        defaultCols.forEach(k => { if (!valid.includes(k)) valid.push(k); });
+        return valid.filter(k => hasTest || k !== 'testScore');
+      }
+    } catch {}
+    return defaultCols.filter(k => hasTest || k !== 'testScore');
+  };
+
+  const activeScoreCols = getScoresTableColumnOrder();
+  const scoreThMap = {
+    family: '<th>Họ đệm</th>',
+    name: '<th>Tên</th>',
+    school: '<th>Trường</th>',
+    status: '<th>Trạng thái</th>',
+    recentScores: '<th style="text-align:center;">Điểm 4 bài gần nhất <small style="display:block; font-weight:500; font-size:12.5px; color:#5b21b6;">(Click xem chi tiết)</small></th>',
+    hwScore: '<th style="width:95px; text-align:center;">Điểm BTVN</th>',
+    testScore: '<th id="scores-tab-test-th" style="width:95px; text-align:center;">Điểm Test</th>',
+    note: '<th style="min-width:150px;">Ghi chú buổi học</th>',
+    learningNote: '<th style="min-width:170px;">Ghi chú chung của học sinh (Ghi chú học lực)</th>'
+  };
+  const scoresThead = $('#scores-tab-table thead');
+  if (scoresThead) {
+    scoresThead.innerHTML = `<tr>${activeScoreCols.map(k => scoreThMap[k] || '').join('')}</tr>`;
+  }
+
+  const colCount = activeScoreCols.length;
   if (!items.length) {
     tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; padding:18px; color:#87968a;">Không có học sinh nào phù hợp với bộ lọc.</td></tr>`;
     return;
@@ -5209,47 +5662,58 @@ function renderScoresView() {
         ? `<span class="student-state state-missing">Không nộp BTVN${item.hw?.reason ? ` (${escapeHtml(item.hw.reason)})` : ''}</span>`
         : '<span class="student-state state-pending">Chưa thu BTVN</span>';
 
-    htmlRows.push(`
-      <tr class="${item.isMakeup ? 'makeup-row-tr' : ''}" data-score-row-student="${escapeHtml(s.id)}">
+    const scoreTdMap = {
+      family: `
         <td>
           <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${item.isMakeup ? '#6d28d9' : '#395140'}; font-weight:${item.isMakeup ? '700' : '600'};" title="Bấm mở Hồ sơ học sinh trong buổi học">
             ${escapeHtml(item.familyName || '—')}
           </button>
-        </td>
+        </td>`,
+      name: `
         <td>
           <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;" title="Bấm mở Hồ sơ học sinh trong buổi học">
             <strong style="color:${item.isMakeup ? '#6d28d9' : '#214e2d'}; text-decoration:underline; text-underline-offset:2px;">${escapeHtml(item.givenName || s.name)}</strong>
             ${renderInlineTags(s)}
           </button>
-        </td>
+        </td>`,
+      school: `
         <td>
           ${item.isMakeup
             ? `<span class="makeup-school-tag">${escapeHtml(item.schoolDisplay)}</span>`
             : escapeHtml(item.schoolDisplay)}
-        </td>
+        </td>`,
+      status: `
         <td>
           <div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
             ${attText}
             ${item.priorityGroup !== 3 ? hwText : ''}
           </div>
-        </td>
+        </td>`,
+      recentScores: `
         <td style="text-align:center;">
           <button type="button" class="recent-scores-btn" data-open-score-history="${escapeHtml(s.id)}" title="Click để xem chi tiết điểm các buổi trước của ${escapeHtml(s.name)}"><span>${escapeHtml(item.recentFour)}</span></button>
-        </td>
+        </td>`,
+      hwScore: `
         <td style="text-align:center;">
           <input type="text" inputmode="decimal" class="manual-score-input" data-score-tab-hw="${escapeHtml(s.id)}" value="${item.hwScore !== null && item.hwScore !== undefined ? escapeHtml(formatScoreVN(item.hwScore)) : ''}" placeholder="VD: 7,5" aria-label="Điểm BTVN ${escapeHtml(s.name)}" />
-        </td>
-        ${hasTest ? `
-          <td style="text-align:center;">
-            <input type="text" inputmode="decimal" class="manual-score-input" data-score-tab-test="${escapeHtml(s.id)}" value="${item.testScore !== null && item.testScore !== undefined ? escapeHtml(formatScoreVN(item.testScore)) : ''}" placeholder="VD: 8,5" aria-label="Điểm Test ${escapeHtml(s.name)}" />
-          </td>
-        ` : ''}
+        </td>`,
+      testScore: `
+        <td style="text-align:center;">
+          <input type="text" inputmode="decimal" class="manual-score-input" data-score-tab-test="${escapeHtml(s.id)}" value="${item.testScore !== null && item.testScore !== undefined ? escapeHtml(formatScoreVN(item.testScore)) : ''}" placeholder="VD: 8,5" aria-label="Điểm Test ${escapeHtml(s.name)}" />
+        </td>`,
+      note: `
         <td>
           <input type="text" class="attendance-note-input" data-session-note="${escapeHtml(s.id)}" value="${escapeHtml(item.note)}" placeholder="Ghi chú buổi học..." style="width:100%;" />
-        </td>
+        </td>`,
+      learningNote: `
         <td>
           <input type="text" class="attendance-note-input" data-learning-note="${escapeHtml(s.id)}" value="${escapeHtml(item.learningNotes)}" placeholder="Ghi chú học lực chung..." style="width:100%;" />
-        </td>
+        </td>`
+    };
+
+    htmlRows.push(`
+      <tr class="${item.isMakeup ? 'makeup-row-tr' : ''}" data-score-row-student="${escapeHtml(s.id)}">
+        ${activeScoreCols.map(k => scoreTdMap[k] || '').join('')}
       </tr>
     `);
   }
@@ -6104,3 +6568,71 @@ window.addEventListener('resize', () => {
   }
 });
 
+
+
+$('#close-firebase-config-dialog')?.addEventListener('click', () => $('#firebase-cloud-config-dialog')?.close());
+$('#save-firebase-db-url-btn')?.addEventListener('click', async () => {
+  const raw = $('#firebase-db-url-input')?.value || '';
+  const clean = setConfiguredFirebaseDbUrl(raw);
+  const banner = $('#firebase-sync-status-banner');
+  if (!clean) {
+    _notifyRtStatus('local', Date.now(), 'disconnected');
+    if (banner) banner.textContent = '○ Đã ngắt kết nối Firebase Cloud (Chế độ Local).';
+    toast('Đã chuyển về chế độ lưu trữ Local.');
+    return;
+  }
+  if (banner) banner.textContent = '⏳ Đang kiểm tra kết nối tới Firebase Realtime Database...';
+  const res = await pullFromFirebaseCloudNow('manual-connect');
+  if (res.ok) {
+    if (res.emptyCloud) {
+      const pushRes = await pushAllLocalSnapshotToFirebaseCloud();
+      if (banner) banner.textContent = `✓ Kết nối thành công! Đã khởi tạo ${pushRes.count || 0} nhóm dữ liệu từ máy này lên Firebase.`;
+      toast('✓ Đã kết nối Firebase & đẩy dữ liệu khởi tạo lên Cloud thành công!');
+    } else {
+      if (banner) banner.textContent = `✓ Kết nối thành công! Đã đồng bộ ${res.count || 0} nhóm dữ liệu từ Firebase Cloud.`;
+      toast('✓ Đã kết nối & đồng bộ dữ liệu từ Firebase Realtime Database!');
+    }
+    setTimeout(() => $('#firebase-cloud-config-dialog')?.close(), 900);
+  } else {
+    if (banner) banner.textContent = `❌ Không thể kết nối (${res.reason}). Hãy kiểm tra lại URL và tab Rules (.read: true, .write: true) trên Firebase Console.`;
+    toast('Không thể kết nối Firebase. Vui lòng kiểm tra lại URL và Rules.');
+  }
+});
+
+$('#firebase-push-all-btn')?.addEventListener('click', async () => {
+  const raw = $('#firebase-db-url-input')?.value || '';
+  if (raw) setConfiguredFirebaseDbUrl(raw);
+  if (!getConfiguredFirebaseDbUrl()) {
+    toast('Vui lòng dán Firebase Realtime Database URL trước.');
+    $('#firebase-db-url-input')?.focus();
+    return;
+  }
+  const banner = $('#firebase-sync-status-banner');
+  if (banner) banner.textContent = '⏳ Đang đẩy toàn bộ dữ liệu máy này lên Firebase...';
+  const res = await pushAllLocalSnapshotToFirebaseCloud();
+  if (res.ok) {
+    if (banner) banner.textContent = `✓ Đã đẩy thành công ${res.count} nhóm dữ liệu lên Firebase Cloud!`;
+    toast(`✓ Đã đẩy ${res.count} nhóm dữ liệu lên Firebase Cloud.`);
+  } else {
+    if (banner) banner.textContent = `❌ Lỗi khi đẩy dữ liệu (${res.reason}). Kiểm tra Rules trên Firebase.`;
+  }
+});
+
+$('#firebase-pull-all-btn')?.addEventListener('click', async () => {
+  const raw = $('#firebase-db-url-input')?.value || '';
+  if (raw) setConfiguredFirebaseDbUrl(raw);
+  if (!getConfiguredFirebaseDbUrl()) {
+    toast('Vui lòng dán Firebase Realtime Database URL trước.');
+    $('#firebase-db-url-input')?.focus();
+    return;
+  }
+  const banner = $('#firebase-sync-status-banner');
+  if (banner) banner.textContent = '⏳ Đang tải dữ liệu mới nhất từ Firebase...';
+  const res = await pullFromFirebaseCloudNow('manual-pull');
+  if (res.ok) {
+    if (banner) banner.textContent = `✓ Đã tải và hợp nhất ${res.count || 0} nhóm dữ liệu từ Firebase Cloud!`;
+    toast('✓ Đã cập nhật dữ liệu mới nhất từ Firebase Cloud.');
+  } else {
+    if (banner) banner.textContent = `❌ Lỗi khi tải dữ liệu (${res.reason}).`;
+  }
+});

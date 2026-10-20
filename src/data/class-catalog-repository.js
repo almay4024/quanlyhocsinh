@@ -1,6 +1,6 @@
 // Local repository boundary for master data and class configuration.
 // Supports Birth Year (Năm sinh: 2009, 2010, ...) and automatic layout sync from Room Templates.
-import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=3.3';
+import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=3.5';
 
 const CATALOG_KEY = 'lopvui.class-catalog.v1';
 const MASTER_KEY = 'lopvui.master-data.v1';
@@ -48,15 +48,7 @@ const masterDefaults = {
     { id: 'subject-science', name: 'Khoa học tự nhiên' }
   ],
   employees: [
-    { id: 'employee-admin-001', code: 'AD001', name: 'Quản trị hệ thống', role: 'admin', password: 'admin123', isActive: true, authVersion: 1 },
-    { id: 'employee-teacher-001', code: 'GV001', name: 'Cô Minh Anh', role: 'teacher', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-teacher-002', code: 'GV002', name: 'Thầy Quang', role: 'teacher', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-teacher-003', code: 'GV003', name: 'Cô Hương', role: 'teacher', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-ta-001', code: 'TA001', name: 'Anh Linh', role: 'assistant', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-ta-002', code: 'TA002', name: 'Mai Anh', role: 'assistant', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-ta-003', code: 'TA003', name: 'Minh Khoa', role: 'assistant', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-office-001', code: 'VP001', name: 'Lan Phương', role: 'office', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-office-002', code: 'VP002', name: 'Hoàng Nam', role: 'office', password: '123456', isActive: true, authVersion: 1 }
+    { id: 'employee-admin-001', code: 'AD001', name: 'Quản trị hệ thống', role: 'admin', password: 'admin123', isActive: true, authVersion: 1 }
   ]
 };
 
@@ -67,158 +59,7 @@ const startNotifications = [
   { id: 'end-test-collection', anchor: 'end', offsetMinutes: -15, title: 'Thu bài kiểm tra cuối giờ', body: 'Bắt đầu thu bài kiểm tra và chuẩn bị bàn giao.' }
 ];
 
-export const seedClasses = [
-  {
-    id: 'class-math-8a-algebra',
-    code: 'TOAN8A',
-    grade: '2013',
-    name: 'Toán 8A',
-    subjectId: 'subject-math',
-    subject: 'Toán',
-    teacherIds: ['employee-teacher-001'],
-    teacherId: 'employee-teacher-001',
-    teacherName: 'Cô Minh Anh',
-    assistantIds: ['employee-ta-001'],
-    assistantName: 'Anh Linh',
-    officeIds: ['employee-office-001'],
-    weekday: 1,
-    startTime: '15:30',
-    endTime: '17:00',
-    room: 'P1-T3-CS1',
-    roomTemplateId: 'room-p1-t3-cs1',
-    defaultLayout: makeDesks('class-math-8a-algebra', [3, 3, 2], [2]),
-    defaultChecklist: {
-      startItems: ['Lau bảng', 'Bật đèn và kiểm tra quạt/điều hòa', 'Chuẩn bị tài liệu và bài tập', 'Kiểm tra bàn ghế, cửa sổ và phòng học'],
-      endItems: ['Thu bài kiểm tra cuối giờ', 'Đếm và bàn giao bài kiểm tra', 'Tắt thiết bị và kiểm tra phòng học']
-    },
-    defaultNotifications: startNotifications
-  },
-  {
-    id: 'class-english-7b',
-    code: 'ANH7B',
-    grade: '2014',
-    name: 'Tiếng Anh 7B',
-    subjectId: 'subject-english',
-    subject: 'Tiếng Anh',
-    teacherIds: ['employee-teacher-002'],
-    teacherId: 'employee-teacher-002',
-    teacherName: 'Thầy Quang',
-    assistantIds: ['employee-ta-001', 'employee-ta-003'],
-    assistantName: 'Anh Linh, Minh Khoa',
-    officeIds: ['employee-office-001'],
-    weekday: 1,
-    startTime: '18:00',
-    endTime: '19:30',
-    room: 'P2-T2-CS1',
-    roomTemplateId: 'room-p2-t2-cs1',
-    defaultLayout: makeDesks('class-english-7b', [3, 3], [2]),
-    defaultChecklist: {
-      startItems: ['Bật máy chiếu', 'Phát phiếu bài tập', 'Kiểm tra loa và bảng'],
-      endItems: ['Thu bài kiểm tra cuối giờ', 'Thu lại tài liệu được phát']
-    },
-    defaultNotifications: startNotifications
-  },
-  {
-    id: 'class-math-9c',
-    code: 'TOAN9C',
-    grade: '2012',
-    name: 'Toán 9C',
-    subjectId: 'subject-math',
-    subject: 'Toán',
-    teacherIds: ['employee-teacher-003'],
-    teacherId: 'employee-teacher-003',
-    teacherName: 'Cô Hương',
-    assistantIds: ['employee-ta-002'],
-    assistantName: 'Mai Anh',
-    officeIds: ['employee-office-002'],
-    weekday: 2,
-    startTime: '16:00',
-    endTime: '17:30',
-    room: 'P1-T1-CS2',
-    roomTemplateId: 'room-p1-t1-cs2',
-    defaultLayout: makeDesks('class-math-9c', [3, 3, 3], [2]),
-    defaultChecklist: {
-      startItems: ['Lau bảng', 'Chuẩn bị compa và thước', 'Kiểm tra phòng học'],
-      endItems: ['Thu dụng cụ học tập', 'Kiểm tra phòng học trước khi khóa']
-    },
-    defaultNotifications: startNotifications
-  },
-  {
-    id: 'class-math-10a',
-    code: 'TOAN10A',
-    grade: '2011',
-    name: 'Toán 10A',
-    subjectId: 'subject-math',
-    subject: 'Toán',
-    teacherIds: ['employee-teacher-001'],
-    teacherId: 'employee-teacher-001',
-    teacherName: 'Cô Minh Anh',
-    assistantIds: ['employee-ta-003'],
-    assistantName: 'Minh Khoa',
-    officeIds: ['employee-office-001'],
-    weekday: 3,
-    startTime: '17:30',
-    endTime: '19:00',
-    room: 'P3-T2-CS1',
-    roomTemplateId: 'room-p3-t2-cs1',
-    defaultLayout: makeDesks('class-math-10a', [3, 3, 3], [2]),
-    defaultChecklist: {
-      startItems: ['Lau bảng', 'Bật máy chiếu và quạt', 'Phát tài liệu hình học'],
-      endItems: ['Thu bài kiểm tra cuối giờ', 'Bàn giao bài']
-    },
-    defaultNotifications: startNotifications
-  },
-  {
-    id: 'class-physics-11b',
-    code: 'LY11B',
-    grade: '2010',
-    name: 'Vật lý 11B',
-    subjectId: 'subject-physics',
-    subject: 'Vật lý',
-    teacherIds: ['employee-teacher-002'],
-    teacherId: 'employee-teacher-002',
-    teacherName: 'Thầy Quang',
-    assistantIds: ['employee-ta-001'],
-    assistantName: 'Anh Linh',
-    officeIds: ['employee-office-002'],
-    weekday: 4,
-    startTime: '18:00',
-    endTime: '19:30',
-    room: 'P2-T1-CS1',
-    roomTemplateId: 'room-p2-t1-cs1',
-    defaultLayout: makeDesks('class-physics-11b', [3, 3], [2]),
-    defaultChecklist: {
-      startItems: ['Chuẩn bị thiết bị thí nghiệm', 'Kiểm tra máy chiếu'],
-      endItems: ['Thu phiếu bài tập', 'Tắt điện phòng học']
-    },
-    defaultNotifications: startNotifications
-  },
-  {
-    id: 'class-math-12-exam',
-    code: 'TOAN12A',
-    grade: '2009',
-    name: 'Toán 12 Luyện thi',
-    subjectId: 'subject-math',
-    subject: 'Toán',
-    teacherIds: ['employee-teacher-003'],
-    teacherId: 'employee-teacher-003',
-    teacherName: 'Cô Hương',
-    assistantIds: ['employee-ta-002'],
-    assistantName: 'Mai Anh',
-    officeIds: ['employee-office-001'],
-    weekday: 5,
-    startTime: '19:00',
-    endTime: '21:00',
-    room: 'P1-T4-CS1',
-    roomTemplateId: 'room-p1-t4-cs1',
-    defaultLayout: makeDesks('class-math-12-exam', [4, 4, 3], [2]),
-    defaultChecklist: {
-      startItems: ['Phát đề thi thử khảo sát', 'Bật máy chiếu và bấm giờ'],
-      endItems: ['Thu phiếu trả lời trắc nghiệm', 'Kiểm đếm và niêm phong bài thi']
-    },
-    defaultNotifications: startNotifications
-  }
-];
+export const seedClasses = [];
 
 function resolveClass(classInfo, masters, storage = localStorage) {
   const seed = seedClasses.find(item => item.id === classInfo.id);

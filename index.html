@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Lớp học vui (v3.1) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=3.3" />
+  <link rel="stylesheet" href="/src/styles.css?v=3.5" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.3</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.5</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -44,7 +44,7 @@
               </div>
             </section>
           </div>
-          <div class="user user-clickable" id="user-profile-button" role="button" tabindex="0" aria-haspopup="dialog" title="Bấm để mở Tài khoản, Đổi tài khoản hoặc Đăng xuất">
+          <div class="user user-clickable" id="user-profile-button" role="button" tabindex="0" aria-haspopup="dialog" title="Bấm để mở Tài khoản & Đăng xuất">
             <span class="user-avatar-chip" id="current-user-avatar">AL</span>
             <span class="user-name" id="current-user-name">Anh Linh<small id="current-user-role">Trợ giảng · TA001</small></span>
             <span class="chevron" title="Tài khoản & Đăng xuất">▾</span>
@@ -993,52 +993,27 @@
     </div>
   </dialog>
 
-  <!-- Hộp thoại Tài khoản cá nhân, Quản lý phiên & Đăng xuất (Account Menu Dialog) -->
-  <dialog id="account-switch-dialog" class="class-config-dialog account-menu-dialog">
+  <!-- Hộp thoại Tài khoản cá nhân & Đăng xuất (Account Menu Dialog) -->
+  <dialog id="account-switch-dialog" class="class-config-dialog account-menu-dialog" style="width:min(460px, calc(100vw - 24px));">
     <div class="dialog-form">
       <button type="button" class="close-button" id="close-account-switch" aria-label="Đóng">×</button>
-      <div class="eyebrow">TÀI KHOẢN CÁ NHÂN</div>
-      <h2>Thông tin tài khoản & Phiên đăng nhập</h2>
+      <div class="eyebrow">TÀI KHOẢN ĐANG ĐĂNG NHẬP</div>
+      <h2>Thông tin tài khoản</h2>
 
-      <!-- Thẻ thông tin tài khoản hiện tại + Nút Đổi tài khoản + Nút Đăng xuất tích hợp bên trong -->
+      <!-- Thẻ thông tin tài khoản hiện tại + Nút Đăng xuất -->
       <div id="active-account-profile-card" class="active-account-profile-card"></div>
 
-      <!-- Form đăng nhập sang tài khoản khác bằng Tên đăng nhập (Mã NV) & Mật khẩu (Không hiển thị danh sách tài khoản) -->
-      <div id="account-switch-auth-box" class="account-switch-auth-box" hidden>
-        <div class="account-switch-auth-header">
-          <strong id="account-switch-target-label">Đăng nhập tài khoản khác</strong>
-          <button type="button" class="outline-button" id="cancel-switch-auth-btn" style="padding:3px 8px; font-size:12px;">Đóng</button>
-        </div>
-        <div class="account-switch-auth-grid">
-          <label class="field-label" style="margin:0;">
-            <span>Tên đăng nhập (Mã NV)</span>
-            <input type="text" id="account-switch-code-input" placeholder="Nhập mã nhân viên..." autocomplete="username" style="text-transform:uppercase; font-weight:700;" />
-          </label>
-          <label class="field-label" style="margin:0;">
-            <span>Mật khẩu</span>
-            <input type="password" id="account-switch-password-input" placeholder="Nhập mật khẩu..." autocomplete="current-password" />
-          </label>
-        </div>
-        <div style="display:flex; justify-content:flex-end; margin-top:10px;">
-          <button type="button" class="primary-button" id="confirm-switch-auth-btn">Xác nhận đăng nhập</button>
-        </div>
-        <small id="account-switch-auth-error" class="text-danger" style="display:block; margin-top:6px;" hidden></small>
+      <!-- Các phần tử ẩn để tương thích ngược -->
+      <div id="account-switch-auth-box" hidden style="display:none!important;"></div>
+      <div id="admin-only-account-list-section" hidden style="display:none!important;">
+        <div id="account-switch-list"></div>
       </div>
 
-      <!-- Khu vực danh sách tài khoản dành RIÊNG cho Admin (Ẩn hoàn toàn với tài khoản thường) -->
-      <div id="admin-only-account-list-section" hidden>
-        <div class="account-switch-divider">
-          <span>DANH SÁCH TÀI KHOẢN HỆ THỐNG (CHỈ ADMIN MỚI THẤY)</span>
-        </div>
-        <p class="dialog-hint" id="account-switch-hint" style="margin-top:0;">Quyền Admin: Chuyển nhanh phiên kiểm tra hoặc bấm 🔑 để cấp/đổi mật khẩu cho nhân sự.</p>
-        <div id="account-switch-list" class="account-switch-list"></div>
-      </div>
-
-      <div class="account-dialog-footer">
-        <small style="color:#647868;">Bảo mật: Thông tin tài khoản và mật khẩu được mã hóa & quản lý riêng bởi Admin.</small>
-        <div style="display:flex; gap:8px; align-items:center;">
+      <div class="account-dialog-footer" style="margin-top:14px; padding-top:12px; border-top:1px solid #e2ebe4; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <small style="color:#647868;">Để đăng nhập tài khoản khác, vui lòng đăng xuất phiên hiện tại.</small>
+        <div style="display:flex; gap:8px; align-items:center; margin-left:auto;">
           <button type="button" class="outline-button" id="admin-open-staff-pw-btn" hidden>🔑 Quản lý Nhân sự & MK</button>
-          <button type="button" class="logout-button-inside" id="dialog-logout-btn">⎋ Đăng xuất khỏi hệ thống</button>
+          <button type="button" class="logout-button-inside" id="dialog-logout-btn">⎋ Đăng xuất</button>
         </div>
       </div>
     </div>
@@ -1576,22 +1551,22 @@ function jsonOut_(obj) {
       <header class="report-fullscreen-header">
         <div class="report-fullscreen-top-row">
           <div class="report-fullscreen-title-group">
-            <button type="button" class="outline-button report-back-btn" id="close-attendance-export-back-btn" title="Quay lại màn hình lớp học">← Quay lại lớp học</button>
-            <div>
-              <div class="eyebrow">TRUNG TÂM BÁO CÁO BUỔI HỌC (TOÀN MÀN HÌNH)</div>
+            <button type="button" class="outline-button report-back-btn" id="close-attendance-export-back-btn" title="Quay lại màn hình lớp học">← Quay lại</button>
+            <div class="report-title-text-wrap">
+              <div class="eyebrow report-eyebrow-desktop">TRUNG TÂM BÁO CÁO BUỔI HỌC</div>
               <h2 id="attendance-export-title">Báo cáo & Xuất dữ liệu ca học</h2>
             </div>
           </div>
-          <button type="button" class="close-button" id="close-attendance-export" aria-label="Đóng trang báo cáo">×</button>
+          <button type="button" class="close-button report-top-close-btn" id="close-attendance-export" aria-label="Đóng trang báo cáo">×</button>
         </div>
 
         <div class="report-nav-tabs" role="tablist">
-          <button type="button" class="report-tab active" data-report-tab="teacher-summary">Báo cáo gửi Giáo viên</button>
-          <button type="button" class="report-tab" data-report-tab="a4-roster">Bảng điểm danh A4 (In/Ký)</button>
-          <button type="button" class="report-tab" data-report-tab="missing-hw">DS Chưa nộp BTVN</button>
-          <button type="button" class="report-tab" data-report-tab="late-students">DS Đi muộn</button>
-          <button type="button" class="report-tab" data-report-tab="absent-students">DS Vắng mặt</button>
-          <button type="button" class="report-tab" data-report-tab="tests-handover">Bài kiểm tra & Bàn giao</button>
+          <button type="button" class="report-tab active" data-report-tab="teacher-summary">Báo cáo gửi GV</button>
+          <button type="button" class="report-tab" data-report-tab="a4-roster">Bảng điểm danh</button>
+          <button type="button" class="report-tab" data-report-tab="missing-hw">Chưa nộp BTVN</button>
+          <button type="button" class="report-tab" data-report-tab="late-students">Đi muộn</button>
+          <button type="button" class="report-tab" data-report-tab="absent-students">Vắng mặt</button>
+          <button type="button" class="report-tab" data-report-tab="tests-handover">Bài kiểm tra</button>
         </div>
       </header>
 
@@ -1601,13 +1576,13 @@ function jsonOut_(obj) {
 
       <footer class="attendance-export-actions report-sticky-bottom-bar">
         <div class="report-bottom-left">
-          <button type="button" class="outline-button" id="close-attendance-export-bottom-btn">← Đóng trang báo cáo</button>
-          <button type="button" class="outline-button" id="customize-report-columns-btn">⚙ Đổi cột hiển thị / Xuất file</button>
+          <button type="button" class="outline-button report-bottom-close-desktop" id="close-attendance-export-bottom-btn">← Đóng</button>
+          <button type="button" class="outline-button" id="customize-report-columns-btn">⚙ Đổi thứ tự cột</button>
         </div>
         <div class="report-bottom-right">
-          <button type="button" class="outline-button" id="copy-teacher-report-btn" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">📋 Sao chép báo cáo gửi GV (Zalo)</button>
-          <button type="button" class="outline-button" id="export-csv-button">📥 Xuất file Excel (CSV)</button>
-          <button type="button" class="primary-button" id="print-attendance-export">🖨 In / Lưu PDF (A4)</button>
+          <button type="button" class="outline-button" id="copy-teacher-report-btn" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">📋 Copy gửi GV (Zalo)</button>
+          <button type="button" class="outline-button" id="export-csv-button">📥 Xuất Excel (CSV)</button>
+          <button type="button" class="primary-button" id="print-attendance-export">🖨 In / Lưu PDF</button>
         </div>
       </footer>
     </div>
@@ -2197,7 +2172,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.3</span></strong>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.5</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2252,8 +2227,9 @@ function jsonOut_(obj) {
         </button>
       </form>
 
-      <div class="login-footer">
-        <small>Mật khẩu được mã hóa một chiều & bảo vệ phân quyền nghiêm ngặt trên toàn hệ thống.</small>
+      <div class="login-footer" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <small>Mật khẩu được mã hóa & đồng bộ thời gian thực qua Firebase.</small>
+        <button type="button" class="outline-button" id="login-open-firebase-config-btn" style="padding:5px 10px; font-size:12px;">☁ Kết nối Firebase DB</button>
       </div>
     </div>
   </section>
@@ -2328,7 +2304,51 @@ function jsonOut_(obj) {
     <button type="button" id="close-student-class-profile-btn"></button>
   </div>
 
+
+  <!-- Hộp thoại Kết nối & Đồng bộ Đa thiết bị Firebase Realtime Database (#firebase-cloud-config-dialog) -->
+  <dialog id="firebase-cloud-config-dialog" class="class-config-dialog" style="width:min(560px, calc(100vw - 24px));">
+    <div class="dialog-form">
+      <button type="button" class="close-button" id="close-firebase-config-dialog" aria-label="Đóng">×</button>
+      <div class="eyebrow">ĐỒNG BỘ ĐA THIẾT BỊ REAL-TIME (FIREBASE CLOUD)</div>
+      <h2>Kết nối Firebase Realtime Database</h2>
+      <p class="dialog-hint">
+        Dán đường dẫn <strong>Firebase Realtime Database URL</strong> của dự án để kích hoạt đồng bộ thời gian thực giữa nhiều máy tính, iPad và điện thoại cùng lúc (có cơ chế <strong>Granular Merge</strong> chống ghi đè khi nhiều trợ giảng thao tác đồng thời).
+      </p>
+
+      <label class="field-label">Firebase Realtime Database URL:
+        <input
+          id="firebase-db-url-input"
+          type="url"
+          placeholder="https://ten-du-an-default-rtdb.asia-southeast1.firebasedatabase.app"
+          style="font-family:monospace; font-size:13.5px;"
+        />
+      </label>
+
+      <div id="firebase-sync-status-banner" class="checklist-log" style="margin-top:10px; font-weight:600;">
+        Trạng thái: Đang kiểm tra kết nối...
+      </div>
+
+      <details style="margin-top:10px; background:#f8fbf9; border:1px solid #d5e4d8; border-radius:8px; padding:8px 12px; font-size:13px;">
+        <summary style="cursor:pointer; font-weight:700; color:#1f5f33;">📋 Hướng dẫn lấy URL & bật Rules trên Firebase Console (30 giây)</summary>
+        <ol style="margin:8px 0 0; padding-left:18px; line-height:1.55; color:#2c4233;">
+          <li>Vào <strong>Firebase Console</strong> → Mở dự án của bạn → Chọn mục <strong>Build → Realtime Database</strong> → Bấm <strong>Create Database</strong>.</li>
+          <li>Chọn vùng máy chủ <strong>Singapore (asia-southeast1)</strong> → Chọn chế độ <strong>Start in test mode</strong> → Bấm <strong>Enable</strong>.</li>
+          <li>Copy đường link <code>https://...-default-rtdb.asia-southeast1.firebasedatabase.app</code> ở đầu trang dán vào ô bên trên.</li>
+          <li>Trong tab <strong>Rules</strong> của Realtime Database, đảm bảo để: <code>{ "rules": { ".read": True, ".write": True } }</code> rồi bấm <strong>Publish</strong>.</li>
+        </ol>
+      </details>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:16px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="outline-button" id="firebase-push-all-btn" title="Đẩy toàn bộ dữ liệu hiện có trên máy này lên Firebase Cloud">⬆ Đẩy dữ liệu máy này lên Cloud</button>
+          <button type="button" class="outline-button" id="firebase-pull-all-btn" title="Tải dữ liệu mới nhất từ Firebase Cloud về máy này">⬇ Tải từ Cloud về máy</button>
+        </div>
+        <button type="button" class="primary-button" id="save-firebase-db-url-btn">✓ Lưu & Kết nối Real-time</button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=3.3"></script>
+  <script type="module" src="/src/app.js?v=3.5"></script>
 </body>
 </html>
