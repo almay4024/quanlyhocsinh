@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Lớp học vui (v3.1) · Quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=3.5" />
+  <link rel="stylesheet" href="/src/styles.css?v=3.6" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.5</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.6</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -188,7 +188,7 @@
               <span id="master-student-count">0 học sinh</span>
               <span>Tổng hợp toàn bộ học sinh, tra cứu hồ sơ đa lớp và thông tin phụ huynh</span>
               <div style="margin-left:auto; display:flex; gap:8px;">
-                <button type="button" class="outline-button" id="export-all-students-csv-btn">Xuất CSV</button>
+                <button type="button" class="outline-button" id="export-all-students-csv-btn">📥 Xuất Excel (.xlsx)</button>
                 <button type="button" class="primary-button" id="master-import-excel-btn">Nhập từ Excel / Sheets</button>
               </div>
             </div>
@@ -287,7 +287,7 @@
               <span id="management-staff-count">0 nhân sự</span>
               <span>Quản lý thông tin, phân quyền, số điện thoại và các lớp phụ trách của Giáo viên, Trợ giảng, Văn phòng</span>
               <div style="margin-left:auto; display:flex; gap:8px;">
-                <button type="button" class="outline-button" id="export-staff-csv-btn">Xuất CSV</button>
+                <button type="button" class="outline-button" id="export-staff-csv-btn">📥 Xuất Excel (.xlsx)</button>
                 <button type="button" class="primary-button" id="add-staff-member-btn">+ Thêm nhân viên</button>
               </div>
             </div>
@@ -366,7 +366,7 @@
               </label>
               <div class="portal-export-btns">
                 <button type="button" class="outline-button" id="export-timesheet-btn">In bảng chấm công (A4)</button>
-                <button type="button" class="outline-button" id="export-timesheet-csv-btn">Xuất CSV</button>
+                <button type="button" class="outline-button" id="export-timesheet-csv-btn">📥 Xuất Excel (.xlsx)</button>
               </div>
             </div>
           </div>
@@ -1157,8 +1157,8 @@
       <div id="import-target-class-banner" class="import-target-class-banner" hidden></div>
 
       <div class="import-top-controls-grid">
-        <label class="field-label" style="margin:0;">Tải file từ máy tính (.csv, .tsv, .txt):
-          <input type="file" id="import-file-input" accept=".csv, .tsv, .txt" style="margin-top:4px;" />
+        <label class="field-label" style="margin:0;">Tải file từ máy tính (.xlsx, .csv, .tsv, .txt):
+          <input type="file" id="import-file-input" accept=".xlsx, .csv, .tsv, .txt" style="margin-top:4px;" />
         </label>
         <label class="field-label" style="margin:0;">Gán vào lớp (mặc định tự nhận lớp đang mở):
           <select id="import-default-class-select" style="margin-top:4px;"></select>
@@ -1373,7 +1373,7 @@ function jsonOut_(obj) {
       <button type="button" class="close-button" id="close-column-order-dialog" aria-label="Đóng">×</button>
       <div class="eyebrow">TÙY CHỈNH BẢNG & XUẤT FILE</div>
       <h2 id="column-order-dialog-title">Đổi thứ tự cột hiển thị & xuất file</h2>
-      <p class="dialog-hint">Sắp xếp lại vị trí các cột (ví dụ: đặt cột <strong>Điểm số</strong> và <strong>BTVN</strong> ngay sát cạnh cột <strong>Tên</strong> để dễ nhìn và nhập nhanh). Thứ tự này được áp dụng cho cả bảng hiển thị lẫn khi Xuất file Excel/CSV.</p>
+      <p class="dialog-hint">Sắp xếp lại vị trí các cột (ví dụ: đặt cột <strong>Điểm số</strong> và <strong>BTVN</strong> ngay sát cạnh cột <strong>Tên</strong> để dễ nhìn và nhập nhanh). Thứ tự này được áp dụng cho cả bảng hiển thị lẫn khi Xuất file Excel (.xlsx).</p>
 
       <div class="column-preset-buttons" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
         <button type="button" class="outline-button" id="col-preset-score-next-name" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">⚡ Đặt cột Điểm & BTVN sát cạnh Tên</button>
@@ -1581,7 +1581,7 @@ function jsonOut_(obj) {
         </div>
         <div class="report-bottom-right">
           <button type="button" class="outline-button" id="copy-teacher-report-btn" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">📋 Copy gửi GV (Zalo)</button>
-          <button type="button" class="outline-button" id="export-csv-button">📥 Xuất Excel (CSV)</button>
+          <button type="button" class="outline-button" id="export-csv-button">📥 Xuất Excel (.xlsx)</button>
           <button type="button" class="primary-button" id="print-attendance-export">🖨 In / Lưu PDF</button>
         </div>
       </footer>
@@ -2172,7 +2172,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.5</span></strong>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Lớp học vui <span class="brand-version-badge" title="Phiên bản hệ thống">v3.6</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2349,6 +2349,6 @@ function jsonOut_(obj) {
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=3.5"></script>
+  <script type="module" src="/src/app.js?v=3.6"></script>
 </body>
 </html>

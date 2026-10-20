@@ -1,14 +1,14 @@
-const APP_VERSION = "3.5";
+const APP_VERSION = "3.6";
 // Điền sẵn URL Firebase Realtime Database tại đây nếu muốn mọi máy tự kết nối không cần nhập tay:
 const DEFAULT_FIREBASE_DB_URL = "https://quanlyhocsinh-17d3d-default-rtdb.asia-southeast1.firebasedatabase.app";
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.5';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.5';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.6';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.6';
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=3.5';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.5';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.5';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.5';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.5';
+import { setupFeatures } from './features.js?v=3.6';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.6';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.6';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.6';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.6';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -4119,7 +4119,7 @@ function showIdentityForm(kind='new'){
   $('#save-identity').onclick=()=>{
     const name=$('#identity-name').value.trim(),school=$('#identity-school').value.trim(),parentContact={name:$('#identity-parent-name')?.value.trim()||'',phone:$('#identity-parent-phone')?.value.trim()||''};
     if(!name||!school){toast('Vui lòng điền họ tên và trường/lớp học bù.');return;}
-    const student=createStudentProfile({name,school,kind:makeup?'makeup':'regular',parentContact});
+    const student=createStudentProfile({name,school,kind:makeup?'makeup':'regular',parentContact,isNew:!makeup,tags:makeup?['Học bù']:['Mới']});
     if(makeup)makeupStudents.push(student);else students.push(student);
     save();
     assignStudent(student.id);
@@ -4719,7 +4719,7 @@ function showLateIdentityForm(kind='new'){
   $('#create-late-student').onclick=()=>{
     const name=$('#late-full-name').value.trim(),school=$('#late-school').value.trim(),parentContact={name:$('#late-parent-name')?.value.trim()||'',phone:$('#late-parent-phone')?.value.trim()||''};
     if(!name||!school){toast('Vui lòng điền họ tên và trường/lớp học bù.');return;}
-    const student=createStudentProfile({name,school,kind:makeup?'makeup':'regular',parentContact});
+    const student=createStudentProfile({name,school,kind:makeup?'makeup':'regular',parentContact,isNew:!makeup,tags:makeup?['Học bù']:['Mới']});
     if(makeup)makeupStudents.push(student);else students.push(student);
     save();
     selectLateStudent(student.id);
@@ -4857,7 +4857,7 @@ $('#save-late').onclick=()=>{
       name: $('#late-parent-name')?.value?.trim() || '',
       phone: $('#late-parent-phone')?.value?.trim() || ''
     };
-    const student = createStudentProfile({ name: lateNameInp, school: lateSchoolInp, kind: isMakeup ? 'makeup' : 'regular', parentContact });
+    const student = createStudentProfile({ name: lateNameInp, school: lateSchoolInp, kind: isMakeup ? 'makeup' : 'regular', parentContact, isNew: !isMakeup, tags: isMakeup ? ['Học bù'] : ['Mới'] });
     if (isMakeup) makeupStudents.push(student);
     else students.push(student);
     save();

@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=3.5';
+import { matchesAcronymOrText } from './student-search.js?v=3.6';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.5';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.5';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.5';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.6';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.6';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.6';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.5';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.6';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -25,10 +25,12 @@ import {
   mapCustomColumns,
   parseRosterText,
   exportToCsv,
+  exportToExcel,
+  parseXlsxArrayBuffer,
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=3.5';
+} from './excel-import-export.js?v=3.6';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -39,7 +41,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=3.5';
+} from './data/session-history-repository.js?v=3.6';
 
 export function setupFeatures(ctx) {
   const {
@@ -807,8 +809,8 @@ export function setupFeatures(ctx) {
       ];
     });
 
-    exportToCsv(headers, rows, 'DanhSachNhanSu_TrungTam.csv');
-    toast('Đã tải về danh sách nhân sự CSV.');
+    const outName = exportToExcel(headers, rows, 'DanhSachNhanSu_TrungTam.xlsx');
+    toast(`Đã tải về file Excel: ${outName}`);
   }
 
   // 2. LỚP BỔ TRỢ & HỌC BÙ (PRD §7: TUTORING MODULE)
@@ -2258,9 +2260,9 @@ export function setupFeatures(ctx) {
       return colOrder.map(k => valMap[k] ?? '');
     });
 
-    const fileName = `DiemDanh_${(currentClass.code || currentClass.name).replace(/\s+/g, '_')}_${date}.csv`;
-    exportToCsv(headers, rows, fileName);
-    toast(`Đã tải về file Excel (theo đúng thứ tự cột đã chọn): ${fileName}`);
+    const fileName = `DiemDanh_${(currentClass.code || currentClass.name).replace(/\s+/g, '_')}_${date}.xlsx`;
+    const outName = exportToExcel(headers, rows, fileName);
+    toast(`Đã tải về file Excel (.xlsx) theo đúng thứ tự cột đã chọn: ${outName}`);
   }
 
   // 8. TRANG CÁ NHÂN TRỢ GIẢNG & CHẤM CÔNG (PRD §10: TA PORTAL)
@@ -2774,6 +2776,8 @@ export function setupFeatures(ctx) {
         parentContact: { name: '', phone },
         classIds: [targetClassId],
         enrollmentStatus: 'Học',
+        tags: ['Mới'],
+        isNew: true,
         kind: 'regular'
       });
       newStudent.studentCode = code ? code.toUpperCase() : null;
@@ -3006,13 +3010,32 @@ export function setupFeatures(ctx) {
     fileInput?.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      const isXlsx = /\.xlsx$/i.test(file.name || '');
       const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target.result || '';
-        if (textarea) textarea.value = content;
-        parseAndRenderFromText(content, true);
-      };
-      reader.readAsText(file, 'utf-8');
+      if (isXlsx) {
+        reader.onload = async (event) => {
+          try {
+            const rows = await parseXlsxArrayBuffer(event.target.result);
+            if (!rows.length) {
+              toast('Không đọc được dữ liệu từ file .xlsx này. Bạn có thể copy-paste trực tiếp từ Excel.');
+              return;
+            }
+            const tsvText = rows.map(r => r.map(c => String(c ?? '').replace(/\t/g, ' ')).join('\t')).join('\n');
+            if (textarea) textarea.value = tsvText;
+            parseAndRenderFromText(tsvText, true);
+          } catch {
+            toast('Không thể đọc file .xlsx. Vui lòng thử copy-paste bảng dữ liệu.');
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.onload = (event) => {
+          const content = event.target.result || '';
+          if (textarea) textarea.value = content;
+          parseAndRenderFromText(content, true);
+        };
+        reader.readAsText(file, 'utf-8');
+      }
     });
 
     textarea?.addEventListener('input', () => {
@@ -3116,7 +3139,7 @@ export function setupFeatures(ctx) {
           existing.enrollmentStatus = item.enrollmentStatus || existing.enrollmentStatus || 'Học';
           updatedCount++;
         } else {
-          const tagsArr = item.tag ? [item.tag] : [];
+          const tagsArr = (item.tag && String(item.tag).trim().toLowerCase() !== 'mới') ? [String(item.tag).trim()] : [];
           const newStudent = createStudentProfile({
             name: item.name,
             familyName: item.familyName,
@@ -3127,8 +3150,11 @@ export function setupFeatures(ctx) {
             classIds: finalClassIds,
             enrollmentStatus: item.enrollmentStatus || 'Học',
             tags: tagsArr,
+            isNew: false,
             kind: 'regular'
           });
+          newStudent.isNew = false;
+          newStudent.tags = tagsArr;
           newStudent.studentCode = validCode;
           newStudent.classIds = finalClassIds;
           newStudent.familyName = item.familyName;
@@ -3600,8 +3626,8 @@ export function setupFeatures(ctx) {
         s.isNew || (s.tags && s.tags.includes('Mới')) ? 'Có' : 'Không'
       ];
     });
-    exportToCsv(headers, rows, `danh-sach-hoc-sinh-${new Date().toISOString().slice(0, 10)}.csv`);
-    toast('Đã xuất danh sách học sinh (theo đúng thứ tự cột hiển thị).');
+    const outName = exportToExcel(headers, rows, `DanhSachHocSinh_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast(`Đã xuất file Excel (.xlsx) danh sách học sinh: ${outName}`);
   }
 
   // TÍNH NĂNG MỚI: HỒ SƠ HỌC SINH THEO TỪNG LỚP (REQ 7)
@@ -4618,8 +4644,8 @@ export function setupFeatures(ctx) {
       ];
     });
     const safeCode = String(cls?.code || className || 'Lop').replace(/\s+/g, '_');
-    exportToCsv(headers, rows, `DanhSachLop_${safeCode}_${getChecklistDate()}.csv`);
-    toast(`Đã xuất file Excel (CSV) danh sách lớp ${cls?.code || className}.`);
+    const outName = exportToExcel(headers, rows, `DanhSachLop_${safeCode}_${getChecklistDate()}.xlsx`);
+    toast(`Đã xuất file Excel (.xlsx) danh sách lớp ${cls?.code || className}: ${outName}`);
   }
 
   // Sao chép nhanh báo cáo tổng hợp gửi Giáo viên qua Zalo
@@ -5069,8 +5095,8 @@ export function setupFeatures(ctx) {
       [...tr.querySelectorAll('td')].map(td => td.textContent.trim())
     );
     const headers = ['STT', 'Ngày làm việc', 'Ca học & Lớp', 'Thời gian ca', 'Thời lượng', 'Thời điểm xác nhận', 'Trạng thái đối chiếu'];
-    exportToCsv(headers, rows, `BangChamCong_${emp.code}_${selectedMonth}.csv`);
-    toast(`Đã xuất bảng chấm công CSV tháng ${selectedMonth} của ${emp.name}.`);
+    const outName = exportToExcel(headers, rows, `BangChamCong_${emp.code}_${selectedMonth}.xlsx`);
+    toast(`Đã xuất bảng chấm công Excel (.xlsx) tháng ${selectedMonth} của ${emp.name}: ${outName}`);
   });
 
   // Gắn sự kiện cho Thao tác hàng loạt trên Danh bạ Học sinh toàn trung tâm (#master-bulk-bar)
@@ -5230,7 +5256,7 @@ export function setupFeatures(ctx) {
     },
     report: {
       storageKey: 'lopvui.column-order.report.v1',
-      title: 'Đổi thứ tự cột: Bảng điểm danh & Xuất file CSV',
+      title: 'Đổi thứ tự cột: Bảng điểm danh & Xuất file Excel (.xlsx)',
       defaults: ['family', 'given', 'code', 'school', 'attendance', 'homework', 'hwScore', 'testScore', 'note'],
       scoreNextToName: ['family', 'given', 'hwScore', 'testScore', 'homework', 'note', 'attendance', 'code', 'school'],
       labels: {
@@ -5247,7 +5273,7 @@ export function setupFeatures(ctx) {
     },
     master: {
       storageKey: 'lopvui.column-order.master.v1',
-      title: 'Đổi thứ tự cột: Danh bạ học sinh & Xuất CSV tổng',
+      title: 'Đổi thứ tự cột: Danh bạ học sinh & Xuất Excel (.xlsx) tổng',
       defaults: ['code', 'family', 'given', 'school', 'parent', 'status', 'classes'],
       scoreNextToName: ['family', 'given', 'code', 'classes', 'status', 'school', 'parent'],
       labels: {
