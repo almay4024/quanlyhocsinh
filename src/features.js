@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=3.9.2';
+import { matchesAcronymOrText } from './student-search.js?v=3.9.3';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.9.2';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.9.2';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.9.2';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.9.3';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.9.3';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.9.3';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.9.2';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.9.3';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -30,7 +30,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=3.9.2';
+} from './excel-import-export.js?v=3.9.3';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -41,7 +41,7 @@ import {
   setNoHomeworkStatus,
   getStaffShiftData,
   getStudentClassDeepDive
-} from './data/session-history-repository.js?v=3.9.2';
+} from './data/session-history-repository.js?v=3.9.3';
 
 export function setupFeatures(ctx) {
   const {
@@ -780,12 +780,6 @@ export function setupFeatures(ctx) {
       if ($('#staff-active-status')) $('#staff-active-status').value = 'active';
     }
 
-    const addPastBtn = listContainer.querySelector('#history-dialog-add-past-btn');
-    if (addPastBtn) {
-      addPastBtn.onclick = () => {
-        ctx.openManagePastSessionDialog?.(classId, null);
-      };
-    }
     dialog.showModal();
   }
 
@@ -1446,7 +1440,8 @@ export function setupFeatures(ctx) {
     }
 
     const currentClass = getActiveClassConfig();
-    const roster = [...classStudents(), ...(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id && m.attendingSessionDate === date) : [])];
+    const curDate = getChecklistDate();
+    const roster = [...classStudents(), ...(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id && m.attendingSessionDate === curDate) : [])];
     const assignedIdsSet = new Set(occupants.map(x => x.entry.studentId).filter(Boolean));
     const lateQueueList = getLateQueue();
 
@@ -2872,6 +2867,9 @@ export function setupFeatures(ctx) {
     }
   }
 
+  let parsedRawRows = [];
+  let gridColumnRoles = [];
+
   // Import from Excel / Google Sheets inside Roster Admin Dialog (Class-specific context)
   const rosterImportBtn = $('#roster-import-btn');
   if (rosterImportBtn) {
@@ -2914,9 +2912,6 @@ export function setupFeatures(ctx) {
   if (closeImportDialog) closeImportDialog.onclick = () => $('#import-roster-dialog').close();
   const cancelImportBtn = $('#cancel-import-btn');
   if (cancelImportBtn) cancelImportBtn.onclick = () => $('#import-roster-dialog').close();
-
-  let parsedRawRows = [];
-  let gridColumnRoles = [];
 
   function initFlexibleColumnMappingImport() {
     const fileInput = $('#import-file-input');
@@ -5877,6 +5872,12 @@ export function setupFeatures(ctx) {
       renderSelectedSessionDetail(classSessions[0]);
     }
 
+    const addPastBtn = listContainer.querySelector('#history-dialog-add-past-btn');
+    if (addPastBtn) {
+      addPastBtn.onclick = () => {
+        ctx.openManagePastSessionDialog?.(classId, null);
+      };
+    }
     dialog.showModal();
   }
 
