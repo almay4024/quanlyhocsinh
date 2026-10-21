@@ -1,6 +1,29 @@
 {
   "rules": {
-    ".read": true,
-    ".write": true
+    ".read": false,
+    ".write": false,
+    "lopvui_cloud_v3": {
+      ".read": true,
+      "meta": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['lastUpdatedAt'])"
+      },
+      "kv": {
+        ".write": true,
+        "$safeKey": {
+          ".validate": "newData.hasChildren(['value', 'updatedAt']) && newData.child('updatedAt').isNumber()"
+        }
+      },
+      "deletedIds": {
+        ".write": true
+      },
+      "cleanSlateV35": { ".write": true },
+      "encryptedV38": { ".write": true },
+      "lastFullPushAt": { ".write": true }
+    },
+    "lopvui_sync": {
+      ".read": true,
+      ".write": true
+    }
   }
 }

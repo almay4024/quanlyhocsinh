@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=3.9.3';
+import { matchesAcronymOrText } from './student-search.js?v=4.1.0';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=3.9.3';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin } from './data/class-catalog-repository.js?v=3.9.3';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=3.9.3';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.1.0';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.1.0';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.1.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.9.3';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.1.0';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -30,7 +30,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=3.9.3';
+} from './excel-import-export.js?v=4.1.0';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -40,8 +40,9 @@ import {
   getNoHomeworkStatus,
   setNoHomeworkStatus,
   getStaffShiftData,
-  getStudentClassDeepDive
-} from './data/session-history-repository.js?v=3.9.3';
+  getStudentClassDeepDive,
+  evaluateStudentEarlyWarning
+} from './data/session-history-repository.js?v=4.1.0';
 
 export function setupFeatures(ctx) {
   const {
@@ -155,6 +156,7 @@ export function setupFeatures(ctx) {
       name: normEmp.name,
       role: normEmp.role,
       authVersion: Number(normEmp.authVersion) || 1,
+      authSig: computeSessionAuthSignature(normEmp),
       loginAt: Date.now()
     };
 
@@ -344,9 +346,12 @@ export function setupFeatures(ctx) {
       handleLogout(`Mật khẩu hoặc quyền hạn của tài khoản ${emp.code} đã được Admin thay đổi. Vui lòng đăng nhập lại.`);
       return false;
     }
-    // Keep role synced if Admin updated role
-    if (currentAcc.role !== emp.role || currentAcc.code !== emp.code) {
-      const updated = { ...currentAcc, role: emp.role, code: emp.code, name: emp.name, authVersion: emp.authVersion };
+    if (!verifySessionAuthSignature(currentAcc, emp)) {
+      handleLogout('Phiên đăng nhập không hợp lệ hoặc quyền hạn đã thay đổi. Vui lòng đăng nhập lại.');
+      return false;
+    }
+    if (currentAcc.code !== emp.code || currentAcc.name !== emp.name || !currentAcc.authSig) {
+      const updated = { ...currentAcc, role: emp.role, code: emp.code, name: emp.name, authVersion: emp.authVersion, authSig: computeSessionAuthSignature(emp) };
       setSignedInAccount(updated);
       localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(updated));
       updateCurrentUserDisplay();
@@ -407,19 +412,20 @@ export function setupFeatures(ctx) {
     }
 
     const emp = employees.find(e => e.id === account.employeeId);
-    if (!emp || emp.isActive === false || (account.authVersion && Number(emp.authVersion) > Number(account.authVersion))) {
-      handleLogout(emp?.isActive === false ? 'Tài khoản đã bị Admin tạm khóa.' : 'Phiên đăng nhập đã hết hạn hoặc mật khẩu đã thay đổi.');
+    if (!emp || emp.isActive === false || (account.authVersion && Number(emp.authVersion) > Number(account.authVersion)) || !verifySessionAuthSignature(account, emp)) {
+      handleLogout(emp?.isActive === false ? 'Tài khoản đã bị Admin tạm khóa.' : 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.');
       return false;
     }
 
-    // Valid session: ensure authVersion & code are hydrated
+    // Valid session: ensure authVersion, code & authSig are hydrated
     account = {
       ...account,
       employeeId: emp.id,
       code: emp.code,
       name: emp.name,
       role: emp.role,
-      authVersion: emp.authVersion || 1
+      authVersion: emp.authVersion || 1,
+      authSig: computeSessionAuthSignature(emp)
     };
     localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
     setSignedInAccount(account);
@@ -449,6 +455,7 @@ export function setupFeatures(ctx) {
     };
 
     const isAdmin = employee.role === 'admin';
+    window.__updateAdminLogBtnVisibility?.();
     const mgmtTabStaffEl = $('#mgmt-tab-staff');
     if (mgmtTabStaffEl) {
       mgmtTabStaffEl.hidden = !isAdmin;
@@ -529,11 +536,91 @@ export function setupFeatures(ctx) {
             <button type="button" class="logout-button-inside" id="active-card-logout-btn" title="Đăng xuất khỏi tài khoản ${escapeHtml(currentEmp.code)}">⎋ Đăng xuất</button>
           </div>
         </div>
+        ${(currentEmp.role === 'admin' || currentEmp.role === 'office') ? `
+          <div class="account-maintenance-card">
+            <h4>📦 Sao lưu dữ liệu & Tối ưu dung lượng</h4>
+            <p>Tải bản sao lưu toàn bộ dữ liệu (.json) về máy tính hoặc dọn bộ nhớ đệm các ca đã đóng quá 30 ngày.</p>
+            <div class="account-maintenance-actions">
+              <button type="button" class="outline-button" id="acc-export-backup-json-btn">📥 Sao lưu (.json)</button>
+              <label class="outline-button" style="display:inline-flex; align-items:center; margin:0;">
+                📤 Khôi phục (.json)
+                <input type="file" id="acc-import-backup-json-input" accept=".json" style="display:none;" />
+              </label>
+              <button type="button" class="outline-button" id="acc-cleanup-cache-btn" title="Xóa các key nháp hàng ngày của các ca học đã đóng quá 30 ngày (giữ nguyên 100% lịch sử ca học và điểm số)">🧹 Dọn bộ nhớ đệm</button>
+            </div>
+          </div>
+        ` : ''}
       `;
 
       activeCard.querySelector('#active-card-logout-btn')?.addEventListener('click', () => {
         try { $('#account-switch-dialog')?.close(); } catch {}
         handleLogout();
+      });
+
+      activeCard.querySelector('#acc-export-backup-json-btn')?.addEventListener('click', () => {
+        const snapshot = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('lopvui.') && k !== 'lopvui.signed-in-account.v1' && k !== 'lopvui.explicit-logout.v1') {
+            snapshot[k] = localStorage.getItem(k);
+          }
+        }
+        const payload = JSON.stringify({
+          app: 'LopHocVui',
+          version: '4.0.0',
+          exportedAt: new Date().toISOString(),
+          exportedBy: currentEmp.code,
+          entries: snapshot
+        }, null, 2);
+        const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `SaoLuu_LopHocVui_${new Date().toLocaleDateString('sv-SE')}.json`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 150);
+        toast('✓ Đã tải về file sao lưu toàn bộ dữ liệu (.json).');
+      });
+
+      activeCard.querySelector('#acc-import-backup-json-input')?.addEventListener('change', (ev) => {
+        const file = ev.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const parsed = JSON.parse(String(reader.result || '{}'));
+            const entries = parsed?.entries || parsed;
+            if (!entries || typeof entries !== 'object') {
+              toast('File sao lưu không đúng định dạng.');
+              return;
+            }
+            const keys = Object.keys(entries).filter(k => k.startsWith('lopvui.') && k !== 'lopvui.signed-in-account.v1');
+            if (!keys.length) {
+              toast('Không tìm thấy dữ liệu hợp lệ trong file sao lưu.');
+              return;
+            }
+            if (!confirm(`Bạn có chắc muốn khôi phục ${keys.length} mục dữ liệu từ file "${file.name}"?`)) return;
+            keys.forEach(k => {
+              if (entries[k] !== null && entries[k] !== undefined) {
+                localStorage.setItem(k, String(entries[k]));
+              }
+            });
+            try { $('#account-switch-dialog')?.close(); } catch {}
+            ctx.refreshAllActiveViews?.();
+            toast(`✓ Đã khôi phục thành công ${keys.length} mục dữ liệu hệ thống.`);
+          } catch {
+            toast('Không thể đọc file sao lưu .json này.');
+          }
+        };
+        reader.readAsText(file, 'utf-8');
+      });
+
+      activeCard.querySelector('#acc-cleanup-cache-btn')?.addEventListener('click', () => {
+        const cleaned = window.__lopvuiCleanupStaleKeys ? window.__lopvuiCleanupStaleKeys(30, true) : 0;
+        toast(cleaned > 0
+          ? `✓ Đã dọn ${cleaned} bản nháp ca cũ (>30 ngày), giúp tối ưu dung lượng bộ nhớ & Firebase.`
+          : '✓ Bộ nhớ đệm đã gọn gàng, không có bản nháp cũ dư thừa.');
       });
     }
 
@@ -1404,7 +1491,7 @@ export function setupFeatures(ctx) {
           <td><strong>${escapeHtml(giv || s.name)}</strong> ${renderStudentTagsBadges(s)}</td>
           <td>${escapeHtml(s.studentCode || '—')}</td>
           <td>${escapeHtml(s.school || '—')}</td>
-          <td>${escapeHtml(s.parentContact?.name || '—')}</td>
+          <td>${escapeHtml([s.parentContact?.name, s.parentContact?.phone].filter(Boolean).join(' · ') || '—')}</td>
           <td>
             <button type="button" class="text-danger" data-remove-from-roster="${escapeHtml(s.id)}" style="font-size:13.5px; padding:7px 12px;">Bỏ khỏi lớp</button>
           </td>
@@ -1533,6 +1620,7 @@ export function setupFeatures(ctx) {
 
     const activityMsg = `Chốt sĩ số ${currentClass.name}: ${occupants.length} có mặt, ${lateQueueList.length} đi muộn, ${rows.length} vắng mặt (${excusedCount} có phép, ${unexcusedCount} không phép)`;
     addClassActivity(activityMsg, 'attendance');
+    window.__logAdminSessionAction?.('Chốt sĩ số ca học', `${occupants.length} có mặt, ${lateQueueList.length} đi muộn, ${rows.length} vắng (${excusedCount} có phép, ${unexcusedCount} không phép)`, 'attendance');
     createClassNotification(
       'Chốt sĩ số thành công',
       activityMsg,
@@ -1711,7 +1799,78 @@ export function setupFeatures(ctx) {
     return 'Chưa thu';
   }
 
+  function buildParentZaloMessageForStudent(student, classId = null, dateStr = null) {
+    if (!student) return '';
+    const currentClass = (classId && getClassCatalog().find(c => c.id === classId)) || getActiveClassConfig();
+    const date = dateStr || getChecklistDate();
+    const entries = allEntries();
+    const lateQueueIds = getLateQueue();
+    const seated = entries.find(p => p.entry.studentId === student.id);
+    const isLate = lateQueueIds.includes(student.id) || seated?.entry.attendance?.status === 'late' || student.attendance?.status === 'late';
+    const isPresent = Boolean(seated);
+    const isMakeup = student.studentType === 'makeup' || !(student.classIds || []).includes(currentClass.id);
+
+    const attStatusText = isLate
+      ? `Đi muộn (${formatMergedAttendanceAndArrival(student, seated, true, true, isMakeup, date, currentClass.id)})`
+      : isPresent
+        ? 'Có mặt đúng giờ'
+        : (student.attendance?.status === 'absent_excused'
+            ? `Vắng có phép${student.attendance?.reason ? ' (' + student.attendance.reason + ')' : ''}`
+            : `Vắng mặt${student.attendance?.reason ? ' (' + student.attendance.reason + ')' : ''}`);
+
+    const hwObj = seated?.entry.homework || student.homework || { status: 'uncollected' };
+    const hwStatusText = resolveHomeworkStatusWithReason(hwObj);
+    const hwScore = formatScoreVN(hwObj.score ?? '', '');
+    const testScore = formatScoreVN(seated?.entry.testScore ?? student.testScore ?? '', '');
+    const noteText = (ctx.sessionNoteFor ? ctx.sessionNoteFor(student.id) : '') || seated?.entry?.homework?.note || student.sessionNote || '';
+
+    let savedChk = {};
+    try {
+      savedChk = JSON.parse(localStorage.getItem(`lopvui.checklist.v1.${currentClass.id}.${date}`) || '{}') || {};
+    } catch {}
+    const histSession = getSessionRecord(currentClass.id, date) || {};
+    const lessonTitle = $('#lesson-title')?.value?.trim() || savedChk.lessonTitle || histSession.lessonTitle || 'Bài học trên lớp';
+    const homeworkAssignment = $('#homework-assignment')?.value?.trim() || savedChk.homeworkAssignment || histSession.homeworkAssignment || '';
+    const homeworkLink = $('#homework-link')?.value?.trim() || savedChk.homeworkLink || histSession.homeworkLink || '';
+
+    const parentGreeting = student.parentContact?.name
+      ? `Kính gửi Phụ huynh (${student.parentContact.name}) của em ${student.name},`
+      : `Kính gửi Phụ huynh em ${student.name},`;
+
+    const lines = [
+      parentGreeting,
+      `Trung tâm xin thông báo tình hình buổi học lớp ${currentClass.name} (${currentClass.code || currentClass.id}) ngày ${date}:`,
+      `• Bài học: ${lessonTitle}`,
+      `• Điểm danh: ${attStatusText}`,
+      `• Bài tập về nhà (BTVN): ${hwStatusText}${hwScore ? ` · Điểm BTVN: ${hwScore}/10` : ''}`,
+      ...(testScore ? [`• Điểm bài Kiểm tra (Test): ${testScore}/10`] : []),
+      ...(noteText ? [`• Nhận xét của Trợ giảng/GV: ${noteText}`] : []),
+      ...(homeworkAssignment ? [`• BTVN giao về nhà buổi tới: ${homeworkAssignment}`] : []),
+      ...(homeworkLink ? [`• Link phiếu BTVN: ${homeworkLink}`] : []),
+      `Trân trọng cảm ơn Phụ huynh!`
+    ];
+    return lines.join('\n');
+  }
+
+  function copyParentZaloReportForStudent(studentId, classId = null, dateStr = null) {
+    const student = studentById(studentId) || getStudents().find(s => s.id === studentId);
+    if (!student) return;
+    const msg = buildParentZaloMessageForStudent(student, classId, dateStr);
+    if (!msg) return;
+    const phoneHint = student.parentContact?.phone ? ` · SĐT PH: ${student.parentContact.phone}` : '';
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(msg).then(() => {
+        toast(`✓ Đã copy tin nhắn Zalo báo phụ huynh em ${student.name}${phoneHint}`);
+      }).catch(() => {
+        toast(`Đã tạo tin nhắn báo phụ huynh em ${student.name}.`);
+      });
+    } else {
+      toast(`Đã chuẩn bị tin nhắn báo phụ huynh em ${student.name}.`);
+    }
+  }
+
   function renderReportCenter(tabName = 'a4-roster') {
+    if (!tabName) tabName = currentReportTab || 'a4-roster';
     currentReportTab = tabName;
     document.querySelectorAll('.report-tab').forEach(t => {
       t.classList.toggle('active', t.dataset.reportTab === tabName);
@@ -2110,7 +2269,7 @@ export function setupFeatures(ctx) {
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do chưa nộp</th><th>Ghi chú trong buổi</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do chưa nộp</th><th>Ghi chú trong buổi</th><th style="text-align:center;">Báo Phụ huynh</th></tr>
             </thead>
             <tbody>
               ${missingHW.length ? missingHW.map((s) => {
@@ -2126,9 +2285,10 @@ export function setupFeatures(ctx) {
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
                     <td><strong class="text-danger">${escapeHtml(reason)}</strong></td>
                     <td>${escapeHtml(noteText || '—')}</td>
+                    <td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">📋 Báo PH</button></td>
                   </tr>
                 `;
-              }).join('') : `<tr><td colspan="5" style="text-align:center; padding:18px; color:#497955;">Tuyệt vời! Tất cả học sinh có mặt đều đã nộp BTVN.</td></tr>`}
+              }).join('') : `<tr><td colspan="6" style="text-align:center; padding:18px; color:#497955;">Tuyệt vời! Tất cả học sinh có mặt đều đã nộp BTVN.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -2144,7 +2304,7 @@ export function setupFeatures(ctx) {
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Trạng thái & Giờ đến</th><th>Ghi chú trong buổi</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Trạng thái & Giờ đến</th><th>Ghi chú trong buổi</th><th style="text-align:center;">Báo Phụ huynh</th></tr>
             </thead>
             <tbody>
               ${lateList.length ? lateList.map((s) => {
@@ -2159,9 +2319,10 @@ export function setupFeatures(ctx) {
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school || '—'))}</td>
                     <td><strong style="color:#ab5d18;">${escapeHtml(lateLabel)}</strong></td>
                     <td>${escapeHtml(noteText || '—')}</td>
+                    <td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">📋 Báo PH</button></td>
                   </tr>
                 `;
-              }).join('') : `<tr><td colspan="5" style="text-align:center; padding:18px; color:#497955;">Không có học sinh nào đi muộn trong ca học này.</td></tr>`}
+              }).join('') : `<tr><td colspan="6" style="text-align:center; padding:18px; color:#497955;">Không có học sinh nào đi muộn trong ca học này.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -2178,7 +2339,7 @@ export function setupFeatures(ctx) {
         <div class="attendance-table-wrap">
           <table class="attendance-report-table">
             <thead>
-              <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do vắng</th><th>Ghi chú trong buổi</th></tr>
+              <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do vắng</th><th>Ghi chú trong buổi</th><th style="text-align:center;">Báo Phụ huynh</th></tr>
             </thead>
             <tbody>
               ${absentList.length ? absentList.map((s) => {
@@ -2193,9 +2354,10 @@ export function setupFeatures(ctx) {
                     <td><span class="student-state ${isExcused ? 'state-late' : 'state-missing'}">${isExcused ? 'Có phép' : 'Không phép'}</span></td>
                     <td>${escapeHtml(s.attendance?.reason || 'Chưa ghi nhận')}</td>
                     <td>${escapeHtml(noteText || '—')}</td>
+                    <td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">📋 Báo PH</button></td>
                   </tr>
                 `;
-              }).join('') : `<tr><td colspan="6" style="text-align:center; padding:18px; color:#497955;">100% học sinh đã có mặt tại lớp!</td></tr>`}
+              }).join('') : `<tr><td colspan="7" style="text-align:center; padding:18px; color:#497955;">100% học sinh đã có mặt tại lớp!</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -2239,6 +2401,13 @@ export function setupFeatures(ctx) {
         </div>
       `;
     }
+
+    container.querySelectorAll('[data-copy-parent-zalo]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        copyParentZaloReportForStudent(btn.dataset.copyParentZalo, currentClass.id, date);
+      };
+    });
   }
 
   function exportReportAsCsv() {
@@ -2760,6 +2929,7 @@ export function setupFeatures(ctx) {
         const newLayout = buildLayoutFromTemplate(currentClass.id, tpl);
         if (ctx.setLayout) ctx.setLayout(newLayout);
         else localStorage.setItem(`lopvui.layout.v5.${currentClass.id}.${getChecklistDate()}`, JSON.stringify(newLayout));
+        window.__logAdminSessionAction?.('Áp dụng mẫu sơ đồ phòng học', `Mẫu phòng: "${tpl.name}"`, 'layout');
         render();
         $('#layout-dialog').close();
         toast(`Đã áp dụng sơ đồ theo mẫu "${tpl.name}".`);
@@ -3555,12 +3725,18 @@ export function setupFeatures(ctx) {
         return `<span class="plain-class-link" data-open-student-class="${escapeHtml(s.id)}" data-class-id="${escapeHtml(cid)}" title="Bấm xem tình hình học lớp ${escapeHtml(cCode)}">${escapeHtml(cCode)}</span>`;
       }).join(', ') || '<small style="color:#a8b4aa;">Chưa gán lớp</small>';
 
+      const ew = evaluateStudentEarlyWarning(s);
+      const warnBadgeHtml = ew.hasWarning
+        ? ` <span class="early-warning-pill" title="Cảnh báo sớm: ${escapeHtml(ew.tooltip)}">⚠ ${escapeHtml(ew.badgeText)}</span>`
+        : '';
+      const parentDisplay = [s.parentContact?.name, s.parentContact?.phone].filter(Boolean).join(' · ') || '—';
+
       const cellMap = {
         code: `<td><strong>${escapeHtml(s.studentCode || '—')}</strong></td>`,
         family: `<td style="cursor:pointer;" data-view-student-detail="${escapeHtml(s.id)}" title="Bấm mở Hồ sơ thông tin chung">${escapeHtml(fam || '—')}</td>`,
-        given: `<td style="cursor:pointer;" data-view-student-detail="${escapeHtml(s.id)}" title="Bấm mở Hồ sơ thông tin chung"><strong style="color:#1b522c; text-decoration:underline;">${escapeHtml(giv || s.name)}</strong>${renderStudentTagsBadges(s)}</td>`,
+        given: `<td style="cursor:pointer;" data-view-student-detail="${escapeHtml(s.id)}" title="Bấm mở Hồ sơ thông tin chung"><strong style="color:#1b522c; text-decoration:underline;">${escapeHtml(giv || s.name)}</strong>${renderStudentTagsBadges(s)}${warnBadgeHtml}</td>`,
         school: `<td>${escapeHtml(s.school || '—')}</td>`,
-        parent: `<td><div>${escapeHtml(s.parentContact?.name || '—')}</div></td>`,
+        parent: `<td><div>${escapeHtml(parentDisplay)}</div></td>`,
         status: `<td style="white-space:nowrap;"><span class="enrollment-status-pill ${stClass}">${escapeHtml(stVal)}</span></td>`,
         classes: `<td class="col-allow-wrap plain-class-cell">${classPlainLinks}</td>`
       };
@@ -3646,7 +3822,7 @@ export function setupFeatures(ctx) {
         family: fam,
         given: giv,
         school: s.school || '',
-        parent: s.parentContact?.name || '',
+        parent: [s.parentContact?.name, s.parentContact?.phone].filter(Boolean).join(' - ') || '',
         status: s.enrollmentStatus || 'Học',
         classes: classNames
       };
@@ -4487,6 +4663,7 @@ export function setupFeatures(ctx) {
     setNoHomeworkStatus(classId, date, checked);
     initSessionNoHomework();
     if (ctx.syncLiveSessionData) ctx.syncLiveSessionData();
+    window.__logAdminSessionAction?.(checked ? 'Bật chế độ: Không có BTVN cho ca học' : 'Tắt chế độ: Không có BTVN (Thu BTVN bình thường)', '', 'homework');
     render();
     toast(checked ? 'Đã đánh dấu: Buổi học này không thu BTVN.' : 'Đã bật thu BTVN cho buổi học này.');
   }
@@ -4534,6 +4711,7 @@ export function setupFeatures(ctx) {
     openClassSession(classId, date, { id: emp?.id || user?.employeeId, name: emp?.name || 'Trợ giảng', role: user?.role || 'assistant' }, cls);
     updateSessionStateUI();
     addClassActivity(`${emp?.name || 'Trợ giảng'} đã mở ca học ${cls?.name || classId}`, 'system');
+    window.__logAdminSessionAction?.('Mở lại ca học', `Lớp ${cls?.name || classId} · Ngày ${date}`, 'session');
     toast('Đã mở ca học.');
   }
 
@@ -4679,6 +4857,7 @@ export function setupFeatures(ctx) {
     $('#close-session-dialog')?.close();
     updateSessionStateUI();
     addClassActivity(`${operator.name} đã kết thúc và đóng ca học ${currentClass.name} (Có mặt: ${closedRec.stats?.present || 0}/${closedRec.stats?.total || 0})`, 'attendance');
+    window.__logAdminSessionAction?.('Kết thúc & Đóng ca học', `Có mặt: ${closedRec.stats?.present || 0}/${closedRec.stats?.total || 0} · Đi muộn: ${closedRec.stats?.late || 0} · BTVN: ${closedRec.stats?.homeworkDone || 0}${finalNote ? ` · Ghi chú chốt ca: "${finalNote}"` : ''}`, 'session');
     toast(`✓ Đã đóng ca học ${currentClass.name} và lưu vào lịch sử quản lý.`);
     render();
   }
@@ -4928,6 +5107,11 @@ export function setupFeatures(ctx) {
         });
 
         saveStudentRecords(allStudents, makeups);
+        window.__logAdminSessionAction?.(
+          `${mode === 'move-class' ? 'Chuyển lớp hàng loạt' : 'Thêm vào lớp khác hàng loạt'} (${studentIds.length} HS)`,
+          `Lớp đích: ${targetCls?.code || targetCls?.name || targetClassId}`,
+          'student'
+        );
         dlg.close();
         toast(`${mode === 'move-class' ? 'Đã chuyển' : 'Đã thêm'} ${studentIds.length} học sinh vào lớp ${targetCls?.code || targetCls?.name || targetClassId}.`);
       } else {
@@ -4946,6 +5130,11 @@ export function setupFeatures(ctx) {
           }
         });
         saveStudentRecords(allStudents, makeups);
+        window.__logAdminSessionAction?.(
+          `${mode === 'add-tag' ? 'Gắn tag hàng loạt' : 'Gỡ tag hàng loạt'} (${studentIds.length} HS)`,
+          rawTag ? `Tag: "${rawTag}"` : 'Xoá toàn bộ tag',
+          'student'
+        );
         dlg.close();
         toast(mode === 'add-tag'
           ? `Đã gắn tag "${rawTag}" cho ${studentIds.length} học sinh.`
@@ -5109,10 +5298,10 @@ export function setupFeatures(ctx) {
     if (ctx.setMasterData) ctx.setMasterData(master);
     else localStorage.setItem('lopvui.master-data.v1', JSON.stringify(master));
 
-    // If Admin changed their own password, keep their active session authVersion updated
+    // If Admin changed their own password, keep their active session authVersion & authSig updated
     const currentAcc = getSignedInAccount();
     if (currentAcc && currentAcc.employeeId === emp.id) {
-      const updatedAcc = { ...currentAcc, authVersion: emp.authVersion };
+      const updatedAcc = { ...currentAcc, authVersion: emp.authVersion, authSig: computeSessionAuthSignature(emp) };
       setSignedInAccount(updatedAcc);
       localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(updatedAcc));
     }
@@ -5713,6 +5902,7 @@ export function setupFeatures(ctx) {
                 <button type="button" class="primary-button" data-reopen-class-date="${escapeHtml(session.date)}" style="padding:7px 12px; font-size:13.5px; font-weight:700; background:#2e6d42;">
                   ▶ Mở ca học này
                 </button>
+                ${getSignedInAccount()?.role === 'admin' ? `<button type="button" class="outline-button btn-admin-log" data-admin-log-history-session="${escapeHtml(session.date)}" style="padding:7px 11px; font-size:13.5px;">🛡 Admin Log</button>` : ''}
                 <button type="button" class="outline-button" data-edit-history-session="${escapeHtml(session.date)}" style="padding:7px 11px; font-size:13.5px; font-weight:700; color:#1e40af; border-color:#bfdbfe; background:#eff6ff;">
                   ✎ Sửa ca
                 </button>
@@ -5810,6 +6000,12 @@ export function setupFeatures(ctx) {
           if (ctx.enterClass) {
             ctx.enterClass(classId, session.date);
           }
+        };
+      }
+      const adminLogSessBtn = detailContainer.querySelector('[data-admin-log-history-session]');
+      if (adminLogSessBtn) {
+        adminLogSessBtn.onclick = () => {
+          window.__openSessionAdminLogDialog?.(classId, session.date);
         };
       }
       const editSessBtn = detailContainer.querySelector('[data-edit-history-session]');
@@ -5911,8 +6107,39 @@ export function setupFeatures(ctx) {
     renderTAPortal,
     populateRoomTemplateDropdowns,
     updateLateMinutesCalculation,
+    exportAdminLogAsExcel: (logs = [], cls = {}, dateStr = '') => {
+      const headers = ['STT', 'Thời gian', 'Ngày', 'Tên tài khoản', 'Mã nhân sự', 'Vai trò', 'Phân loại', 'Hành động', 'Chi tiết tác động dữ liệu'];
+      const roleMap = { admin: 'Admin', office: 'Văn phòng', teacher: 'Giáo viên', assistant: 'Trợ giảng' };
+      const catMap = { attendance: 'Điểm danh & Chỗ ngồi', homework: 'BTVN', score: 'Điểm số', student: 'Hồ sơ HS', checklist: 'Checklist & Bàn giao', layout: 'Sơ đồ bàn ghế', session: 'Quản lý ca học' };
+      const rows = logs.map((item, idx) => {
+        const dt = item.timestamp ? new Date(Number(item.timestamp)) : null;
+        const timeStr = item.timeStr || (dt ? dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '');
+        const dateFormatted = dt ? dt.toLocaleDateString('vi-VN') : dateStr;
+        return [
+          idx + 1,
+          timeStr,
+          dateFormatted,
+          item.actorName || 'Không rõ',
+          item.actorCode || '—',
+          roleMap[item.actorRole] || item.actorRole || 'Nhân sự',
+          catMap[item.category] || item.category || 'Thao tác',
+          item.action || '',
+          item.detail || ''
+        ];
+      });
+      downloadStyledExcelTable({
+        filename: `Admin-Log-${cls.code || cls.id || 'Lop'}-${dateStr || 'CaHoc'}.xls`,
+        sheetName: `AdminLog_${dateStr || 'Ca'}`,
+        title: `NHẬT KÝ KIỂM TRA DỮ LIỆU CA HỌC (ADMIN LOG) - ${(cls.name || cls.code || '').toUpperCase()}`,
+        subtitle: `Mã lớp: ${cls.code || cls.id || '—'} · Ngày học: ${dateStr || '—'} · Tổng số thao tác: ${logs.length}`,
+        headers,
+        rows
+      });
+      toast('✓ Đã tải xuống file Excel Nhật ký Admin Log của ca học.');
+    },
     openClassHistoryDialog,
     renderReportCenter,
+    copyParentZaloReportForStudent,
     exportReportAsCsv,
     exportRoster,
     handleFinalizeAttendance,

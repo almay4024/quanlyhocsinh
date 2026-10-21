@@ -90,7 +90,10 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
       ...splitName(student),
       studentCode,
       classIds: Array.isArray(student.classIds) ? student.classIds : (currentClassId ? [currentClassId] : []),
-      parentContact: student.parentContact || { name: '', phone: '' },
+      parentContact: {
+        name: student.parentContact?.name || '',
+        phone: student.parentContact?.phone || ''
+      },
       photoURL: student.photoURL || null,
       courseIds: student.courseIds || [],
       attendanceHistory: attHist,
@@ -130,7 +133,10 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
       sourceClassName: student.sourceClassName || student.school || 'T2',
       attendingClassId: student.attendingClassId || currentClassId,
       attendingSessionDate: student.attendingSessionDate || student.attendanceHistory?.[0]?.date || student.sessionNotes?.[0]?.date || student.scores?.[0]?.date || null,
-      parentContact: student.parentContact || { name: '', phone: '' },
+      parentContact: {
+        name: student.parentContact?.name || '',
+        phone: student.parentContact?.phone || ''
+      },
       photoURL: student.photoURL || null,
       courseIds: student.courseIds || [],
       attendanceHistory: attHist,
@@ -170,13 +176,14 @@ function loadPhotoStore(storage = getStorage()) {
 function sanitizeStudentForStorage(s, photoStore) {
   if (!s || typeof s !== 'object') return null;
   const copy = { ...s };
-  // Strip transient per-session UI state & duplicate history alias to cut payload size by 50%
+  // Strip transient per-session UI state, duplicate history alias, and heavy full-size Base64 image
   delete copy.attendance;
   delete copy.homework;
   delete copy.testScore;
   delete copy.arrivalTime;
   delete copy.lateMinutes;
   delete copy.history;
+  delete copy.photoFullURL;
 
   copy.studentCode = (copy.studentCode && String(copy.studentCode).trim())
     ? String(copy.studentCode).trim().toUpperCase()
@@ -398,7 +405,7 @@ export async function uploadStudentPhotoToDrive(student, fullSizeDataUrl, previe
   const oldFileId = student.photoDriveFileId || extractGoogleDriveFileId(student.photoURL) || null;
   student.photoDriveFileName = fileName;
   student.photoURL = previewDataUrl || fullSizeDataUrl;
-  student.photoFullURL = fullSizeDataUrl || previewDataUrl;
+  student.photoFullURL = previewDataUrl || fullSizeDataUrl;
   student.updatedAt = Date.now();
 
   const cfg = loadGoogleDrivePhotoConfig(storage);

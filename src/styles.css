@@ -8797,3 +8797,255 @@ button:active,
   line-height: 1.2;
   white-space: nowrap;
 }
+
+
+/* ==========================================================================
+   v4.0 UPDATES:
+   - Compact Contextual Carry-over Seating Pill & Layout Dialog Carry-over Box
+   - Early Warning Badge & Session Counter Badge (Uncluttered inline pills)
+   - Parent Zalo Copy Button & Account Maintenance / Backup Section
+   ========================================================================== */
+
+.pool-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pool-heading-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pool-carryover-btn {
+  padding: 5px 11px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  background: #f0fdf4 !important;
+  color: #166534 !important;
+  border: 1px solid #86efac !important;
+  border-radius: 8px !important;
+  white-space: nowrap;
+}
+.pool-carryover-btn:hover {
+  background: #dcfce7 !important;
+}
+
+.carryover-layout-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+}
+.carryover-layout-box strong {
+  display: block;
+  font-size: 13.5px;
+  color: #14532d;
+}
+.carryover-layout-box small {
+  color: #166534;
+  font-size: 12.5px;
+}
+
+.early-warning-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  margin-left: 4px;
+  border-radius: 5px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.session-count-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  margin-left: 4px;
+  border-radius: 5px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.btn-copy-parent-zalo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #166534 !important;
+  background: #f0fdf4 !important;
+  border: 1px solid #86efac !important;
+  border-radius: 6px !important;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-copy-parent-zalo:hover {
+  background: #dcfce7 !important;
+}
+
+.account-maintenance-card {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8faf8;
+  border: 1px solid #dce5dd;
+  border-radius: 10px;
+}
+.account-maintenance-card h4 {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  color: #1e3a29;
+}
+.account-maintenance-card p {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: #5c6f60;
+  line-height: 1.4;
+}
+.account-maintenance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.account-maintenance-actions button,
+.account-maintenance-actions label {
+  padding: 6px 10px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  border-radius: 7px !important;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .pool-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .pool-heading-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+
+/* ==========================================================================
+   v4.1 UPDATES:
+   - Admin Session Audit Log Button & Dialog (Strictly visible to Admin only)
+   ========================================================================== */
+
+.btn-admin-log {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #eff6ff !important;
+  color: #1e40af !important;
+  border: 1px solid #93c5fd !important;
+  font-weight: 800 !important;
+}
+.btn-admin-log:hover {
+  background: #dbeafe !important;
+}
+
+.admin-log-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #1d4ed8;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.admin-log-dialog {
+  width: min(920px, calc(100vw - 20px)) !important;
+  max-height: 90vh;
+}
+
+.admin-log-account-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.admin-log-acc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.admin-log-acc-chip.active {
+  background: #1e40af;
+  border-color: #1e40af;
+  color: #ffffff;
+}
+
+.admin-log-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.admin-log-filter-bar input[type="search"] {
+  flex: 1 1 220px;
+}
+.admin-log-filter-bar select {
+  flex: 0 1 190px;
+}
+
+.admin-log-cat-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.admin-log-cat-badge.cat-attendance { background: #dcfce7; color: #166534; }
+.admin-log-cat-badge.cat-homework { background: #fef3c7; color: #92400e; }
+.admin-log-cat-badge.cat-score { background: #f3e8ff; color: #6b21a8; }
+.admin-log-cat-badge.cat-seating { background: #e0f2fe; color: #075985; }
+.admin-log-cat-badge.cat-note { background: #f1f5f9; color: #334155; }
+.admin-log-cat-badge.cat-checklist { background: #fae8ff; color: #86198f; }
+.admin-log-cat-badge.cat-roster { background: #ffedd5; color: #9a3412; }
+.admin-log-cat-badge.cat-session { background: #e0e7ff; color: #1e40af; }

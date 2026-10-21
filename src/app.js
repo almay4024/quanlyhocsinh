@@ -1,14 +1,14 @@
-const APP_VERSION = "3.9.3";
+const APP_VERSION = "4.1.0";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=3.9.3';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=3.9.3';
-const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession } = sessionHistoryRepo;
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.1.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.1.0';
+const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=3.9.3';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=3.9.3';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=3.9.3';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=3.9.3';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=3.9.3';
+import { setupFeatures } from './features.js?v=4.1.0';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.1.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.1.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.1.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=4.1.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -102,7 +102,12 @@ const RT_EXCLUDED = new Set([
   'lopvui.explicit-logout.v1',
   'lopvui.firebase-db-url.v1',
   'lopvui.key-timestamps.v1',
-  'lopvui.deleted-ids.v1'
+  'lopvui.deleted-ids.v1',
+  'lopvui.student-photos.v1',
+  'lopvui.layout.v5',
+  'lopvui.desk-items.v7',
+  'lopvui.late-queue.v6',
+  'lopvui.session-seats.v6'
 ]);
 const GRANULAR_ARRAY_KEYS = new Set([
   'lopvui.students.v9',
@@ -370,6 +375,18 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
   const deletedMap = { ..._getDeletedIdsMap(), ...(remoteDeletedMap || {}) };
 
   try {
+    if (key.startsWith('lopvui.admin-audit-log.v1.')) {
+      const localArr = JSON.parse(localPlain);
+      const remoteArr = JSON.parse(remotePlain);
+      if (Array.isArray(localArr) && Array.isArray(remoteArr)) {
+        const byId = new Map();
+        for (const item of [...remoteArr, ...localArr]) {
+          if (item && item.id) byId.set(item.id, item);
+        }
+        const combined = Array.from(byId.values()).sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0)).slice(0, 500);
+        return JSON.stringify(combined);
+      }
+    }
     if (GRANULAR_ARRAY_KEYS.has(key)) {
       const localArr = JSON.parse(localPlain);
       const remoteArr = JSON.parse(remotePlain);
@@ -485,6 +502,8 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
           _nativeRemoveItem.call(window.localStorage, k);
           _setKeyTimestamp(k, remoteTs);
           changed.push(k);
+        } else if (source === 'broadcast-tab') {
+          changed.push(k);
         }
       } else {
         const remotePlain = decryptVaultPayload(String(v), k);
@@ -492,6 +511,8 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
         if (curPlain !== mergedPlain) {
           _writeEncryptedLocal(k, mergedPlain);
           _setKeyTimestamp(k, Math.max(remoteTs, localTs));
+          changed.push(k);
+        } else if (source === 'broadcast-tab') {
           changed.push(k);
         }
       }
@@ -512,6 +533,11 @@ function _encodeFirebaseSafeKey(key) {
   return `k_${h1}${h2}`;
 }
 
+const _HEAVY_ARCHIVE_KEYS = new Set([
+  'lopvui.students.v9',
+  'lopvui.session-history.v2'
+]);
+
 function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
   const dbUrl = getConfiguredFirebaseDbUrl();
   if (!dbUrl || !_shouldSyncKey(key)) return;
@@ -521,7 +547,11 @@ function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
   const encKey = encryptVaultPayload(key, 'firebase_key_meta');
   _rtPendingCloudEntries.set(key, { encKey, value: encVal, updatedAt: ts, clientId: RT_CLIENT_ID });
   if (_rtCloudPushTimer) clearTimeout(_rtCloudPushTimer);
-  _rtCloudPushTimer = setTimeout(_flushFirebaseCloudPush, 140);
+  // Coalesce rapid updates to heavy monolithic arrays (students.v9 / session-history.v2) over 1400ms to save 85% Firebase bandwidth,
+  // while keeping lightweight session keys fast (320ms) and multi-tab BroadcastChannel at 0ms.
+  const hasOnlyHeavyKeys = Array.from(_rtPendingCloudEntries.keys()).every(k => _HEAVY_ARCHIVE_KEYS.has(k));
+  const delayMs = hasOnlyHeavyKeys ? 1400 : 320;
+  _rtCloudPushTimer = setTimeout(_flushFirebaseCloudPush, delayMs);
 }
 
 let _lastSeenCloudMetaTs = 0;
@@ -894,13 +924,20 @@ function initRealtimeSync(onSyncCallback) {
           if (!data || data.clientId === RT_CLIENT_ID) return;
           if (data.type === 'sync-entries' && data.entries) {
             _applyRtRemoteEntries(data.entries, 'broadcast-tab');
+          } else if (data.type === 'force-refresh-all') {
+            _scheduleRtUIRefresh(['*'], 'broadcast-tab');
           }
         };
       } catch {}
     }
 
     window.addEventListener('storage', (event) => {
-      if (!event.key || !_shouldSyncKey(event.key) || _rtApplyingRemote) return;
+      if (_rtApplyingRemote) return;
+      if (!event.key) {
+        _scheduleRtUIRefresh(['*'], 'storage-event');
+        return;
+      }
+      if (!_shouldSyncKey(event.key)) return;
       _scheduleRtUIRefresh([event.key], 'storage-event');
     });
 
@@ -914,26 +951,59 @@ function initRealtimeSync(onSyncCallback) {
       })();
     }
 
-    // Khi tab quay lại hiển thị (visibilitychange), kiểm tra meta ngay lập tức
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && getConfiguredFirebaseDbUrl()) {
+    let _lastUserActivityAt = Date.now();
+    let _lastCloudPollAt = Date.now();
+    const _markUserActive = () => {
+      const now = Date.now();
+      const wasIdle = (now - _lastUserActivityAt) > 15000;
+      _lastUserActivityAt = now;
+      if (wasIdle && (now - _lastCloudPollAt > 8000) && getConfiguredFirebaseDbUrl() && !document.hidden) {
         if (!_rtIsPushingCloud && _rtPendingCloudEntries.size === 0) {
+          _lastCloudPollAt = now;
+          pullFromFirebaseCloudNow('cloud-poll');
+        }
+      }
+    };
+    ['pointerdown', 'keydown', 'touchstart', 'focus'].forEach(evt => {
+      window.addEventListener(evt, _markUserActive, { passive: true });
+    });
+
+    // Khi tab ẩn đi hoặc đóng trang: đẩy ngay các thay đổi đang chờ lên Firebase; khi quay lại: kiểm tra meta ngay
+    window.addEventListener('pagehide', () => {
+      if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush();
+      } else if (getConfiguredFirebaseDbUrl()) {
+        _lastUserActivityAt = Date.now();
+        if (!_rtIsPushingCloud && _rtPendingCloudEntries.size === 0) {
+          _lastCloudPollAt = Date.now();
           pullFromFirebaseCloudNow('cloud-poll');
         }
       }
     });
 
+    // Adaptive Cloud Polling: 4s khi đang thao tác, giảm xuống 16s–45s khi để máy chờ (idle) để bảo vệ hạn mức No-Cost
     setInterval(() => {
       if (getConfiguredFirebaseDbUrl()) {
-        // Tạm ngưng hỏi thăm khi tab đang bị ẩn dưới nền để tiết kiệm 100% băng thông
         if (typeof document !== 'undefined' && document.hidden) return;
-        // Không poll đè khi người dùng vừa bấm nút lưu (đang đẩy dữ liệu lên Firebase)
-        if (_rtIsPushingCloud || _rtPendingCloudEntries.size > 0 || (Date.now() - _rtLastLocalWriteAt < 2000)) {
+        const now = Date.now();
+        if (_rtIsPushingCloud || _rtPendingCloudEntries.size > 0 || (now - _rtLastLocalWriteAt < 2000)) {
           return;
         }
+        const idleMs = now - _lastUserActivityAt;
+        const minInterval = idleMs < 180000 ? 4000 : (idleMs < 900000 ? 16000 : 45000);
+        if (now - _lastCloudPollAt < minInterval - 200) return;
+        _lastCloudPollAt = now;
         pullFromFirebaseCloudNow('cloud-poll');
       }
     }, 4000);
+
+    // Tự động dọn dẹp các key nháp theo ngày của những ca đã đóng quá 45 ngày (đã lưu trong session-history.v2)
+    setTimeout(() => {
+      try { cleanupStaleDailyScratchKeys(45, false); } catch {}
+    }, 3500);
   }
   return {
     clientId: RT_CLIENT_ID,
@@ -1028,6 +1098,261 @@ function updateUndoButton() {
   const btn = $('#undo-layout-button');
   if (btn) btn.disabled = seatingUndoStack.length === 0;
 }
+function currentActorInfo() {
+  const acc = window.__featuresApp?.getSignedInAccount ? window.__featuresApp.getSignedInAccount() : null;
+  const empId = acc?.employeeId || currentEmployeeId || '';
+  const emp = (masterData.employees || []).find(e => e && e.id === empId) || null;
+  const role = emp?.role || acc?.role || selectedRole() || 'assistant';
+  const name = emp?.name || acc?.name || currentStaffName() || 'Nhân sự';
+  const code = emp?.code || acc?.code || '';
+  return { id: empId, code, name, role };
+}
+
+let _activeAdminLogSession = { classId: null, date: null };
+
+function logAdminSessionAction(action, detail = '', category = 'session', dedupeKey = '', customClassId = null, customDate = null) {
+  try {
+    const targetClassId = customClassId || CURRENT_CLASS_ID;
+    const targetDate = customDate || checklistDate;
+    if (!targetClassId || !targetDate) return;
+    if (typeof appendSessionAdminAuditLog === 'function') {
+      appendSessionAdminAuditLog({
+        classId: targetClassId,
+        date: targetDate,
+        actor: currentActorInfo(),
+        category,
+        action,
+        detail,
+        dedupeKey
+      }, localStorage);
+    }
+    updateAdminLogButtonVisibilityAndCount();
+    const dlg = document.getElementById('session-admin-log-dialog');
+    if (dlg && dlg.open && _activeAdminLogSession.classId === targetClassId && _activeAdminLogSession.date === targetDate) {
+      renderSessionAdminLogDialogContent();
+    }
+  } catch (err) {
+    console.warn('Admin audit log error:', err);
+  }
+}
+window.__logAdminSessionAction = logAdminSessionAction;
+
+function updateAdminLogButtonVisibilityAndCount() {
+  const btn = document.getElementById('session-admin-log-btn');
+  if (!btn) return;
+  const isAdmin = selectedRole() === 'admin';
+  btn.hidden = !isAdmin;
+  btn.style.display = isAdmin ? 'inline-flex' : 'none';
+  if (!isAdmin) return;
+  const countBadge = document.getElementById('session-admin-log-count');
+  if (countBadge && CURRENT_CLASS_ID && checklistDate && typeof loadSessionAdminAuditLogs === 'function') {
+    const logs = loadSessionAdminAuditLogs(CURRENT_CLASS_ID, checklistDate, localStorage);
+    countBadge.textContent = String(logs.length);
+  }
+}
+window.__updateAdminLogBtnVisibility = updateAdminLogButtonVisibilityAndCount;
+
+const ADMIN_LOG_CATEGORY_LABELS = {
+  attendance: 'Điểm danh & Chỗ ngồi',
+  homework: 'Bài tập về nhà',
+  score: 'Điểm số',
+  student: 'Hồ sơ học sinh',
+  checklist: 'Checklist & Bàn giao',
+  layout: 'Sơ đồ bàn ghế',
+  session: 'Quản lý ca học'
+};
+
+const ADMIN_LOG_ROLE_LABELS = {
+  admin: 'Admin',
+  office: 'Văn phòng',
+  teacher: 'Giáo viên',
+  assistant: 'Trợ giảng'
+};
+
+function buildCombinedAdminAuditLogs(classId, date) {
+  const rawLogs = typeof loadSessionAdminAuditLogs === 'function'
+    ? loadSessionAdminAuditLogs(classId, date, localStorage)
+    : [];
+  const comm = loadClassCommunication(classId, date) || { activities: [], messages: [] };
+  const existingKeys = new Set(rawLogs.map(item => `${Math.floor((Number(item.timestamp) || 0) / 5000)}_${item.action}`));
+  const legacyItems = [];
+
+  (comm.activities || []).forEach(act => {
+    const ts = typeof act.createdAt === 'number' ? act.createdAt : (Date.parse(act.createdAt) || Date.now());
+    const text = String(act.text || '').trim();
+    if (!text) return;
+    const approxKey = `${Math.floor(ts / 5000)}_${text}`;
+    if (existingKeys.has(approxKey)) return;
+    let inferredName = 'Nhân sự ca trực';
+    let inferredCode = '';
+    let inferredRole = 'assistant';
+    for (const emp of (masterData.employees || [])) {
+      if (emp?.name && text.startsWith(emp.name)) {
+        inferredName = emp.name;
+        inferredCode = emp.code || '';
+        inferredRole = emp.role || 'assistant';
+        break;
+      }
+    }
+    legacyItems.push({
+      id: act.id || `act-${ts}`,
+      classId,
+      date,
+      timestamp: ts,
+      timeStr: new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      actorId: '',
+      actorCode: inferredCode,
+      actorName: inferredName,
+      actorRole: inferredRole,
+      category: act.kind === 'homework' ? 'homework' : act.kind === 'checklist' || act.kind === 'handover' ? 'checklist' : 'attendance',
+      action: text,
+      detail: 'Tự động đồng bộ từ nhật ký hoạt động ca'
+    });
+  });
+
+  return [...rawLogs, ...legacyItems].sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0));
+}
+
+function renderSessionAdminLogDialogContent() {
+  const classId = _activeAdminLogSession.classId || CURRENT_CLASS_ID;
+  const date = _activeAdminLogSession.date || checklistDate;
+  const cls = resolveClass(classId) || activeClassConfig() || { id: classId, name: classId, code: classId };
+  const dFormatted = date ? new Date(`${date}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+
+  const titleEl = document.getElementById('admin-log-dialog-title');
+  if (titleEl) titleEl.textContent = `Nhật ký Admin · ${cls.code || cls.id} (${cls.name}) · ${dFormatted}`;
+
+  const allLogs = buildCombinedAdminAuditLogs(classId, date);
+  const accFilterEl = document.getElementById('admin-log-account-filter');
+  const catFilterEl = document.getElementById('admin-log-category-filter');
+  const searchEl = document.getElementById('admin-log-search-input');
+  const summaryEl = document.getElementById('admin-log-account-summary');
+  const tbody = document.getElementById('admin-log-table-tbody');
+  const footerCount = document.getElementById('admin-log-footer-count');
+
+  // Group counts by account
+  const accountStats = new Map();
+  allLogs.forEach(item => {
+    const key = item.actorCode ? `${item.actorName} (${item.actorCode})` : (item.actorName || 'Không rõ');
+    const prev = accountStats.get(key) || { key, name: item.actorName || 'Không rõ', code: item.actorCode || '', role: item.actorRole || 'assistant', count: 0 };
+    prev.count++;
+    accountStats.set(key, prev);
+  });
+
+  if (accFilterEl) {
+    const prevVal = accFilterEl.value || 'all';
+    accFilterEl.innerHTML = `<option value="all">👤 Tất cả tài khoản (${allLogs.length})</option>` +
+      Array.from(accountStats.values()).map(acc => {
+        const roleLabel = ADMIN_LOG_ROLE_LABELS[acc.role] || acc.role;
+        const label = acc.code ? `${acc.name} · ${acc.code} (${roleLabel}) [${acc.count}]` : `${acc.name} (${roleLabel}) [${acc.count}]`;
+        return `<option value="${escapeHtml(acc.key)}">${escapeHtml(label)}</option>`;
+      }).join('');
+    if ([...accFilterEl.options].some(o => o.value === prevVal)) {
+      accFilterEl.value = prevVal;
+    }
+  }
+
+  const selectedAcc = accFilterEl?.value || 'all';
+  const selectedCat = catFilterEl?.value || 'all';
+  const query = normalizeSearchText(searchEl?.value || '');
+
+  if (summaryEl) {
+    if (!accountStats.size) {
+      summaryEl.innerHTML = `<span style="font-size:12.5px; color:#64748b;">Chưa có tài khoản nào thao tác dữ liệu trong ca này.</span>`;
+    } else {
+      summaryEl.innerHTML = `<button type="button" class="admin-log-acc-chip ${selectedAcc === 'all' ? 'active' : ''}" data-admin-log-acc-chip="all">Tất cả tài khoản <span class="chip-count">${allLogs.length}</span></button>` +
+        Array.from(accountStats.values()).map(acc => {
+          const roleLabel = ADMIN_LOG_ROLE_LABELS[acc.role] || acc.role;
+          const display = acc.code ? `${acc.name} (${acc.code} · ${roleLabel})` : `${acc.name} (${roleLabel})`;
+          return `<button type="button" class="admin-log-acc-chip ${selectedAcc === acc.key ? 'active' : ''}" data-admin-log-acc-chip="${escapeHtml(acc.key)}">👤 ${escapeHtml(display)} <span class="chip-count">${acc.count}</span></button>`;
+        }).join('');
+      summaryEl.querySelectorAll('[data-admin-log-acc-chip]').forEach(chip => {
+        chip.onclick = () => {
+          if (accFilterEl) {
+            accFilterEl.value = chip.dataset.adminLogAccChip;
+            renderSessionAdminLogDialogContent();
+          }
+        };
+      });
+    }
+  }
+
+  const filtered = allLogs.filter(item => {
+    const accKey = item.actorCode ? `${item.actorName} (${item.actorCode})` : (item.actorName || 'Không rõ');
+    if (selectedAcc !== 'all' && accKey !== selectedAcc) return false;
+    if (selectedCat !== 'all' && item.category !== selectedCat) return false;
+    if (query) {
+      const hay = normalizeSearchText(`${item.actorName} ${item.actorCode} ${item.action} ${item.detail} ${ADMIN_LOG_CATEGORY_LABELS[item.category] || ''}`);
+      if (!hay.includes(query)) return false;
+    }
+    return true;
+  });
+
+  if (footerCount) {
+    footerCount.textContent = `Hiển thị ${filtered.length} / ${allLogs.length} hành động tác động dữ liệu (${accountStats.size} tài khoản)`;
+  }
+
+  if (!tbody) return;
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:26px; color:#64748b;">Không có bản ghi thao tác nào khớp với bộ lọc hiện tại.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(item => {
+    const dt = item.timestamp ? new Date(Number(item.timestamp)) : null;
+    const timeStr = item.timeStr || (dt ? dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
+    const dateShort = dt ? dt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : '';
+    const roleLabel = ADMIN_LOG_ROLE_LABELS[item.actorRole] || item.actorRole || 'Nhân sự';
+    const catLabel = ADMIN_LOG_CATEGORY_LABELS[item.category] || item.category || 'Thao tác';
+    const roleColor = item.actorRole === 'admin'
+      ? 'background:#ede9fe; color:#5b21b6;'
+      : item.actorRole === 'teacher'
+        ? 'background:#e0f2fe; color:#0369a1;'
+        : item.actorRole === 'office'
+          ? 'background:#fef3c7; color:#92400e;'
+          : 'background:#dcfce7; color:#166534;';
+
+    return `
+      <tr>
+        <td style="white-space:nowrap; font-weight:700; color:#334155;">
+          <div>${escapeHtml(timeStr)}</div>
+          <small style="font-size:11px; color:#94a3b8; font-weight:500;">${escapeHtml(dateShort)}</small>
+        </td>
+        <td>
+          <div style="font-weight:700; color:#0f172a;">${escapeHtml(item.actorName || 'Không rõ')}</div>
+          <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap; margin-top:2px;">
+            ${item.actorCode ? `<span style="font-size:11.5px; color:#475569; font-family:monospace; font-weight:700;">#${escapeHtml(item.actorCode)}</span>` : ''}
+            <span style="font-size:11px; padding:1px 7px; border-radius:999px; font-weight:700; ${roleColor}">${escapeHtml(roleLabel)}</span>
+          </div>
+        </td>
+        <td>
+          <span class="admin-log-cat-badge cat-${escapeHtml(item.category || 'session')}">${escapeHtml(catLabel)}</span>
+        </td>
+        <td>
+          <div style="font-weight:700; color:#1e293b;">${escapeHtml(item.action || '')}</div>
+          ${item.detail ? `<div style="font-size:12.5px; color:#475569; margin-top:2px; line-height:1.4;">${escapeHtml(item.detail)}</div>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openSessionAdminLogDialog(classId = null, date = null) {
+  if (selectedRole() !== 'admin') {
+    toast('Chỉ tài khoản Admin mới có quyền xem Nhật ký Admin Log.');
+    return;
+  }
+  _activeAdminLogSession = {
+    classId: classId || CURRENT_CLASS_ID,
+    date: date || checklistDate
+  };
+  const dlg = document.getElementById('session-admin-log-dialog');
+  if (!dlg) return;
+  renderSessionAdminLogDialogContent();
+  if (!dlg.open) dlg.showModal();
+}
+window.__openSessionAdminLogDialog = openSessionAdminLogDialog;
+
 function undoSeating() {
   if (!seatingUndoStack.length) {
     toast('Không có thao tác nào để hoàn tác.');
@@ -1051,6 +1376,7 @@ function undoSeating() {
   save();
   render();
   updateUndoButton();
+  logAdminSessionAction('Hoàn tác sơ đồ lớp (Undo)', 'Khôi phục trạng thái bàn ghế & điểm danh trước đó', 'layout');
   toast('Đã hoàn tác thao tác trên sơ đồ lớp.');
 }
 
@@ -1124,11 +1450,6 @@ const toast=message=>{const el=$('#toast'),host=document.querySelector('dialog[o
 const save=()=>{
   localStorage.setItem(`lopvui.layout.v5.${CURRENT_CLASS_ID}.${checklistDate}`,JSON.stringify(layout));
   localStorage.setItem(`lopvui.desk-items.v7.${CURRENT_CLASS_ID}.${checklistDate}`,JSON.stringify(deskItems));
-  if(legacySessionFallback){
-    localStorage.setItem('lopvui.layout.v5',JSON.stringify(layout));
-    localStorage.setItem('lopvui.desk-items.v7',JSON.stringify(deskItems));
-    localStorage.setItem('lopvui.late-queue.v6',JSON.stringify(lateQueue));
-  }
   localStorage.setItem(`lopvui.late-queue.v6.${CURRENT_CLASS_ID}.${checklistDate}`,JSON.stringify(lateQueue));
   syncLiveSessionData();
   saveStudentRecords(students,makeupStudents);
@@ -1228,6 +1549,7 @@ function saveSessionNote(id,value){
     note.note=value;
     note.updatedAt=Date.now();
     save();
+    logAdminSessionAction(`Cập nhật ghi chú buổi học của HS ${student.name}`, value ? `Nội dung: "${value}"` : 'Đã xoá ghi chú buổi học', 'student', `sess-note-${student.id}`);
   }
 }
 for(const student of [...students,...makeupStudents])if(!(student.id in attendanceNotes)){const saved=student.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate);if(saved)attendanceNotes[student.id]=saved.note;}
@@ -1267,7 +1589,7 @@ function createStudentProfile({name,familyName=undefined,givenName=undefined,sch
     attendingSessionDate:makeup?checklistDate:null,
     classIds:resolvedClassIds,
     courseIds:[],
-    parentContact:{name:parentContact?.name||'',phone:''},
+    parentContact:{name:parentContact?.name||'',phone:parentContact?.phone||''},
     enrollmentStatus: (enrollmentStatus && String(enrollmentStatus).trim()) ? String(enrollmentStatus).trim() : 'Học',
     photoURL:null,
     photoDriveFileId:null,
@@ -1358,8 +1680,8 @@ function renderStudentInfo(selector,student){
   host.querySelector('[data-profile-name]')?.addEventListener('click',()=>{ openStudentSessionProfile(student.id, CURRENT_CLASS_ID, checklistDate); });
 }
 function refreshStudentInfo(){renderStudentInfo('#selected-student-info',selectedStudentId?studentById(selectedStudentId):null);renderStudentInfo('#late-history',selectedLateId?studentById(selectedLateId):null);}
-function addStudentTag(id,input){const student=studentById(id),tag=input.value.trim();if(!student||!tag)return;student.tags=student.tags||[];if(student.tags.some(item=>normalizeSearchText(item)===normalizeSearchText(tag))){toast('Tag này đã có trong hồ sơ.');return;}student.tags.push(tag);save();render();refreshStudentInfo();}
-document.addEventListener('click',e=>{const add=e.target.closest('[data-add-tag]');if(add){const host=add.closest('.selected-student-info'),input=host?.querySelector('[data-tag-input]');addStudentTag(add.dataset.addTag,input);return;}const remove=e.target.closest('[data-remove-tag]');if(remove){const student=studentById(remove.dataset.studentId);if(!student)return;student.tags.splice(Number(remove.dataset.removeTag),1);save();render();refreshStudentInfo();}});
+function addStudentTag(id,input){const student=studentById(id),tag=input.value.trim();if(!student||!tag)return;student.tags=student.tags||[];if(student.tags.some(item=>normalizeSearchText(item)===normalizeSearchText(tag))){toast('Tag này đã có trong hồ sơ.');return;}student.tags.push(tag);save();render();refreshStudentInfo();logAdminSessionAction(`Gắn tag cho HS ${student.name}`, `Tag: "${tag}"`, 'student');}
+document.addEventListener('click',e=>{const add=e.target.closest('[data-add-tag]');if(add){const host=add.closest('.selected-student-info'),input=host?.querySelector('[data-tag-input]');addStudentTag(add.dataset.addTag,input);return;}const remove=e.target.closest('[data-remove-tag]');if(remove){const student=studentById(remove.dataset.studentId);if(!student)return;const removedTag=student.tags?.[Number(remove.dataset.removeTag)]||'';student.tags.splice(Number(remove.dataset.removeTag),1);save();render();refreshStudentInfo();logAdminSessionAction(`Gỡ tag khỏi HS ${student.name}`, `Tag đã gỡ: "${removedTag}"`, 'student');}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('[data-tag-input]')){e.preventDefault();addStudentTag(e.target.dataset.tagInput,e.target);}});
 function sessionStudentIds(){return [...new Set([...allEntries().map(({entry})=>entry.studentId).filter(Boolean),...lateQueue])].filter(id=>studentById(id));}
 function renderChecklistCore(){
@@ -1423,29 +1745,30 @@ function renderChecklistCore(){
 function safeHttpUrl(value){try{const url=new URL(String(value||'').trim());return url.protocol==='http:'||url.protocol==='https:'?url.href:'';}catch{return '';}}
 function renderChecklistDetails(){for(const field of document.querySelectorAll('[data-checklist-field]'))if(document.activeElement!==field)field.value=checklist[field.dataset.checklistField]||'';for(const [key,linkId] of [['notebookLink','notebook-link-open'],['homeworkLink','homework-link-open']]){const link=document.getElementById(linkId),safeUrl=safeHttpUrl(checklist[key]);if(link){link.hidden=!safeUrl;if(safeUrl)link.href=safeUrl;}}}
 function renderChecklist(){renderChecklistCore();renderChecklistDetails();}
-document.querySelectorAll('[data-checklist-field]').forEach(field=>field.addEventListener('input',()=>{const key=field.dataset.checklistField;checklist[key]=field.value;saveChecklist();const status=key==='lessonTitle'?$('#lesson-title-status'):$('#homework-details-status');if(status)status.textContent='Đã lưu';if(key==='notebookLink'||key==='homeworkLink')renderChecklistDetails();}));
-$('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-item]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;if(checklist.items[0]?.id===item.id&&input.checked&&!checklist.workStart)checklist.workStart={name:currentStaffName(),at:Date.now()};addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');if(checklist.items.length&&checklist.items.every(entry=>entry.done)){createClassNotification('Checklist setup đã xong','Tất cả công việc chuẩn bị đầu giờ đã được hoàn thành.','checklist',`setup-done-${checklistDate}`);addClassActivity(`${currentStaffName()} đã hoàn thành toàn bộ checklist setup đầu giờ`,'checklist');}saveChecklist();renderChecklist();});
-$('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-label]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistLabel);if(!item)return;const label=input.value.trim();if(!label){input.value=item.label;toast('Tên công việc không được để trống.');return;}item.label=label;saveChecklist();});
-$('#checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-remove-checklist-item]');if(!button)return;checklist.items=checklist.items.filter(item=>item.id!==button.dataset.removeChecklistItem);saveChecklist();renderChecklist();});
-$('#add-checklist-item').onclick=()=>{const item={id:`task-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,label:'Việc mới',done:false};checklist.items.push(item);saveChecklist();renderChecklist();const input=$(`[data-checklist-label="${item.id}"]`);input?.focus();input?.select?.();};
-$('#end-checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-end-checklist-item]');if(input){const item=checklist.endItems.find(row=>row.id===input.dataset.endChecklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');saveChecklist();renderChecklist();return;}const label=e.target.closest('[data-end-checklist-label]');if(!label)return;const item=checklist.endItems.find(row=>row.id===label.dataset.endChecklistLabel);if(item&&label.value.trim()){item.label=label.value.trim();saveChecklist();}else if(item)label.value=item.label;});
-$('#end-checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-end-checklist-remove]');if(!button)return;const item=checklist.endItems.find(row=>row.id===button.dataset.endChecklistRemove);if(item&&confirm(`Xóa mục “${item.label}” khỏi checklist?`)){checklist.endItems=checklist.endItems.filter(row=>row.id!==item.id);saveChecklist();renderChecklist();}});
-$('#add-end-checklist-item').onclick=()=>{const item={id:`end-task-${Date.now()}`,label:'Việc mới',done:false};checklist.endItems.push(item);saveChecklist();renderChecklist();const input=$(`[data-end-checklist-label="${item.id}"]`);input?.focus();input?.select?.();};
-$('#save-session-note').onclick=()=>{checklist.classNote=$('#session-note').value.trim();checklist.noteSavedAt=Date.now();saveChecklist();addClassActivity(`${currentStaffName()} đã lưu ghi chú chung của buổi học`,'checklist');renderChecklist();toast('Đã lưu ghi chú buổi học.');};
-$('#session-note')?.addEventListener('input',()=>{checklist.classNote=$('#session-note').value;checklist.noteSavedAt=Date.now();saveChecklist();const st=$('#session-note-status');if(st)st.textContent=`Đã tự động lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`;});
+document.querySelectorAll('[data-checklist-field]').forEach(field=>field.addEventListener('input',()=>{const key=field.dataset.checklistField;checklist[key]=field.value;saveChecklist();const status=key==='lessonTitle'?$('#lesson-title-status'):$('#homework-details-status');if(status)status.textContent='Đã lưu';if(key==='notebookLink'||key==='homeworkLink')renderChecklistDetails();logAdminSessionAction(`Cập nhật thông tin bài học (${key})`, `Giá trị: "${field.value.trim()}"`, 'checklist', `chk-field-${key}`);}));
+$('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-item]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;if(checklist.items[0]?.id===item.id&&input.checked&&!checklist.workStart)checklist.workStart={name:currentStaffName(),at:Date.now()};addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');logAdminSessionAction(`${input.checked?'Hoàn thành':'Bỏ tích'} checklist đầu giờ`, `Mục: ${item.label}`, 'checklist');if(checklist.items.length&&checklist.items.every(entry=>entry.done)){createClassNotification('Checklist setup đã xong','Tất cả công việc chuẩn bị đầu giờ đã được hoàn thành.','checklist',`setup-done-${checklistDate}`);addClassActivity(`${currentStaffName()} đã hoàn thành toàn bộ checklist setup đầu giờ`,'checklist');}saveChecklist();renderChecklist();});
+$('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-label]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistLabel);if(!item)return;const label=input.value.trim();if(!label){input.value=item.label;toast('Tên công việc không được để trống.');return;}item.label=label;saveChecklist();logAdminSessionAction('Đổi tên mục checklist đầu giờ', `Nội dung: ${label}`, 'checklist', `chk-lbl-${item.id}`);});
+$('#checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-remove-checklist-item]');if(!button)return;const removed=checklist.items.find(i=>i.id===button.dataset.removeChecklistItem);checklist.items=checklist.items.filter(item=>item.id!==button.dataset.removeChecklistItem);saveChecklist();renderChecklist();logAdminSessionAction('Xoá mục checklist đầu giờ', `Mục: ${removed?.label || ''}`, 'checklist');});
+$('#add-checklist-item').onclick=()=>{const item={id:`task-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,label:'Việc mới',done:false};checklist.items.push(item);saveChecklist();renderChecklist();logAdminSessionAction('Thêm mục checklist đầu giờ mới', '', 'checklist');const input=$(`[data-checklist-label="${item.id}"]`);input?.focus();input?.select?.();};
+$('#end-checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-end-checklist-item]');if(input){const item=checklist.endItems.find(row=>row.id===input.dataset.endChecklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');logAdminSessionAction(`${input.checked?'Hoàn thành':'Bỏ tích'} checklist cuối giờ`, `Mục: ${item.label}`, 'checklist');saveChecklist();renderChecklist();return;}const label=e.target.closest('[data-end-checklist-label]');if(!label)return;const item=checklist.endItems.find(row=>row.id===label.dataset.endChecklistLabel);if(item&&label.value.trim()){item.label=label.value.trim();saveChecklist();logAdminSessionAction('Đổi tên mục checklist cuối giờ', `Nội dung: ${item.label}`, 'checklist', `end-chk-lbl-${item.id}`);}else if(item)label.value=item.label;});
+$('#end-checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-end-checklist-remove]');if(!button)return;const item=checklist.endItems.find(row=>row.id===button.dataset.endChecklistRemove);if(item&&confirm(`Xóa mục “${item.label}” khỏi checklist?`)){checklist.endItems=checklist.endItems.filter(row=>row.id!==item.id);saveChecklist();renderChecklist();logAdminSessionAction('Xoá mục checklist cuối giờ', `Mục: ${item.label}`, 'checklist');}});
+$('#add-end-checklist-item').onclick=()=>{const item={id:`end-task-${Date.now()}`,label:'Việc mới',done:false};checklist.endItems.push(item);saveChecklist();renderChecklist();logAdminSessionAction('Thêm mục checklist cuối giờ mới', '', 'checklist');const input=$(`[data-end-checklist-label="${item.id}"]`);input?.focus();input?.select?.();};
+$('#save-session-note').onclick=()=>{checklist.classNote=$('#session-note').value.trim();checklist.noteSavedAt=Date.now();saveChecklist();addClassActivity(`${currentStaffName()} đã lưu ghi chú chung của buổi học`,'checklist');logAdminSessionAction('Lưu ghi chú chung của buổi học', checklist.classNote ? `Nội dung: "${checklist.classNote}"` : 'Đã xoá trống ghi chú', 'checklist', 'save-session-note');renderChecklist();toast('Đã lưu ghi chú buổi học.');};
+$('#session-note')?.addEventListener('input',()=>{checklist.classNote=$('#session-note').value;checklist.noteSavedAt=Date.now();saveChecklist();logAdminSessionAction('Cập nhật ghi chú chung của buổi học', checklist.classNote ? `Nội dung: "${checklist.classNote.slice(0, 120)}"` : 'Trống', 'checklist', 'auto-session-note');const st=$('#session-note-status');if(st)st.textContent=`Đã tự động lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`;});
 $('#handover-person')?.addEventListener('input',()=>{const person=$('#handover-person').value.trim();checklist.handover=person?{person,at:checklist.handover?.at||Date.now()}:null;saveChecklist();});
 function handleToggleTestRequired(checked) {
   checklist.testRequired = Boolean(checked);
   if ($('#test-required-toggle')) $('#test-required-toggle').checked = checklist.testRequired;
   if ($('#scores-tab-test-toggle')) $('#scores-tab-test-toggle').checked = checklist.testRequired;
   addClassActivity(checklist.testRequired ? 'Đã bật: Ca này có test' : 'Đã tắt: Ca này có test', 'checklist');
+  logAdminSessionAction(checklist.testRequired ? 'Bật chế độ: Ca học có bài Test' : 'Tắt chế độ: Ca học có bài Test', '', 'checklist');
   saveChecklist();
   renderChecklist();
   if (typeof renderScoresView === 'function') renderScoresView();
 }
 $('#test-required-toggle')?.addEventListener('change', e => handleToggleTestRequired(e.target.checked));
 $('#scores-tab-test-toggle')?.addEventListener('change', e => handleToggleTestRequired(e.target.checked));
-$('#confirm-handover').onclick=()=>{const person=$('#handover-person').value.trim();if(!person){toast('Nhập tên trợ giảng cầm bài về chấm.');$('#handover-person').focus();return;}checklist.handover={person,at:Date.now()};addClassActivity(`Trợ giảng cầm bài test về chấm: ${person}`,'handover');saveChecklist();renderChecklist();toast(`Đã ghi nhận trợ giảng cầm bài về: ${person}.`);};
+$('#confirm-handover').onclick=()=>{const person=$('#handover-person').value.trim();if(!person){toast('Nhập tên trợ giảng cầm bài về chấm.');$('#handover-person').focus();return;}checklist.handover={person,at:Date.now()};addClassActivity(`Trợ giảng cầm bài test về chấm: ${person}`,'handover');logAdminSessionAction('Xác nhận trợ giảng cầm bài về chấm', `Người nhận: ${person}`, 'checklist');saveChecklist();renderChecklist();toast(`Đã ghi nhận trợ giảng cầm bài về: ${person}.`);};
 function setClassView(view){
   const chatVisible=view==='chat',scoresVisible=view==='scores',checklistVisible=view==='checklist',studentsVisible=view==='students';
   const seatingVisible=!chatVisible&&!scoresVisible&&!checklistVisible&&!studentsVisible;
@@ -1982,6 +2305,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
                 <button type="button" class="primary-button" data-view-history-date="${escapeHtml(s.date)}" style="padding:7px 12px; font-size:13px; background:#2e6d42; font-weight:700;">
                   ${isClosed ? 'Xem lại ca học' : 'Vào ca trực (Live)'}
                 </button>
+                ${selectedRole() === 'admin' ? `<button type="button" class="outline-button btn-admin-log" data-admin-log-session-date="${escapeHtml(s.date)}" style="padding:7px 11px; font-size:13px;" title="Xem Nhật ký Admin Log của ca học ngày ${escapeHtml(dFormatted)} (Chỉ Admin thấy)">🛡 Admin Log</button>` : ''}
                 <button type="button" class="outline-button" data-edit-session-date="${escapeHtml(s.date)}" style="padding:7px 11px; font-size:13px; font-weight:700; color:#1e40af; border-color:#bfdbfe; background:#eff6ff;" title="Sửa thông tin ca học này">
                   ✎ Sửa ca
                 </button>
@@ -2029,6 +2353,12 @@ function renderClassGeneralView(classId, preferredTab = null) {
           }
         };
       });
+      listEl.querySelectorAll('[data-admin-log-session-date]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          openSessionAdminLogDialog(cls.id, btn.dataset.adminLogSessionDate);
+        };
+      });
       listEl.querySelectorAll('[data-edit-session-date]').forEach(btn => {
         btn.onclick = (e) => {
           e.stopPropagation();
@@ -2062,8 +2392,14 @@ function renderClassGeneralView(classId, preferredTab = null) {
   // Họ đệm | Tên | Trường | [23/9 | BTVN | TEST | 30/9 | BTVN | 7/10 | TEST | 14/10 | BTVN] | Ghi chú học lực
   const rosterThead = $('#general-roster-thead');
   const rosterTbody = $('#general-roster-table-body');
+  const genWarnFilter = $('#general-student-warning-filter');
+  if (genWarnFilter && !genWarnFilter.dataset.bound) {
+    genWarnFilter.dataset.bound = '1';
+    genWarnFilter.addEventListener('change', () => renderClassGeneralView(cls.id, 'students'));
+  }
   if (rosterThead && rosterTbody) {
-    const combinedStudents = [
+    const warnFilterMode = genWarnFilter?.value || 'all';
+    const rawCombinedStudents = [
       ...[...roster].sort((a, b) => {
         const aG = a.givenName || splitStudentName(a.name).givenName;
         const bG = b.givenName || splitStudentName(b.name).givenName;
@@ -2071,6 +2407,9 @@ function renderClassGeneralView(classId, preferredTab = null) {
       }),
       ...classMakeupsForGeneral
     ];
+    const combinedStudents = warnFilterMode === 'warning'
+      ? rawCombinedStudents.filter(s => evaluateStudentEarlyWarning(s, cls.id, classSessions).hasWarning)
+      : rawCombinedStudents;
 
     // Take the 4 most recent sessions, ordered chronologically from left to right (oldest -> newest of the 4)
     const recent4Chronological = classSessions.slice(0, 4).reverse();
@@ -2211,7 +2550,12 @@ function renderClassGeneralView(classId, preferredTab = null) {
               <button type="button" class="student-name-history-btn" data-open-general-score-history="${escapeHtml(s.id)}" title="Bấm để xem kỹ lịch sử điểm & chuyên cần của ${escapeHtml(s.name)}">
                 <strong style="color:${isMakeup ? '#581c87' : '#1b522c'};">${escapeHtml(giv || s.name)}</strong>
               </button>
-              ${renderInlineTags(s)}
+              ${(() => {
+                const ew = evaluateStudentEarlyWarning(s, cls.id, classSessions);
+                const sessPill = ew.totalRecordedCount > 0 ? `<span class="session-count-pill" title="Đã tham gia ${ew.attendedCount}/${ew.totalRecordedCount} buổi của lớp">${ew.attendedCount}/${ew.totalRecordedCount}b</span>` : '';
+                const warnPill = ew.hasWarning ? `<span class="early-warning-pill" title="Cảnh báo sớm: ${escapeHtml(ew.tooltip)}">⚠ ${escapeHtml(ew.badgeText)}</span>` : '';
+                return renderInlineTags(s) + sessPill + warnPill;
+              })()}
             </td>
             <td>
               ${isMakeup ? `<span class="makeup-school-tag">${escapeHtml(schoolText)}</span>` : escapeHtml(schoolText)}
@@ -2345,6 +2689,10 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
   if ($('#header-edit-class-btn')) {
     $('#header-edit-class-btn').hidden = (selectedRole() !== 'admin' && selectedRole() !== 'office');
     $('#header-edit-class-btn').onclick = () => openClassConfig(cls.id);
+  }
+  if ($('#session-admin-log-btn')) {
+    updateAdminLogButtonVisibilityAndCount();
+    $('#session-admin-log-btn').onclick = () => openSessionAdminLogDialog(CURRENT_CLASS_ID, checklistDate);
   }
 
   setClassView(targetView === 'chatlog' ? 'chat' : targetView === 'scores' ? 'scores' : targetView === 'checklist' ? 'checklist' : targetView === 'students' ? 'students' : 'seating');
@@ -3003,6 +3351,7 @@ function renderStudentList(){
     if(filter==='absent')items=items.filter(r=>r.attendance?.status==='absent'||r.attendance?.status==='absent_excused'||r.attendance?.status==='absent_unexcused');
     if(filter==='unmarked')items=items.filter(r=>!r.attendance?.status);
     if(filter==='homework')items=items.filter(r=>r.homework.status==='not_submitted');
+    if(filter==='warning')items=items.filter(r=>evaluateStudentEarlyWarning(r.student, CURRENT_CLASS_ID).hasWarning);
     if(filter==='makeup')items=items.filter(r=>r.isMakeupRow);
 
     items.sort((a, b) => {
@@ -3135,7 +3484,7 @@ function renderStudentList(){
 
               const cellMap = {
                 family: `<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${isMakeupRow ? '#6d28d9' : '#395140'}; font-weight:${isMakeupRow ? '700' : '500'};">${escapeHtml(familyName || '—')}</button></td>`,
-                name: `<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;"><strong style="color:${isMakeupRow ? '#6d28d9' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>${renderInlineTags(student)}</button></td>`,
+                name: `<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;"><strong style="color:${isMakeupRow ? '#6d28d9' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>${renderInlineTags(student)}${(() => { const ew = evaluateStudentEarlyWarning(student, CURRENT_CLASS_ID); return (ew.hasWarning ? `<span class="early-warning-pill" title="Cảnh báo: ${escapeHtml(ew.tooltip)}">⚠ ${escapeHtml(ew.badgeText)}</span>` : ''); })()}</button></td>`,
                 school: `<td>${isMakeupRow ? `<span class="makeup-school-tag">${escapeHtml(schoolLabel)}</span>` : escapeHtml(schoolLabel)}</td>`,
                 seat: `<td><span class="room-chip">${escapeHtml(seat)}</span></td>`,
                 attendance: `<td>${statusBadge}</td>`,
@@ -3264,6 +3613,8 @@ function renderStudentList(){
   const deleteStudentsFromClassAndSystem = (targetIds) => {
     const idSet = new Set(targetIds.filter(Boolean));
     if (!idSet.size) return;
+    const deletedNames = [...students, ...makeupStudents].filter(s => idSet.has(s.id)).map(s => s.name);
+    logAdminSessionAction(`Xoá ${deletedNames.length} học sinh khỏi lớp & hệ thống`, `Học sinh: ${deletedNames.join(', ')}`, 'student');
     students = students.filter(s => !idSet.has(s.id));
     makeupStudents = makeupStudents.filter(s => !idSet.has(s.id));
     for (const { desk } of desks()) {
@@ -3283,9 +3634,11 @@ function renderStudentList(){
   host.querySelector('#live-bulk-remove-class')?.addEventListener('click', () => {
     if (!selectedLiveClassStudentIds.size) return;
     if (!confirm(`Xác nhận bỏ ${selectedLiveClassStudentIds.size} học sinh đã chọn khỏi lớp này?`)) return;
+    const removedNames = [];
     selectedLiveClassStudentIds.forEach(id => {
       const s = studentById(id);
       if (s) {
+        removedNames.push(s.name);
         s.classIds = (s.classIds || []).filter(cid => cid !== CURRENT_CLASS_ID);
         if (s.attendingClassId === CURRENT_CLASS_ID) s.attendingClassId = null;
       }
@@ -3296,6 +3649,7 @@ function renderStudentList(){
     });
     selectedLiveClassStudentIds.clear();
     save();
+    logAdminSessionAction(`Bỏ ${removedNames.length} học sinh khỏi danh sách lớp`, `Học sinh: ${removedNames.join(', ')}`, 'student');
     render();
     toast('Đã bỏ học sinh đã chọn khỏi lớp.');
   });
@@ -3532,8 +3886,8 @@ function openStudentProfile(id, origin = null){
             <strong class="hero-meta-value">${escapeHtml(student.studentType === 'makeup' ? `Học bù (${student.sourceClassName || 'Lớp khác'})` : (student.school || 'Chưa cập nhật'))}</strong>
           </div>
           <div class="hero-meta-item">
-            <span class="hero-meta-label">Phụ huynh</span>
-            <strong class="hero-meta-value">${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong>
+            <span class="hero-meta-label">Phụ huynh & SĐT</span>
+            <strong class="hero-meta-value">${escapeHtml([student.parentContact?.name, student.parentContact?.phone].filter(Boolean).join(' · ') || 'Chưa cập nhật')}</strong>
           </div>
           <div class="hero-meta-item">
             <span class="hero-meta-label">Lớp theo học</span>
@@ -3553,8 +3907,8 @@ function openStudentProfile(id, origin = null){
       <label class="field-label">Tên<input id="profile-given-name" value="${escapeHtml(givenName)}" /></label>
       <label class="field-label">Trường học<input id="profile-school" value="${escapeHtml(student.school||'')}" /></label>
       <label class="field-label">Mã học sinh<input id="profile-code" value="${escapeHtml(student.studentCode||'')}" placeholder="Ví dụ: K09.3049 (Nếu đổi mã, tên file ảnh Drive tự đổi theo)" style="text-transform:uppercase;" /></label>
-      <label class="field-label profile-wide">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" placeholder="Không bắt buộc" /></label>
-      <input id="profile-parent-phone" type="hidden" value="" />
+      <label class="field-label">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" placeholder="Không bắt buộc" /></label>
+      <label class="field-label">SĐT phụ huynh<input id="profile-parent-phone" type="tel" value="${escapeHtml(student.parentContact?.phone||'')}" placeholder="Ví dụ: 0912345678" /></label>
       <div class="field-label profile-wide">
         <span>Trạng thái theo học</span>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
@@ -3886,7 +4240,7 @@ $('#save-student-profile').onclick=async ()=>{
   student.school = $('#profile-school').value.trim();
   student.parentContact = {
     name: ($('#profile-parent-name')?.value || '').trim(),
-    phone: ''
+    phone: ($('#profile-parent-phone')?.value ?? student.parentContact?.phone ?? '').trim()
   };
   const statusSelVal = $('#profile-enrollment-status-select')?.value || 'Học';
   const statusCustomVal = ($('#profile-enrollment-status-custom')?.value || '').trim();
@@ -4037,8 +4391,8 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
             <strong class="hero-meta-value">${escapeHtml(student.studentType === 'makeup' ? `Học bù (${student.sourceClassName || 'Lớp khác'})` : (student.school || 'Chưa cập nhật'))}</strong>
           </div>
           <div class="hero-meta-item">
-            <span class="hero-meta-label">Phụ huynh</span>
-            <strong class="hero-meta-value">${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong>
+            <span class="hero-meta-label">Phụ huynh & SĐT</span>
+            <strong class="hero-meta-value">${escapeHtml([student.parentContact?.name, student.parentContact?.phone].filter(Boolean).join(' · ') || 'Chưa cập nhật')}</strong>
           </div>
           <div class="hero-meta-item">
             <span class="hero-meta-label">Lớp buổi này</span>
@@ -4211,6 +4565,16 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
 
     saveStudentRecords(students, makeupStudents);
     save();
+    const attText = newAttStatus === 'present' ? 'Có mặt' : newAttStatus === 'late' ? `Đi muộn ${newLateMins}p` : newAttStatus.startsWith('absent') ? 'Vắng mặt' : 'Chưa điểm danh';
+    const hwText = newHwStatus === 'submitted' ? 'Đã nộp BTVN' : newHwStatus === 'not_submitted' ? `Chưa nộp BTVN (${newHwReason})` : 'Chưa thu BTVN';
+    logAdminSessionAction(
+      `Cập nhật hồ sơ buổi học của HS ${student.name}`,
+      `${attText} · ${hwText}${numHwScore !== null ? ` · Điểm BTVN: ${numHwScore}` : ''}${numTestScore !== null ? ` · Điểm Test: ${numTestScore}` : ''}${newNote ? ` · Ghi chú: "${newNote}"` : ''}`,
+      'student',
+      `inline-prof-${student.id}`,
+      targetClassId,
+      targetDate
+    );
     render();
   };
 
@@ -4246,12 +4610,21 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
       }
     };
   }
+  if ($('#session-profile-copy-zalo-btn')) {
+    $('#session-profile-copy-zalo-btn').onclick = () => {
+      applyInlineSessionChanges();
+      if (window.__featuresApp?.copyParentZaloReportForStudent) {
+        window.__featuresApp.copyParentZaloReportForStudent(student.id, targetClassId, targetDate);
+      }
+    };
+  }
 
   dlg.showModal();
 }
 window.openStudentSessionProfile = openStudentSessionProfile;
 
 function render(){
+  updateAdminLogButtonVisibilityAndCount();
   const isNoHwActive = Boolean(window.__featuresApp?.isNoHomeworkSession?.());
   const seenSeatedIds = new Set();
   for(const {desk} of desks()){
@@ -4409,6 +4782,18 @@ function render(){
   $('#roster-count').textContent=`${classStudents().length} học sinh trong danh sách lớp`;
   $('#finalize-button').disabled=!occupants.length;
   $('#pool-count').textContent='Kéo biểu tượng ở giữa vào bàn bất kỳ (hoặc chạm để thêm nhanh)';
+  const quickCarryBtn = $('#quick-carryover-seating-btn');
+  if (quickCarryBtn) {
+    const prevSess = (!isClassHistoryViewMode && named.length === 0)
+      ? getPreviousSessionSeatingRecord(CURRENT_CLASS_ID, checklistDate)
+      : null;
+    if (prevSess) {
+      quickCarryBtn.hidden = false;
+      quickCarryBtn.textContent = `↺ Xếp chỗ theo buổi trước (${formatShortDayMonth(prevSess.date)})`;
+    } else {
+      quickCarryBtn.hidden = true;
+    }
+  }
   $('#student-pool').innerHTML=`<button type="button" class="pool-token pool-token-rect" data-pool-token="0" aria-label="Kéo biểu tượng học sinh vào bàn"><span class="pool-token-icon">${studentIcon}</span><span class="pool-token-label">+ Kéo học sinh mới vào bàn (hoặc chạm để thêm)</span></button>`;
   $('#late-area').innerHTML=lateQueue.map(id=>{
     const s=studentById(id);
@@ -4489,6 +4874,9 @@ function collectAisleHomework(aisleIndex) {
     });
   });
   save();
+  if (count > 0) {
+    logAdminSessionAction(`Thu BTVN nhanh cả Dãy ${aisleIndex + 1}`, `Đã đánh dấu nộp BTVN cho ${count} học sinh tại Dãy ${aisleIndex + 1}`, 'homework');
+  }
   render();
   toast(count > 0 ? `✓ Đã thu BTVN cho ${count} học sinh chưa thu tại Dãy ${aisleIndex + 1}.` : `Không có học sinh nào ở trạng thái Chưa thu tại Dãy ${aisleIndex + 1}.`);
 }
@@ -4965,6 +5353,12 @@ function assignStudent(id){
   if (activeSpot?.deskId) {
     recordSeatHistory(person, activeSpot.deskId, activeSpot.index);
   }
+  const deskLabel = activeSpot?.deskId ? (desks().find(d => d.desk.id === activeSpot.deskId)?.label || activeSpot.deskId) : 'Bàn học';
+  logAdminSessionAction(
+    `Xếp chỗ & điểm danh HS ${person.name}`,
+    `Vị trí: ${deskLabel} (Ghế ${(Number(activeSpot?.index) || 0) + 1}) · Trạng thái: ${isLateStudent ? `Đi muộn (${person.lateMinutes || 0}p)` : 'Có mặt đúng giờ'}`,
+    'attendance'
+  );
 
   const noteField = $('#seat-general-note');
   if (noteField) {
@@ -5038,7 +5432,7 @@ function openStudent(deskId,index){
 }
 
 function insertIntoDesk(entry,destDeskId,destIndex,source){
-  pushSeatingUndo();const target=deskItems[destDeskId]||(deskItems[destDeskId]=[]);if(source?.type==='seat'){const from=deskItems[source.deskId];from.splice(source.index,1);if(source.deskId===destDeskId&&source.index<destIndex)destIndex--;}else if(source?.type==='late')lateQueue=lateQueue.filter(id=>id!==source.studentId);destIndex=Math.max(0,Math.min(destIndex,target.length));target.splice(destIndex,0,entry);recordSeatHistory(studentById(entry.studentId),destDeskId,destIndex);save();render();}
+  pushSeatingUndo();const target=deskItems[destDeskId]||(deskItems[destDeskId]=[]);if(source?.type==='seat'){const from=deskItems[source.deskId];from.splice(source.index,1);if(source.deskId===destDeskId&&source.index<destIndex)destIndex--;}else if(source?.type==='late')lateQueue=lateQueue.filter(id=>id!==source.studentId);destIndex=Math.max(0,Math.min(destIndex,target.length));target.splice(destIndex,0,entry);const stu=studentById(entry.studentId);recordSeatHistory(stu,destDeskId,destIndex);const destLabel=desks().find(d=>d.desk.id===destDeskId)?.label||destDeskId;logAdminSessionAction(`Di chuyển chỗ ngồi ${stu?`HS ${stu.name}`:'ghế trống'}`, `Chuyển tới ${destLabel} (Ghế ${destIndex+1})`, 'attendance');save();render();}
 function dropIndexAt(deskEl,x){const tokens=[...deskEl.querySelectorAll('.desk-seats [data-entry-index]')].sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left);if(!tokens.length)return 0;const centers=tokens.map(token=>{const r=token.getBoundingClientRect();return r.left+r.width/2;});if(x<centers[0])return 0;for(let i=1;i<centers.length;i++)if(x<centers[i])return i;return tokens.length;}
 function showDropMarker(deskEl,index){const area=deskEl.querySelector('.desk-seats');if(!area)return;const marker=area.querySelector('.drop-marker')||document.createElement('span'),tokens=[...area.querySelectorAll('[data-entry-index]')].sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left),rect=area.getBoundingClientRect();marker.className='drop-marker';marker.setAttribute('aria-hidden','true');let x=rect.width/2;if(tokens.length){if(index<=0){x=tokens[0].getBoundingClientRect().left-rect.left;}else if(index>=tokens.length){x=tokens.at(-1).getBoundingClientRect().right-rect.left;}else{x=(tokens[index-1].getBoundingClientRect().right+tokens[index].getBoundingClientRect().left)/2-rect.left;}}marker.style.left=`${Math.max(1,Math.min(rect.width-4,x-2))}px`;marker.style.top='2px';marker.style.height=`${Math.max(20,rect.height-4)}px`;if(!marker.isConnected)area.append(marker);}
 function addAnonymousToDesk(deskId,index,openMenu=false){
@@ -5065,6 +5459,12 @@ document.querySelectorAll('[data-homework-choice]').forEach(button=>button.oncli
       person.homework = entry.homework;
       recordHistory(person, entry.attendance || person.attendance || { status: 'present' }, entry.homework);
     }
+    logAdminSessionAction(
+      `Chọn nhanh trạng thái BTVN: ${person ? person.name : 'Ghế chưa gán tên'}`,
+      `Trạng thái BTVN: ${homeworkLabel(status)}${entry.homework.score !== null ? ` · Điểm: ${entry.homework.score}` : ''}`,
+      'homework',
+      person ? `hw-quick-${person.id}` : ''
+    );
     save();
     render();
   }
@@ -5189,6 +5589,12 @@ $('#save-homework').onclick=()=>{
     person.updatedAt = Date.now();
     person.revision = (Number(person.revision) || 0) + 1;
   }
+  const deskLabel = activeSpot?.deskId ? (desks().find(d => d.desk.id === activeSpot.deskId)?.label || activeSpot.deskId) : 'Bàn học';
+  logAdminSessionAction(
+    person ? `Lưu điểm danh & BTVN cho HS ${person.name}` : `Lưu trạng thái ghế ngồi (${deskLabel})`,
+    `${deskLabel} · Điểm danh: ${entry.attendance?.status === 'late' ? `Đi muộn (${entry.attendance?.lateMinutes || 0}p)` : 'Có mặt'} · BTVN: ${homeworkLabel(entry.homework?.status)}${entry.homework?.score !== null && entry.homework?.score !== undefined ? ` (${entry.homework.score}đ)` : ''}${entry.homework?.reason ? ` [${entry.homework.reason}]` : ''}${entry.homework?.note ? ` · Ghi chú: "${entry.homework.note}"` : ''}`,
+    'homework'
+  );
   save();
   closeDialogSafely('#seat-dialog');
   refreshAllActiveViews();
@@ -5239,6 +5645,7 @@ $('#clear-seat').onclick=()=>{
     if (isMakeup || isNew) {
       permanentlyDeleteStudentFromDatabase(stuId);
       selectedStudentId = null;
+      logAdminSessionAction(`Xoá HS ${isMakeup ? 'học bù' : 'mới'} ${stuName} khỏi ghế & CSDL`, '', 'attendance');
       save();
       closeDialogSafely('#seat-dialog');
       refreshAllActiveViews();
@@ -5247,6 +5654,7 @@ $('#clear-seat').onclick=()=>{
     } else {
       resetStudentSessionRecord(stuId);
       selectedStudentId = null;
+      logAdminSessionAction(`Bỏ xếp chỗ HS ${stuName} khỏi sơ đồ`, 'Reset về trạng thái Chưa điểm danh / Chưa thu BTVN', 'attendance');
       save();
       closeDialogSafely('#seat-dialog');
       refreshAllActiveViews();
@@ -5376,6 +5784,84 @@ function renderAisleFields(syncInput = false){
   });
 }
 
+function applyPreviousSessionSeating(closeLayoutDialog = false) {
+  const prevSess = getPreviousSessionSeatingRecord(CURRENT_CLASS_ID, checklistDate);
+  if (!prevSess || !prevSess.deskItems) {
+    toast('Lớp chưa có dữ liệu chỗ ngồi từ buổi học trước để kế thừa.');
+    return;
+  }
+  const rosterSet = new Set(classStudents().map(s => s.id));
+  const alreadySeatedIds = new Set(allEntries().map(x => x.entry.studentId).filter(Boolean));
+  pushSeatingUndo();
+
+  if (alreadySeatedIds.size === 0 && Array.isArray(prevSess.layout) && prevSess.layout.length > 0) {
+    layout = structuredClone(prevSess.layout);
+  }
+  for (const { desk } of desks()) {
+    deskItems[desk.id] = deskItems[desk.id] || [];
+  }
+
+  const curDesksList = desks();
+  const prevLayout = Array.isArray(prevSess.layout) ? prevSess.layout : [];
+  let placedCount = 0;
+
+  for (const [prevDeskId, entriesArr] of Object.entries(prevSess.deskItems)) {
+    if (!Array.isArray(entriesArr) || !entriesArr.length) continue;
+    let targetDeskId = deskItems[prevDeskId] !== undefined ? prevDeskId : null;
+    if (!targetDeskId) {
+      for (let ci = 0; ci < prevLayout.length; ci++) {
+        const di = (prevLayout[ci]?.desks || []).findIndex(d => d.id === prevDeskId);
+        if (di >= 0 && layout[ci]?.desks?.[di]) {
+          targetDeskId = layout[ci].desks[di].id;
+          break;
+        }
+      }
+    }
+    if (!targetDeskId && curDesksList.length) {
+      targetDeskId = curDesksList[0].desk.id;
+    }
+    if (!targetDeskId) continue;
+
+    entriesArr.forEach(item => {
+      const stuId = item?.studentId;
+      if (!stuId || alreadySeatedIds.has(stuId)) return;
+      const stu = studentById(stuId);
+      if (!stu || (!rosterSet.has(stuId) && stu.studentType === 'makeup')) return;
+      deskItems[targetDeskId] = deskItems[targetDeskId] || [];
+      const existingNote = sessionNoteFor(stuId) || '';
+      const attObj = { status: 'present' };
+      const hwObj = { status: 'uncollected', score: null, reason: null, note: existingNote };
+      deskItems[targetDeskId].push({
+        studentId: stuId,
+        attendance: attObj,
+        homework: hwObj
+      });
+      stu.attendance = attObj;
+      stu.homework = hwObj;
+      alreadySeatedIds.add(stuId);
+      placedCount++;
+    });
+  }
+
+  if (placedCount === 0) {
+    seatingUndoStack.pop();
+    updateUndoButton();
+    toast('Tất cả học sinh buổi trước đều đã có chỗ trên sơ đồ hiện tại.');
+    return;
+  }
+
+  save();
+  logAdminSessionAction(`Kế thừa sơ đồ chỗ ngồi từ buổi trước (${prevSess.date})`, `Đã tự động xếp chỗ cho ${placedCount} học sinh theo bàn buổi trước`, 'layout');
+  render();
+  if (closeLayoutDialog) {
+    $('#layout-dialog')?.close();
+  }
+  toast(`✓ Đã xếp ${placedCount} học sinh theo đúng bàn buổi trước (${prevSess.date}). Có thể bấm ↩ Hoàn tác nếu cần.`);
+}
+
+$('#quick-carryover-seating-btn')?.addEventListener('click', () => applyPreviousSessionSeating(false));
+$('#layout-dialog-carryover-btn')?.addEventListener('click', () => applyPreviousSessionSeating(true));
+
 $('#edit-layout').onclick=()=>{
   draftAisleDividers = {};
   layout.forEach((aisle, ci) => {
@@ -5384,6 +5870,15 @@ $('#edit-layout').onclick=()=>{
       if (d.dividerAfter) draftAisleDividers[ci].add(di);
     });
   });
+  const prevSess = getPreviousSessionSeatingRecord(CURRENT_CLASS_ID, checklistDate);
+  const carryBox = $('#layout-dialog-carryover-box');
+  const carryHint = $('#layout-dialog-carryover-hint');
+  if (carryBox) {
+    carryBox.hidden = !prevSess;
+    if (prevSess && carryHint) {
+      carryHint.textContent = `Buổi gần nhất: ${prevSess.date} (${prevSess.lessonTitle || 'Đặt học sinh vào đúng bàn buổi trước'})`;
+    }
+  }
   $('#column-count').value=String(layout.length);
   renderAisleFields(true);
   $('#layout-dialog').showModal();
@@ -5426,6 +5921,7 @@ $('#layout-form').addEventListener('submit',e=>{
   layout=next;
   for(const {desk}of desks())deskItems[desk.id]??=[];
   save();
+  logAdminSessionAction('Cập nhật cấu trúc sơ đồ bàn ghế', `Số dãy: ${count} · Bàn mỗi dãy: ${counts.join(', ')}`, 'layout');
   render();
   $('#layout-dialog').close();
   toast('Đã lưu bố trí sơ đồ lớp và vạch phân cách bàn.');
@@ -5833,6 +6329,7 @@ if ($('#clear-late-student')) {
       selectedLateId = null;
       $('#late-search').value = '';
       $('#late-detail-section').hidden = true;
+      logAdminSessionAction(`Xoá HS đi muộn ${stuName} khỏi danh sách đi muộn`, (isMakeup || isNew) ? 'Xoá học sinh học bù/mới khỏi CSDL' : 'Reset về Chưa điểm danh', 'attendance');
       save();
       closeDialogSafely('#late-dialog');
       refreshAllActiveViews();
@@ -5911,6 +6408,11 @@ $('#save-late').onclick=()=>{
   if (!existingSeat && !lateQueue.includes(student.id)) lateQueue.push(student.id);
   student.updatedAt = Date.now();
   student.revision = (Number(student.revision) || 0) + 1;
+  logAdminSessionAction(
+    `Điểm danh đi muộn: HS ${student.name}`,
+    `Muộn ${lateMinutes} phút (đến lúc ${arrivalVal}) · BTVN: ${homeworkLabel(homework.status)}${homework.score !== null ? ` (${homework.score}đ)` : ''}${sharedNote ? ` · Ghi chú: "${sharedNote}"` : ''}`,
+    'attendance'
+  );
   save();
   closeDialogSafely('#late-dialog');
   refreshAllActiveViews();
@@ -6068,7 +6570,15 @@ function refreshUIOnRealtimeUpdate(changedKeys = [], source = 'remote') {
   sessionChanges = loadClassSessionChanges();
   const loginScr = document.getElementById('login-screen');
   if (loginScr && !loginScr.hidden && loginScr.style.display !== 'none') return;
-  if (document.querySelector('dialog[open]')) {
+  const openDlg = document.querySelector('dialog[open]');
+  if (openDlg) {
+    if (openDlg.id === 'attendance-export-dialog') {
+      reloadClassSessionData(CURRENT_CLASS_ID, checklistDate);
+      window.__featuresApp?.renderReportCenter?.();
+    } else if (openDlg.id === 'session-admin-log-dialog') {
+      updateAdminLogButtonVisibilityAndCount();
+      renderSessionAdminLogDialogContent();
+    }
     _rtPendingUIRefreshAfterDialog = true;
     return;
   }
@@ -6542,6 +7052,12 @@ function applyStudentManualScore(studentId, field, rawValue) {
     saveChecklist();
   }
   save();
+  logAdminSessionAction(
+    `Nhập điểm ${field === 'test' ? 'bài Test' : 'BTVN'} cho HS ${student.name}`,
+    `Điểm ${field === 'test' ? 'Test' : 'BTVN'}: ${numVal !== null ? numVal : 'Xoá điểm'}`,
+    'score',
+    `score-${field}-${student.id}`
+  );
   const statusEl = $('#scores-tab-save-status');
   if (statusEl) {
     statusEl.textContent = `✓ Đã lưu điểm của ${student.name} lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
@@ -6554,6 +7070,7 @@ function saveStudentLearningNote(studentId, value) {
   student.learningNotes = value;
   saveStudentRecords(students, makeupStudents);
   save();
+  logAdminSessionAction(`Cập nhật ghi chú học lực của HS ${student.name}`, value ? `Nội dung: "${value}"` : 'Đã xoá trống', 'student', `learn-note-${student.id}`);
   const statusEl = $('#scores-tab-save-status');
   if (statusEl) {
     statusEl.textContent = `✓ Đã lưu ghi chú học lực của ${student.name}`;
@@ -7718,7 +8235,8 @@ function deleteClassSessionAndStudentData(classId, date, skipConfirm = false) {
     `lopvui.attendance-notes.v1.${classId}.${date}`,
     `lopvui.class-communication.v1.${classId}.${date}`,
     `lopvui.finalized-session.v1.${classId}.${date}`,
-    `lopvui.session-record.v1.${classId}.${date}`
+    `lopvui.session-record.v1.${classId}.${date}`,
+    `lopvui.admin-audit-log.v1.${classId}.${date}`
   ];
   sessionKeysToRemove.forEach(k => {
     try { localStorage.removeItem(k); } catch {}
@@ -8168,6 +8686,14 @@ function saveManagedPastSession(openAfterSave = false) {
     allHist.push(updatedRecord);
   }
   saveSessionHistory(allHist);
+  logAdminSessionAction(
+    origDate ? `Chỉnh sửa thông tin ca học (${newDate})` : `Tạo bổ sung ca học quá khứ (${newDate})`,
+    `Bài học: "${lessonTitle}" · Trạng thái: ${status === 'closed' ? 'Đã đóng ca' : 'Đang mở'} · GV: ${teacherName || '—'} · TA: ${assistantName || '—'}`,
+    'session',
+    '',
+    classId,
+    newDate
+  );
 
   $('#past-session-manage-dialog')?.close();
 
@@ -8207,4 +8733,32 @@ $('#past-session-manage-form')?.addEventListener('submit', (e) => {
 });
 $('#save-and-open-past-session-btn')?.addEventListener('click', () => {
   saveManagedPastSession(true);
+});
+
+// Wire Admin Audit Log Dialog events
+$('#close-admin-log-dialog')?.addEventListener('click', () => {
+  $('#session-admin-log-dialog')?.close();
+});
+$('#close-admin-log-bottom-btn')?.addEventListener('click', () => {
+  $('#session-admin-log-dialog')?.close();
+});
+$('#admin-log-account-filter')?.addEventListener('change', () => {
+  renderSessionAdminLogDialogContent();
+});
+$('#admin-log-category-filter')?.addEventListener('change', () => {
+  renderSessionAdminLogDialogContent();
+});
+$('#admin-log-search-input')?.addEventListener('input', () => {
+  renderSessionAdminLogDialogContent();
+});
+$('#export-admin-log-excel-btn')?.addEventListener('click', () => {
+  const classId = _activeAdminLogSession.classId || CURRENT_CLASS_ID;
+  const date = _activeAdminLogSession.date || checklistDate;
+  const cls = resolveClass(classId) || activeClassConfig() || { id: classId, name: classId, code: classId };
+  const logs = buildCombinedAdminAuditLogs(classId, date);
+  if (window.__featuresApp?.exportAdminLogAsExcel) {
+    window.__featuresApp.exportAdminLogAsExcel(logs, cls, date);
+  } else {
+    toast('Không tìm thấy trình xuất Excel.');
+  }
 });

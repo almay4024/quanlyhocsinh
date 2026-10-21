@@ -243,3 +243,50 @@ Web App quản lý lớp học thời gian thực (real-time) và ngoại tuyế
 - **Thao tác hàng loạt trực quan (`openBulkStudentActionDialog`)**: Thay thế hộp thoại `prompt()` mặc định của trình duyệt bằng cửa sổ Modal chọn lớp đích và chọn Tag phân loại trực quan trên cả Danh bạ Học sinh toàn trung tâm và Danh sách học sinh trong ca.
 - **Quản lý Nhân sự & Chấm công TA**: Kết nối đầy đủ form thêm/sửa nhân sự, xem hồ sơ chi tiết ca làm của nhân sự và xuất file CSV bảng chấm công tháng của Trợ giảng.
 
+
+---
+
+## 🛡️ Phiên bản v4.1 (Tối ưu Băng thông Firebase No-Cost, Bảo mật Phiên & Tiện ích Trợ giảng/Văn phòng)
+
+### 1. Bảo mật & Chống chạm ngưỡng No-Cost Limit (Firebase Spark Plan)
+- **Tối ưu đồng bộ phân tầng (Tiered Cloud Debounce & Adaptive Polling)**:
+  - Đồng bộ giữa các tab trên cùng trình duyệt (`BroadcastChannel` + `StorageEvent`) hoạt động tức thì **0ms** (bao gồm cả làm mới trực tiếp Trung tâm Báo cáo khi mở ở tab thứ 2).
+  - Các key trạng thái ca học nhẹ (`desk-items`, `late-queue`, `checklist`) đồng bộ nhanh (**320ms**), trong khi các mảng lịch sử lớn (`students.v9`, `session-history.v2`) tự động gộp (coalesce **1400ms**) khi thao tác liên tục và đẩy ngay khi ẩn/đóng tab (`visibilitychange` / `pagehide`), tiết kiệm tới **85% băng thông Firebase Realtime Database**.
+  - Tự động giãn chu kỳ hỏi thăm Cloud (`Adaptive Polling`) từ 4 giây sang 16–45 giây khi thiết bị để chờ (idle) và thức dậy tức thì khi người dùng chạm chuột/màn hình.
+- **Loại bỏ phình dữ liệu ảnh & Dọn rác tự động (`cleanupStaleDailyScratchKeys`)**:
+  - Loại bỏ trường ảnh gốc Base64 nặng (`photoFullURL`) trước khi lưu vào `lopvui.students.v9` và giữ kho ảnh preview cục bộ (`lopvui.student-photos.v1`) ở `RT_EXCLUDED`.
+  - Tự động dọn dẹp các key nháp theo ngày của những ca học đã đóng quá 45 ngày (trong khi bảo toàn 100% lịch sử tại `session-history.v2`).
+- **Tối ưu Cache Firebase Hosting (`firebase.json`) & Quy tắc Database (`database.rules.json`)**:
+  - Tách riêng `Cache-Control: no-cache, no-store` cho `index.html` và cho phép trình duyệt lưu bộ nhớ đệm các tệp `.js`, `.css` đã gắn tham số phiên bản `?v=4.0.0`, giảm 90% băng thông tải trang hàng ngày trên Firebase Hosting.
+  - Khóa truy cập gốc (`root`) trong `database.rules.json` và kiểm tra cấu trúc nhánh `lopvui_cloud_v3`.
+- **Chữ ký xác thực phiên (`authSig`) & Khắc phục lỗi mất SĐT phụ huynh**:
+  - Gắn chữ ký kiểm tra toàn vẹn phiên đăng nhập (`computeSessionAuthSignature`) chống chỉnh sửa quyền hạn (`role`) trái phép trong `localStorage`.
+  - Khắc phục triệt để lỗi mất Số điện thoại phụ huynh khi tạo mới hoặc bấm Lưu trong hộp thoại Hồ sơ học sinh.
+
+### 2. Tính năng Mới Thiết kế Tinh gọn (Desktop / iPad / Điện thoại)
+- **Kế thừa chỗ ngồi từ buổi học trước (`↺ Xếp chỗ theo buổi trước`)**:
+  - Hiển thị nút ngữ cảnh gọn gàng ngay trên thanh tiêu đề khay kéo thả khi mở ca học mới (tự động ẩn đi sau khi đã xếp chỗ để không chiếm diện tích) và luôn có sẵn trong hộp thoại **Điều chỉnh layout**, giúp xếp toàn bộ học sinh vào đúng bàn buổi trước chỉ với 1 chạm.
+- **Sao chép tin nhắn Zalo báo Phụ huynh (`📋 Báo PH`)**:
+  - Tích hợp nút nhỏ gọn ngay trên từng dòng học sinh tại Trung tâm Báo cáo (DS Chưa nộp BTVN, Đi muộn, Vắng mặt) và trong Hồ sơ học sinh theo buổi để soạn sẵn thông báo tình hình buổi học kèm SĐT phụ huynh.
+- **Cảnh báo sớm Học sinh cần chú ý (`⚠ Cần chú ý`) & Đếm số buổi học**:
+  - Tự động gắn nhãn cảnh báo cho học sinh vắng mặt, nợ BTVN hoặc điểm dưới 5,0 từ 2 buổi trở lên trong 3 buổi gần nhất, kèm bộ lọc nhanh ngay trong Danh sách học sinh và Tổng quan lớp.
+- **Sao lưu & Khôi phục toàn hệ thống (`.json`) + Dọn bộ nhớ đệm**:
+  - Đặt gọn trong hộp thoại **Thông tin tài khoản** (dành cho Admin & Văn phòng), cho phép tải file sao lưu `.json`, khôi phục dữ liệu 1 chạm và dọn bộ nhớ đệm ca cũ.
+
+
+## Nâng cấp v4.1 — Nhật ký Admin Log theo từng ca học (Chỉ Admin thấy)
+- **Nút `🛡 Admin Log` trong mỗi ca học**:
+  - Đặt gọn gàng trên cụm nút điều khiển ca học (`.session-control-actions`), trên thẻ lịch sử ca học ở trang Quản lý chung và trong hộp thoại Lịch sử ca học.
+  - **Chỉ hiển thị khi đăng nhập bằng tài khoản Admin (`role === "admin"`)**; tự động ẩn hoàn toàn (`hidden` + `display: none`) đối với Giáo viên, Trợ giảng và Văn phòng.
+- **Ghi nhận chi tiết từng tài khoản & hành động tác động lên dữ liệu**:
+  - Lưu trữ tại key `lopvui.admin-audit-log.v1.${classId}.${date}` (đồng bộ tức thì giữa các tab qua `BroadcastChannel` và hợp nhất đa thiết bị theo `id` không bao giờ ghi đè nhau).
+  - Ghi rõ **Tên tài khoản, Mã nhân sự, Vai trò (Admin / Giáo viên / Trợ giảng / Văn phòng), Thời gian chính xác tới giây, Phân loại tác động** và **Chi tiết dữ liệu thay đổi** cho mọi thao tác:
+    1. Điểm danh đúng giờ / đi muộn, xếp chỗ ngồi, kéo thả đổi bàn, bỏ xếp chỗ, kế thừa sơ đồ buổi trước, hoàn tác (Undo).
+    2. Thu BTVN từng học sinh, thu nhanh BTVN cả dãy, bật/tắt chế độ Không thu BTVN.
+    3. Nhập/sửa điểm BTVN và điểm Test, bật/tắt bài Test trong ca.
+    4. Sửa hồ sơ buổi học của học sinh, ghi chú buổi học, ghi chú học lực, gắn/gỡ tag, thêm/chuyển/xoá học sinh.
+    5. Tích/bỏ tích/thêm/sửa/xoá mục Checklist đầu giờ & cuối giờ, lưu ghi chú chung của ca, xác nhận người cầm bài về chấm.
+    6. Thay đổi cấu trúc dãy/bàn, áp dụng mẫu sơ đồ phòng học, mở ca, chốt sĩ số, đóng ca học, sửa ca học quá khứ.
+- **Bộ lọc & Xuất Excel**:
+  - Thống kê nhanh số lượng thao tác của từng tài khoản dưới dạng chip bấm lọc nhanh.
+  - Lọc theo Tài khoản, Phân loại hành động, tìm kiếm từ khóa và hỗ trợ xuất báo cáo **📥 Xuất Excel Log** (`.xls`).

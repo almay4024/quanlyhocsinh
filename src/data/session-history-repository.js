@@ -484,3 +484,215 @@ export function getStudentClassDeepDive(student, classId, currentRoster = [], st
     notes: (student.notes || []).filter(n => n.classId === classId || !n.classId)
   };
 }
+
+export function getPreviousSessionSeatingRecord(classId, currentDate, historyArg = null) {
+  if (!classId) return null;
+  const history = Array.isArray(historyArg) ? historyArg : loadSessionHistory();
+  const candidates = history
+    .filter(s => s && s.classId === classId && s.date && s.date !== currentDate)
+    .sort((a, b) => {
+      const aBefore = a.date < currentDate ? 1 : 0;
+      const bBefore = b.date < currentDate ? 1 : 0;
+      if (aBefore !== bBefore) return bBefore - aBefore;
+      return String(b.date).localeCompare(String(a.date));
+    });
+
+  for (const sess of candidates) {
+    if (sess.deskItems && typeof sess.deskItems === 'object') {
+      const hasSeated = Object.values(sess.deskItems).some(arr => Array.isArray(arr) && arr.some(e => e && e.studentId));
+      if (hasSeated) return sess;
+    }
+  }
+  return null;
+}
+
+export function evaluateStudentEarlyWarning(student, classId = null, historyArg = null) {
+  if (!student) {
+    return { hasWarning: false, reasons: [], badgeText: '', tooltip: '', attendedCount: 0, totalRecordedCount: 0 };
+  }
+  const attList = (student.attendanceHistory || []).filter(h => !classId || !h.classId || h.classId === classId);
+  const noteList = (student.sessionNotes || []).filter(n => !classId || !n.classId || n.classId === classId);
+  const scoreList = (student.scores || []).filter(sc => !classId || !sc.classId || sc.classId === classId);
+
+  const dateSet = new Set();
+  attList.forEach(h => { if (h?.date) dateSet.add(h.date); });
+  noteList.forEach(n => { if (n?.date) dateSet.add(n.date); });
+  scoreList.forEach(sc => { if (sc?.date) dateSet.add(sc.date); });
+
+  const sortedDates = Array.from(dateSet).sort((a, b) => String(b).localeCompare(String(a)));
+  let attendedCount = 0;
+
+  sortedDates.forEach(d => {
+    const att = attList.find(h => h.date === d);
+    const st = att?.status || 'present';
+    if (st === 'present' || st === 'late') attendedCount++;
+  });
+
+  const recent3 = sortedDates.slice(0, 3);
+  let recentAbsences = 0;
+  let recentMissingHw = 0;
+  let recentLowScores = 0;
+
+  recent3.forEach(d => {
+    const att = attList.find(h => h.date === d);
+    const sn = noteList.find(n => n.date === d);
+    const st = att?.status;
+    if (st === 'absent' || st === 'absent_excused' || st === 'absent_unexcused') {
+      recentAbsences++;
+    }
+    const hwSt = sn?.homeworkStatus || att?.homework?.status;
+    if (hwSt === 'not_submitted') {
+      recentMissingHw++;
+    }
+    const dayScores = scoreList.filter(sc => sc.date === d).map(sc => Number(sc.score)).filter(n => !Number.isNaN(n));
+    if (sn?.homeworkScore !== null && sn?.homeworkScore !== undefined && sn?.homeworkScore !== '') {
+      const n = Number(String(sn.homeworkScore).replace(',', '.'));
+      if (!Number.isNaN(n)) dayScores.push(n);
+    }
+    if (dayScores.length && Math.min(...dayScores) < 5) {
+      recentLowScores++;
+    }
+  });
+
+  const reasons = [];
+  if (recentMissingHw >= 2) reasons.push(`Nợ BTVN ${recentMissingHw} buổi gần đây`);
+  if (recentAbsences >= 2) reasons.push(`Vắng ${recentAbsences} buổi gần đây`);
+  if (recentLowScores >= 2) reasons.push(`Điểm < 5 ở ${recentLowScores} buổi gần đây`);
+
+  return {
+    hasWarning: reasons.length > 0,
+    reasons,
+    badgeText: reasons[0] || '',
+    tooltip: reasons.join(' · '),
+    attendedCount,
+    totalRecordedCount: sortedDates.length
+  };
+}
+
+// ============================================================================
+// ADMIN SESSION DATA AUDIT LOG REPOSITORY (v4.1 - ADMIN ONLY)
+// Records every data-mutating action per (classId, date) with exact account info
+// ============================================================================
+export function getAdminAuditLogKey(classId, date) {
+  return `lopvui.admin-audit-log.v1.${classId}.${date}`;
+}
+
+export function loadSessionAdminAuditLogs(classId, date, storage = (typeof localStorage !== 'undefined' ? localStorage : null)) {
+  if (!classId || !date) return [];
+  const key = getAdminAuditLogKey(classId, date);
+  let directLogs = [];
+  try {
+    if (storage) {
+      const raw = storage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) directLogs = parsed;
+      }
+    }
+  } catch {}
+
+  let histLogs = [];
+  try {
+    const rec = getSessionRecord(classId, date, storage);
+    if (rec && Array.isArray(rec.adminAuditLogs)) {
+      histLogs = rec.adminAuditLogs;
+    }
+  } catch {}
+
+  if (!directLogs.length && !histLogs.length) return [];
+  const mergedMap = new Map();
+  [...histLogs, ...directLogs].forEach(item => {
+    if (item && item.id) mergedMap.set(item.id, item);
+  });
+  return Array.from(mergedMap.values()).sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0));
+}
+
+export function appendSessionAdminAuditLog({
+  classId,
+  date,
+  actor = {},
+  category = 'session',
+  action = '',
+  detail = '',
+  dedupeKey = ''
+}, storage = (typeof localStorage !== 'undefined' ? localStorage : null)) {
+  if (!classId || !date || !action) return null;
+  const now = Date.now();
+  const key = getAdminAuditLogKey(classId, date);
+  const existing = loadSessionAdminAuditLogs(classId, date, storage);
+
+  const actorId = String(actor?.id || actor?.employeeId || 'unknown');
+  const actorCode = String(actor?.code || 'NV').trim().toUpperCase();
+  const actorName = String(actor?.name || 'Nhân sự').trim();
+  const actorRole = String(actor?.role || 'assistant').trim();
+
+  // If dedupeKey is provided (e.g. typing a score or note), update the most recent matching log from the same actor within 6 seconds
+  if (dedupeKey && existing.length > 0) {
+    const recentIdx = existing.findIndex(e =>
+      e && e.actorId === actorId && e.dedupeKey === dedupeKey && (now - (Number(e.timestamp) || 0) < 6000)
+    );
+    if (recentIdx >= 0) {
+      existing[recentIdx] = {
+        ...existing[recentIdx],
+        timestamp: now,
+        actorCode,
+        actorName,
+        actorRole,
+        category,
+        action: String(action).trim(),
+        detail: String(detail || '').trim()
+      };
+      const trimmed = existing.slice(0, 500);
+      if (storage) {
+        try { storage.setItem(key, JSON.stringify(trimmed)); } catch {}
+      }
+      return existing[recentIdx];
+    }
+  }
+
+  // Prevent exact duplicate log spam within 1200ms
+  const latest = existing[0];
+  if (
+    latest &&
+    latest.actorId === actorId &&
+    latest.action === String(action).trim() &&
+    latest.detail === String(detail || '').trim() &&
+    (now - (Number(latest.timestamp) || 0) < 1200)
+  ) {
+    return latest;
+  }
+
+  const entry = {
+    id: `alog-${now}-${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: now,
+    classId,
+    date,
+    actorId,
+    actorCode,
+    actorName,
+    actorRole,
+    category,
+    action: String(action).trim(),
+    detail: String(detail || '').trim(),
+    ...(dedupeKey ? { dedupeKey } : {})
+  };
+
+  const nextLogs = [entry, ...existing].slice(0, 500);
+  if (storage) {
+    try {
+      storage.setItem(key, JSON.stringify(nextLogs));
+    } catch {}
+  }
+
+  // Mirror top 250 logs into session-history.v2 record if the session already exists in history
+  try {
+    const history = loadSessionHistory(storage);
+    const rec = history.find(s => s.classId === classId && s.date === date);
+    if (rec) {
+      rec.adminAuditLogs = nextLogs.slice(0, 250);
+      saveSessionHistory(history, storage);
+    }
+  } catch {}
+
+  return entry;
+}

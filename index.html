@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=3.9.3" />
+  <link rel="stylesheet" href="/src/styles.css?v=4.1.0" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v3.9.3</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.1</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -504,7 +504,11 @@
               <h3 style="margin:0; font:700 17px Manrope,sans-serif; color:#233d31;">Danh sách học sinh & Theo dõi 4 buổi gần nhất</h3>
               <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào <strong>Tên học sinh</strong> để xem kỹ toàn bộ lịch sử điểm, trạng thái đi học và tên bài học từng buổi. Ký hiệu điểm danh: <strong>✓</strong> Có mặt · <strong>M</strong> Đi muộn · <strong>×</strong> Vắng.</p>
             </div>
-            <div style="display:flex; gap:8px; align-items:center;">
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <select id="general-student-warning-filter" aria-label="Lọc học sinh cần chú ý" style="padding:7px 10px; font-size:13.5px; border-radius:8px; border:1px solid #cbd8cd; background:#fff;">
+                <option value="all">Tất cả học sinh</option>
+                <option value="warning">⚠ Cần chú ý (Vắng/Nợ BTVN/Điểm &lt;5)</option>
+              </select>
               <button type="button" class="outline-button" id="general-export-roster-btn" style="padding:8px 14px; font-size:14px;">Xuất Excel</button>
             </div>
           </div>
@@ -566,6 +570,7 @@
             <div class="session-control-actions">
               <button type="button" class="outline-button btn-session-action" id="header-class-general-btn" title="Về trang quản lý chung của lớp">Quản lý chung</button>
               <button type="button" class="outline-button btn-session-action" id="header-edit-class-btn" title="Cài đặt thông tin lớp">Cài đặt lớp</button>
+              <button type="button" class="outline-button btn-session-action btn-admin-log" id="session-admin-log-btn" hidden style="display:none;" title="Nhật ký Admin: Xem toàn bộ lịch sử thao tác dữ liệu của từng tài khoản trong ca học này (Chỉ Admin thấy)">🛡 Admin Log <span id="session-admin-log-count" class="admin-log-count-badge">0</span></button>
               <button type="button" class="outline-button btn-session-action" id="open-session-btn" hidden style="display:none!important;">Mở lớp</button>
               <button type="button" class="outline-button btn-session-action btn-danger-soft" id="close-session-btn" hidden style="display:none!important;">Đóng ca học</button>
             </div>
@@ -674,7 +679,10 @@
           <section class="student-pool-wrap">
             <div class="pool-heading">
               <strong>Kéo biểu tượng học sinh mới vào bàn · thao tác kéo không mở menu</strong>
-              <span id="pool-count">Thêm khi học sinh đến lớp</span>
+              <div class="pool-heading-right">
+                <button type="button" class="outline-button pool-carryover-btn" id="quick-carryover-seating-btn" hidden title="Đặt học sinh vào đúng bàn của buổi học liền trước (Trạng thái: Có mặt · Chưa thu BTVN)">↺ Xếp chỗ theo buổi trước</button>
+                <span id="pool-count">Thêm khi học sinh đến lớp</span>
+              </div>
             </div>
             <div id="student-pool" class="student-pool"></div>
           </section>
@@ -1118,8 +1126,8 @@
           <label class="field-label">Trường
             <input id="new-roster-student-school" placeholder="THCS Cầu Giấy" />
           </label>
-          <label class="field-label" hidden style="display:none!important;">Số ĐT phụ huynh
-            <input id="new-roster-parent-phone" placeholder="" />
+          <label class="field-label">Số ĐT phụ huynh
+            <input id="new-roster-parent-phone" type="tel" placeholder="Ví dụ: 0912345678" />
           </label>
           <label class="field-label">Mã học sinh
             <input id="new-roster-student-code" placeholder="HS001" />
@@ -1674,6 +1682,14 @@ function jsonOut_(obj) {
       <h2>Điều chỉnh layout & Vạch phân cách</h2>
       <p class="dialog-hint">Tùy chỉnh số dãy, số bàn và vạch phân cách giữa 2 bàn trên-dưới để dễ so sánh với thực tế.</p>
       
+      <div class="carryover-layout-box" id="layout-dialog-carryover-box">
+        <div>
+          <strong>↺ Kế thừa vị trí ngồi từ buổi học liền trước</strong>
+          <small id="layout-dialog-carryover-hint">Đặt nhanh học sinh vào đúng bàn buổi trước (Có mặt · Chưa thu BTVN)</small>
+        </div>
+        <button type="button" class="outline-button pool-carryover-btn" id="layout-dialog-carryover-btn">↺ Xếp chỗ theo buổi trước</button>
+      </div>
+
       <label class="field-label">Áp dụng từ Mẫu phòng học có sẵn:
         <select id="apply-room-template-select">
           <option value="">-- Chọn mẫu phòng để áp dụng nhanh --</option>
@@ -2168,9 +2184,12 @@ function jsonOut_(obj) {
     <div class="eyebrow" id="student-session-profile-eyebrow">HỒ SƠ HỌC SINH TRONG BUỔI HỌC</div>
     <h2 id="student-session-profile-title">Chi tiết học sinh trong buổi học</h2>
     <div id="student-session-profile-content"></div>
-    <div class="student-profile-actions">
-      <button type="button" class="outline-button" id="session-profile-open-class-btn">Xem hồ sơ trong lớp</button>
-      <button type="button" class="primary-button" id="save-student-session-profile-btn">Lưu & Đóng</button>
+    <div class="student-profile-actions" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <button type="button" class="outline-button btn-copy-parent-zalo" id="session-profile-copy-zalo-btn" title="Sao chép tin nhắn báo tình hình buổi học của học sinh này gửi Phụ huynh qua Zalo">📋 Copy báo Phụ huynh (Zalo)</button>
+      <div style="display:flex; gap:8px; margin-left:auto;">
+        <button type="button" class="outline-button" id="session-profile-open-class-btn">Xem hồ sơ trong lớp</button>
+        <button type="button" class="primary-button" id="save-student-session-profile-btn">Lưu & Đóng</button>
+      </div>
     </div>
   </dialog>
 
@@ -2180,7 +2199,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v3.9.3</span></strong>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.1</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2315,7 +2334,66 @@ function jsonOut_(obj) {
   
 
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/src/app.js?v=3.9.3"></script>
+  <!-- Hộp thoại Nhật ký Admin (Admin Audit Log) cho từng ca học - Chỉ Admin nhìn thấy -->
+  <dialog id="session-admin-log-dialog" class="roster-admin-dialog admin-log-dialog">
+    <div class="dialog-panel" style="width:min(960px, 95vw); max-height:88vh; display:flex; flex-direction:column;">
+      <div class="dialog-head" style="border-bottom:1px solid #e2e8f0; padding-bottom:12px;">
+        <div>
+          <span class="eyebrow" style="color:#4f46e5; font-weight:700;">🛡 NHẬT KÝ KIỂM TRA DỮ LIỆU CA HỌC (CHỈ ADMIN)</span>
+          <h2 id="admin-log-dialog-title" style="margin:2px 0 0; font-size:19px;">Admin Log · Ca học</h2>
+          <p id="admin-log-dialog-sub" style="margin:3px 0 0; font-size:13px; color:#64748b;">Ghi nhận chi tiết mọi thao tác tác động lên dữ liệu của từng tài khoản trong ca học này.</p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" class="outline-button" id="export-admin-log-excel-btn" style="padding:7px 12px; font-size:13px; font-weight:700; color:#1e40af; border-color:#bfdbfe; background:#eff6ff;" title="Xuất nhật ký Admin của ca học này ra file Excel">📥 Xuất Excel Log</button>
+          <button type="button" class="icon-close" id="close-admin-log-dialog" aria-label="Đóng">✕</button>
+        </div>
+      </div>
+
+      <!-- Thống kê nhanh theo từng tài khoản thao tác trong ca -->
+      <div id="admin-log-account-summary" class="admin-log-account-chips" style="margin-top:12px;"></div>
+
+      <!-- Bộ lọc tìm kiếm theo tài khoản, phân loại hành động, từ khóa -->
+      <div class="admin-log-filter-bar">
+        <select id="admin-log-account-filter" aria-label="Lọc theo tài khoản" style="min-width:200px;">
+          <option value="all">👤 Tất cả tài khoản thao tác</option>
+        </select>
+        <select id="admin-log-category-filter" aria-label="Lọc theo loại hành động" style="min-width:175px;">
+          <option value="all">📂 Tất cả loại tác động</option>
+          <option value="attendance">Điểm danh & Chỗ ngồi</option>
+          <option value="homework">Bài tập về nhà (BTVN)</option>
+          <option value="score">Điểm số (BTVN / Test)</option>
+          <option value="student">Hồ sơ & Ghi chú học sinh</option>
+          <option value="checklist">Checklist & Bàn giao ca</option>
+          <option value="layout">Sơ đồ bàn ghế</option>
+          <option value="session">Mở / Đóng / Cài đặt ca</option>
+        </select>
+        <input type="search" id="admin-log-search-input" placeholder="Tìm theo tên tài khoản, mã NV, tên học sinh hoặc hành động..." style="flex:1; min-width:200px;" />
+      </div>
+
+      <div class="attendance-table-wrap" style="flex:1; overflow-y:auto; max-height:52vh; border:1px solid #e2e8f0; border-radius:10px;">
+        <table class="attendance-report-table" style="font-size:13.5px;">
+          <thead style="position:sticky; top:0; z-index:2; background:#f8fafc;">
+            <tr>
+              <th style="width:110px;">Thời gian</th>
+              <th style="width:210px;">Tài khoản thực hiện</th>
+              <th style="width:140px;">Phân loại</th>
+              <th>Hành động & Dữ liệu tác động</th>
+            </tr>
+          </thead>
+          <tbody id="admin-log-table-tbody">
+            <tr><td colspan="4" style="text-align:center; padding:24px; color:#64748b;">Chưa có dữ liệu thao tác nào trong ca học này.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="dialog-actions" style="margin-top:12px; padding-top:10px; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+        <span id="admin-log-footer-count" style="font-size:13px; color:#64748b; font-weight:600;">Tổng cộng: 0 hành động</span>
+        <button type="button" class="primary-button" id="close-admin-log-bottom-btn">Đóng</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script type="module" src="/src/app.js?v=4.1.0"></script>
 
   <!-- Hộp thoại Thêm / Sửa Ca Học Trong Quá Khứ -->
   <dialog id="past-session-manage-dialog" class="class-config-dialog">

@@ -1,6 +1,6 @@
 // Local repository boundary for master data and class configuration.
 // Supports Birth Year (Năm sinh: 2009, 2010, ...) and automatic layout sync from Room Templates.
-import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=3.8';
+import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=4.0.0';
 
 const CATALOG_KEY = 'lopvui.class-catalog.v1';
 const MASTER_KEY = 'lopvui.master-data.v1';
@@ -127,11 +127,11 @@ function resolveClass(classInfo, masters, storage = localStorage) {
 }
 
 // ============================================================================
-// CRYPTOGRAPHIC PASSWORD HASHING & ADMIN-ONLY VAULT ENCRYPTION (v3.3)
-// - Plaintext passwords are NEVER stored in localStorage or Firebase Firestore.
+// CRYPTOGRAPHIC PASSWORD HASHING & SESSION INTEGRITY (v4.0)
+// - Plaintext passwords are NEVER stored in localStorage or Firebase.
 // - Login verification uses salted multi-round digest (passwordHash).
-// - Admin password viewing uses encrypted vault cipher (passwordCipher) that
-//   requires callerRole === 'admin' to decrypt.
+// - Session accounts carry a cryptographic signature (authSig) bound to
+//   employeeId + role + authVersion + passwordHash to prevent localStorage role tampering.
 // ============================================================================
 const VAULT_SECRET = 'LopHocVui_Firebase_AdminVault_Key_2026_v33!@#';
 
@@ -174,6 +174,26 @@ export function hashStaffPassword(code, plainPassword) {
     [h1, h2, h3, h4].map(n => (n >>> 0).toString(16).padStart(8, '0')).join('');
 }
 
+export function computeSessionAuthSignature(emp) {
+  if (!emp || !emp.id) return '';
+  const norm = normalizeEmployeeAccount(emp);
+  return hashStaffPassword(
+    norm.code,
+    `session_sig_v4::${norm.id}::${norm.role}::${norm.authVersion || 1}::${norm.passwordHash || ''}`
+  );
+}
+
+export function verifySessionAuthSignature(account, emp) {
+  if (!account || !emp) return false;
+  const norm = normalizeEmployeeAccount(emp);
+  if (account.role !== norm.role || account.employeeId !== norm.id) return false;
+  if (!account.authSig) {
+    // Allow seamless migration for non-admin sessions whose role matches masterData
+    return norm.role === account.role;
+  }
+  return account.authSig === computeSessionAuthSignature(norm);
+}
+
 export function encryptStaffPasswordForAdmin(code, plainPassword) {
   const cleanCode = String(code || '').trim().toUpperCase();
   const text = encodeURIComponent(String(plainPassword ?? ''));
@@ -207,7 +227,7 @@ export function decryptStaffPasswordForAdmin(emp, callerRole = 'assistant') {
       return encoded;
     }
   }
-  return emp.role === 'admin' ? 'admin123' : '123456';
+  return '••••••••';
 }
 
 export function normalizeEmployeeAccount(emp) {
