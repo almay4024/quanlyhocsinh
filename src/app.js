@@ -1,14 +1,14 @@
-const APP_VERSION = "4.1.0";
+const APP_VERSION = "4.2.0";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.1.0';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.1.0';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.2.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.2.0';
 const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=4.1.0';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.1.0';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.1.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.1.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount } from './data/class-catalog-repository.js?v=4.1.0';
+import { setupFeatures } from './features.js?v=4.2.0';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.2.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.2.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.2.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount } from './data/class-catalog-repository.js?v=4.2.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -398,6 +398,36 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           if (typeof item.updatedAt === 'string') return Date.parse(item.updatedAt) || fallback;
           return fallback;
         };
+        const mergeStudentSubArrays = (olderStu, newerStu) => {
+          const combined = { ...olderStu, ...newerStu };
+          for (const subField of ['attendanceHistory', 'sessionNotes', 'seatingHistory']) {
+            const aOlder = Array.isArray(olderStu[subField]) ? olderStu[subField] : [];
+            const aNewer = Array.isArray(newerStu[subField]) ? newerStu[subField] : [];
+            const mapSub = new Map();
+            for (const entry of [...aOlder, ...aNewer]) {
+              if (!entry || !entry.date) continue;
+              const subKey = `${entry.classId || ''}_${entry.date}`;
+              const prev = mapSub.get(subKey);
+              const prevSubTs = Number(prev?.updatedAt || prev?.timestamp || 0);
+              const curSubTs = Number(entry?.updatedAt || entry?.timestamp || 0);
+              if (!prev || curSubTs >= prevSubTs) {
+                mapSub.set(subKey, entry);
+              }
+            }
+            combined[subField] = Array.from(mapSub.values());
+          }
+          if (combined.attendanceHistory) combined.history = combined.attendanceHistory;
+          if (Array.isArray(olderStu.scores) || Array.isArray(newerStu.scores)) {
+            const sMap = new Map();
+            for (const sc of [...(olderStu.scores || []), ...(newerStu.scores || [])]) {
+              if (!sc || !sc.date) continue;
+              sMap.set(`${sc.classId || ''}_${sc.date}_${sc.type || 'BTVN'}`, sc);
+            }
+            combined.scores = Array.from(sMap.values());
+          }
+          return combined;
+        };
+
         for (const item of localArr) {
           if (!item || !item.id || deletedMap[item.id]) continue;
           mergedById.set(item.id, item);
@@ -406,42 +436,172 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           if (!rItem || !rItem.id || deletedMap[rItem.id]) continue;
           const lItem = mergedById.get(rItem.id);
           if (!lItem) {
-            // Chỉ nhận phần tử chỉ có trên cloud nếu cloud mới hơn lần ghi local của key này
-            if (remoteTs > localTs) {
-              mergedById.set(rItem.id, rItem);
-            }
+            // Always retain non-deleted items from remote so concurrent additions on multiple devices never drop
+            mergedById.set(rItem.id, rItem);
           } else {
             const lItemTs = parseTs(lItem, localTs);
             const rItemTs = parseTs(rItem, remoteTs);
             const rRev = Number(rItem.revision || rItem.authVersion || 0);
             const lRev = Number(lItem.revision || lItem.authVersion || 0);
-            if (rRev > lRev || (rRev === lRev && rItemTs > lItemTs)) {
-              if (key === 'lopvui.students.v9' || key === 'lopvui.makeup-students.v1') {
-                const combined = { ...lItem, ...rItem };
-                for (const subField of ['attendanceHistory', 'sessionNotes', 'seatingHistory']) {
-                  const a1 = Array.isArray(rItem[subField]) ? rItem[subField] : [];
-                  const a2 = Array.isArray(lItem[subField]) ? lItem[subField] : [];
-                  const mapSub = new Map();
-                  [...a2, ...a1].forEach(entry => {
-                    if (entry && entry.date) mapSub.set(`${entry.classId || ''}_${entry.date}`, entry);
-                  });
-                  combined[subField] = Array.from(mapSub.values());
-                }
-                if (Array.isArray(rItem.scores) || Array.isArray(lItem.scores)) {
-                  const sMap = new Map();
-                  [...(lItem.scores || []), ...(rItem.scores || [])].forEach(sc => {
-                    if (sc && sc.date) sMap.set(`${sc.classId || ''}_${sc.date}_${sc.type || 'BTVN'}`, sc);
-                  });
-                  combined.scores = Array.from(sMap.values());
-                }
-                mergedById.set(rItem.id, combined);
-              } else {
-                mergedById.set(rItem.id, rItem);
-              }
+            const isRemoteNewer = rRev > lRev || (rRev === lRev && rItemTs >= lItemTs);
+            if (key === 'lopvui.students.v9' || key === 'lopvui.makeup-students.v1') {
+              mergedById.set(
+                rItem.id,
+                isRemoteNewer ? mergeStudentSubArrays(lItem, rItem) : mergeStudentSubArrays(rItem, lItem)
+              );
+            } else if (isRemoteNewer) {
+              mergedById.set(rItem.id, rItem);
             }
           }
         }
         return JSON.stringify(Array.from(mergedById.values()));
+      }
+    }
+
+    // Granular per-desk & per-student merge for desk-items.v7 so two devices marking seats concurrently never overwrite each other
+    if (key.startsWith('lopvui.desk-items.v7.')) {
+      const localDesks = JSON.parse(localPlain);
+      const remoteDesks = JSON.parse(remotePlain);
+      if (localDesks && remoteDesks && typeof localDesks === 'object' && typeof remoteDesks === 'object' && !Array.isArray(localDesks) && !Array.isArray(remoteDesks)) {
+        const primary = remoteTs >= localTs ? remoteDesks : localDesks;
+        const secondary = remoteTs >= localTs ? localDesks : remoteDesks;
+        const allDeskIds = new Set([...Object.keys(primary), ...Object.keys(secondary)]);
+        const mergedDesks = {};
+        const claimedStudents = new Set();
+
+        // First pass: collect entries from primary (newer snapshot), merging richer fields from secondary for same student
+        const secByStudent = new Map();
+        for (const [dId, arr] of Object.entries(secondary)) {
+          if (!Array.isArray(arr)) continue;
+          arr.forEach((ent, idx) => {
+            if (ent && ent.studentId && !deletedMap[ent.studentId]) {
+              secByStudent.set(ent.studentId, { deskId: dId, index: idx, entry: ent });
+            }
+          });
+        }
+
+        for (const dId of allDeskIds) {
+          const pArr = Array.isArray(primary[dId]) ? primary[dId] : [];
+          mergedDesks[dId] = [];
+          for (const pEnt of pArr) {
+            if (!pEnt) continue;
+            if (!pEnt.studentId) {
+              mergedDesks[dId].push(pEnt);
+              continue;
+            }
+            if (deletedMap[pEnt.studentId] || claimedStudents.has(pEnt.studentId)) continue;
+            const secMatch = secByStudent.get(pEnt.studentId);
+            if (secMatch) {
+              const pTs = Number(pEnt._updatedAt || 0);
+              const sTs = Number(secMatch.entry._updatedAt || 0);
+              const bestEnt = (sTs > pTs) ? { ...pEnt, ...secMatch.entry } : { ...secMatch.entry, ...pEnt };
+              // Preserve non-uncollected homework or testScore if one side just updated homework while the other updated attendance
+              if ((bestEnt.homework?.status === 'uncollected' || !bestEnt.homework?.status) && secMatch.entry.homework?.status && secMatch.entry.homework.status !== 'uncollected') {
+                bestEnt.homework = secMatch.entry.homework;
+              }
+              if ((bestEnt.homework?.status === 'uncollected' || !bestEnt.homework?.status) && pEnt.homework?.status && pEnt.homework.status !== 'uncollected') {
+                bestEnt.homework = pEnt.homework;
+              }
+              mergedDesks[dId].push(bestEnt);
+            } else {
+              mergedDesks[dId].push(pEnt);
+            }
+            claimedStudents.add(pEnt.studentId);
+          }
+        }
+
+        // Second pass: if secondary has a student seated recently (or when timestamps are within 12s concurrent window) that primary hasn't seen yet, keep them on their desk!
+        const isConcurrentWindow = Math.abs((remoteTs || 0) - (localTs || 0)) < 15000;
+        for (const [stuId, secInfo] of secByStudent.entries()) {
+          if (claimedStudents.has(stuId) || deletedMap[stuId]) continue;
+          const entryTs = Number(secInfo.entry._updatedAt || 0);
+          const isRecentEntry = entryTs > 0 && (Date.now() - entryTs < 20000);
+          if (isConcurrentWindow || isRecentEntry) {
+            mergedDesks[secInfo.deskId] = mergedDesks[secInfo.deskId] || [];
+            mergedDesks[secInfo.deskId].push(secInfo.entry);
+            claimedStudents.add(stuId);
+          }
+        }
+        return JSON.stringify(mergedDesks);
+      }
+    }
+
+    // Granular merge for late-queue.v6
+    if (key.startsWith('lopvui.late-queue.v6.')) {
+      const localQ = JSON.parse(localPlain);
+      const remoteQ = JSON.parse(remotePlain);
+      if (Array.isArray(localQ) && Array.isArray(remoteQ)) {
+        const isConcurrent = Math.abs((remoteTs || 0) - (localTs || 0)) < 12000;
+        const base = remoteTs >= localTs ? remoteQ : localQ;
+        const other = remoteTs >= localTs ? localQ : remoteQ;
+        const combined = isConcurrent ? [...new Set([...base, ...other])] : base;
+        return JSON.stringify(combined.filter(id => id && !deletedMap[id]));
+      }
+    }
+
+    // Granular merge for checklist.v1
+    if (key.startsWith('lopvui.checklist.v1.')) {
+      const localChk = JSON.parse(localPlain);
+      const remoteChk = JSON.parse(remotePlain);
+      if (localChk && remoteChk && typeof localChk === 'object' && typeof remoteChk === 'object') {
+        const newer = remoteTs >= localTs ? remoteChk : localChk;
+        const older = remoteTs >= localTs ? localChk : remoteChk;
+        const mergeChkItems = (arr1 = [], arr2 = []) => {
+          const map = new Map();
+          for (const it of arr1) { if (it?.id) map.set(it.id, it); }
+          for (const it of arr2) {
+            if (!it?.id) continue;
+            const prev = map.get(it.id);
+            if (!prev || Number(it.doneAt || 0) >= Number(prev.doneAt || 0)) {
+              map.set(it.id, it);
+            }
+          }
+          return Array.from(map.values());
+        };
+        const mergedChk = {
+          ...older,
+          ...newer,
+          items: mergeChkItems(older.items, newer.items),
+          endItems: mergeChkItems(older.endItems, newer.endItems),
+          tests: { ...(older.tests || {}), ...(newer.tests || {}) },
+          testScores: { ...(older.testScores || {}), ...(newer.testScores || {}) },
+          classNote: (Number(newer.noteSavedAt || 0) >= Number(older.noteSavedAt || 0)) ? (newer.classNote ?? older.classNote) : (older.classNote ?? newer.classNote),
+          noteSavedAt: Math.max(Number(newer.noteSavedAt || 0), Number(older.noteSavedAt || 0))
+        };
+        return JSON.stringify(mergedChk);
+      }
+    }
+
+    // Granular merge for attendance-notes.v1
+    if (key.startsWith('lopvui.attendance-notes.v1.')) {
+      const localNotes = JSON.parse(localPlain);
+      const remoteNotes = JSON.parse(remotePlain);
+      if (localNotes && remoteNotes && typeof localNotes === 'object' && typeof remoteNotes === 'object') {
+        const mergedNotes = remoteTs >= localTs
+          ? { ...localNotes, ...remoteNotes }
+          : { ...remoteNotes, ...localNotes };
+        return JSON.stringify(mergedNotes);
+      }
+    }
+
+    // Granular merge for class-communication.v1
+    if (key.startsWith('lopvui.class-communication.v1.')) {
+      const localComm = JSON.parse(localPlain);
+      const remoteComm = JSON.parse(remotePlain);
+      if (localComm && remoteComm && typeof localComm === 'object' && typeof remoteComm === 'object') {
+        const mergeById = (a = [], b = []) => {
+          const m = new Map();
+          for (const x of [...a, ...b]) { if (x?.id) m.set(x.id, x); }
+          return Array.from(m.values());
+        };
+        return JSON.stringify({
+          ...localComm,
+          ...remoteComm,
+          messages: mergeById(localComm.messages, remoteComm.messages),
+          activity: mergeById(localComm.activity || localComm.activities, remoteComm.activity || remoteComm.activities),
+          activities: mergeById(localComm.activities || localComm.activity, remoteComm.activities || remoteComm.activity),
+          notifications: mergeById(localComm.notifications, remoteComm.notifications)
+        });
       }
     }
 
@@ -450,14 +610,28 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       const remoteObj = JSON.parse(remotePlain);
       if (localObj && remoteObj && Array.isArray(localObj.employees) && Array.isArray(remoteObj.employees)) {
         const empMap = new Map();
-        localObj.employees.forEach(e => { if (e?.id && !deletedMap[e.id]) empMap.set(e.id, e); });
-        remoteObj.employees.forEach(re => {
-          if (!re?.id || deletedMap[re.id]) return;
-          const le = empMap.get(re.id);
-          if (!le || (Number(re.authVersion) || 1) >= (Number(le.authVersion) || 1) || (re.updatedAt || 0) >= (le.updatedAt || 0)) {
-            empMap.set(re.id, re);
+        const codeToId = new Map();
+        const addOrMergeEmp = (emp, isRemote = false) => {
+          if (!emp || !emp.id || deletedMap[emp.id]) return;
+          const normCode = normalizeAccountCode(emp.code);
+          const existingIdByCode = normCode ? codeToId.get(normCode) : null;
+          const targetId = existingIdByCode || emp.id;
+          const prev = empMap.get(targetId);
+          if (!prev) {
+            empMap.set(targetId, emp);
+            if (normCode) codeToId.set(normCode, targetId);
+          } else {
+            const prevVer = Number(prev.authVersion) || 1;
+            const curVer = Number(emp.authVersion) || 1;
+            const prevTs = Number(prev.updatedAt) || 0;
+            const curTs = Number(emp.updatedAt) || 0;
+            if (curVer > prevVer || (curVer === prevVer && curTs > prevTs) || (curVer === prevVer && curTs === prevTs && isRemote)) {
+              empMap.set(targetId, emp);
+            }
           }
-        });
+        };
+        localObj.employees.forEach(e => addOrMergeEmp(e, false));
+        remoteObj.employees.forEach(re => addOrMergeEmp(re, true));
         return JSON.stringify({
           ...localObj,
           ...remoteObj,
@@ -467,7 +641,7 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
     }
   } catch {}
 
-  return remoteTs > localTs ? remotePlain : localPlain;
+  return remoteTs >= localTs ? remotePlain : localPlain;
 }
 
 function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, remoteDeletedMap = {}) {
@@ -481,19 +655,29 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
   try {
     for (const [k, v] of Object.entries(entries)) {
       if (!_shouldSyncKey(k)) continue;
-      // Không bao giờ ghi đè key đang chờ đẩy từ máy này lên Firebase
-      if (_rtPendingCloudEntries.has(k)) continue;
       const curPlain = _readDecryptedLocal(k);
       const remoteClientId = remoteMetaMap[k]?.clientId || '';
       const remoteTs = remoteMetaMap[k]?.updatedAt || (source === 'cloud-poll' ? 0 : Date.now());
       const localTs = keyTsMap[k] || 0;
 
-      // Nếu bản ghi trên cloud chính là do máy này vừa đẩy lên và máy này đã có bản mới hơn hoặc bằng -> bỏ qua
-      if (source === 'cloud-poll' && remoteClientId === RT_CLIENT_ID && localTs >= remoteTs) {
+      // Nếu đang chờ đẩy key này lên Cloud, thay vì bỏ qua bản từ máy khác, ta hợp nhất (merge) ngay để không mất dữ liệu của cả 2 máy!
+      if (_rtPendingCloudEntries.has(k) && v !== null && v !== undefined && curPlain !== null) {
+        const remotePlain = decryptVaultPayload(String(v), k);
+        const mergedPlain = _mergeGranularJsonValue(k, curPlain, remotePlain, remoteTs, localTs, remoteDeletedMap);
+        if (mergedPlain && mergedPlain !== curPlain) {
+          _writeEncryptedLocal(k, mergedPlain);
+          const nextTs = Math.max(localTs, remoteTs, Date.now());
+          _setKeyTimestamp(k, nextTs);
+          const encVal = encryptVaultPayload(mergedPlain, k);
+          const encKey = encryptVaultPayload(k, 'firebase_key_meta');
+          _rtPendingCloudEntries.set(k, { encKey, value: encVal, updatedAt: nextTs, clientId: RT_CLIENT_ID });
+          changed.push(k);
+        }
         continue;
       }
-      // Nếu không phải mảng granular và bản local mới hơn bản remote -> giữ nguyên bản local
-      if (!GRANULAR_ARRAY_KEYS.has(k) && curPlain !== null && localTs > remoteTs && source === 'cloud-poll') {
+
+      // Nếu bản ghi trên cloud chính là do máy này vừa đẩy lên và máy này đã có bản mới hơn hoặc bằng -> bỏ qua
+      if ((source === 'cloud-poll' || source === 'cloud-sse') && remoteClientId === RT_CLIENT_ID && localTs >= remoteTs && curPlain !== null) {
         continue;
       }
 
@@ -514,6 +698,10 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
           changed.push(k);
         } else if (source === 'broadcast-tab') {
           changed.push(k);
+        }
+        // Nếu sau khi F5 (cloud-init) bản trên máy có dữ liệu mới hơn bản trên Cloud (mergedPlain !== remotePlain), tự động đẩy bản hợp nhất lên Cloud để không bao giờ mất dữ liệu khi Refresh!
+        if (curPlain !== null && localTs > remoteTs && mergedPlain !== remotePlain && source !== 'broadcast-tab') {
+          _scheduleFirebaseCloudPush(k, mergedPlain, localTs);
         }
       }
     }
@@ -547,20 +735,24 @@ function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
   const encKey = encryptVaultPayload(key, 'firebase_key_meta');
   _rtPendingCloudEntries.set(key, { encKey, value: encVal, updatedAt: ts, clientId: RT_CLIENT_ID });
   if (_rtCloudPushTimer) clearTimeout(_rtCloudPushTimer);
-  // Coalesce rapid updates to heavy monolithic arrays (students.v9 / session-history.v2) over 1400ms to save 85% Firebase bandwidth,
-  // while keeping lightweight session keys fast (320ms) and multi-tab BroadcastChannel at 0ms.
+  // Fast 120ms push for live session / account keys so concurrent devices sync in near real-time; 350ms for heavy archive keys
   const hasOnlyHeavyKeys = Array.from(_rtPendingCloudEntries.keys()).every(k => _HEAVY_ARCHIVE_KEYS.has(k));
-  const delayMs = hasOnlyHeavyKeys ? 1400 : 320;
-  _rtCloudPushTimer = setTimeout(_flushFirebaseCloudPush, delayMs);
+  const delayMs = hasOnlyHeavyKeys ? 350 : 120;
+  _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false), delayMs);
 }
 
 let _lastSeenCloudMetaTs = 0;
 let _seenSafeKeyTimestamps = {};
 let _lastSyncedDeletedCount = 0;
+let _rtCloudEventSource = null;
 
-async function _flushFirebaseCloudPush() {
+async function _flushFirebaseCloudPush(isUnloading = false) {
   const dbUrl = getConfiguredFirebaseDbUrl();
   if (!dbUrl || !_rtPendingCloudEntries.size) return;
+  if (_rtCloudPushTimer) {
+    clearTimeout(_rtCloudPushTimer);
+    _rtCloudPushTimer = null;
+  }
   const batch = Array.from(_rtPendingCloudEntries.entries());
   _rtPendingCloudEntries.clear();
 
@@ -575,41 +767,50 @@ async function _flushFirebaseCloudPush() {
     _seenSafeKeyTimestamps[safeK] = itemTs;
   }
 
+  const kvBody = JSON.stringify(kvPayload);
+  const useKeepalive = Boolean(isUnloading || kvBody.length < 58000);
+
   _rtIsPushingCloud = true;
   try {
     const res = await fetch(`${dbUrl}/lopvui_cloud_v3/kv.json`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(kvPayload)
+      body: kvBody,
+      keepalive: useKeepalive
     });
     const delMap = _getDeletedIdsMap();
     const delCount = Object.keys(delMap).length;
     if (delCount > _lastSyncedDeletedCount) {
       _lastSyncedDeletedCount = delCount;
+      const delBody = JSON.stringify(delMap);
       await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(delMap)
+        body: delBody,
+        keepalive: delBody.length < 58000
       });
     }
-    // Cập nhật bảng chỉ mục siêu nhẹ /lopvui_cloud_v3/meta (~200 bytes) để các máy khác chỉ tải đúng key thay đổi
+    const metaBody = JSON.stringify({
+      cleanSlateV35: true,
+      encryptedV38: true,
+      deltaSyncV392: true,
+      lastUpdatedAt: now,
+      lastClientId: RT_CLIENT_ID,
+      deletedCount: delCount
+    });
+    const tsBody = JSON.stringify(metaKeyTsPatch);
     await Promise.all([
       fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cleanSlateV35: true,
-          encryptedV38: true,
-          deltaSyncV392: true,
-          lastUpdatedAt: now,
-          lastClientId: RT_CLIENT_ID,
-          deletedCount: delCount
-        })
+        body: metaBody,
+        keepalive: true
       }),
       fetch(`${dbUrl}/lopvui_cloud_v3/meta/keyTimestamps.json`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(metaKeyTsPatch)
+        body: tsBody,
+        keepalive: tsBody.length < 58000
       })
     ]);
     _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, now);
@@ -618,6 +819,10 @@ async function _flushFirebaseCloudPush() {
     }
   } catch {} finally {
     _rtIsPushingCloud = false;
+    // If more entries were queued while pushing, flush them immediately
+    if (_rtPendingCloudEntries.size > 0 && !_rtCloudPushTimer) {
+      _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false), 120);
+    }
   }
 }
 
@@ -941,6 +1146,39 @@ function initRealtimeSync(onSyncCallback) {
       _scheduleRtUIRefresh([event.key], 'storage-event');
     });
 
+    const _connectFirebaseMetaSSE = () => {
+      const dbUrl = getConfiguredFirebaseDbUrl();
+      if (!dbUrl || typeof EventSource === 'undefined') return;
+      try {
+        if (_rtCloudEventSource) {
+          try { _rtCloudEventSource.close(); } catch {}
+          _rtCloudEventSource = null;
+        }
+        const es = new EventSource(`${dbUrl}/lopvui_cloud_v3/meta.json`);
+        _rtCloudEventSource = es;
+        const handleMetaStream = (ev) => {
+          try {
+            if (!ev || !ev.data) return;
+            const parsed = JSON.parse(ev.data);
+            const payload = parsed?.data;
+            if (!payload || typeof payload !== 'object') return;
+            const remoteClient = payload.lastClientId || '';
+            const remoteUpdated = Number(payload.lastUpdatedAt) || 0;
+            if (remoteClient === RT_CLIENT_ID && remoteUpdated <= _lastSeenCloudMetaTs) return;
+            if (remoteUpdated > _lastSeenCloudMetaTs || remoteClient !== RT_CLIENT_ID) {
+              pullFromFirebaseCloudNow('cloud-sse');
+            }
+          } catch {}
+        };
+        es.addEventListener('put', handleMetaStream);
+        es.addEventListener('patch', handleMetaStream);
+        es.onerror = () => {
+          try { es.close(); } catch {}
+          _rtCloudEventSource = null;
+        };
+      } catch {}
+    };
+
     if (getConfiguredFirebaseDbUrl()) {
       _notifyRtStatus('realtime-cloud', Date.now(), 'init');
       (async () => {
@@ -948,6 +1186,7 @@ function initRealtimeSync(onSyncCallback) {
         if (res.ok && res.emptyCloud) {
           await pushAllLocalSnapshotToFirebaseCloud(true);
         }
+        _connectFirebaseMetaSSE();
       })();
     }
 
@@ -955,50 +1194,58 @@ function initRealtimeSync(onSyncCallback) {
     let _lastCloudPollAt = Date.now();
     const _markUserActive = () => {
       const now = Date.now();
-      const wasIdle = (now - _lastUserActivityAt) > 15000;
+      const wasIdle = (now - _lastUserActivityAt) > 10000;
       _lastUserActivityAt = now;
-      if (wasIdle && (now - _lastCloudPollAt > 8000) && getConfiguredFirebaseDbUrl() && !document.hidden) {
-        if (!_rtIsPushingCloud && _rtPendingCloudEntries.size === 0) {
-          _lastCloudPollAt = now;
-          pullFromFirebaseCloudNow('cloud-poll');
-        }
+      if (wasIdle && (now - _lastCloudPollAt > 3000) && getConfiguredFirebaseDbUrl() && !document.hidden) {
+        _lastCloudPollAt = now;
+        pullFromFirebaseCloudNow('cloud-poll');
       }
     };
     ['pointerdown', 'keydown', 'touchstart', 'focus'].forEach(evt => {
       window.addEventListener(evt, _markUserActive, { passive: true });
     });
 
-    // Khi tab ẩn đi hoặc đóng trang: đẩy ngay các thay đổi đang chờ lên Firebase; khi quay lại: kiểm tra meta ngay
+    // Khi Refresh (beforeunload), đóng trang (pagehide) hoặc ẩn tab: đẩy ngay lập tức với cờ keepalive=true để không bao giờ mất dữ liệu khi F5
+    window.addEventListener('beforeunload', () => {
+      if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush(true);
+    });
     window.addEventListener('pagehide', () => {
-      if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush();
+      if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush(true);
     });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush();
+        if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush(true);
       } else if (getConfiguredFirebaseDbUrl()) {
         _lastUserActivityAt = Date.now();
-        if (!_rtIsPushingCloud && _rtPendingCloudEntries.size === 0) {
-          _lastCloudPollAt = Date.now();
-          pullFromFirebaseCloudNow('cloud-poll');
+        _lastCloudPollAt = Date.now();
+        pullFromFirebaseCloudNow('cloud-poll');
+        if (!_rtCloudEventSource || _rtCloudEventSource.readyState === 2) {
+          _connectFirebaseMetaSSE();
         }
       }
     });
 
-    // Adaptive Cloud Polling: 4s khi đang thao tác, giảm xuống 16s–45s khi để máy chờ (idle) để bảo vệ hạn mức No-Cost
+    // Adaptive Cloud Polling: 2s khi đang mở ca học (hoặc 5s khi đã có kết nối SSE), giảm xuống 16s–45s khi máy chờ (idle)
     setInterval(() => {
       if (getConfiguredFirebaseDbUrl()) {
         if (typeof document !== 'undefined' && document.hidden) return;
         const now = Date.now();
-        if (_rtIsPushingCloud || _rtPendingCloudEntries.size > 0 || (now - _rtLastLocalWriteAt < 2000)) {
-          return;
+        if (_rtIsPushingCloud) return;
+        if (_rtPendingCloudEntries.size > 0) {
+          _flushFirebaseCloudPush(false);
+        }
+        const sseHealthy = Boolean(_rtCloudEventSource && _rtCloudEventSource.readyState === 1);
+        if (!_rtCloudEventSource || _rtCloudEventSource.readyState === 2) {
+          _connectFirebaseMetaSSE();
         }
         const idleMs = now - _lastUserActivityAt;
-        const minInterval = idleMs < 180000 ? 4000 : (idleMs < 900000 ? 16000 : 45000);
-        if (now - _lastCloudPollAt < minInterval - 200) return;
+        const activeInterval = sseHealthy ? 4500 : 2000;
+        const minInterval = idleMs < 180000 ? activeInterval : (idleMs < 900000 ? 16000 : 45000);
+        if (now - _lastCloudPollAt < minInterval - 150) return;
         _lastCloudPollAt = now;
         pullFromFirebaseCloudNow('cloud-poll');
       }
-    }, 4000);
+    }, 2000);
 
     // Tự động dọn dẹp các key nháp theo ngày của những ca đã đóng quá 45 ngày (đã lưu trong session-history.v2)
     setTimeout(() => {
@@ -1448,6 +1695,14 @@ const classroom=document.querySelector('#classroom');const $=selector=>document.
 const studentIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="3.5"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg>';
 const toast=message=>{const el=$('#toast'),host=document.querySelector('dialog[open]')||document.querySelector('.app-shell');if(host&&!host.contains(el))host.append(el);el.textContent=message;el.classList.add('show');clearTimeout(el._hideTimer);el._hideTimer=setTimeout(()=>{el.classList.remove('show');const shell=document.querySelector('.app-shell');if(shell&&!shell.contains(el))shell.append(el);},2500);};
 const save=()=>{
+  const now = Date.now();
+  for (const dId of Object.keys(deskItems || {})) {
+    if (Array.isArray(deskItems[dId])) {
+      deskItems[dId].forEach(ent => {
+        if (ent && typeof ent === 'object' && !ent._updatedAt) ent._updatedAt = now;
+      });
+    }
+  }
   localStorage.setItem(`lopvui.layout.v5.${CURRENT_CLASS_ID}.${checklistDate}`,JSON.stringify(layout));
   localStorage.setItem(`lopvui.desk-items.v7.${CURRENT_CLASS_ID}.${checklistDate}`,JSON.stringify(deskItems));
   localStorage.setItem(`lopvui.late-queue.v6.${CURRENT_CLASS_ID}.${checklistDate}`,JSON.stringify(lateQueue));
@@ -1468,10 +1723,15 @@ const attendanceLabel=status=>({present:'Có mặt',late:'Đi muộn',absent_exc
 function extractClassStartTimeStr(clsObj) {
   const c = clsObj || activeClassConfig();
   if (c?.startTime && /^\d{1,2}:\d{2}$/.test(String(c.startTime).trim())) {
-    return String(c.startTime).trim();
+    const [h, m] = String(c.startTime).trim().split(':').map(Number);
+    return `${String(h || 0).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
   }
-  const m = String(c?.scheduleText || '').match(/(\d{1,2}:\d{2})/);
-  return m ? m[1] : '18:00';
+  const m = String(c?.scheduleText || c?.time || '').match(/(\d{1,2}:\d{2})/);
+  if (m) {
+    const [h, min] = m[1].split(':').map(Number);
+    return `${String(h || 0).padStart(2, '0')}:${String(min || 0).padStart(2, '0')}`;
+  }
+  return '18:00';
 }
 
 function _addLateMinutesToTimeStr(timeStr, minsToAdd) {
@@ -1503,31 +1763,45 @@ function resolveLateDetails(student, entry = null, clsObj = null, dateStr = null
   let rawMins = attObj?.lateMinutes ?? attObj?.minutesLate ?? student?.lateMinutes ?? attHist?.lateMinutes ?? attHist?.minutesLate ?? null;
   let mins = (rawMins !== null && rawMins !== undefined && rawMins !== '') ? Number(rawMins) : null;
 
-  if (arrivalTime && (mins === null || Number.isNaN(mins) || mins <= 0)) {
+  // Luôn tự động tính số phút muộn dựa trên Giờ đến lớp (arrivalTime) và Giờ vào học (startTime)
+  if (arrivalTime) {
     const [arH, arM] = arrivalTime.split(':').map(Number);
     const diff = ((arH || 0) * 60 + (arM || 0)) - startTotal;
-    if (diff > 0 && diff <= 360) {
+    if (diff <= 0) {
+      // Đến trước hoặc đúng giờ vào học -> 0 phút muộn (không gắn tag muộn)
+      mins = 0;
+    } else {
       mins = diff;
     }
+  } else if (attObj?.status === 'present' || (!attObj && attHist?.status === 'present')) {
+    mins = 0;
+  } else if (mins === null || Number.isNaN(mins) || mins < 0) {
+    mins = attObj?.status === 'late' ? 10 : 0;
   }
 
-  if (mins === null || Number.isNaN(mins) || mins <= 0) {
-    mins = 10;
-  }
-
-  if (!arrivalTime) {
+  if (!arrivalTime && mins > 0) {
     arrivalTime = _addLateMinutesToTimeStr(startTime, mins);
   }
 
+  const isLate = mins > 0 && (attObj?.status !== 'present');
   return {
     startTime,
     arrivalTime,
-    lateMinutes: mins,
-    minutesLate: mins,
-    badgeText: `Đi muộn ${mins}p (${arrivalTime})`,
-    shortBadgeText: `Muộn ${mins}p (${arrivalTime})`,
-    reportText: `muộn ${mins}’ - ${arrivalTime}`
+    lateMinutes: isLate ? mins : 0,
+    minutesLate: isLate ? mins : 0,
+    isLate,
+    badgeText: isLate ? `Đi muộn ${mins}p (${arrivalTime})` : `Đúng giờ${arrivalTime ? ` (${arrivalTime})` : ''}`,
+    shortBadgeText: isLate ? `Muộn ${mins}p (${arrivalTime})` : `Đúng giờ${arrivalTime ? ` (${arrivalTime})` : ''}`,
+    reportText: isLate ? `muộn ${mins}’ - ${arrivalTime}` : 'Có mặt'
   };
+}
+
+function isStudentLateInSession(student, seatedEntry = null, clsObj = null, dateStr = null) {
+  if (!student && !seatedEntry) return false;
+  const att = seatedEntry?.attendance || student?.attendance || null;
+  if (att?.status === 'present') return false;
+  const det = resolveLateDetails(student, seatedEntry, clsObj, dateStr);
+  return Boolean(det.isLate && det.lateMinutes > 0);
 }
 const studentById=id=>students.find(s=>s.id===id)||makeupStudents.find(s=>s.id===id);
 const sessionNoteFor=id=>attendanceNotes[id]??studentById(id)?.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate)?.note??'';
@@ -2050,7 +2324,6 @@ function reloadClassSessionData(classId, date) {
   layout = read(`lopvui.layout.v5.${CURRENT_CLASS_ID}.${checklistDate}`, null);
   if (!Array.isArray(layout) || !layout.length) {
     layout = structuredClone(cfg?.defaultLayout || baseLayout);
-    localStorage.setItem(`lopvui.layout.v5.${CURRENT_CLASS_ID}.${checklistDate}`, JSON.stringify(layout));
   }
 
   lateQueue = read(`lopvui.late-queue.v6.${CURRENT_CLASS_ID}.${checklistDate}`, []);
@@ -2109,14 +2382,17 @@ function reloadClassSessionData(classId, date) {
 
     const resolvedArrivalTime = seatedEntry?.attendance?.arrivalTime || attHistEntry?.time || attHistEntry?.arrivalTime || snapEntry?.attendance?.arrivalTime || null;
     if (seatedEntry) {
-      student.attendance = seatedEntry.attendance || attHistEntry || { status: lateSet.has(student.id) ? 'late' : 'present' };
+      student.attendance = seatedEntry.attendance || attHistEntry || { status: 'present' };
       if (resolvedArrivalTime && student.attendance) student.attendance.arrivalTime = resolvedArrivalTime;
       student.homework = seatedEntry.homework || (savedNote?.homeworkStatus ? { status: savedNote.homeworkStatus, score: savedNote.homeworkScore ?? null, reason: savedNote.homeworkReason || '' } : { status: 'uncollected' });
       student.arrivalTime = resolvedArrivalTime;
     } else if (lateSet.has(student.id)) {
-      student.attendance = attHistEntry ? { ...attHistEntry, arrivalTime: resolvedArrivalTime } : { status: 'late', arrivalTime: resolvedArrivalTime, lateMinutes: 10, minutesLate: 10 };
+      const det = resolveLateDetails(student, { attendance: attHistEntry || student.attendance });
+      student.attendance = attHistEntry
+        ? { ...attHistEntry, status: det.isLate ? 'late' : 'present', arrivalTime: resolvedArrivalTime || det.arrivalTime, lateMinutes: det.lateMinutes, minutesLate: det.lateMinutes }
+        : { status: det.isLate ? 'late' : 'present', arrivalTime: resolvedArrivalTime || det.arrivalTime, lateMinutes: det.lateMinutes, minutesLate: det.lateMinutes };
       student.homework = savedNote?.homeworkStatus ? { status: savedNote.homeworkStatus, score: savedNote.homeworkScore ?? null, reason: savedNote.homeworkReason || '' } : { status: 'uncollected' };
-      student.arrivalTime = resolvedArrivalTime;
+      student.arrivalTime = resolvedArrivalTime || det.arrivalTime;
     } else if (attHistEntry) {
       student.attendance = { status: attHistEntry.status, arrivalTime: resolvedArrivalTime, reason: attHistEntry.reason || '', lateMinutes: attHistEntry.lateMinutes || attHistEntry.minutesLate || 0, minutesLate: attHistEntry.minutesLate || attHistEntry.lateMinutes || 0 };
       student.homework = savedNote?.homeworkStatus ? { status: savedNote.homeworkStatus, score: savedNote.homeworkScore ?? null, reason: savedNote.homeworkReason || '' } : (attHistEntry.homework || { status: 'uncollected' });
@@ -2907,7 +3183,7 @@ if($('#manage-employees-button'))$('#manage-employees-button').onclick=()=>{
   if (window.__featuresApp?.renderStaffManagement) {
     window.__featuresApp.renderStaffManagement();
   }
-};$('#close-employee-admin').onclick=()=>$('#employee-admin-dialog').close();$('#employee-admin-form').addEventListener('submit',event=>{event.preventDefault();const edits=[...document.querySelectorAll('[data-employee-id]')].map(row=>({id:row.dataset.employeeId,code:row.querySelector('[data-employee-code]').value.trim(),name:row.querySelector('[data-employee-name]').value.trim(),role:row.querySelector('[data-employee-role]').value})),code=$('#employee-code-input').value.trim(),name=$('#employee-name-input').value.trim(),role=$('#employee-role-input').value;if(!code||!name)return;const combinedCodes=[...edits.map(item=>item.code),...(code?[code]:[])];if(new Set(combinedCodes.map(item=>item.toLocaleUpperCase())).size!==combinedCodes.length){toast('Mã nhân viên phải là duy nhất.');return;}for(const update of edits){const old=masterData.employees.find(item=>item.id===update.id);if(!old)continue;Object.assign(old,update);if(old.role!==update.role){for(const item of classCatalog){for(const field of ['teacherIds','assistantIds','officeIds'])item[field]=(item[field]||[]).filter(id=>id!==old.id);if(update.role==='teacher')(item.teacherIds||=[]).push(old.id);if(update.role==='assistant')(item.assistantIds||=[]).push(old.id);if(update.role==='office')(item.officeIds||=[]).push(old.id);item.teacherId=item.teacherIds?.[0]||'';item.teacherName=employeeNames(item.teacherIds||[]);item.assistantName=employeeNames(item.assistantIds||[]);}}}if(code){masterData.employees.push(normalizeEmployeeAccount({id:'employee-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,5),code,name,role,password:role==='admin'?'admin123':'123456',isActive:true,authVersion:1}));}saveMasterData(masterData);saveClassCatalog(classCatalog);$('#employee-code-input').value='';$('#employee-name-input').value='';renderEmployeeAdminList();renderMainMenu();toast('Đã lưu danh sách nhân viên.');});
+};$('#close-employee-admin').onclick=()=>$('#employee-admin-dialog').close();$('#employee-admin-form').addEventListener('submit',event=>{event.preventDefault();const edits=[...document.querySelectorAll('[data-employee-id]')].map(row=>({id:row.dataset.employeeId,code:row.querySelector('[data-employee-code]').value.trim(),name:row.querySelector('[data-employee-name]').value.trim(),role:row.querySelector('[data-employee-role]').value})),code=$('#employee-code-input').value.trim(),name=$('#employee-name-input').value.trim(),role=$('#employee-role-input').value;if(!code||!name)return;const combinedCodes=[...edits.map(item=>item.code),...(code?[code]:[])];if(new Set(combinedCodes.map(item=>item.toLocaleUpperCase())).size!==combinedCodes.length){toast('Mã nhân viên phải là duy nhất.');return;}for(const update of edits){const old=masterData.employees.find(item=>item.id===update.id);if(!old)continue;Object.assign(old,update);Object.assign(old,normalizeEmployeeAccount(old));if(old.role!==update.role){for(const item of classCatalog){for(const field of ['teacherIds','assistantIds','officeIds'])item[field]=(item[field]||[]).filter(id=>id!==old.id);if(update.role==='teacher')(item.teacherIds||=[]).push(old.id);if(update.role==='assistant')(item.assistantIds||=[]).push(old.id);if(update.role==='office')(item.officeIds||=[]).push(old.id);item.teacherId=item.teacherIds?.[0]||'';item.teacherName=employeeNames(item.teacherIds||[]);item.assistantName=employeeNames(item.assistantIds||[]);}}}if(code){masterData.employees.push(normalizeEmployeeAccount({id:'employee-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,5),code,name,role,password:role==='admin'?'admin123':'123456',isActive:true,authVersion:1}));}saveMasterData(masterData);saveClassCatalog(classCatalog);$('#employee-code-input').value='';$('#employee-name-input').value='';renderEmployeeAdminList();renderMainMenu();toast('Đã lưu danh sách nhân viên.');});
 function fillSessionStaffSelect(select,role,selectedIds=[]){const names=masterData.employees.filter(employee=>employee.role===role).map(employee=>'<option value="'+escapeHtml(employee.id)+'" '+(selectedIds.includes(employee.id)?'selected':'')+'>'+escapeHtml(employee.name)+' · '+escapeHtml(employee.code)+'</option>').join('');select.innerHTML='<option value="@none">Không phân công '+(role==='assistant'?'trợ giảng':'giáo viên')+'</option>'+names;for(const option of select.options)if(option.value==='@none')option.selected=false;}
 function openSessionChange(classId){const item=classCatalog.find(row=>row.id===classId);if(!item)return;$('#session-change-class-id').value=classId;const date=occurrenceDate(item).toLocaleDateString('sv-SE');$('#session-change-date').value=date;const existing=getSessionChange(classId,date);$('#session-change-type').value=existing?.status==='cancelled'?'cancel':existing?.status==='makeup'?'makeup':existing?.note?'staff_change':'staff_change';$('#session-makeup-date').value='';$('#makeup-date-field').hidden=!['makeup','holiday_makeup'].includes($('#session-change-type').value);$('#session-change-note').value=existing?.note||'';fillSessionStaffSelect($('#session-change-teachers'),'teacher',existing?.teacherIds||[]);fillSessionStaffSelect($('#session-change-assistants'),'assistant',existing?.assistantIds||[]);$('#session-change-dialog').showModal();}
 $('#close-session-change').onclick=()=>$('#session-change-dialog').close();$('#cancel-session-change').onclick=()=>$('#session-change-dialog').close();$('#session-change-type').onchange=event=>{$('#makeup-date-field').hidden=!['makeup','holiday_makeup'].includes(event.target.value);};$('#session-change-form').addEventListener('submit',event=>{event.preventDefault();const classId=$('#session-change-class-id').value,item=classCatalog.find(row=>row.id===classId),date=$('#session-change-date').value,type=$('#session-change-type').value;if(!item||!date)return;const readIds=select=>{const ids=[...select.selectedOptions].map(option=>option.value);if(ids.includes('@none'))return [];return ids.length?ids:undefined;},teacherIds=readIds($('#session-change-teachers')),assistantIds=readIds($('#session-change-assistants')),note=$('#session-change-note').value.trim(),makeRecord=(sessionDate,status)=>({classId,date:sessionDate,status,teacherIds,assistantIds,note,updatedAt:Date.now(),updatedBy:currentEmployeeId});if(type==='holiday_makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Nghỉ lễ'};const makeupDate=$('#session-makeup-date').value;if(makeupDate)sessionChanges[sessionChangeKey(classId,makeupDate)]={...makeRecord(makeupDate,'makeup'),sourceDate:date,note:note||'Buổi học bù'};}else if(type==='cancel'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Lớp nghỉ'};}else if(type==='makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'makeup'),note:note||'Buổi học bù'};}else{sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'scheduled')};}saveClassSessionChanges(sessionChanges);$('#session-change-dialog').close();renderMainMenu();toast('Đã lưu điều chỉnh cho buổi học.');});
@@ -3289,10 +3565,13 @@ function renderStudentList(){
     const sessNote=(student.sessionNotes||[]).find(n=>n.classId===CURRENT_CLASS_ID&&n.date===checklistDate);
 
     const rawAtt = place?.entry.attendance
-      || (inLate ? (student.attendance || { status: 'late' }) : null)
+      || (inLate ? (student.attendance || (attHist ? { status: attHist.status, arrivalTime: attHist.time || attHist.arrivalTime, lateMinutes: attHist.lateMinutes ?? attHist.minutesLate } : { status: 'late' })) : null)
       || (attHist ? { status: attHist.status, reason: attHist.reason, arrivalTime: attHist.time || attHist.arrivalTime, lateMinutes: attHist.lateMinutes ?? attHist.minutesLate } : null);
+    const lateCheckDet = rawAtt ? resolveLateDetails(student, place?.entry || { attendance: rawAtt }) : null;
     const attendance = (rawAtt && (rawAtt.status === 'late' || inLate))
-      ? { ...rawAtt, status: 'late', ...resolveLateDetails(student, place?.entry || { attendance: rawAtt }) }
+      ? (lateCheckDet?.isLate
+          ? { ...rawAtt, status: 'late', ...lateCheckDet }
+          : { ...rawAtt, status: 'present', arrivalTime: lateCheckDet?.arrivalTime || rawAtt.arrivalTime || null, lateMinutes: 0, minutesLate: 0 })
       : rawAtt;
 
     const homework = place?.entry.homework
@@ -3300,7 +3579,7 @@ function renderStudentList(){
       || (sessNote?.homeworkStatus ? { status: sessNote.homeworkStatus, score: sessNote.homeworkScore ?? null, reason: sessNote.homeworkReason || '' } : null)
       || { status: 'uncollected' };
 
-    const seat = desk ? `Dãy ${desk.ci+1} · Bàn ${desk.di+1}` : (inLate ? 'Khu vực đến muộn' : 'Chưa xếp chỗ');
+    const seat = desk ? `Dãy ${desk.ci+1} · Bàn ${desk.di+1}` : (inLate ? (attendance?.status === 'late' ? 'Cuối lớp (Đi muộn)' : 'Cuối lớp (Chờ xếp chỗ)') : 'Chưa xếp chỗ');
     const testScore = place?.entry.testScore ?? checklist.testScores?.[id] ?? student.testScore ?? null;
     const note = sessionNoteFor(id) || '';
     const parts = splitStudentName(student.name);
@@ -4706,9 +4985,10 @@ function render(){
           const warnTag = isUncollectedWarn ? '<span class="seat-warning-tag warn-uncollected" title="Chưa thu BTVN buổi này">!</span>' : (isDebtWarn ? '<span class="seat-warning-tag warn-debt" title="Nợ BTVN buổi trước">!</span>' : '');
           const makeupBadgeHtml = isMakeupStudent ? '<span class="makeup-seat-badge" title="Học sinh học bù">BÙ</span>' : '';
           const lateSeatDet = (student && att?.status === 'late') ? resolveLateDetails(student, entry) : null;
-          const lateSeatPillHtml = lateSeatDet ? `<span class="seat-late-pill" title="Đi muộn ${lateSeatDet.lateMinutes} phút (${escapeHtml(lateSeatDet.arrivalTime)})">Muộn ${lateSeatDet.lateMinutes}p</span>` : '';
+          const isSeatActuallyLate = Boolean(lateSeatDet && lateSeatDet.isLate && lateSeatDet.lateMinutes > 0);
+          const lateSeatPillHtml = isSeatActuallyLate ? `<span class="seat-late-pill" title="Đi muộn ${lateSeatDet.lateMinutes} phút (${escapeHtml(lateSeatDet.arrivalTime)})">Muộn ${lateSeatDet.lateMinutes}p</span>` : '';
           const isSearchMatch = Boolean(mapSearchQuery && student && matchesAcronymOrText(`${student.name} ${student.studentCode || ''} ${(student.tags || []).join(' ')}`, mapSearchQuery));
-          return `<button class="seat occupied seat-token ${student?'seat-named':'seat-anonymous'} ${isMakeupStudent?'seat-makeup':''} ${att?.status==='late'?'attendance-late':''} ${warnClass} ${isSearchMatch?'seat-search-match':''}" data-entry-index="${origIndex}" data-desk-id="${desk.id}" data-student-id="${escapeHtml(student?.id||'')}" aria-label="${student?`${student.name}${isMakeupStudent?' (Học bù)':''}; BTVN ${homeworkLabel(hw?.status)}; ${attendanceLabel(att?.status)}`:'Biểu tượng học sinh chưa ghi tên'}">${student?'':`<span class="seat-symbol">${studentIcon}</span>`}${student?`<span class="seat-name">${makeupBadgeHtml}${escapeHtml(student.name)}${lateSeatPillHtml}${renderInlineTags(student)}${warnTag}<span class="homework-mark ${homeworkClass(hw?.status)}" title="${homeworkLabel(hw?.status)}">${homeworkSymbol(hw)}</span></span>`:hw?.status&&hw.status!=='uncollected'?`<span class="homework-mark ${homeworkClass(hw.status)}" title="${homeworkLabel(hw.status)}">${homeworkSymbol(hw)}</span>`:''}</button>`;
+          return `<button class="seat occupied seat-token ${student?'seat-named':'seat-anonymous'} ${isMakeupStudent?'seat-makeup':''} ${isSeatActuallyLate?'attendance-late':''} ${warnClass} ${isSearchMatch?'seat-search-match':''}" data-entry-index="${origIndex}" data-desk-id="${desk.id}" data-student-id="${escapeHtml(student?.id||'')}" aria-label="${student?`${student.name}${isMakeupStudent?' (Học bù)':''}; BTVN ${homeworkLabel(hw?.status)}; ${attendanceLabel(att?.status)}`:'Biểu tượng học sinh chưa ghi tên'}">${student?'':`<span class="seat-symbol">${studentIcon}</span>`}${student?`<span class="seat-name">${makeupBadgeHtml}${escapeHtml(student.name)}${lateSeatPillHtml}${renderInlineTags(student)}${warnTag}<span class="homework-mark ${homeworkClass(hw?.status)}" title="${homeworkLabel(hw?.status)}">${homeworkSymbol(hw)}</span></span>`:hw?.status&&hw.status!=='uncollected'?`<span class="homework-mark ${homeworkClass(hw.status)}" title="${homeworkLabel(hw.status)}">${homeworkSymbol(hw)}</span>`:''}</button>`;
         }).join('') : '<span class="seat-empty-text">Bàn trống</span>';
 
         // Render desk divider right on the exact border between upper desk and lower desk
@@ -4764,11 +5044,7 @@ function render(){
     const attSt = seated?.entry.attendance?.status || (lateQueue.includes(stu.id) ? 'late' : null) || (stu.attendanceHistory || []).find(h => h.classId === CURRENT_CLASS_ID && h.date === checklistDate)?.status;
     return Boolean(attSt);
   });
-  if (allRosterMarked) {
-    localStorage.setItem(`lopvui.finalized-session.v1.${CURRENT_CLASS_ID}.${checklistDate}`, JSON.stringify({ autoCompleted: true, updatedAt: Date.now() }));
-  } else {
-    localStorage.removeItem(`lopvui.finalized-session.v1.${CURRENT_CLASS_ID}.${checklistDate}`);
-  }
+  // Avoid writing/removing localStorage keys inside render() so pure UI renders never trigger unnecessary Cloud pushes
   const finalizedBadge = $('#finalized-indicator-badge'); if (finalizedBadge) finalizedBadge.hidden = true;
   if (isNoHwActive) {
     $('#homework-count').textContent = '0';
@@ -4800,8 +5076,12 @@ function render(){
     if(!s)return '';
     const isMakeup = s.studentType === 'makeup' || !(s.classIds || []).includes(CURRENT_CLASS_ID);
     const lateDet = resolveLateDetails(s, null);
-    return `<button type="button" class="late-token ${isMakeup ? 'late-makeup' : ''}" data-late-key="${id}" aria-label="${s.name}; kéo vào bàn"><span></span><span class="late-name">${isMakeup ? '<span class="makeup-seat-badge">BÙ</span>' : ''}${escapeHtml(s.name)}</span><small>Muộn ${lateDet.lateMinutes}p · ${escapeHtml(lateDet.arrivalTime)}</small></button>`;
-  }).join('')||'<span class="late-empty">Học sinh đến muộn sẽ chờ tại đây. Kéo vào chỗ ngồi khi sẵn sàng (kể cả khi đã khóa sửa sơ đồ).</span>';
+    const isActuallyLate = Boolean(lateDet.isLate && lateDet.lateMinutes > 0 && s.attendance?.status !== 'present');
+    const subText = isActuallyLate
+      ? `Muộn ${lateDet.lateMinutes}p · ${escapeHtml(lateDet.arrivalTime)}`
+      : `${lateDet.arrivalTime ? `Đến ${escapeHtml(lateDet.arrivalTime)}` : 'Đúng giờ'} · Chờ xếp chỗ`;
+    return `<button type="button" class="late-token ${isActuallyLate ? '' : 'late-token-ontime'} ${isMakeup ? 'late-makeup' : ''}" data-late-key="${id}" aria-label="${s.name}; kéo vào bàn"><span></span><span class="late-name">${isMakeup ? '<span class="makeup-seat-badge">BÙ</span>' : ''}${escapeHtml(s.name)}</span><small>${subText}</small></button>`;
+  }).join('')||'<span class="late-empty">Học sinh đến lớp (chờ xếp chỗ) hoặc đi muộn sẽ chờ tại đây. Kéo vào bàn khi sẵn sàng.</span>';
   const placements = new Map(occupants.filter(({ entry }) => entry.studentId).map(place => [place.entry.studentId, place]));
   const lateSet = new Set(lateQueue);
   const allRosterAndMakeup = [...classStudents(), ...makeupStudents.filter(m => isMakeupInCurrentSession(m, placements, lateSet))];
@@ -5329,22 +5609,35 @@ function assignStudent(id){
   entry.homework = resolvedHw;
   person.homework = resolvedHw;
 
-  const isLateStudent = wasInLateQueue || person.attendance?.status === 'late' || entry.attendance?.status === 'late';
+  const lateDetCandidate = resolveLateDetails(person, entry);
+  const isLateStudent = Boolean(
+    (person.attendance?.status === 'late' || entry.attendance?.status === 'late') &&
+    lateDetCandidate.isLate &&
+    lateDetCandidate.lateMinutes > 0
+  );
   if (isLateStudent) {
-    const lateDet = resolveLateDetails(person, entry);
     entry.attendance = {
       status: 'late',
-      arrivalTime: lateDet.arrivalTime,
-      lateMinutes: lateDet.lateMinutes,
-      minutesLate: lateDet.lateMinutes,
+      arrivalTime: lateDetCandidate.arrivalTime,
+      lateMinutes: lateDetCandidate.lateMinutes,
+      minutesLate: lateDetCandidate.lateMinutes,
       reason: entry.homework?.reason || null,
       note: entry.homework?.note || ''
     };
-    person.arrivalTime = lateDet.arrivalTime;
-    person.lateMinutes = lateDet.lateMinutes;
+    person.arrivalTime = lateDetCandidate.arrivalTime;
+    person.lateMinutes = lateDetCandidate.lateMinutes;
   } else {
-    entry.attendance = { status: 'present', reason: entry.homework?.reason || null, note: entry.homework?.note || '' };
+    entry.attendance = {
+      status: 'present',
+      arrivalTime: lateDetCandidate.arrivalTime || person.arrivalTime || null,
+      lateMinutes: 0,
+      minutesLate: 0,
+      reason: entry.homework?.reason || null,
+      note: entry.homework?.note || ''
+    };
+    person.lateMinutes = 0;
   }
+  entry._updatedAt = Date.now();
   person.attendance = entry.attendance;
   person.updatedAt = Date.now();
   person.revision = (Number(person.revision) || 0) + 1;
@@ -5549,9 +5842,9 @@ $('#save-homework').onclick=()=>{
     saveSessionNote(person.id,sharedNote);
     person.homework=entry.homework;
     recordStudentScore(person,entry.homework.score,'BTVN');
-    const isLateAtt = entry.attendance?.status === 'late' || person.attendance?.status === 'late';
+    const lateDet = resolveLateDetails(person, entry);
+    const isLateAtt = Boolean((entry.attendance?.status === 'late' || person.attendance?.status === 'late') && lateDet.isLate && lateDet.lateMinutes > 0);
     if (isLateAtt) {
-      const lateDet = resolveLateDetails(person, entry);
       entry.attendance = {
         status: 'late',
         arrivalTime: lateDet.arrivalTime,
@@ -5564,11 +5857,16 @@ $('#save-homework').onclick=()=>{
       person.lateMinutes = lateDet.lateMinutes;
     } else {
       entry.attendance = {
-        status: entry.attendance?.status || 'present',
+        status: 'present',
+        arrivalTime: lateDet.arrivalTime || person.arrivalTime || null,
+        lateMinutes: 0,
+        minutesLate: 0,
         reason: entry.homework.reason,
         note: sharedNote
       };
+      person.lateMinutes = 0;
     }
+    entry._updatedAt = Date.now();
     person.attendance=entry.attendance;
     if (activeSpot?.deskId !== undefined) {
       recordSeatHistory(person, activeSpot.deskId, activeSpot.index);
@@ -6031,18 +6329,21 @@ function syncLiveSessionData() {
     });
 
     // Sync late queue students not yet seated
-    lateQueue.forEach(id => {
+    const unseatedQueueIds = lateQueue.filter(id => !entries.some(e => e.entry.studentId === id));
+    unseatedQueueIds.forEach(id => {
       const stu = studentById(id);
       if (!stu) return;
-      if (entries.some(e => e.entry.studentId === id)) return;
-      const att = stu.attendance || { status: 'late', lateMinutes: 10, minutesLate: 10 };
+      const det = resolveLateDetails(stu, null);
+      const att = stu.attendance || { status: det.isLate ? 'late' : 'present', arrivalTime: det.arrivalTime, lateMinutes: det.lateMinutes, minutesLate: det.lateMinutes };
       const hw = stu.homework || { status: 'uncollected' };
       recordHistory(stu, att, hw);
     });
 
     // Build real-time session snapshot for session-history-repository
-    const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status !== 'late').length;
-    const lateCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'late').length + lateQueue.filter(id => !entries.some(e => e.entry.studentId === id)).length;
+    const unseatedLateCount = unseatedQueueIds.filter(id => isStudentLateInSession(studentById(id), null)).length;
+    const unseatedOnTimeCount = unseatedQueueIds.length - unseatedLateCount;
+    const presentCount = entries.filter(e => e.entry.studentId && !isStudentLateInSession(studentById(e.entry.studentId), e.entry)).length + unseatedOnTimeCount;
+    const lateCount = entries.filter(e => e.entry.studentId && isStudentLateInSession(studentById(e.entry.studentId), e.entry)).length + unseatedLateCount;
     const totalRoster = roster.length;
     const absentCount = Math.max(0, totalRoster - presentCount - lateCount);
     const hwCount = entries.filter(e => e.entry.studentId && (e.entry.homework?.status === 'submitted' || e.entry.homework?.status === 'graded')).length;
@@ -6055,8 +6356,9 @@ function syncLiveSessionData() {
 
     const studentsSnapshot = roster.map(s => {
       const seated = entries.find(e => e.entry.studentId === s.id);
-      const isLate = lateSet.has(s.id) || seated?.entry.attendance?.status === 'late';
-      const isPresent = Boolean(seated);
+      const inQueue = lateSet.has(s.id);
+      const isLate = isStudentLateInSession(s, seated?.entry || null);
+      const isPresent = Boolean(seated || inQueue);
       const attHist = (s.attendanceHistory || []).find(h => h.classId === CURRENT_CLASS_ID && h.date === checklistDate);
       const attStatus = isLate ? 'late' : isPresent ? 'present' : (attHist?.status || 'unrecorded');
       const minsLate = seated?.entry.attendance?.lateMinutes || seated?.entry.attendance?.minutesLate || s.attendance?.lateMinutes || attHist?.lateMinutes || 0;
@@ -6242,16 +6544,14 @@ function selectLateStudent(id){
     detailSec.style.display = 'block';
   }
   renderStudentInfo('#late-history', student);
-  const existingLateMins = student.attendance?.lateMinutes ?? student.lateMinutes ?? null;
+  const isAlreadyInCurrentSession = lateQueue.includes(id) || allEntries().some(e => e.entry.studentId === id);
   const nowHHMM = new Date().toTimeString().slice(0,5);
-  $('#arrival-time').value = student.arrivalTime || student.attendance?.arrivalTime || nowHHMM;
-  if ($('#late-minutes-input')) {
-    $('#late-minutes-input').value = existingLateMins ? String(existingLateMins) : '';
-  }
+  const sessionArrTime = isAlreadyInCurrentSession ? (student.attendance?.arrivalTime || student.arrivalTime || '') : '';
+  $('#arrival-time').value = sessionArrTime || $('#arrival-time').value || nowHHMM;
   setLateHomeworkFields(student.homework||{status:'uncollected'});
   renderHomeworkHistoryPanel('late');
   window.__featuresApp?.updateLateMinutesCalculation?.('arrival');
-  toast(`✓ Đã chọn học sinh đi muộn: ${student.name}`);
+  toast(`✓ Đã chọn học sinh: ${student.name}`);
 }
 
 $('#arrival-time')?.addEventListener('change', () => {
@@ -6277,7 +6577,9 @@ $('#late-button').onclick=()=>{
   if ($('#late-new-or-makeup')) { $('#late-new-or-makeup').classList.remove('active'); $('#late-new-or-makeup').textContent = '+ Học sinh mới / Học bù'; }
   $('#save-arrival-time').checked=true;
   $('#arrival-time-field').hidden=false;
+  if ($('#arrival-time')) $('#arrival-time').value = new Date().toTimeString().slice(0, 5);
   if ($('#late-minutes-input')) $('#late-minutes-input').value = '';
+  window.__featuresApp?.updateLateMinutesCalculation?.('arrival');
   selectedLateId=null;
   lateHomeworkSelected=false;
   setLateHomeworkFields({status:'uncollected'});
@@ -6384,39 +6686,65 @@ $('#save-late').onclick=()=>{
   if(status==='not_submitted'&&!$('#late-homework-reason').value){toast('Chọn lý do chưa nộp BTVN.');return;}
   if(scoreValue&&(Number.isNaN(parsedScore)||parsedScore<0||parsedScore>10)){toast('Điểm BTVN cần nằm trong khoảng 0 đến 10 (VD: 7,5).');return;}
   const student=studentById(selectedLateId),sharedNote=$('#late-general-note').value.trim(),homework={status,score:parsedScore!==null&&!Number.isNaN(parsedScore)?parsedScore:null,reason:status==='not_submitted'?$('#late-homework-reason').value:null,note:sharedNote};
-  const calcMins = window.__featuresApp?.updateLateMinutesCalculation?.() || 0;
-  const manualMins = Number($('#late-minutes-input')?.value || 0);
-  const lateMinutes = Math.max(1, manualMins > 0 ? manualMins : (calcMins > 0 ? calcMins : 10));
   const startTimeStr = extractClassStartTimeStr(activeClassConfig());
+  const rawArrivalVal = ($('#arrival-time')?.value || '').trim();
+  let lateMinutes = 0;
+  if (rawArrivalVal && /^\d{1,2}:\d{2}$/.test(rawArrivalVal)) {
+    const [stH, stM] = startTimeStr.split(':').map(Number);
+    const [arH, arM] = rawArrivalVal.split(':').map(Number);
+    const diff = ((arH || 0) * 60 + (arM || 0)) - ((stH || 0) * 60 + (stM || 0));
+    lateMinutes = diff > 0 ? diff : 0;
+  } else {
+    const calcMins = window.__featuresApp?.updateLateMinutesCalculation?.('arrival') ?? 0;
+    lateMinutes = Math.max(0, Number(calcMins) || 0);
+  }
+  const isActuallyLate = lateMinutes > 0;
   const arrivalVal = $('#save-arrival-time').checked
-    ? ($('#arrival-time').value || _addLateMinutesToTimeStr(startTimeStr, lateMinutes))
-    : _addLateMinutesToTimeStr(startTimeStr, lateMinutes);
-  const attendance={status:'late',arrivalTime:arrivalVal,lateMinutes,minutesLate:lateMinutes};
+    ? (rawArrivalVal || _addLateMinutesToTimeStr(startTimeStr, lateMinutes))
+    : (isActuallyLate ? _addLateMinutesToTimeStr(startTimeStr, lateMinutes) : startTimeStr);
+
+  const attendance = isActuallyLate
+    ? { status: 'late', arrivalTime: arrivalVal, lateMinutes, minutesLate: lateMinutes }
+    : { status: 'present', arrivalTime: arrivalVal, lateMinutes: 0, minutesLate: 0 };
+
   saveSessionNote(student.id,sharedNote);
   student.homework=homework;
   recordStudentScore(student,homework.score,'BTVN');
   student.attendance=attendance;
   student.arrivalTime=attendance.arrivalTime;
-  student.lateMinutes=lateMinutes;
-  // Also update if student is already seated on a desk
+  student.lateMinutes=attendance.lateMinutes;
+
+  // Nếu học sinh đến trước/đúng giờ: xếp xuống khu vực Cuối lớp (lateQueue) và không gắn tag muộn
   const existingSeat = allEntries().find(e => e.entry.studentId === student.id);
   if (existingSeat) {
-    existingSeat.entry.attendance = attendance;
-    existingSeat.entry.homework = homework;
+    if (!isActuallyLate) {
+      for (const { desk } of desks()) {
+        deskItems[desk.id] = (deskItems[desk.id] || []).filter(entry => entry.studentId !== student.id);
+      }
+      if (!lateQueue.includes(student.id)) lateQueue.push(student.id);
+    } else {
+      existingSeat.entry.attendance = attendance;
+      existingSeat.entry.homework = homework;
+      existingSeat.entry._updatedAt = Date.now();
+    }
+  } else if (!lateQueue.includes(student.id)) {
+    lateQueue.push(student.id);
   }
+
   recordHistory(student,attendance,homework);
-  if (!existingSeat && !lateQueue.includes(student.id)) lateQueue.push(student.id);
   student.updatedAt = Date.now();
   student.revision = (Number(student.revision) || 0) + 1;
   logAdminSessionAction(
-    `Điểm danh đi muộn: HS ${student.name}`,
-    `Muộn ${lateMinutes} phút (đến lúc ${arrivalVal}) · BTVN: ${homeworkLabel(homework.status)}${homework.score !== null ? ` (${homework.score}đ)` : ''}${sharedNote ? ` · Ghi chú: "${sharedNote}"` : ''}`,
+    isActuallyLate ? `Điểm danh đi muộn: HS ${student.name}` : `Xếp xuống cuối lớp (đến đúng/trước giờ): HS ${student.name}`,
+    `${isActuallyLate ? `Muộn ${lateMinutes} phút (đến lúc ${arrivalVal})` : `Đến lúc ${arrivalVal} (Đúng giờ, không gắn tag muộn)`} · BTVN: ${homeworkLabel(homework.status)}${homework.score !== null ? ` (${homework.score}đ)` : ''}${sharedNote ? ` · Ghi chú: "${sharedNote}"` : ''}`,
     'attendance'
   );
   save();
   closeDialogSafely('#late-dialog');
   refreshAllActiveViews();
-  toast(`✓ ${student.name} đã điểm danh đi muộn ${lateMinutes}p (${arrivalVal}) & lưu BTVN.`);
+  toast(isActuallyLate
+    ? `✓ ${student.name} đã điểm danh đi muộn ${lateMinutes}p (${arrivalVal}) & lưu BTVN.`
+    : `✓ ${student.name} đến trước/đúng giờ (${arrivalVal}) — đã xếp xuống cuối lớp (không gắn tag muộn).`);
 };
 
 function startDrag(source,element,x,y){
@@ -6427,7 +6755,7 @@ $('#student-pool').addEventListener('pointerdown',e=>{const t=e.target.closest('
 classroom.addEventListener('pointerdown',e=>{const t=e.target.closest('[data-entry-index]');if(t)startDrag({type:'seat',deskId:t.dataset.deskId,index:Number(t.dataset.entryIndex)},t,e.clientX,e.clientY);});
 $('#late-area').addEventListener('pointerdown',e=>{const t=e.target.closest('[data-late-key]');if(t)startDrag({type:'late',studentId:t.dataset.lateKey},t,e.clientX,e.clientY);});
 document.addEventListener('pointermove',e=>{if(!dragState)return;if(!dragState.started&&Math.hypot(e.clientX-dragState.x,e.clientY-dragState.y)>7){dragState.started=true;dragState.element.classList.add('dragging');document.body.classList.add('is-dragging');dragState.ghost=document.createElement('div');dragState.ghost.className='drag-ghost';dragState.ghost.textContent=dragState.source.type==='pool'?'Học sinh mới':dragState.source.type==='late'?studentById(dragState.source.studentId)?.name:'Di chuyển trong bàn';document.body.append(dragState.ghost);}if(dragState.started){dragState.ghost.style.left=`${e.clientX+12}px`;dragState.ghost.style.top=`${e.clientY+12}px`;const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.desk[data-desk-id]');if(target!==dragState.targetDesk){dragState.targetDesk?.classList.remove('desk-drop-target');dragState.targetDesk?.querySelector('.drop-marker')?.remove();dragState.targetDesk=target;target?.classList.add('desk-drop-target');}if(target){dragState.dropIndex=dropIndexAt(target,e.clientX,e.clientY);showDropMarker(target,dragState.dropIndex);}}});
-document.addEventListener('pointerup',e=>{if(!dragState)return;const drag=dragState;dragState=null;drag.element.classList.remove('dragging');drag.targetDesk?.classList.remove('desk-drop-target');drag.targetDesk?.querySelector('.drop-marker')?.remove();drag.ghost?.remove();document.body.classList.remove('is-dragging');if(!drag.started)return;suppressClick=true;setTimeout(()=>suppressClick=false,120);const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.desk[data-desk-id]');if(!target)return;const deskId=target.dataset.deskId,index=dropIndexAt(target,e.clientX,e.clientY);let entry,source;if(drag.source.type==='pool'){entry={studentId:null,homework:{status:'uncollected'},attendance:null};source={type:'pool'};}else if(drag.source.type==='late'){const person=studentById(drag.source.studentId);const lateDet=resolveLateDetails(person,null);const attObj={...(person.attendance||{}),status:'late',arrivalTime:lateDet.arrivalTime,lateMinutes:lateDet.lateMinutes,minutesLate:lateDet.lateMinutes};person.attendance=attObj;person.arrivalTime=lateDet.arrivalTime;person.lateMinutes=lateDet.lateMinutes;entry={studentId:person.id,homework:person.homework||{status:'uncollected'},attendance:attObj};source={type:'late',studentId:person.id};}else{source=drag.source;entry=deskItems[source.deskId][source.index];}if(entry){insertIntoDesk(entry,deskId,index,source);toast('Đã đặt vào vị trí thả trong bàn; học sinh ở bàn khác không bị chuyển.');}});
+document.addEventListener('pointerup',e=>{if(!dragState)return;const drag=dragState;dragState=null;drag.element.classList.remove('dragging');drag.targetDesk?.classList.remove('desk-drop-target');drag.targetDesk?.querySelector('.drop-marker')?.remove();drag.ghost?.remove();document.body.classList.remove('is-dragging');if(!drag.started)return;suppressClick=true;setTimeout(()=>suppressClick=false,120);const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.desk[data-desk-id]');if(!target)return;const deskId=target.dataset.deskId,index=dropIndexAt(target,e.clientX,e.clientY);let entry,source;if(drag.source.type==='pool'){entry={studentId:null,homework:{status:'uncollected'},attendance:null};source={type:'pool'};}else if(drag.source.type==='late'){const person=studentById(drag.source.studentId);const lateDet=resolveLateDetails(person,null);const isLate=Boolean(lateDet.isLate&&lateDet.lateMinutes>0&&person.attendance?.status!=='present');const attObj=isLate?{...(person.attendance||{}),status:'late',arrivalTime:lateDet.arrivalTime,lateMinutes:lateDet.lateMinutes,minutesLate:lateDet.lateMinutes}:{...(person.attendance||{}),status:'present',arrivalTime:lateDet.arrivalTime||person.arrivalTime||null,lateMinutes:0,minutesLate:0};person.attendance=attObj;person.arrivalTime=attObj.arrivalTime;person.lateMinutes=attObj.lateMinutes;entry={studentId:person.id,homework:person.homework||{status:'uncollected'},attendance:attObj,_updatedAt:Date.now()};source={type:'late',studentId:person.id};}else{source=drag.source;entry=deskItems[source.deskId][source.index];}if(entry){insertIntoDesk(entry,deskId,index,source);toast('Đã đặt vào vị trí thả trong bàn; học sinh ở bàn khác không bị chuyển.');}});
 $('#student-pool').addEventListener('click',e=>{if(suppressClick){e.preventDefault();return;}const token=e.target.closest('[data-pool-token]');if(!token)return;const first=desks()[0]?.desk;if(!first){growLayoutIfNeeded();}const deskId=desks()[0].desk.id,index=(deskItems[deskId]||[]).length;addAnonymousToDesk(deskId,index,false);});
 $('#finalize-button').onclick=()=>{if(window.__featuresApp?.handleFinalizeAttendance){window.__featuresApp.handleFinalizeAttendance();return;}const pending=allEntries().filter(x=>!x.entry.studentId||!(x.entry.attendance||studentById(x.entry.studentId)?.attendance));if(pending.length){toast(`${pending.length} biểu tượng/học sinh chưa ghi tên hoặc chưa điểm danh.`);return;}addClassActivity(`${currentStaffName()} đã chốt danh sách ${allEntries().length} học sinh có mặt`,'attendance');toast(`Đã hoàn tất ghi nhận ${allEntries().length} học sinh có mặt.`);};
 $('#close-students').onclick=()=>$('#students-dialog').close();
@@ -6556,6 +6884,8 @@ const features = setupFeatures({
   resetSessionForNewShift: (classId, date, staffName) => resetSessionForNewShift(classId, date, staffName),
   navigateTo: (path, replace) => navigateTo(path, replace),
   resolveLateDetails: (student, entry, clsObj, dateStr) => resolveLateDetails(student, entry, clsObj, dateStr),
+  isStudentLateInSession: (student, entry, clsObj, dateStr) => isStudentLateInSession(student, entry, clsObj, dateStr),
+  pullFromFirebaseCloudNow: (src) => pullFromFirebaseCloudNow(src),
   openManagePastSessionDialog: (classId, editDate) => openManagePastSessionDialog(classId, editDate),
   deleteClassSessionAndStudentData: (classId, date) => deleteClassSessionAndStudentData(classId, date)
 });
@@ -6569,15 +6899,32 @@ function refreshUIOnRealtimeUpdate(changedKeys = [], source = 'remote') {
   classCatalog = loadClassCatalog(localStorage, masterData);
   sessionChanges = loadClassSessionChanges();
   const loginScr = document.getElementById('login-screen');
-  if (loginScr && !loginScr.hidden && loginScr.style.display !== 'none') return;
+  if (loginScr && !loginScr.hidden && loginScr.style.display !== 'none') {
+    window.__featuresApp?.renderLoginScreen?.();
+    return;
+  }
   const openDlg = document.querySelector('dialog[open]');
   if (openDlg) {
+    // Keep in-memory session state synchronized even while a dialog is open so saving from the dialog never overwrites another device's concurrent edits!
+    const preservedSpot = activeSpot ? { ...activeSpot } : null;
+    const preservedEntry = (preservedSpot && deskItems[preservedSpot.deskId]?.[preservedSpot.index])
+      ? structuredClone(deskItems[preservedSpot.deskId][preservedSpot.index])
+      : null;
+    reloadClassSessionData(CURRENT_CLASS_ID, checklistDate);
+    if (preservedSpot && preservedEntry && openDlg.id === 'seat-dialog') {
+      deskItems[preservedSpot.deskId] = deskItems[preservedSpot.deskId] || [];
+      if (deskItems[preservedSpot.deskId][preservedSpot.index]) {
+        deskItems[preservedSpot.deskId][preservedSpot.index] = preservedEntry;
+      }
+    }
     if (openDlg.id === 'attendance-export-dialog') {
-      reloadClassSessionData(CURRENT_CLASS_ID, checklistDate);
       window.__featuresApp?.renderReportCenter?.();
     } else if (openDlg.id === 'session-admin-log-dialog') {
       updateAdminLogButtonVisibilityAndCount();
       renderSessionAdminLogDialogContent();
+    }
+    if (!$('#class-workspace')?.hidden) {
+      render();
     }
     _rtPendingUIRefreshAfterDialog = true;
     return;
@@ -7115,10 +7462,13 @@ function renderScoresView() {
     const sessNote = (s.sessionNotes || []).find(n => n.classId === CURRENT_CLASS_ID && n.date === checklistDate);
 
     const rawAtt = place?.entry.attendance
-      || (inLate ? (s.attendance || { status: 'late' }) : null)
+      || (inLate ? (s.attendance || (attHist ? { status: attHist.status, arrivalTime: attHist.time || attHist.arrivalTime, lateMinutes: attHist.lateMinutes ?? attHist.minutesLate } : { status: 'late' })) : null)
       || (attHist ? { status: attHist.status, reason: attHist.reason, arrivalTime: attHist.time || attHist.arrivalTime, lateMinutes: attHist.lateMinutes ?? attHist.minutesLate } : null);
+    const lateScoreCheck = rawAtt ? resolveLateDetails(s, place?.entry || { attendance: rawAtt }) : null;
     const attendance = (rawAtt && (rawAtt.status === 'late' || inLate))
-      ? { ...rawAtt, status: 'late', ...resolveLateDetails(s, place?.entry || { attendance: rawAtt }) }
+      ? (lateScoreCheck?.isLate
+          ? { ...rawAtt, status: 'late', ...lateScoreCheck }
+          : { ...rawAtt, status: 'present', arrivalTime: lateScoreCheck?.arrivalTime || rawAtt.arrivalTime || null, lateMinutes: 0, minutesLate: 0 })
       : rawAtt;
 
     const hw = place?.entry.homework
@@ -7539,23 +7889,31 @@ document.addEventListener('click', (e) => {
       const person = studentById(tapAssignSource.studentId);
       if (person) {
         const lateDet = resolveLateDetails(person, null);
-        const attObj = {
+        const isLate = Boolean(lateDet.isLate && lateDet.lateMinutes > 0 && person.attendance?.status !== 'present');
+        const attObj = isLate ? {
           ...(person.attendance || {}),
           status: 'late',
           arrivalTime: lateDet.arrivalTime,
           lateMinutes: lateDet.lateMinutes,
           minutesLate: lateDet.lateMinutes
+        } : {
+          ...(person.attendance || {}),
+          status: 'present',
+          arrivalTime: lateDet.arrivalTime || person.arrivalTime || null,
+          lateMinutes: 0,
+          minutesLate: 0
         };
         person.attendance = attObj;
-        person.arrivalTime = lateDet.arrivalTime;
-        person.lateMinutes = lateDet.lateMinutes;
+        person.arrivalTime = attObj.arrivalTime;
+        person.lateMinutes = attObj.lateMinutes;
         const entry = {
           studentId: person.id,
           homework: person.homework || { status: 'uncollected' },
-          attendance: attObj
+          attendance: attObj,
+          _updatedAt: Date.now()
         };
         insertIntoDesk(entry, deskId, list.length, { type: 'late', studentId: person.id });
-        toast(`✓ Đã xếp ${person.name} (Muộn ${lateDet.lateMinutes}p) vào bàn.`);
+        toast(isLate ? `✓ Đã xếp ${person.name} (Muộn ${lateDet.lateMinutes}p) vào bàn.` : `✓ Đã xếp ${person.name} vào bàn.`);
       }
       setTapAssignSource(null);
     } else if (tapAssignSource.type === 'pool') {
@@ -7663,8 +8021,9 @@ function getSeatingSnapshotData() {
   });
 
   const lateQueueStudents = lateQueue.map(id => studentById(id)).filter(Boolean);
-  lateQueueStudents.forEach(() => {
-    lateCount++;
+  lateQueueStudents.forEach(s => {
+    if (isStudentLateInSession(s, null)) lateCount++;
+    else presentCount++;
   });
 
   return {
@@ -7794,10 +8153,10 @@ function buildSeatingSnapshotHtml() {
 
   const lateQueueHtml = data.lateQueueStudents.length ? `
     <div class="snap-late-queue">
-      <strong>Học sinh đi muộn (chờ xếp chỗ):</strong>
+      <strong>Học sinh cuối lớp (chờ xếp chỗ):</strong>
       ${data.lateQueueStudents.map(s => {
         const lDet = resolveLateDetails(s, null);
-        return `<span class="snap-late-pill">${escapeHtml(s.name)} (Muộn ${lDet.lateMinutes}p · ${escapeHtml(lDet.arrivalTime)})</span>`;
+        return `<span class="snap-late-pill">${escapeHtml(s.name)} (${lDet.isLate ? `Muộn ${lDet.lateMinutes}p · ${escapeHtml(lDet.arrivalTime)}` : `Đúng giờ${lDet.arrivalTime ? ' · ' + escapeHtml(lDet.arrivalTime) : ''}`})</span>`;
       }).join('')}
     </div>
   ` : '';

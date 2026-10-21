@@ -1,6 +1,6 @@
 // Local repository boundary for master data and class configuration.
 // Supports Birth Year (Năm sinh: 2009, 2010, ...) and automatic layout sync from Room Templates.
-import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=4.0.0';
+import { loadRoomTemplates, buildLayoutFromTemplate } from './room-template-repository.js?v=4.2.0';
 
 const CATALOG_KEY = 'lopvui.class-catalog.v1';
 const MASTER_KEY = 'lopvui.master-data.v1';
@@ -150,9 +150,87 @@ function _deriveKeyBytes(seedStr) {
   return bytes;
 }
 
+export function normalizeAccountCode(rawCode) {
+  return String(rawCode || '')
+    .normalize('NFC')
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+}
+
+export function foldAccountIdentifier(rawStr) {
+  return String(rawStr || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+export function compactAccountToken(rawStr) {
+  return foldAccountIdentifier(rawStr).replace(/[^a-z0-9]/g, '');
+}
+
+export function normalizeLeadingZerosToken(rawStr) {
+  return compactAccountToken(rawStr).replace(/([a-z]+)0+(\d+)/g, '$1$2');
+}
+
+export function findMatchingEmployeeAccount(employees, rawIdentifier) {
+  if (!Array.isArray(employees) || !rawIdentifier) return null;
+  const list = employees.map(normalizeEmployeeAccount).filter(Boolean);
+  const normInput = normalizeAccountCode(rawIdentifier);
+  if (!normInput) return null;
+
+  // 1. Exact NFC uppercase match on code or id
+  let match = list.find(e => normalizeAccountCode(e.code) === normInput || normalizeAccountCode(e.id) === normInput);
+  if (match) return match;
+
+  // 2. Folded (accent-insensitive, case-insensitive) match on code, id, or email
+  const foldedInput = foldAccountIdentifier(rawIdentifier);
+  match = list.find(e =>
+    foldAccountIdentifier(e.code) === foldedInput ||
+    foldAccountIdentifier(e.id) === foldedInput ||
+    (e.email && foldAccountIdentifier(e.email) === foldedInput)
+  );
+  if (match) return match;
+
+  // 3. Compact token match ignoring spaces, hyphens, underscores, dots (e.g. "TA 001" == "TA-001" == "TA001")
+  const compactInput = compactAccountToken(rawIdentifier);
+  if (compactInput) {
+    match = list.find(e => compactAccountToken(e.code) === compactInput);
+    if (match) return match;
+
+    // 4. Leading-zero tolerant code match (e.g. "TA01" vs "TA001" if unique)
+    const noZeroInput = normalizeLeadingZerosToken(rawIdentifier);
+    const zeroMatches = list.filter(e => normalizeLeadingZerosToken(e.code) === noZeroInput);
+    if (zeroMatches.length === 1) return zeroMatches[0];
+  }
+
+  // 5. Match by full name (exact case-insensitive or accent-folded if unique) or phone number
+  const exactNameMatches = list.filter(e => String(e.name || '').normalize('NFC').trim().toUpperCase() === normInput);
+  if (exactNameMatches.length === 1) return exactNameMatches[0];
+
+  const foldedNameMatches = list.filter(e =>
+    foldAccountIdentifier(e.name) === foldedInput ||
+    compactAccountToken(e.name) === compactInput
+  );
+  if (foldedNameMatches.length === 1) return foldedNameMatches[0];
+
+  const digitsInput = String(rawIdentifier || '').replace(/\D/g, '');
+  if (digitsInput.length >= 8) {
+    const phoneMatches = list.filter(e => String(e.phone || '').replace(/\D/g, '') === digitsInput);
+    if (phoneMatches.length === 1) return phoneMatches[0];
+  }
+
+  return null;
+}
+
 export function hashStaffPassword(code, plainPassword) {
-  const cleanCode = String(code || '').trim().toUpperCase();
-  const raw = `lv_pbkdf_salt_v33::${cleanCode}::${String(plainPassword ?? '')}::${VAULT_SECRET}`;
+  const cleanCode = normalizeAccountCode(code);
+  const cleanPass = String(plainPassword ?? '').normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  const raw = `lv_pbkdf_salt_v33::${cleanCode}::${cleanPass}::${VAULT_SECRET}`;
   let h1 = 0xdeadbeef ^ raw.length;
   let h2 = 0x41c6ce57 ^ raw.length;
   let h3 = 0x9e3779b9 ^ raw.length;
@@ -188,15 +266,15 @@ export function verifySessionAuthSignature(account, emp) {
   const norm = normalizeEmployeeAccount(emp);
   if (account.role !== norm.role || account.employeeId !== norm.id) return false;
   if (!account.authSig) {
-    // Allow seamless migration for non-admin sessions whose role matches masterData
     return norm.role === account.role;
   }
   return account.authSig === computeSessionAuthSignature(norm);
 }
 
 export function encryptStaffPasswordForAdmin(code, plainPassword) {
-  const cleanCode = String(code || '').trim().toUpperCase();
-  const text = encodeURIComponent(String(plainPassword ?? ''));
+  const cleanCode = normalizeAccountCode(code);
+  const cleanPass = String(plainPassword ?? '').normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  const text = encodeURIComponent(cleanPass);
   const keyStream = _deriveKeyBytes(`${VAULT_SECRET}::${cleanCode}::v33`);
   const hexParts = [];
   for (let i = 0; i < text.length; i++) {
@@ -212,7 +290,7 @@ export function decryptStaffPasswordForAdmin(emp, callerRole = 'assistant') {
   const cipher = String(emp.passwordCipher || '');
   if (cipher.startsWith('lvcipher_v2$')) {
     const parts = cipher.split('$');
-    const cleanCode = parts[1] || String(emp.code || '').trim().toUpperCase();
+    const cleanCode = parts[1] || normalizeAccountCode(emp.code);
     const hex = parts[2] || '';
     const keyStream = _deriveKeyBytes(`${VAULT_SECRET}::${cleanCode}::v33`);
     let encoded = '';
@@ -232,15 +310,24 @@ export function decryptStaffPasswordForAdmin(emp, callerRole = 'assistant') {
 
 export function normalizeEmployeeAccount(emp) {
   if (!emp || typeof emp !== 'object') return null;
-  const code = String(emp.code || '').trim().toUpperCase() || 'NV000';
+  const code = normalizeAccountCode(emp.code) || 'NV000';
   const role = ['admin', 'office', 'teacher', 'assistant'].includes(emp.role) ? emp.role : 'assistant';
   const defaultPwd = role === 'admin' ? 'admin123' : '123456';
 
   let plainToEncrypt = null;
   if (emp.password !== undefined && emp.password !== null && String(emp.password).trim() !== '') {
-    plainToEncrypt = String(emp.password).trim();
+    plainToEncrypt = String(emp.password).normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
   } else if (!emp.passwordHash || !String(emp.passwordHash).startsWith('lvhash_v2$') || !emp.passwordCipher) {
     plainToEncrypt = defaultPwd;
+  } else {
+    // If emp.code changed after passwordHash was generated, re-key passwordHash & passwordCipher to match the new code
+    const hashSaltCode = String(emp.passwordHash || '').split('$')[1] || '';
+    if (hashSaltCode && normalizeAccountCode(hashSaltCode) !== code) {
+      const recovered = decryptStaffPasswordForAdmin(emp, 'admin');
+      if (recovered && recovered !== '••••••••') {
+        plainToEncrypt = recovered;
+      }
+    }
   }
 
   const passwordHash = plainToEncrypt
@@ -255,6 +342,7 @@ export function normalizeEmployeeAccount(emp) {
   const copy = {
     ...emp,
     code,
+    name: String(emp.name || '').normalize('NFC').trim(),
     role,
     passwordHash,
     passwordCipher,
@@ -262,7 +350,6 @@ export function normalizeEmployeeAccount(emp) {
     authVersion,
     updatedAt: emp.updatedAt || 1728100000000
   };
-  // Strictly strip plaintext password so it never exists in localStorage or Firebase
   delete copy.password;
   return copy;
 }
@@ -270,9 +357,25 @@ export function normalizeEmployeeAccount(emp) {
 export function verifyStaffPassword(emp, inputPassword) {
   if (!emp) return false;
   const norm = normalizeEmployeeAccount(emp);
-  const candidate = String(inputPassword ?? '').trim();
+  const candidate = String(inputPassword ?? '').normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
   if (!candidate) return false;
-  return hashStaffPassword(norm.code, candidate) === norm.passwordHash;
+  if (hashStaffPassword(norm.code, candidate) === norm.passwordHash) {
+    return true;
+  }
+  // Fallback 1: check against saltCode embedded in lvhash_v2$<saltCode>$<hex>
+  const embeddedCode = String(norm.passwordHash || '').split('$')[1] || '';
+  if (embeddedCode && hashStaffPassword(embeddedCode, candidate) === norm.passwordHash) {
+    return true;
+  }
+  // Fallback 2: check against decrypted admin cipher (handles legacy NFD/NFC or case variations)
+  const decrypted = decryptStaffPasswordForAdmin(norm, 'admin');
+  if (decrypted && decrypted !== '••••••••') {
+    const cleanDec = String(decrypted).normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    if (cleanDec === candidate || cleanDec.toLowerCase() === candidate.toLowerCase()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function loadMasterData(storage = localStorage) {
@@ -281,7 +384,6 @@ export function loadMasterData(storage = localStorage) {
     const saved = JSON.parse(raw || 'null');
     if (saved && Array.isArray(saved.subjects) && Array.isArray(saved.employees) && saved.employees.length > 0) {
       const employees = saved.employees.map(normalizeEmployeeAccount).filter(Boolean);
-      // Always guarantee at least 1 active Admin account exists so system is never locked out
       if (!employees.some(item => item.role === 'admin' && item.isActive !== false)) {
         const defaultAdmin = normalizeEmployeeAccount(masterDefaults.employees.find(e => e.role === 'admin'));
         const existingAdminIdx = employees.findIndex(e => e.code === defaultAdmin.code || e.id === defaultAdmin.id);
@@ -295,14 +397,13 @@ export function loadMasterData(storage = localStorage) {
       return { ...saved, employees };
     }
   } catch {}
-  const seeded = {
+  // IMPORTANT: Do NOT call storage.setItem here when localStorage is empty!
+  // Calling setItem during initial read marks local storage as dirty (localTs = Date.now())
+  // and blocks Firebase Cloud from syncing the real employee accounts to new devices.
+  return {
     subjects: structuredClone(masterDefaults.subjects),
     employees: masterDefaults.employees.map(normalizeEmployeeAccount)
   };
-  try {
-    storage.setItem(MASTER_KEY, JSON.stringify(seeded));
-  } catch {}
-  return seeded;
 }
 
 export function saveMasterData(data, storage = localStorage) {
@@ -328,9 +429,6 @@ export function loadClassCatalog(storage = localStorage, masters = loadMasterDat
   } catch {}
   if (!hasStoredKey || !Array.isArray(saved)) {
     saved = structuredClone(seedClasses);
-    try {
-      storage.setItem(CATALOG_KEY, JSON.stringify(saved));
-    } catch {}
   }
 
   return saved.map(item => resolveClass(item, masters, storage));

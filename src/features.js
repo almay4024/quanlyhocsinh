@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=4.1.0';
+import { matchesAcronymOrText } from './student-search.js?v=4.2.0';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.1.0';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.1.0';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.1.0';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.2.0';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.2.0';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.2.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.1.0';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.2.0';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -30,7 +30,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=4.1.0';
+} from './excel-import-export.js?v=4.2.0';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -42,7 +42,7 @@ import {
   getStaffShiftData,
   getStudentClassDeepDive,
   evaluateStudentEarlyWarning
-} from './data/session-history-repository.js?v=4.1.0';
+} from './data/session-history-repository.js?v=4.2.0';
 
 export function setupFeatures(ctx) {
   const {
@@ -223,12 +223,12 @@ export function setupFeatures(ctx) {
     return true;
   }
 
-  function handleLoginByCredentials(rawCode, rawPassword, rememberMe = true) {
-    const cleanCode = String(rawCode || '').trim().toUpperCase();
-    const cleanPass = String(rawPassword ?? '').trim();
+  async function handleLoginByCredentials(rawCode, rawPassword, rememberMe = true) {
+    const cleanCode = normalizeAccountCode(rawCode);
+    const cleanPass = String(rawPassword ?? '').normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 
     if (!cleanCode) {
-      setLoginError('Vui lòng nhập Mã nhân viên (VD: AD001, TA001, GV001, VP001).');
+      setLoginError('Vui lòng nhập Mã nhân viên hoặc Tên đăng nhập (VD: AD001, TA001, GV001).');
       $('#login-staff-code-input')?.focus();
       return false;
     }
@@ -238,12 +238,27 @@ export function setupFeatures(ctx) {
       return false;
     }
 
-    const master = getMasterData();
-    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
-    const emp = employees.find(e => e.code.toUpperCase() === cleanCode || e.id.toUpperCase() === cleanCode);
+    let master = getMasterData();
+    let employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+    let emp = findMatchingEmployeeAccount(employees, rawCode);
+
+    // Nếu thiết bị chưa kịp tải danh sách tài khoản mới nhất từ Firebase Cloud (hoặc Admin vừa tạo/đổi mật khẩu), tự động đồng bộ nhanh từ Cloud rồi kiểm tra lại!
+    if ((!emp || !verifyStaffPassword(emp, cleanPass)) && typeof ctx.pullFromFirebaseCloudNow === 'function') {
+      try {
+        const submitBtn = $('#login-submit-btn');
+        const origText = submitBtn?.textContent;
+        if (submitBtn) submitBtn.textContent = 'Đang đồng bộ tài khoản...';
+        await ctx.pullFromFirebaseCloudNow('login-verify');
+        if (submitBtn && origText) submitBtn.textContent = origText;
+        master = loadMasterData();
+        if (ctx.setMasterData) ctx.setMasterData(master);
+        employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+        emp = findMatchingEmployeeAccount(employees, rawCode);
+      } catch {}
+    }
 
     if (!emp) {
-      setLoginError(`Mã nhân viên "${cleanCode}" không tồn tại trong hệ thống. Vui lòng kiểm tra lại.`);
+      setLoginError(`Tài khoản "${String(rawCode || '').trim()}" không tồn tại trong hệ thống. Vui lòng kiểm tra lại Mã nhân viên hoặc liên hệ Admin.`);
       $('#login-staff-code-input')?.focus();
       return false;
     }
@@ -254,7 +269,7 @@ export function setupFeatures(ctx) {
     }
 
     if (!verifyStaffPassword(emp, cleanPass)) {
-      setLoginError(`Mật khẩu không chính xác cho mã nhân viên ${emp.code}. Vui lòng thử lại hoặc liên hệ Admin.`);
+      setLoginError(`Mật khẩu không chính xác cho tài khoản ${emp.code} (${emp.name}). Vui lòng thử lại hoặc liên hệ Admin.`);
       $('#login-password-input')?.focus();
       return false;
     }
@@ -265,8 +280,7 @@ export function setupFeatures(ctx) {
   function handleLogin(empIdOrCode, optionalPassword = null) {
     const master = getMasterData();
     const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
-    const cleanTarget = String(empIdOrCode || '').trim().toUpperCase();
-    const emp = employees.find(e => e.id === empIdOrCode || e.code.toUpperCase() === cleanTarget);
+    const emp = findMatchingEmployeeAccount(employees, empIdOrCode);
     if (!emp) {
       toast('Không tìm thấy tài khoản nhân viên.');
       return false;
@@ -1538,9 +1552,15 @@ export function setupFeatures(ctx) {
     const dialog = $('#finalize-dialog');
     if (!dialog) return;
 
+    const unseatedQueue = lateQueueList.filter(id => !assignedIdsSet.has(id));
+    const unseatedLateCnt = unseatedQueue.filter(id => ctx.isStudentLateInSession ? ctx.isStudentLateInSession(studentById(id), null) : true).length;
+    const unseatedPresentCnt = unseatedQueue.length - unseatedLateCnt;
+    const seatedLateCnt = occupants.filter(x => x.entry.studentId && (ctx.isStudentLateInSession ? ctx.isStudentLateInSession(studentById(x.entry.studentId), x.entry) : x.entry.attendance?.status === 'late')).length;
+    const totalPresentOnTime = (assignedIdsSet.size - seatedLateCnt) + unseatedPresentCnt;
+    const totalLate = seatedLateCnt + unseatedLateCnt;
     $('#fin-stat-total').textContent = roster.length;
-    $('#fin-stat-present').textContent = assignedIdsSet.size;
-    $('#fin-stat-late').textContent = lateQueueList.length;
+    $('#fin-stat-present').textContent = totalPresentOnTime + totalLate;
+    $('#fin-stat-late').textContent = totalLate;
     $('#fin-stat-absent').textContent = absentStudents.length;
 
     const listContainer = $('#finalize-absent-list');
@@ -1638,48 +1658,43 @@ export function setupFeatures(ctx) {
   // ----------------------------------------------------
   // 6. TỰ ĐỘNG TÍNH SỐ PHÚT ĐI MUỘN (PRD §5 TAB 3)
   // ----------------------------------------------------
-  function updateLateMinutesCalculation(source = 'auto') {
+  function updateLateMinutesCalculation(source = 'arrival') {
     const currentClass = getActiveClassConfig();
     let startTimeStr = currentClass?.startTime || '';
     if (!startTimeStr || !/^\d{1,2}:\d{2}$/.test(String(startTimeStr).trim())) {
-      const m = String(currentClass?.scheduleText || '').match(/(\d{1,2}:\d{2})/);
+      const m = String(currentClass?.scheduleText || currentClass?.time || '').match(/(\d{1,2}:\d{2})/);
       startTimeStr = m ? m[1] : '18:00';
     }
     const [startH, startM] = startTimeStr.split(':').map(Number);
+    const normStartStr = `${String(startH || 0).padStart(2, '0')}:${String(startM || 0).padStart(2, '0')}`;
     const startTotal = (startH || 0) * 60 + (startM || 0);
 
     const arrInput = $('#arrival-time');
     const minsInput = $('#late-minutes-input');
 
     let arrivalTimeStr = arrInput?.value || new Date().toTimeString().slice(0, 5);
+    if (arrInput && !arrInput.value) {
+      arrInput.value = arrivalTimeStr;
+    }
     let [arrH, arrM] = arrivalTimeStr.split(':').map(Number);
     let arrTotal = (arrH || 0) * 60 + (arrM || 0);
-    let diff = arrTotal - startTotal;
+    let lateMins = 0;
 
     if (source === 'minutes' && minsInput) {
-      const typedMins = Math.max(1, Math.min(300, Number(minsInput.value) || 10));
-      diff = typedMins;
+      const rawVal = String(minsInput.value ?? '').trim();
+      const typedMins = rawVal === '' ? 0 : Math.max(0, Math.min(720, Number(rawVal) || 0));
+      lateMins = typedMins;
       const computedTotal = ((startTotal + typedMins) % 1440 + 1440) % 1440;
       const hh = String(Math.floor(computedTotal / 60)).padStart(2, '0');
       const mm = String(computedTotal % 60).padStart(2, '0');
       arrivalTimeStr = `${hh}:${mm}`;
       if (arrInput) arrInput.value = arrivalTimeStr;
     } else {
-      if (diff <= 0 || diff > 360) {
-        const fallbackMins = Math.max(1, Number(minsInput?.value) || 10);
-        diff = fallbackMins;
-        if (source === 'arrival' && arrInput?.value) {
-          diff = Math.max(1, Number(minsInput?.value) || 5);
-        } else {
-          const computedTotal = ((startTotal + fallbackMins) % 1440 + 1440) % 1440;
-          const hh = String(Math.floor(computedTotal / 60)).padStart(2, '0');
-          const mm = String(computedTotal % 60).padStart(2, '0');
-          arrivalTimeStr = `${hh}:${mm}`;
-          if (arrInput) arrInput.value = arrivalTimeStr;
-        }
-      }
+      // Tự động tính số phút đi muộn = Giờ đến lớp - Giờ vào học
+      const rawDiff = arrTotal - startTotal;
+      lateMins = rawDiff > 0 ? rawDiff : 0;
       if (minsInput && document.activeElement !== minsInput) {
-        minsInput.value = String(diff);
+        minsInput.value = String(lateMins);
       }
     }
 
@@ -1687,16 +1702,22 @@ export function setupFeatures(ctx) {
     const arrLabel = $('#late-arrival-display');
     const badge = $('#late-minutes-badge');
 
-    if (startLabel) startLabel.textContent = startTimeStr;
+    if (startLabel) startLabel.textContent = normStartStr;
     if (arrLabel) arrLabel.textContent = arrivalTimeStr;
 
     if (badge) {
-      badge.textContent = `Đi muộn ${diff} phút (${arrivalTimeStr})`;
-      badge.style.background = '#ffecd4';
-      badge.style.color = '#ab5d18';
+      if (lateMins > 0) {
+        badge.textContent = `Đi muộn ${lateMins} phút (${arrivalTimeStr})`;
+        badge.style.background = '#ffecd4';
+        badge.style.color = '#ab5d18';
+      } else {
+        badge.textContent = `Đến trước/đúng giờ (${arrivalTimeStr}) · Chỉ xếp xuống cuối lớp, không gắn tag muộn`;
+        badge.style.background = '#dcfce7';
+        badge.style.color = '#166534';
+      }
     }
 
-    return Math.max(1, diff);
+    return lateMins;
   }
 
   // ----------------------------------------------------
@@ -1806,8 +1827,8 @@ export function setupFeatures(ctx) {
     const entries = allEntries();
     const lateQueueIds = getLateQueue();
     const seated = entries.find(p => p.entry.studentId === student.id);
-    const isLate = lateQueueIds.includes(student.id) || seated?.entry.attendance?.status === 'late' || student.attendance?.status === 'late';
-    const isPresent = Boolean(seated);
+    const isLate = ctx.isStudentLateInSession ? ctx.isStudentLateInSession(student, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || student.attendance?.status === 'late');
+    const isPresent = Boolean(seated || lateQueueIds.includes(student.id));
     const isMakeup = student.studentType === 'makeup' || !(student.classIds || []).includes(currentClass.id);
 
     const attStatusText = isLate
@@ -1924,7 +1945,7 @@ export function setupFeatures(ctx) {
       const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'present').length;
       const lateList = roster.filter(s => {
         const seated = entries.find(p => p.entry.studentId === s.id);
-        return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
+        return ctx.isStudentLateInSession ? ctx.isStudentLateInSession(s, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late');
       });
       const absentList = regularRoster.filter(s => {
         const seated = entries.find(p => p.entry.studentId === s.id);
@@ -2112,8 +2133,8 @@ export function setupFeatures(ctx) {
                     ${sessionMakeups.map((s) => {
                       const { fam, giv } = getFamGiv(s);
                       const seated = entries.find(p => p.entry.studentId === s.id);
-                      const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late';
-                      const isPresent = Boolean(seated);
+                      const isLate = ctx.isStudentLateInSession ? ctx.isStudentLateInSession(s, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late');
+                      const isPresent = Boolean(seated || lateQueueIds.includes(s.id));
                       const attText = formatMergedAttendanceAndArrival(s, seated, isLate, isPresent, true, date, currentClass.id);
                       const hwScore = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
                       const testScore = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
@@ -2215,8 +2236,8 @@ export function setupFeatures(ctx) {
               ${roster.map((s) => {
                 const { fam, giv, isMakeup } = getFamGiv(s);
                 const seated = entries.find(p => p.entry.studentId === s.id);
-                const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
-                const isPresent = Boolean(seated);
+                const isLate = ctx.isStudentLateInSession ? ctx.isStudentLateInSession(s, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late');
+                const isPresent = Boolean(seated || lateQueueIds.includes(s.id));
                 const mergedAttStatus = formatMergedAttendanceAndArrival(s, seated, isLate, isPresent, isMakeup, date, currentClass.id);
                 const hwObj = seated?.entry.homework || s.homework || { status: 'uncollected' };
                 const hwStatusText = resolveHomeworkStatusWithReason(hwObj);
@@ -2296,7 +2317,7 @@ export function setupFeatures(ctx) {
     } else if (tabName === 'late-students') {
       const lateList = roster.filter(s => {
         const seated = entries.find(p => p.entry.studentId === s.id);
-        return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
+        return ctx.isStudentLateInSession ? ctx.isStudentLateInSession(s, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late');
       });
 
       container.innerHTML = `
@@ -2437,8 +2458,8 @@ export function setupFeatures(ctx) {
 
     const rows = roster.map((s) => {
       const seated = entries.find(p => p.entry.studentId === s.id);
-      const isLate = lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
-      const isPresent = Boolean(seated);
+      const isLate = ctx.isStudentLateInSession ? ctx.isStudentLateInSession(s, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late');
+      const isPresent = Boolean(seated || lateQueueIds.includes(s.id));
       const isMakeup = s.studentType === 'makeup' || !(s.classIds || []).includes(currentClass.id);
       const mergedAtt = formatMergedAttendanceAndArrival(s, seated, isLate, isPresent, isMakeup, date, currentClass.id);
       const hwObj = seated?.entry.homework || s.homework || { status: 'uncollected' };
@@ -4729,9 +4750,11 @@ export function setupFeatures(ctx) {
     const noHw = isNoHomeworkSession();
 
     const seatedNamed = entries.filter(e => e.entry.studentId && studentById(e.entry.studentId));
-    const presentCount = seatedNamed.filter(e => e.entry.attendance?.status !== 'late').length;
-    const lateCount = seatedNamed.filter(e => e.entry.attendance?.status === 'late').length +
-                      lateQueueIds.filter(id => !seatedNamed.some(e => e.entry.studentId === id)).length;
+    const unseatedQ = lateQueueIds.filter(id => !seatedNamed.some(e => e.entry.studentId === id));
+    const unseatedLate = unseatedQ.filter(id => ctx.isStudentLateInSession ? ctx.isStudentLateInSession(studentById(id), null) : true).length;
+    const unseatedOnTime = unseatedQ.length - unseatedLate;
+    const presentCount = seatedNamed.filter(e => !(ctx.isStudentLateInSession ? ctx.isStudentLateInSession(studentById(e.entry.studentId), e.entry) : e.entry.attendance?.status === 'late')).length + unseatedOnTime;
+    const lateCount = seatedNamed.filter(e => (ctx.isStudentLateInSession ? ctx.isStudentLateInSession(studentById(e.entry.studentId), e.entry) : e.entry.attendance?.status === 'late')).length + unseatedLate;
     const attendedIds = new Set([...seatedNamed.map(e => e.entry.studentId), ...lateQueueIds]);
     const absentCount = roster.filter(s => !attendedIds.has(s.id)).length;
     const hwDoneCount = seatedNamed.filter(e => {
@@ -4905,7 +4928,7 @@ export function setupFeatures(ctx) {
     const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'present').length;
     const lateList = roster.filter(s => {
       const seated = entries.find(p => p.entry.studentId === s.id);
-      return lateQueueIds.includes(s.id) || seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late';
+      return ctx.isStudentLateInSession ? ctx.isStudentLateInSession(s, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late');
     });
     const absentList = regularRoster.filter(s => {
       const seated = entries.find(p => p.entry.studentId === s.id);

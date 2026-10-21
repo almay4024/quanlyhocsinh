@@ -31,11 +31,9 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
 
   if (!Array.isArray(stored)) {
     stored = [];
-    if (storage) storage.setItem(STUDENTS_KEY, JSON.stringify(stored));
   }
   if (!Array.isArray(makeup)) {
     makeup = structuredClone(seedMakeupStudents);
-    if (storage) storage.setItem(MAKEUP_KEY, JSON.stringify(makeup));
   }
 
   const regular = stored.filter(student => {

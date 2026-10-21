@@ -9049,3 +9049,14 @@ button:active,
 .admin-log-cat-badge.cat-checklist { background: #fae8ff; color: #86198f; }
 .admin-log-cat-badge.cat-roster { background: #ffedd5; color: #9a3412; }
 .admin-log-cat-badge.cat-session { background: #e0e7ff; color: #1e40af; }
+
+/* v4.2: Học sinh đến trước/đúng giờ xếp chờ ở khu vực Cuối lớp (không gắn tag muộn) */
+.late-token.late-token-ontime {
+  background: #ecfdf5 !important;
+  border-color: #86efac !important;
+  color: #166534 !important;
+}
+.late-token.late-token-ontime small {
+  color: #15803d !important;
+  font-weight: 600 !important;
+}

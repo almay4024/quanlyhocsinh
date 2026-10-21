@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=4.1.0" />
+  <link rel="stylesheet" href="/src/styles.css?v=4.2.0" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.1</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.2</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -1745,8 +1745,8 @@ function jsonOut_(obj) {
               <label class="field-label" style="margin:0;">Giờ đến lớp
                 <input type="time" id="arrival-time" step="60" />
               </label>
-              <label class="field-label" style="margin:0;">Số phút đi muộn (phút)
-                <input type="number" id="late-minutes-input" min="1" max="300" step="1" inputmode="numeric" placeholder="VD: 10" />
+              <label class="field-label" style="margin:0;">Số phút đi muộn (tự tính theo giờ đến)
+                <input type="number" id="late-minutes-input" min="0" max="720" step="1" inputmode="numeric" placeholder="Tự tính (0 = đúng giờ)" />
               </label>
             </div>
 
@@ -2199,7 +2199,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.1</span></strong>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.2</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2218,8 +2218,10 @@ function jsonOut_(obj) {
               name="username"
               required
               autocomplete="username"
-              placeholder="Nhập tên đăng nhập / mã nhân viên..."
-              style="text-transform:uppercase; font-weight:700; letter-spacing:0.5px;"
+              autocapitalize="none"
+              spellcheck="false"
+              placeholder="Nhập mã nhân viên hoặc tên đăng nhập (VD: AD001, TA001)..."
+              style="font-weight:700; letter-spacing:0.3px;"
             />
           </label>
 
@@ -2393,7 +2395,7 @@ function jsonOut_(obj) {
     </div>
   </dialog>
 
-  <script type="module" src="/src/app.js?v=4.1.0"></script>
+  <script type="module" src="/src/app.js?v=4.2.0"></script>
 
   <!-- Hộp thoại Thêm / Sửa Ca Học Trong Quá Khứ -->
   <dialog id="past-session-manage-dialog" class="class-config-dialog">
