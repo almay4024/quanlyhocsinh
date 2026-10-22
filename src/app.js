@@ -1,14 +1,14 @@
-const APP_VERSION = "4.2.0";
+const APP_VERSION = "4.3.0";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.2.0';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.2.0';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.3.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.3.0';
 const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=4.2.0';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.2.0';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.2.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.2.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount } from './data/class-catalog-repository.js?v=4.2.0';
+import { setupFeatures } from './features.js?v=4.3.0';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.3.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.3.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.3.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount } from './data/class-catalog-repository.js?v=4.3.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -1312,7 +1312,7 @@ let classCatalog=loadClassCatalog(localStorage,masterData);
 const defaultClassId='class-math-8a-algebra';
 // Undo history & Teacher view state
 let isTeacherView = false;
-let isSeatingEditMode = true;
+let isSeatingEditMode = false;
 function updateSeatingEditBtn() {
   const btn = $('#toggle-seating-edit-btn');
   if (!btn) return;
@@ -1355,28 +1355,45 @@ function currentActorInfo() {
   return { id: empId, code, name, role };
 }
 
-let _activeAdminLogSession = { classId: null, date: null };
+let _activeAdminLogSession = { classId: 'all', date: 'all' };
 
 function logAdminSessionAction(action, detail = '', category = 'session', dedupeKey = '', customClassId = null, customDate = null) {
   try {
-    const targetClassId = customClassId || CURRENT_CLASS_ID;
-    const targetDate = customDate || checklistDate;
+    const targetClassId = customClassId || CURRENT_CLASS_ID || '_system_';
+    const targetDate = customDate || checklistDate || '_class_';
     if (!targetClassId || !targetDate) return;
+    const actor = currentActorInfo();
     if (typeof appendSessionAdminAuditLog === 'function') {
       appendSessionAdminAuditLog({
         classId: targetClassId,
         date: targetDate,
-        actor: currentActorInfo(),
+        actor,
         category,
         action,
         detail,
         dedupeKey
       }, localStorage);
+      // Nếu là hành động cấp quản lý ca (sửa ca, xoá ca, mở/đóng ca) mà có ngày cụ thể, ghi đồng thời vào mục quản lý lớp (_class_) để dễ tra cứu tổng hợp
+      if (targetDate !== '_class_' && (category === 'class' || action.startsWith('Xoá ca') || action.startsWith('Chỉnh sửa thông tin ca') || action.startsWith('Tạo bổ sung ca'))) {
+        appendSessionAdminAuditLog({
+          classId: targetClassId,
+          date: '_class_',
+          actor,
+          category: 'class',
+          action,
+          detail: `Ca ngày ${formatDateDDMMYYYY(targetDate)} · ${detail}`,
+          dedupeKey: dedupeKey ? `${dedupeKey}-cls` : ''
+        }, localStorage);
+      }
     }
     updateAdminLogButtonVisibilityAndCount();
     const dlg = document.getElementById('session-admin-log-dialog');
-    if (dlg && dlg.open && _activeAdminLogSession.classId === targetClassId && _activeAdminLogSession.date === targetDate) {
+    if (dlg && dlg.open) {
       renderSessionAdminLogDialogContent();
+    }
+    const mgmtPanel = document.getElementById('mgmt-panel-admin-log');
+    if (mgmtPanel && !mgmtPanel.hidden) {
+      renderManagementAdminLogPanel();
     }
   } catch (err) {
     console.warn('Admin audit log error:', err);
@@ -1384,29 +1401,52 @@ function logAdminSessionAction(action, detail = '', category = 'session', dedupe
 }
 window.__logAdminSessionAction = logAdminSessionAction;
 
+function formatDateDDMMYYYY(dateStr) {
+  const s = String(dateStr || '').trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return s || '—';
+}
+
+function formatTimestampFullVN(ts) {
+  if (!ts) return '—';
+  const d = new Date(Number(ts));
+  if (Number.isNaN(d.getTime())) return '—';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
+}
+
 function updateAdminLogButtonVisibilityAndCount() {
-  const btn = document.getElementById('session-admin-log-btn');
-  if (!btn) return;
   const isAdmin = selectedRole() === 'admin';
-  btn.hidden = !isAdmin;
-  btn.style.display = isAdmin ? 'inline-flex' : 'none';
-  if (!isAdmin) return;
-  const countBadge = document.getElementById('session-admin-log-count');
-  if (countBadge && CURRENT_CLASS_ID && checklistDate && typeof loadSessionAdminAuditLogs === 'function') {
-    const logs = loadSessionAdminAuditLogs(CURRENT_CLASS_ID, checklistDate, localStorage);
-    countBadge.textContent = String(logs.length);
+  const mgmtTab = document.getElementById('mgmt-tab-admin-log');
+  if (mgmtTab) {
+    mgmtTab.hidden = !isAdmin;
+    mgmtTab.style.display = isAdmin ? '' : 'none';
+  }
+  if (!isAdmin) {
+    const mgmtPanel = document.getElementById('mgmt-panel-admin-log');
+    if (mgmtPanel && !mgmtPanel.hidden) {
+      mgmtPanel.hidden = true;
+      document.getElementById('mgmt-tab-classes')?.click();
+    }
   }
 }
 window.__updateAdminLogBtnVisibility = updateAdminLogButtonVisibilityAndCount;
 
 const ADMIN_LOG_CATEGORY_LABELS = {
+  class: 'Cài đặt Lớp & Lịch học',
+  session: 'Quản lý Ca học',
   attendance: 'Điểm danh & Chỗ ngồi',
   homework: 'Bài tập về nhà',
   score: 'Điểm số',
-  student: 'Hồ sơ học sinh',
+  student: 'Hồ sơ Học sinh',
   checklist: 'Checklist & Bàn giao',
-  layout: 'Sơ đồ bàn ghế',
-  session: 'Quản lý ca học'
+  layout: 'Sơ đồ Bàn ghế'
 };
 
 const ADMIN_LOG_ROLE_LABELS = {
@@ -1420,11 +1460,14 @@ function buildCombinedAdminAuditLogs(classId, date) {
   const rawLogs = typeof loadSessionAdminAuditLogs === 'function'
     ? loadSessionAdminAuditLogs(classId, date, localStorage)
     : [];
+  if (date === '_class_') {
+    return [...rawLogs].sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0));
+  }
   const comm = loadClassCommunication(classId, date) || { activities: [], messages: [] };
   const existingKeys = new Set(rawLogs.map(item => `${Math.floor((Number(item.timestamp) || 0) / 5000)}_${item.action}`));
   const legacyItems = [];
 
-  (comm.activities || []).forEach(act => {
+  (comm.activities || comm.activity || []).forEach(act => {
     const ts = typeof act.createdAt === 'number' ? act.createdAt : (Date.parse(act.createdAt) || Date.now());
     const text = String(act.text || '').trim();
     if (!text) return;
@@ -1453,135 +1496,288 @@ function buildCombinedAdminAuditLogs(classId, date) {
       actorRole: inferredRole,
       category: act.kind === 'homework' ? 'homework' : act.kind === 'checklist' || act.kind === 'handover' ? 'checklist' : 'attendance',
       action: text,
-      detail: 'Tự động đồng bộ từ nhật ký hoạt động ca'
+      detail: ''
     });
   });
 
   return [...rawLogs, ...legacyItems].sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0));
 }
 
-function renderSessionAdminLogDialogContent() {
-  const classId = _activeAdminLogSession.classId || CURRENT_CLASS_ID;
-  const date = _activeAdminLogSession.date || checklistDate;
-  const cls = resolveClass(classId) || activeClassConfig() || { id: classId, name: classId, code: classId };
-  const dFormatted = date ? new Date(`${date}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+function collectAllAdminAuditStructure() {
+  // Discover all (classId, date) pairs from classCatalog, sessionHistory, and localStorage audit/communication keys
+  const classMap = new Map();
+  for (const c of (classCatalog || [])) {
+    if (c && c.id) {
+      classMap.set(c.id, { id: c.id, name: c.name || c.code || c.id, code: c.code || c.id, sessions: new Set(['_class_']) });
+    }
+  }
+  const allHist = loadSessionHistory() || [];
+  for (const s of allHist) {
+    if (!s || !s.classId) continue;
+    if (!classMap.has(s.classId)) {
+      classMap.set(s.classId, { id: s.classId, name: s.className || s.classCode || s.classId, code: s.classCode || s.classId, sessions: new Set(['_class_']) });
+    }
+    if (s.date) classMap.get(s.classId).sessions.add(s.date);
+  }
 
-  const titleEl = document.getElementById('admin-log-dialog-title');
-  if (titleEl) titleEl.textContent = `Nhật ký Admin · ${cls.code || cls.id} (${cls.name}) · ${dFormatted}`;
+  const auditPrefix = 'lopvui.admin-audit-log.v1.';
+  const commPrefix = 'lopvui.class-communication.v1.';
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k) continue;
+    if (k.startsWith(auditPrefix) || k.startsWith(commPrefix)) {
+      const rest = k.startsWith(auditPrefix) ? k.slice(auditPrefix.length) : k.slice(commPrefix.length);
+      const lastDot = rest.lastIndexOf('.');
+      if (lastDot <= 0) continue;
+      const cid = rest.slice(0, lastDot);
+      const dt = rest.slice(lastDot + 1);
+      if (!cid || !dt) continue;
+      if (!classMap.has(cid)) {
+        const resolved = resolveClass(cid);
+        classMap.set(cid, {
+          id: cid,
+          name: resolved?.name || cid,
+          code: resolved?.code || cid,
+          sessions: new Set(['_class_'])
+        });
+      }
+      classMap.get(cid).sessions.add(dt);
+    }
+  }
+  return { classMap, allHist };
+}
 
-  const allLogs = buildCombinedAdminAuditLogs(classId, date);
-  const accFilterEl = document.getElementById('admin-log-account-filter');
-  const catFilterEl = document.getElementById('admin-log-category-filter');
-  const searchEl = document.getElementById('admin-log-search-input');
-  const summaryEl = document.getElementById('admin-log-account-summary');
-  const tbody = document.getElementById('admin-log-table-tbody');
-  const footerCount = document.getElementById('admin-log-footer-count');
+function renderAdminLogTextToElements({
+  classSelectEl,
+  sessionSelectEl,
+  accountSelectEl,
+  searchInputEl,
+  chipsEl,
+  textOutputEl,
+  countEl,
+  preferredClassId = null,
+  preferredDate = null
+}) {
+  const { classMap, allHist } = collectAllAdminAuditStructure();
+  const classesList = Array.from(classMap.values());
 
-  // Group counts by account
+  // 1. Populate Class Select
+  if (classSelectEl) {
+    const curClassVal = preferredClassId !== null ? preferredClassId : (classSelectEl.value || 'all');
+    classSelectEl.innerHTML = `<option value="all">📚 Tất cả các lớp (${classesList.length} lớp)</option>` +
+      classesList.map(c => `<option value="${escapeHtml(c.id)}">🏫 ${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`).join('');
+    if ([...classSelectEl.options].some(o => o.value === curClassVal)) {
+      classSelectEl.value = curClassVal;
+    } else {
+      classSelectEl.value = 'all';
+    }
+  }
+  const selectedClassId = classSelectEl?.value || 'all';
+
+  // 2. Populate Session Select based on selectedClassId
+  if (sessionSelectEl) {
+    const curSessVal = preferredDate !== null ? preferredDate : (sessionSelectEl.value || 'all');
+    const sessionDatesSet = new Set();
+    if (selectedClassId === 'all') {
+      classesList.forEach(c => c.sessions.forEach(d => { if (d !== '_class_') sessionDatesSet.add(d); }));
+    } else if (classMap.has(selectedClassId)) {
+      classMap.get(selectedClassId).sessions.forEach(d => { if (d !== '_class_') sessionDatesSet.add(d); });
+    }
+    const sortedDates = Array.from(sessionDatesSet).sort((a, b) => String(b).localeCompare(String(a)));
+    sessionSelectEl.innerHTML =
+      `<option value="all">🗓 Tất cả các ca học & Thao tác lớp</option>` +
+      `<option value="_class_">⚙ Chỉ thao tác Cài đặt lớp / Edit ca / Xoá ca</option>` +
+      sortedDates.map(d => {
+        const histMatch = selectedClassId !== 'all'
+          ? allHist.find(s => s.classId === selectedClassId && s.date === d)
+          : null;
+        const lesson = histMatch?.lessonTitle ? ` · ${histMatch.lessonTitle}` : '';
+        return `<option value="${escapeHtml(d)}">📅 Ca ngày ${escapeHtml(formatDateDDMMYYYY(d))}${escapeHtml(lesson)}</option>`;
+      }).join('');
+    if ([...sessionSelectEl.options].some(o => o.value === curSessVal)) {
+      sessionSelectEl.value = curSessVal;
+    } else {
+      sessionSelectEl.value = 'all';
+    }
+  }
+  const selectedSession = sessionSelectEl?.value || 'all';
+
+  // 3. Gather all matching logs grouped by class -> session
+  const targetClasses = selectedClassId === 'all'
+    ? classesList
+    : (classMap.has(selectedClassId) ? [classMap.get(selectedClassId)] : []);
+
+  const allCollectedEntries = [];
+  const structuredByClass = [];
+
+  for (const clsObj of targetClasses) {
+    const datesToRead = [];
+    if (selectedSession === 'all') {
+      if (clsObj.sessions.has('_class_')) datesToRead.push('_class_');
+      const otherDates = Array.from(clsObj.sessions).filter(d => d !== '_class_').sort((a, b) => String(b).localeCompare(String(a)));
+      datesToRead.push(...otherDates);
+    } else {
+      datesToRead.push(selectedSession);
+    }
+
+    const sessionBlocks = [];
+    for (const dt of datesToRead) {
+      const items = buildCombinedAdminAuditLogs(clsObj.id, dt);
+      if (items.length > 0) {
+        items.forEach(it => allCollectedEntries.push(it));
+        sessionBlocks.push({ date: dt, items });
+      }
+    }
+    if (sessionBlocks.length > 0) {
+      structuredByClass.push({ cls: clsObj, sessionBlocks });
+    }
+  }
+
+  // 4. Compute Account Stats & Populate Account Filter
   const accountStats = new Map();
-  allLogs.forEach(item => {
+  allCollectedEntries.forEach(item => {
     const key = item.actorCode ? `${item.actorName} (${item.actorCode})` : (item.actorName || 'Không rõ');
     const prev = accountStats.get(key) || { key, name: item.actorName || 'Không rõ', code: item.actorCode || '', role: item.actorRole || 'assistant', count: 0 };
     prev.count++;
     accountStats.set(key, prev);
   });
 
-  if (accFilterEl) {
-    const prevVal = accFilterEl.value || 'all';
-    accFilterEl.innerHTML = `<option value="all">👤 Tất cả tài khoản (${allLogs.length})</option>` +
+  if (accountSelectEl) {
+    const prevAcc = accountSelectEl.value || 'all';
+    accountSelectEl.innerHTML = `<option value="all">👤 Tất cả tài khoản (${allCollectedEntries.length})</option>` +
       Array.from(accountStats.values()).map(acc => {
-        const roleLabel = ADMIN_LOG_ROLE_LABELS[acc.role] || acc.role;
-        const label = acc.code ? `${acc.name} · ${acc.code} (${roleLabel}) [${acc.count}]` : `${acc.name} (${roleLabel}) [${acc.count}]`;
-        return `<option value="${escapeHtml(acc.key)}">${escapeHtml(label)}</option>`;
+        const rLabel = ADMIN_LOG_ROLE_LABELS[acc.role] || acc.role;
+        const text = acc.code ? `${acc.name} · #${acc.code} (${rLabel}) [${acc.count}]` : `${acc.name} (${rLabel}) [${acc.count}]`;
+        return `<option value="${escapeHtml(acc.key)}">${escapeHtml(text)}</option>`;
       }).join('');
-    if ([...accFilterEl.options].some(o => o.value === prevVal)) {
-      accFilterEl.value = prevVal;
+    if ([...accountSelectEl.options].some(o => o.value === prevAcc)) {
+      accountSelectEl.value = prevAcc;
+    } else {
+      accountSelectEl.value = 'all';
     }
   }
 
-  const selectedAcc = accFilterEl?.value || 'all';
-  const selectedCat = catFilterEl?.value || 'all';
-  const query = normalizeSearchText(searchEl?.value || '');
+  const selectedAcc = accountSelectEl?.value || 'all';
+  const query = normalizeSearchText(searchInputEl?.value || '');
 
-  if (summaryEl) {
+  if (chipsEl) {
     if (!accountStats.size) {
-      summaryEl.innerHTML = `<span style="font-size:12.5px; color:#64748b;">Chưa có tài khoản nào thao tác dữ liệu trong ca này.</span>`;
+      chipsEl.innerHTML = `<span style="font-size:12.5px; color:#64748b;">Chưa có thao tác nào được ghi nhận.</span>`;
     } else {
-      summaryEl.innerHTML = `<button type="button" class="admin-log-acc-chip ${selectedAcc === 'all' ? 'active' : ''}" data-admin-log-acc-chip="all">Tất cả tài khoản <span class="chip-count">${allLogs.length}</span></button>` +
+      chipsEl.innerHTML = `<button type="button" class="admin-log-acc-chip ${selectedAcc === 'all' ? 'active' : ''}" data-admin-log-acc-chip="all">Tất cả tài khoản <span class="chip-count">${allCollectedEntries.length}</span></button>` +
         Array.from(accountStats.values()).map(acc => {
-          const roleLabel = ADMIN_LOG_ROLE_LABELS[acc.role] || acc.role;
-          const display = acc.code ? `${acc.name} (${acc.code} · ${roleLabel})` : `${acc.name} (${roleLabel})`;
+          const rLabel = ADMIN_LOG_ROLE_LABELS[acc.role] || acc.role;
+          const display = acc.code ? `${acc.name} (#${acc.code} · ${rLabel})` : `${acc.name} (${rLabel})`;
           return `<button type="button" class="admin-log-acc-chip ${selectedAcc === acc.key ? 'active' : ''}" data-admin-log-acc-chip="${escapeHtml(acc.key)}">👤 ${escapeHtml(display)} <span class="chip-count">${acc.count}</span></button>`;
         }).join('');
-      summaryEl.querySelectorAll('[data-admin-log-acc-chip]').forEach(chip => {
+      chipsEl.querySelectorAll('[data-admin-log-acc-chip]').forEach(chip => {
         chip.onclick = () => {
-          if (accFilterEl) {
-            accFilterEl.value = chip.dataset.adminLogAccChip;
-            renderSessionAdminLogDialogContent();
+          if (accountSelectEl) {
+            accountSelectEl.value = chip.dataset.adminLogAccChip;
+            renderAdminLogTextToElements({ classSelectEl, sessionSelectEl, accountSelectEl, searchInputEl, chipsEl, textOutputEl, countEl });
           }
         };
       });
     }
   }
 
-  const filtered = allLogs.filter(item => {
-    const accKey = item.actorCode ? `${item.actorName} (${item.actorCode})` : (item.actorName || 'Không rõ');
-    if (selectedAcc !== 'all' && accKey !== selectedAcc) return false;
-    if (selectedCat !== 'all' && item.category !== selectedCat) return false;
-    if (query) {
-      const hay = normalizeSearchText(`${item.actorName} ${item.actorCode} ${item.action} ${item.detail} ${ADMIN_LOG_CATEGORY_LABELS[item.category] || ''}`);
-      if (!hay.includes(query)) return false;
+  // 5. Build Plain Text Output grouped by Class and each Session in the Class
+  const textLines = [];
+  let totalFiltered = 0;
+
+  for (const group of structuredByClass) {
+    const classBlocksText = [];
+    for (const block of group.sessionBlocks) {
+      const matchedItems = block.items.filter(item => {
+        const accKey = item.actorCode ? `${item.actorName} (${item.actorCode})` : (item.actorName || 'Không rõ');
+        if (selectedAcc !== 'all' && accKey !== selectedAcc) return false;
+        if (query) {
+          const hay = normalizeSearchText(`${item.actorName} ${item.actorCode} ${item.action} ${item.detail} ${ADMIN_LOG_CATEGORY_LABELS[item.category] || ''}`);
+          if (!hay.includes(query)) return false;
+        }
+        return true;
+      });
+      if (!matchedItems.length) continue;
+      totalFiltered += matchedItems.length;
+
+      let sessionHeader = '';
+      if (block.date === '_class_') {
+        sessionHeader = `--- [QUẢN LÝ CÀI ĐẶT LỚP · EDIT THÔNG TIN LỚP / EDIT CA / XOÁ CA] (${matchedItems.length} thao tác) ---`;
+      } else {
+        const histRec = allHist.find(s => s.classId === group.cls.id && s.date === block.date);
+        const lessonInfo = histRec?.lessonTitle ? ` · Bài học: ${histRec.lessonTitle}` : '';
+        const statusInfo = histRec ? (histRec.status === 'closed' ? ' · [Đã đóng ca]' : ' · [Đang mở]') : ' · [Ca đã xoá hoặc chưa lưu lịch sử]';
+        sessionHeader = `--- [CA HỌC NGÀY ${formatDateDDMMYYYY(block.date)}${lessonInfo}${statusInfo}] (${matchedItems.length} thao tác) ---`;
+      }
+
+      const itemLines = matchedItems.map(item => {
+        const fullTime = formatTimestampFullVN(item.timestamp);
+        const roleLabel = ADMIN_LOG_ROLE_LABELS[item.actorRole] || item.actorRole || 'Nhân sự';
+        const actorTag = item.actorCode
+          ? `${item.actorName || 'Không rõ'} (#${item.actorCode} · ${roleLabel})`
+          : `${item.actorName || 'Không rõ'} (${roleLabel})`;
+        const catLabel = ADMIN_LOG_CATEGORY_LABELS[item.category] || item.category || 'Thao tác';
+        const detailPart = item.detail ? ` — ${item.detail}` : '';
+        return `  • [${fullTime}] [${actorTag}] [${catLabel}] ${item.action || ''}${detailPart}`;
+      });
+
+      classBlocksText.push(`${sessionHeader}\n${itemLines.join('\n')}`);
     }
-    return true;
+
+    if (classBlocksText.length > 0) {
+      textLines.push(
+        `================================================================================\n` +
+        `LỚP: ${group.cls.name} (MÃ LỚP: ${group.cls.code})\n` +
+        `================================================================================\n` +
+        classBlocksText.join('\n\n')
+      );
+    }
+  }
+
+  const finalPlainText = textLines.length
+    ? textLines.join('\n\n\n')
+    : 'Chưa có dữ liệu nhật ký thao tác nào khớp với bộ lọc hiện tại.';
+
+  if (textOutputEl) {
+    textOutputEl.textContent = finalPlainText;
+  }
+  if (countEl) {
+    countEl.textContent = `🛡 ${totalFiltered} / ${allCollectedEntries.length} thao tác (${accountStats.size} tài khoản)`;
+  }
+  return finalPlainText;
+}
+
+function renderManagementAdminLogPanel(preferredClassId = null, preferredDate = null) {
+  if (selectedRole() !== 'admin') return '';
+  return renderAdminLogTextToElements({
+    classSelectEl: document.getElementById('mgmt-admin-log-class-filter'),
+    sessionSelectEl: document.getElementById('mgmt-admin-log-session-filter'),
+    accountSelectEl: document.getElementById('mgmt-admin-log-account-filter'),
+    searchInputEl: document.getElementById('mgmt-admin-log-search-input'),
+    chipsEl: document.getElementById('mgmt-admin-log-account-chips'),
+    textOutputEl: document.getElementById('mgmt-admin-log-text-output'),
+    countEl: document.getElementById('mgmt-admin-log-total-badge'),
+    preferredClassId,
+    preferredDate
   });
+}
+window.__renderManagementAdminLogPanel = renderManagementAdminLogPanel;
 
-  if (footerCount) {
-    footerCount.textContent = `Hiển thị ${filtered.length} / ${allLogs.length} hành động tác động dữ liệu (${accountStats.size} tài khoản)`;
-  }
-
-  if (!tbody) return;
-  if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:26px; color:#64748b;">Không có bản ghi thao tác nào khớp với bộ lọc hiện tại.</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = filtered.map(item => {
-    const dt = item.timestamp ? new Date(Number(item.timestamp)) : null;
-    const timeStr = item.timeStr || (dt ? dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
-    const dateShort = dt ? dt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : '';
-    const roleLabel = ADMIN_LOG_ROLE_LABELS[item.actorRole] || item.actorRole || 'Nhân sự';
-    const catLabel = ADMIN_LOG_CATEGORY_LABELS[item.category] || item.category || 'Thao tác';
-    const roleColor = item.actorRole === 'admin'
-      ? 'background:#ede9fe; color:#5b21b6;'
-      : item.actorRole === 'teacher'
-        ? 'background:#e0f2fe; color:#0369a1;'
-        : item.actorRole === 'office'
-          ? 'background:#fef3c7; color:#92400e;'
-          : 'background:#dcfce7; color:#166534;';
-
-    return `
-      <tr>
-        <td style="white-space:nowrap; font-weight:700; color:#334155;">
-          <div>${escapeHtml(timeStr)}</div>
-          <small style="font-size:11px; color:#94a3b8; font-weight:500;">${escapeHtml(dateShort)}</small>
-        </td>
-        <td>
-          <div style="font-weight:700; color:#0f172a;">${escapeHtml(item.actorName || 'Không rõ')}</div>
-          <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap; margin-top:2px;">
-            ${item.actorCode ? `<span style="font-size:11.5px; color:#475569; font-family:monospace; font-weight:700;">#${escapeHtml(item.actorCode)}</span>` : ''}
-            <span style="font-size:11px; padding:1px 7px; border-radius:999px; font-weight:700; ${roleColor}">${escapeHtml(roleLabel)}</span>
-          </div>
-        </td>
-        <td>
-          <span class="admin-log-cat-badge cat-${escapeHtml(item.category || 'session')}">${escapeHtml(catLabel)}</span>
-        </td>
-        <td>
-          <div style="font-weight:700; color:#1e293b;">${escapeHtml(item.action || '')}</div>
-          ${item.detail ? `<div style="font-size:12.5px; color:#475569; margin-top:2px; line-height:1.4;">${escapeHtml(item.detail)}</div>` : ''}
-        </td>
-      </tr>
-    `;
-  }).join('');
+function renderSessionAdminLogDialogContent(preferredClassId = null, preferredDate = null) {
+  if (selectedRole() !== 'admin') return '';
+  const cId = preferredClassId !== null ? preferredClassId : (_activeAdminLogSession.classId || 'all');
+  const dt = preferredDate !== null ? preferredDate : (_activeAdminLogSession.date || 'all');
+  return renderAdminLogTextToElements({
+    classSelectEl: document.getElementById('admin-log-class-filter'),
+    sessionSelectEl: document.getElementById('admin-log-session-filter'),
+    accountSelectEl: document.getElementById('admin-log-account-filter'),
+    searchInputEl: document.getElementById('admin-log-search-input'),
+    chipsEl: document.getElementById('admin-log-account-summary'),
+    textOutputEl: document.getElementById('admin-log-text-output'),
+    countEl: document.getElementById('admin-log-footer-count'),
+    preferredClassId: cId,
+    preferredDate: dt
+  });
 }
 
 function openSessionAdminLogDialog(classId = null, date = null) {
@@ -1590,15 +1786,48 @@ function openSessionAdminLogDialog(classId = null, date = null) {
     return;
   }
   _activeAdminLogSession = {
-    classId: classId || CURRENT_CLASS_ID,
-    date: date || checklistDate
+    classId: classId || 'all',
+    date: date || 'all'
   };
   const dlg = document.getElementById('session-admin-log-dialog');
   if (!dlg) return;
-  renderSessionAdminLogDialogContent();
+  renderSessionAdminLogDialogContent(_activeAdminLogSession.classId, _activeAdminLogSession.date);
   if (!dlg.open) dlg.showModal();
 }
 window.__openSessionAdminLogDialog = openSessionAdminLogDialog;
+
+function copyTextToClipboardWithToast(text, label = 'Nhật ký Admin Log') {
+  if (!text) return;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      toast(`✓ Đã copy toàn bộ nội dung ${label} vào bộ nhớ tạm.`);
+    }).catch(() => {
+      toast(`Đã chuẩn bị nội dung ${label}.`);
+    });
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast(`✓ Đã copy toàn bộ nội dung ${label}.`); } catch {}
+    ta.remove();
+  }
+}
+
+function downloadPlainTextFile(text, filename = 'Admin-Log.txt') {
+  const blob = new Blob([text || ''], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 250);
+  toast(`✓ Đã tải xuống file ${filename}`);
+}
 
 function undoSeating() {
   if (!seatingUndoStack.length) {
@@ -1671,6 +1900,7 @@ function defaultChecklist() {
     items: defaultChecklistItems.map(item => ({ ...item, done: false })),
     endItems: defaultEndChecklistItems.map(item => ({ ...item, done: false })),
     classNote: '',
+    parentGeneralNote: '',
     tests: {},
     testScores: {},
     testCollectionMode: false,
@@ -2005,7 +2235,9 @@ function renderChecklistCore(){
   $('#shift-start-status').classList.toggle('done',started);
   $('#shift-start-log').textContent=started?`Ca làm được xác nhận bởi ${checklist.workStart.name} lúc ${new Date(checklist.workStart.at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'Ca làm sẽ được ghi nhận khi hoàn tất mục đầu tiên.';
   const note=$('#session-note');
-  if(document.activeElement!==note)note.value=checklist.classNote||'';
+  if(note&&document.activeElement!==note)note.value=checklist.classNote||'';
+  const parentNote=$('#parent-general-note');
+  if(parentNote&&document.activeElement!==parentNote)parentNote.value=checklist.parentGeneralNote||'';
   $('#session-note-status').textContent=checklist.noteSavedAt?`Đã lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`:'';
   if($('#test-required-toggle'))$('#test-required-toggle').checked=Boolean(checklist.testRequired);
   if($('#scores-tab-test-toggle'))$('#scores-tab-test-toggle').checked=Boolean(checklist.testRequired);
@@ -2027,7 +2259,7 @@ $('#add-checklist-item').onclick=()=>{const item={id:`task-${Date.now()}-${Math.
 $('#end-checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-end-checklist-item]');if(input){const item=checklist.endItems.find(row=>row.id===input.dataset.endChecklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');logAdminSessionAction(`${input.checked?'Hoàn thành':'Bỏ tích'} checklist cuối giờ`, `Mục: ${item.label}`, 'checklist');saveChecklist();renderChecklist();return;}const label=e.target.closest('[data-end-checklist-label]');if(!label)return;const item=checklist.endItems.find(row=>row.id===label.dataset.endChecklistLabel);if(item&&label.value.trim()){item.label=label.value.trim();saveChecklist();logAdminSessionAction('Đổi tên mục checklist cuối giờ', `Nội dung: ${item.label}`, 'checklist', `end-chk-lbl-${item.id}`);}else if(item)label.value=item.label;});
 $('#end-checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-end-checklist-remove]');if(!button)return;const item=checklist.endItems.find(row=>row.id===button.dataset.endChecklistRemove);if(item&&confirm(`Xóa mục “${item.label}” khỏi checklist?`)){checklist.endItems=checklist.endItems.filter(row=>row.id!==item.id);saveChecklist();renderChecklist();logAdminSessionAction('Xoá mục checklist cuối giờ', `Mục: ${item.label}`, 'checklist');}});
 $('#add-end-checklist-item').onclick=()=>{const item={id:`end-task-${Date.now()}`,label:'Việc mới',done:false};checklist.endItems.push(item);saveChecklist();renderChecklist();logAdminSessionAction('Thêm mục checklist cuối giờ mới', '', 'checklist');const input=$(`[data-end-checklist-label="${item.id}"]`);input?.focus();input?.select?.();};
-$('#save-session-note').onclick=()=>{checklist.classNote=$('#session-note').value.trim();checklist.noteSavedAt=Date.now();saveChecklist();addClassActivity(`${currentStaffName()} đã lưu ghi chú chung của buổi học`,'checklist');logAdminSessionAction('Lưu ghi chú chung của buổi học', checklist.classNote ? `Nội dung: "${checklist.classNote}"` : 'Đã xoá trống ghi chú', 'checklist', 'save-session-note');renderChecklist();toast('Đã lưu ghi chú buổi học.');};
+$('#save-session-note').onclick=()=>{checklist.classNote=$('#session-note').value.trim();if($('#parent-general-note'))checklist.parentGeneralNote=$('#parent-general-note').value.trim();checklist.noteSavedAt=Date.now();saveChecklist();addClassActivity(`${currentStaffName()} đã lưu ghi chú chung của buổi học`,'checklist');logAdminSessionAction('Lưu ghi chú trong ca & ghi chú gửi phụ huynh', `Ghi chú ca: "${checklist.classNote || '—'}" · Ghi chú gửi PH: "${checklist.parentGeneralNote || '—'}"`, 'checklist', 'save-session-note');renderChecklist();toast('Đã lưu ghi chú buổi học & ghi chú chung gửi phụ huynh.');};
 $('#session-note')?.addEventListener('input',()=>{checklist.classNote=$('#session-note').value;checklist.noteSavedAt=Date.now();saveChecklist();logAdminSessionAction('Cập nhật ghi chú chung của buổi học', checklist.classNote ? `Nội dung: "${checklist.classNote.slice(0, 120)}"` : 'Trống', 'checklist', 'auto-session-note');const st=$('#session-note-status');if(st)st.textContent=`Đã tự động lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`;});
 $('#handover-person')?.addEventListener('input',()=>{const person=$('#handover-person').value.trim();checklist.handover=person?{person,at:checklist.handover?.at||Date.now()}:null;saveChecklist();});
 function handleToggleTestRequired(checked) {
@@ -2046,6 +2278,12 @@ $('#confirm-handover').onclick=()=>{const person=$('#handover-person').value.tri
 function setClassView(view){
   const chatVisible=view==='chat',scoresVisible=view==='scores',checklistVisible=view==='checklist',studentsVisible=view==='students';
   const seatingVisible=!chatVisible&&!scoresVisible&&!checklistVisible&&!studentsVisible;
+  if (seatingVisible) {
+    isSeatingEditMode = false;
+    updateSeatingEditBtn();
+    const cw = document.querySelector('.classroom-wrap');
+    if (cw) cw.classList.remove('seating-edit-mode-on');
+  }
   const syncViewVis=(sel,vis)=>{const el=$(sel);if(!el)return;el.hidden=!vis;el.style.display=vis?'':'none';};
   syncViewVis('#chat-view',chatVisible);
   syncViewVis('#seating-view',seatingVisible);
@@ -2192,8 +2430,9 @@ function renderMainMenu(){
         <button type="button" class="primary-button" data-enter-class="${escapeHtml(item.id)}" data-session-date="${date.toLocaleDateString('sv-SE')}">Vào lớp</button>
       </article>`;
     }).join('') || '<div class="menu-empty">Chưa có lớp học nào trong hệ thống.</div>';
-  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-header-stack"><div class="managed-class-header-row1"><strong class="managed-class-title">${escapeHtml(item.name)}</strong><div class="managed-class-heading-right"><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span><div class="card-more-menu-wrap"><button type="button" class="outline-button card-more-toggle-btn" data-toggle-card-more="${escapeHtml(item.id)}" aria-label="Tùy chọn quản lý lớp" title="Tùy chọn quản trị lớp">⋯</button><div class="card-more-dropdown" hidden><button type="button" class="card-more-item" data-roster-class="${escapeHtml(item.id)}">Danh sách gốc</button><button type="button" class="card-more-item" data-edit-class="${escapeHtml(item.id)}">Sửa lớp</button><button type="button" class="card-more-item" data-edit-session="${escapeHtml(item.id)}">Đổi lịch buổi</button><button type="button" class="card-more-item text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></div></div></div><div class="managed-class-header-row2"><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span><span class="room-chip" style="background:#f5f3ff; color:#5b21b6; font-weight:600;">${escapeHtml(item.subject||'Chưa có môn học')}</span></div></div><div class="managed-class-details managed-class-grid-2col"><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist & Nhắc việc</small>${item.defaultChecklist.startItems.length} đầu · ${item.defaultChecklist.endItems.length} cuối · ${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions managed-class-primary-actions managed-class-single-action"><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}" style="width:100%; justify-content:center; font-weight:700;">Tổng quan & Lịch sử</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';if($('#add-class-button'))$('#add-class-button').hidden=!(role==='office'||role==='admin');if($('#manage-employees-button'))$('#manage-employees-button').hidden=role!=='admin';
+  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-header-stack"><div class="managed-class-header-row1"><strong class="managed-class-title">${escapeHtml(item.name)}</strong><div class="managed-class-heading-right"><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span><div class="card-more-menu-wrap"><button type="button" class="outline-button card-more-toggle-btn" data-toggle-card-more="${escapeHtml(item.id)}" aria-label="Tùy chọn quản lý lớp" title="Tùy chọn quản trị lớp">⋯</button><div class="card-more-dropdown" hidden><button type="button" class="card-more-item" data-roster-class="${escapeHtml(item.id)}">Danh sách gốc</button><button type="button" class="card-more-item" data-edit-class="${escapeHtml(item.id)}">Sửa lớp</button><button type="button" class="card-more-item" data-edit-session="${escapeHtml(item.id)}">Đổi lịch buổi</button>${role==='admin'?`<button type="button" class="card-more-item" data-admin-log-class="${escapeHtml(item.id)}" style="color:#4f46e5; font-weight:700;">🛡 Nhật ký Admin (Log)</button>`:''}<button type="button" class="card-more-item text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></div></div></div><div class="managed-class-header-row2"><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span><span class="room-chip" style="background:#f5f3ff; color:#5b21b6; font-weight:600;">${escapeHtml(item.subject||'Chưa có môn học')}</span></div></div><div class="managed-class-details managed-class-grid-2col"><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist & Nhắc việc</small>${item.defaultChecklist.startItems.length} đầu · ${item.defaultChecklist.endItems.length} cuối · ${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions managed-class-primary-actions managed-class-single-action"><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}" style="width:100%; justify-content:center; font-weight:700;">Tổng quan & Lịch sử</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';if($('#add-class-button'))$('#add-class-button').hidden=!(role==='office'||role==='admin');if($('#manage-employees-button'))$('#manage-employees-button').hidden=role!=='admin';
   if($('#mgmt-tab-staff')){$('#mgmt-tab-staff').hidden=role!=='admin';$('#mgmt-tab-staff').style.display=role==='admin'?'':'none';}
+  if($('#mgmt-tab-admin-log')){$('#mgmt-tab-admin-log').hidden=role!=='admin';$('#mgmt-tab-admin-log').style.display=role==='admin'?'':'none';}
   if(role!=='admin'&&$('#mgmt-panel-staff')&&!$('#mgmt-panel-staff').hidden){$('#mgmt-panel-staff').hidden=true;if($('#staff-table-tbody'))$('#staff-table-tbody').innerHTML='';$('#mgmt-tab-classes')?.click();}
 }
 function setMainMenuPanel(panel){
@@ -3174,7 +3413,7 @@ document.addEventListener('click',event=>{
     return;
   }
   const sessionEdit=event.target.closest('[data-edit-session]');if(sessionEdit){if(window.__featuresApp?.openSessionScheduleDialog){window.__featuresApp.openSessionScheduleDialog(sessionEdit.dataset.editSession);}else{openSessionChange(sessionEdit.dataset.editSession);}return;}
-  const edit=event.target.closest('[data-edit-class]');if(edit){openClassConfig(edit.dataset.editClass);return;}const remove=event.target.closest('[data-delete-class]');if(remove){const item=classCatalog.find(row=>row.id===remove.dataset.deleteClass);if(item&&window.confirm(`Xóa lớp ${item.name} khỏi danh sách quản lý? Học sinh thuộc lớp này sẽ được gỡ liên kết lớp tự động.`)){classCatalog=classCatalog.filter(row=>row.id!==item.id);students.forEach(s=>{if(Array.isArray(s.classIds))s.classIds=s.classIds.filter(cid=>cid!==item.id);});makeupStudents.forEach(m=>{if(m.attendingClassId===item.id)m.attendingClassId=classCatalog[0]?.id||null;});saveStudentRecords(students,makeupStudents);saveClassCatalog(classCatalog);renderMainMenu();toast(`Đã xóa lớp ${item.name} và làm sạch dữ liệu liên kết.`);}}});
+  const adminLogClsBtn=event.target.closest('[data-admin-log-class]');if(adminLogClsBtn){const cid=adminLogClsBtn.dataset.adminLogClass;openSessionAdminLogDialog(cid,'all');return;}const edit=event.target.closest('[data-edit-class]');if(edit){openClassConfig(edit.dataset.editClass);return;}const remove=event.target.closest('[data-delete-class]');if(remove){const item=classCatalog.find(row=>row.id===remove.dataset.deleteClass);if(item&&window.confirm(`Xóa lớp ${item.name} khỏi danh sách quản lý? Học sinh thuộc lớp này sẽ được gỡ liên kết lớp tự động.`)){logAdminSessionAction(`Xoá lớp học "${item.name}"`, `Mã lớp: ${item.code || item.id} · Phòng: ${item.room || '—'} · GV: ${item.teacherName || '—'} · TA: ${item.assistantName || '—'}`, 'class', '', item.id, '_class_');classCatalog=classCatalog.filter(row=>row.id!==item.id);students.forEach(s=>{if(Array.isArray(s.classIds))s.classIds=s.classIds.filter(cid=>cid!==item.id);});makeupStudents.forEach(m=>{if(m.attendingClassId===item.id)m.attendingClassId=classCatalog[0]?.id||null;});saveStudentRecords(students,makeupStudents);saveClassCatalog(classCatalog);renderMainMenu();toast(`Đã xóa lớp ${item.name} và làm sạch dữ liệu liên kết.`);}}});
 function roleLabel(role){return ({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role]||role;}
 function renderEmployeeAdminList(){const host=$('#employee-admin-list');host.innerHTML=masterData.employees.map(employee=>'<div class="employee-admin-row" data-employee-id="'+escapeHtml(employee.id)+'"><label class="field-label">Mã<input data-employee-code value="'+escapeHtml(employee.code)+'" required></label><label class="field-label">Họ tên<input data-employee-name value="'+escapeHtml(employee.name)+'" required></label><label class="field-label">Vai trò<select data-employee-role><option value="assistant" '+(employee.role==='assistant'?'selected':'')+'>Trợ giảng</option><option value="office" '+(employee.role==='office'?'selected':'')+'>Văn phòng</option><option value="teacher" '+(employee.role==='teacher'?'selected':'')+'>Giáo viên</option><option value="admin" '+(employee.role==='admin'?'selected':'')+'>Admin</option></select></label></div>').join('');}
 if($('#manage-employees-button'))$('#manage-employees-button').onclick=()=>{
@@ -3186,7 +3425,7 @@ if($('#manage-employees-button'))$('#manage-employees-button').onclick=()=>{
 };$('#close-employee-admin').onclick=()=>$('#employee-admin-dialog').close();$('#employee-admin-form').addEventListener('submit',event=>{event.preventDefault();const edits=[...document.querySelectorAll('[data-employee-id]')].map(row=>({id:row.dataset.employeeId,code:row.querySelector('[data-employee-code]').value.trim(),name:row.querySelector('[data-employee-name]').value.trim(),role:row.querySelector('[data-employee-role]').value})),code=$('#employee-code-input').value.trim(),name=$('#employee-name-input').value.trim(),role=$('#employee-role-input').value;if(!code||!name)return;const combinedCodes=[...edits.map(item=>item.code),...(code?[code]:[])];if(new Set(combinedCodes.map(item=>item.toLocaleUpperCase())).size!==combinedCodes.length){toast('Mã nhân viên phải là duy nhất.');return;}for(const update of edits){const old=masterData.employees.find(item=>item.id===update.id);if(!old)continue;Object.assign(old,update);Object.assign(old,normalizeEmployeeAccount(old));if(old.role!==update.role){for(const item of classCatalog){for(const field of ['teacherIds','assistantIds','officeIds'])item[field]=(item[field]||[]).filter(id=>id!==old.id);if(update.role==='teacher')(item.teacherIds||=[]).push(old.id);if(update.role==='assistant')(item.assistantIds||=[]).push(old.id);if(update.role==='office')(item.officeIds||=[]).push(old.id);item.teacherId=item.teacherIds?.[0]||'';item.teacherName=employeeNames(item.teacherIds||[]);item.assistantName=employeeNames(item.assistantIds||[]);}}}if(code){masterData.employees.push(normalizeEmployeeAccount({id:'employee-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,5),code,name,role,password:role==='admin'?'admin123':'123456',isActive:true,authVersion:1}));}saveMasterData(masterData);saveClassCatalog(classCatalog);$('#employee-code-input').value='';$('#employee-name-input').value='';renderEmployeeAdminList();renderMainMenu();toast('Đã lưu danh sách nhân viên.');});
 function fillSessionStaffSelect(select,role,selectedIds=[]){const names=masterData.employees.filter(employee=>employee.role===role).map(employee=>'<option value="'+escapeHtml(employee.id)+'" '+(selectedIds.includes(employee.id)?'selected':'')+'>'+escapeHtml(employee.name)+' · '+escapeHtml(employee.code)+'</option>').join('');select.innerHTML='<option value="@none">Không phân công '+(role==='assistant'?'trợ giảng':'giáo viên')+'</option>'+names;for(const option of select.options)if(option.value==='@none')option.selected=false;}
 function openSessionChange(classId){const item=classCatalog.find(row=>row.id===classId);if(!item)return;$('#session-change-class-id').value=classId;const date=occurrenceDate(item).toLocaleDateString('sv-SE');$('#session-change-date').value=date;const existing=getSessionChange(classId,date);$('#session-change-type').value=existing?.status==='cancelled'?'cancel':existing?.status==='makeup'?'makeup':existing?.note?'staff_change':'staff_change';$('#session-makeup-date').value='';$('#makeup-date-field').hidden=!['makeup','holiday_makeup'].includes($('#session-change-type').value);$('#session-change-note').value=existing?.note||'';fillSessionStaffSelect($('#session-change-teachers'),'teacher',existing?.teacherIds||[]);fillSessionStaffSelect($('#session-change-assistants'),'assistant',existing?.assistantIds||[]);$('#session-change-dialog').showModal();}
-$('#close-session-change').onclick=()=>$('#session-change-dialog').close();$('#cancel-session-change').onclick=()=>$('#session-change-dialog').close();$('#session-change-type').onchange=event=>{$('#makeup-date-field').hidden=!['makeup','holiday_makeup'].includes(event.target.value);};$('#session-change-form').addEventListener('submit',event=>{event.preventDefault();const classId=$('#session-change-class-id').value,item=classCatalog.find(row=>row.id===classId),date=$('#session-change-date').value,type=$('#session-change-type').value;if(!item||!date)return;const readIds=select=>{const ids=[...select.selectedOptions].map(option=>option.value);if(ids.includes('@none'))return [];return ids.length?ids:undefined;},teacherIds=readIds($('#session-change-teachers')),assistantIds=readIds($('#session-change-assistants')),note=$('#session-change-note').value.trim(),makeRecord=(sessionDate,status)=>({classId,date:sessionDate,status,teacherIds,assistantIds,note,updatedAt:Date.now(),updatedBy:currentEmployeeId});if(type==='holiday_makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Nghỉ lễ'};const makeupDate=$('#session-makeup-date').value;if(makeupDate)sessionChanges[sessionChangeKey(classId,makeupDate)]={...makeRecord(makeupDate,'makeup'),sourceDate:date,note:note||'Buổi học bù'};}else if(type==='cancel'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Lớp nghỉ'};}else if(type==='makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'makeup'),note:note||'Buổi học bù'};}else{sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'scheduled')};}saveClassSessionChanges(sessionChanges);$('#session-change-dialog').close();renderMainMenu();toast('Đã lưu điều chỉnh cho buổi học.');});
+$('#close-session-change').onclick=()=>$('#session-change-dialog').close();$('#cancel-session-change').onclick=()=>$('#session-change-dialog').close();$('#session-change-type').onchange=event=>{$('#makeup-date-field').hidden=!['makeup','holiday_makeup'].includes(event.target.value);};$('#session-change-form').addEventListener('submit',event=>{event.preventDefault();const classId=$('#session-change-class-id').value,item=classCatalog.find(row=>row.id===classId),date=$('#session-change-date').value,type=$('#session-change-type').value;if(!item||!date)return;const readIds=select=>{const ids=[...select.selectedOptions].map(option=>option.value);if(ids.includes('@none'))return [];return ids.length?ids:undefined;},teacherIds=readIds($('#session-change-teachers')),assistantIds=readIds($('#session-change-assistants')),note=$('#session-change-note').value.trim(),makeRecord=(sessionDate,status)=>({classId,date:sessionDate,status,teacherIds,assistantIds,note,updatedAt:Date.now(),updatedBy:currentEmployeeId});if(type==='holiday_makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Nghỉ lễ'};const makeupDate=$('#session-makeup-date').value;if(makeupDate)sessionChanges[sessionChangeKey(classId,makeupDate)]={...makeRecord(makeupDate,'makeup'),sourceDate:date,note:note||'Buổi học bù'};}else if(type==='cancel'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Lớp nghỉ'};}else if(type==='makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'makeup'),note:note||'Buổi học bù'};}else{sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'scheduled')};}saveClassSessionChanges(sessionChanges);logAdminSessionAction(`Điều chỉnh lịch buổi học (${formatDateDDMMYYYY(date)})`, `Lớp: ${item.name} (${item.code || item.id}) · Loại: ${type} · Ghi chú: "${note || '—'}"`, 'class', '', classId, date);$('#session-change-dialog').close();renderMainMenu();toast('Đã lưu điều chỉnh cho buổi học.');});
 function layoutCounts(item){return item.defaultLayout.map(row=>row.desks.length);}
 
 // v1.9: 5-Minute Time Rounding & Class Duration Helpers
@@ -3523,6 +3762,14 @@ $('#class-config-form').addEventListener('submit',event=>{
   if(old)classCatalog=classCatalog.map(item=>item.id===id?classInfo:item);
   else classCatalog.push(classInfo);
   saveClassCatalog(classCatalog);
+  logAdminSessionAction(
+    old ? `Sửa thông tin lớp "${classInfo.name}"` : `Thêm lớp học mới "${classInfo.name}"`,
+    `Mã lớp: ${classInfo.code || classInfo.id} · Phòng: ${classInfo.room} · Lịch: ${weekdayNames[classInfo.weekday]} ${classInfo.startTime}–${classInfo.endTime} · GV: ${classInfo.teacherName || '—'} · TA: ${classInfo.assistantName || '—'}`,
+    'class',
+    '',
+    classInfo.id,
+    '_class_'
+  );
 
   // Auto-update active session layout if room changed
   if (id === CURRENT_CLASS_ID) {
@@ -8586,6 +8833,17 @@ function deleteClassSessionAndStudentData(classId, date, skipConfirm = false) {
   saveSessionHistory(nextHist);
 
   // 2. Xoá toàn bộ localStorage keys của buổi học đó
+  const deletedSessObj = allHist.find(s => s.classId === classId && s.date === date);
+  logAdminSessionAction(
+    `Xoá ca học ngày ${formatDateDDMMYYYY(date)}`,
+    `Lớp: ${cls.name} (${cls.code || cls.id}) · Bài học: "${deletedSessObj?.lessonTitle || '—'}" · Đã xoá ca học và dữ liệu buổi học trong hồ sơ học sinh`,
+    'session',
+    '',
+    classId,
+    date
+  );
+
+  // Giữ nguyên lopvui.admin-audit-log.v1.${classId}.${date} để Admin luôn tra cứu được lịch sử ca bị xoá và ai đã xoá ca!
   const sessionKeysToRemove = [
     `lopvui.layout.v5.${classId}.${date}`,
     `lopvui.desk-items.v7.${classId}.${date}`,
@@ -8594,8 +8852,7 @@ function deleteClassSessionAndStudentData(classId, date, skipConfirm = false) {
     `lopvui.attendance-notes.v1.${classId}.${date}`,
     `lopvui.class-communication.v1.${classId}.${date}`,
     `lopvui.finalized-session.v1.${classId}.${date}`,
-    `lopvui.session-record.v1.${classId}.${date}`,
-    `lopvui.admin-audit-log.v1.${classId}.${date}`
+    `lopvui.session-record.v1.${classId}.${date}`
   ];
   sessionKeysToRemove.forEach(k => {
     try { localStorage.removeItem(k); } catch {}
@@ -9094,30 +9351,59 @@ $('#save-and-open-past-session-btn')?.addEventListener('click', () => {
   saveManagedPastSession(true);
 });
 
-// Wire Admin Audit Log Dialog events
+// Wire Admin Audit Log Dialog & Management Panel events (Plain Text mode)
 $('#close-admin-log-dialog')?.addEventListener('click', () => {
   $('#session-admin-log-dialog')?.close();
 });
 $('#close-admin-log-bottom-btn')?.addEventListener('click', () => {
   $('#session-admin-log-dialog')?.close();
 });
-$('#admin-log-account-filter')?.addEventListener('change', () => {
-  renderSessionAdminLogDialogContent();
+$('#admin-log-class-filter')?.addEventListener('change', (e) => {
+  _activeAdminLogSession.classId = e.target.value;
+  _activeAdminLogSession.date = 'all';
+  renderSessionAdminLogDialogContent(_activeAdminLogSession.classId, 'all');
 });
-$('#admin-log-category-filter')?.addEventListener('change', () => {
+$('#admin-log-session-filter')?.addEventListener('change', (e) => {
+  _activeAdminLogSession.date = e.target.value;
+  renderSessionAdminLogDialogContent(null, _activeAdminLogSession.date);
+});
+$('#admin-log-account-filter')?.addEventListener('change', () => {
   renderSessionAdminLogDialogContent();
 });
 $('#admin-log-search-input')?.addEventListener('input', () => {
   renderSessionAdminLogDialogContent();
 });
+$('#copy-admin-log-text-btn')?.addEventListener('click', () => {
+  const txt = document.getElementById('admin-log-text-output')?.textContent || '';
+  copyTextToClipboardWithToast(txt, 'Nhật ký Admin Log');
+});
 $('#export-admin-log-excel-btn')?.addEventListener('click', () => {
-  const classId = _activeAdminLogSession.classId || CURRENT_CLASS_ID;
-  const date = _activeAdminLogSession.date || checklistDate;
-  const cls = resolveClass(classId) || activeClassConfig() || { id: classId, name: classId, code: classId };
-  const logs = buildCombinedAdminAuditLogs(classId, date);
-  if (window.__featuresApp?.exportAdminLogAsExcel) {
-    window.__featuresApp.exportAdminLogAsExcel(logs, cls, date);
-  } else {
-    toast('Không tìm thấy trình xuất Excel.');
-  }
+  const txt = document.getElementById('admin-log-text-output')?.textContent || '';
+  const cVal = document.getElementById('admin-log-class-filter')?.value || 'TatCaLop';
+  const sVal = document.getElementById('admin-log-session-filter')?.value || 'TatCaCa';
+  downloadPlainTextFile(txt, `Admin-Log-${cVal}-${sVal}.txt`);
+});
+
+// Management Panel (#mgmt-panel-admin-log) filters & buttons
+$('#mgmt-admin-log-class-filter')?.addEventListener('change', (e) => {
+  renderManagementAdminLogPanel(e.target.value, 'all');
+});
+$('#mgmt-admin-log-session-filter')?.addEventListener('change', (e) => {
+  renderManagementAdminLogPanel(null, e.target.value);
+});
+$('#mgmt-admin-log-account-filter')?.addEventListener('change', () => {
+  renderManagementAdminLogPanel();
+});
+$('#mgmt-admin-log-search-input')?.addEventListener('input', () => {
+  renderManagementAdminLogPanel();
+});
+$('#mgmt-copy-admin-log-btn')?.addEventListener('click', () => {
+  const txt = document.getElementById('mgmt-admin-log-text-output')?.textContent || '';
+  copyTextToClipboardWithToast(txt, 'Nhật ký Admin Log');
+});
+$('#mgmt-download-admin-log-txt-btn')?.addEventListener('click', () => {
+  const txt = document.getElementById('mgmt-admin-log-text-output')?.textContent || '';
+  const cVal = document.getElementById('mgmt-admin-log-class-filter')?.value || 'TatCaLop';
+  const sVal = document.getElementById('mgmt-admin-log-session-filter')?.value || 'TatCaCa';
+  downloadPlainTextFile(txt, `Admin-Log-${cVal}-${sVal}.txt`);
 });

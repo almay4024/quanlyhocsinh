@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=4.2.0';
+import { matchesAcronymOrText } from './student-search.js?v=4.3.0';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.2.0';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.2.0';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.2.0';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.3.0';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.3.0';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.3.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.2.0';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.3.0';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -30,7 +30,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=4.2.0';
+} from './excel-import-export.js?v=4.3.0';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -42,7 +42,7 @@ import {
   getStaffShiftData,
   getStudentClassDeepDive,
   evaluateStudentEarlyWarning
-} from './data/session-history-repository.js?v=4.2.0';
+} from './data/session-history-repository.js?v=4.3.0';
 
 export function setupFeatures(ctx) {
   const {
@@ -474,6 +474,11 @@ export function setupFeatures(ctx) {
     if (mgmtTabStaffEl) {
       mgmtTabStaffEl.hidden = !isAdmin;
       mgmtTabStaffEl.style.display = isAdmin ? '' : 'none';
+    }
+    const mgmtTabAdminLogEl = $('#mgmt-tab-admin-log');
+    if (mgmtTabAdminLogEl) {
+      mgmtTabAdminLogEl.hidden = !isAdmin;
+      mgmtTabAdminLogEl.style.display = isAdmin ? '' : 'none';
     }
     if (!isAdmin && $('#mgmt-panel-staff') && !$('#mgmt-panel-staff').hidden) {
       $('#mgmt-panel-staff').hidden = true;
@@ -1521,6 +1526,7 @@ export function setupFeatures(ctx) {
         if (!confirm(`Xác nhận bỏ ${student.name} khỏi danh sách lớp gốc này?`)) return;
         student.classIds = (student.classIds || []).filter(id => id !== classId);
         saveStudentRecords(getStudents(), ctx.getMakeupStudents ? ctx.getMakeupStudents() : []);
+        window.__logAdminSessionAction?.(`Bỏ học sinh ${student.name} khỏi danh sách lớp gốc`, `Mã HS: ${student.studentCode || '—'}`, 'class', '', classId, '_class_');
         renderRosterAdminTable(classId);
         renderMainMenu();
         render();
@@ -1824,50 +1830,137 @@ export function setupFeatures(ctx) {
     if (!student) return '';
     const currentClass = (classId && getClassCatalog().find(c => c.id === classId)) || getActiveClassConfig();
     const date = dateStr || getChecklistDate();
-    const entries = allEntries();
-    const lateQueueIds = getLateQueue();
-    const seated = entries.find(p => p.entry.studentId === student.id);
-    const isLate = ctx.isStudentLateInSession ? ctx.isStudentLateInSession(student, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || student.attendance?.status === 'late');
-    const isPresent = Boolean(seated || lateQueueIds.includes(student.id));
-    const isMakeup = student.studentType === 'makeup' || !(student.classIds || []).includes(currentClass.id);
+    const isCurrentActiveSession = (currentClass.id === getCurrentClassId() && date === getChecklistDate());
 
-    const attStatusText = isLate
-      ? `Đi muộn (${formatMergedAttendanceAndArrival(student, seated, true, true, isMakeup, date, currentClass.id)})`
-      : isPresent
-        ? 'Có mặt đúng giờ'
-        : (student.attendance?.status === 'absent_excused'
-            ? `Vắng có phép${student.attendance?.reason ? ' (' + student.attendance.reason + ')' : ''}`
-            : `Vắng mặt${student.attendance?.reason ? ' (' + student.attendance.reason + ')' : ''}`);
-
-    const hwObj = seated?.entry.homework || student.homework || { status: 'uncollected' };
-    const hwStatusText = resolveHomeworkStatusWithReason(hwObj);
-    const hwScore = formatScoreVN(hwObj.score ?? '', '');
-    const testScore = formatScoreVN(seated?.entry.testScore ?? student.testScore ?? '', '');
-    const noteText = (ctx.sessionNoteFor ? ctx.sessionNoteFor(student.id) : '') || seated?.entry?.homework?.note || student.sessionNote || '';
+    // Định dạng ngày dd/mm/yyyy
+    const dateParts = String(date || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const dateFormatted = dateParts ? `${dateParts[3]}/${dateParts[2]}/${dateParts[1]}` : String(date || '');
 
     let savedChk = {};
     try {
       savedChk = JSON.parse(localStorage.getItem(`lopvui.checklist.v1.${currentClass.id}.${date}`) || '{}') || {};
     } catch {}
     const histSession = getSessionRecord(currentClass.id, date) || {};
-    const lessonTitle = $('#lesson-title')?.value?.trim() || savedChk.lessonTitle || histSession.lessonTitle || 'Bài học trên lớp';
-    const homeworkAssignment = $('#homework-assignment')?.value?.trim() || savedChk.homeworkAssignment || histSession.homeworkAssignment || '';
-    const homeworkLink = $('#homework-link')?.value?.trim() || savedChk.homeworkLink || histSession.homeworkLink || '';
 
-    const parentGreeting = student.parentContact?.name
-      ? `Kính gửi Phụ huynh (${student.parentContact.name}) của em ${student.name},`
-      : `Kính gửi Phụ huynh em ${student.name},`;
+    const entries = isCurrentActiveSession ? allEntries() : [];
+    const lateQueueIds = isCurrentActiveSession ? getLateQueue() : [];
+    const seated = entries.find(p => p.entry.studentId === student.id);
+
+    const attHist = (student.attendanceHistory || []).find(h => (!h.classId || h.classId === currentClass.id) && h.date === date);
+    const sessNoteObj = (student.sessionNotes || []).find(n => (!n.classId || n.classId === currentClass.id) && n.date === date);
+    const btvnScoreObj = (student.scores || []).find(sc => (!sc.classId || sc.classId === currentClass.id) && sc.date === date && (!sc.type || sc.type === 'BTVN'));
+    const testScoreObj = (student.scores || []).find(sc => (!sc.classId || sc.classId === currentClass.id) && sc.date === date && sc.type && sc.type !== 'BTVN');
+
+    const rawAttStatus = seated?.entry.attendance?.status
+      || (lateQueueIds.includes(student.id) ? (student.attendance?.status || 'present') : null)
+      || (isCurrentActiveSession ? student.attendance?.status : null)
+      || attHist?.status
+      || '';
+
+    const isLate = ctx.isStudentLateInSession
+      ? ctx.isStudentLateInSession(student, seated?.entry || (attHist ? { attendance: attHist } : null), currentClass, date)
+      : (rawAttStatus === 'late');
+    const isPresent = Boolean(seated || lateQueueIds.includes(student.id) || rawAttStatus === 'present');
+    const isMakeup = student.studentType === 'makeup' || !(student.classIds || []).includes(currentClass.id);
+
+    let attStatusText = '';
+    if (isLate) {
+      attStatusText = `Đi muộn (${formatMergedAttendanceAndArrival(student, seated, true, true, isMakeup, date, currentClass.id)})`;
+    } else if (isPresent) {
+      attStatusText = 'Có mặt đúng giờ';
+    } else if (rawAttStatus === 'absent_excused') {
+      const r = seated?.entry.attendance?.reason || student.attendance?.reason || attHist?.reason || '';
+      attStatusText = `Vắng có phép${r ? ' (' + r + ')' : ''}`;
+    } else if (rawAttStatus === 'absent_unexcused' || rawAttStatus === 'absent') {
+      const r = seated?.entry.attendance?.reason || student.attendance?.reason || attHist?.reason || '';
+      attStatusText = `Vắng mặt${r ? ' (' + r + ')' : ''}`;
+    }
+
+    const isNoHw = isNoHomeworkSession(currentClass.id, date);
+    const hwObj = seated?.entry.homework
+      || (isCurrentActiveSession && student.homework?.status && student.homework.status !== 'uncollected' ? student.homework : null)
+      || (sessNoteObj?.homeworkStatus ? { status: sessNoteObj.homeworkStatus, reason: sessNoteObj.homeworkReason, score: sessNoteObj.homeworkScore } : null)
+      || attHist?.homework
+      || { status: 'uncollected' };
+
+    const rawHwStatus = hwObj?.status || 'uncollected';
+    const hwScore = formatScoreVN(hwObj?.score ?? sessNoteObj?.homeworkScore ?? btvnScoreObj?.score ?? '', '');
+    let btvnLine = '';
+    if (!isNoHw) {
+      const hwStatusPart = (rawHwStatus === 'submitted' || rawHwStatus === 'graded')
+        ? 'Đã nộp'
+        : rawHwStatus === 'not_submitted'
+          ? resolveHomeworkStatusWithReason(hwObj)
+          : '';
+      if (hwStatusPart && hwScore) {
+        btvnLine = `• Bài tập về nhà (BTVN): ${hwStatusPart} · Điểm BTVN: ${hwScore}/10`;
+      } else if (hwStatusPart) {
+        btvnLine = `• Bài tập về nhà (BTVN): ${hwStatusPart}`;
+      } else if (hwScore) {
+        btvnLine = `• Bài tập về nhà (BTVN): Đã nộp · Điểm BTVN: ${hwScore}/10`;
+      }
+    }
+
+    const testScore = formatScoreVN(
+      seated?.entry.testScore
+      ?? savedChk.testScores?.[student.id]
+      ?? (isCurrentActiveSession ? student.testScore : null)
+      ?? sessNoteObj?.testScore
+      ?? testScoreObj?.score
+      ?? '',
+      ''
+    );
+
+    const noteText = String(
+      (isCurrentActiveSession && ctx.sessionNoteFor ? ctx.sessionNoteFor(student.id) : '')
+      || seated?.entry?.homework?.note
+      || sessNoteObj?.note
+      || (isCurrentActiveSession ? student.sessionNote : '')
+      || ''
+    ).trim();
+
+    const lessonTitle = String(
+      (isCurrentActiveSession ? $('#lesson-title')?.value : '')
+      || savedChk.lessonTitle
+      || histSession.lessonTitle
+      || ''
+    ).trim();
+
+    const homeworkAssignment = String(
+      (isCurrentActiveSession ? $('#homework-assignment')?.value : '')
+      || savedChk.homeworkAssignment
+      || histSession.homeworkAssignment
+      || ''
+    ).trim();
+
+    const homeworkLink = String(
+      (isCurrentActiveSession ? $('#homework-link')?.value : '')
+      || savedChk.homeworkLink
+      || histSession.homeworkLink
+      || ''
+    ).trim();
+
+    const parentGeneralNoteRaw = String(
+      (isCurrentActiveSession ? $('#parent-general-note')?.value : '')
+      || savedChk.parentGeneralNote
+      || histSession.parentGeneralNote
+      || ''
+    ).trim();
+
+    const parentGeneralLines = parentGeneralNoteRaw
+      ? parentGeneralNoteRaw.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => l.startsWith('•') ? l : `• ${l}`)
+      : [];
 
     const lines = [
-      parentGreeting,
-      `Trung tâm xin thông báo tình hình buổi học lớp ${currentClass.name} (${currentClass.code || currentClass.id}) ngày ${date}:`,
-      `• Bài học: ${lessonTitle}`,
-      `• Điểm danh: ${attStatusText}`,
-      `• Bài tập về nhà (BTVN): ${hwStatusText}${hwScore ? ` · Điểm BTVN: ${hwScore}/10` : ''}`,
+      `TCT kính gửi Phụ huynh em ${student.name} thông báo tình hình học tập của con lớp ${currentClass.name} ngày ${dateFormatted}:`,
+      ...(lessonTitle ? [`• Bài học: ${lessonTitle}`] : []),
+      ...(attStatusText ? [`• Điểm danh: ${attStatusText}`] : []),
+      ...(btvnLine ? [btvnLine] : []),
       ...(testScore ? [`• Điểm bài Kiểm tra (Test): ${testScore}/10`] : []),
       ...(noteText ? [`• Nhận xét của Trợ giảng/GV: ${noteText}`] : []),
       ...(homeworkAssignment ? [`• BTVN giao về nhà buổi tới: ${homeworkAssignment}`] : []),
       ...(homeworkLink ? [`• Link phiếu BTVN: ${homeworkLink}`] : []),
+      ...parentGeneralLines,
       `Trân trọng cảm ơn Phụ huynh!`
     ];
     return lines.join('\n');
@@ -2787,20 +2880,22 @@ export function setupFeatures(ctx) {
     };
   }
 
-  // Management Subtabs (Classes vs Templates vs Staff vs Students)
+  // Management Subtabs (Classes vs Templates vs Staff vs Admin Log vs Students)
   const mgmtTabClasses = $('#mgmt-tab-classes');
   const mgmtTabTemplates = $('#mgmt-tab-templates');
   const mgmtTabStaff = $('#mgmt-tab-staff');
+  const mgmtTabAdminLog = $('#mgmt-tab-admin-log');
   const mgmtTabStudents = $('#mgmt-tab-students');
 
   const mgmtPanelClasses = $('#mgmt-panel-classes');
   const mgmtPanelTemplates = $('#mgmt-panel-templates');
   const mgmtPanelStaff = $('#mgmt-panel-staff');
+  const mgmtPanelAdminLog = $('#mgmt-panel-admin-log');
   const mgmtPanelStudents = $('#mgmt-panel-students');
 
   function switchMgmtTab(activeTab, activePanel) {
-    [mgmtTabClasses, mgmtTabTemplates, mgmtTabStaff, mgmtTabStudents].forEach(t => t?.classList.remove('active'));
-    [mgmtPanelClasses, mgmtPanelTemplates, mgmtPanelStaff, mgmtPanelStudents].forEach(p => { if (p) p.hidden = true; });
+    [mgmtTabClasses, mgmtTabTemplates, mgmtTabStaff, mgmtTabAdminLog, mgmtTabStudents].forEach(t => t?.classList.remove('active'));
+    [mgmtPanelClasses, mgmtPanelTemplates, mgmtPanelStaff, mgmtPanelAdminLog, mgmtPanelStudents].forEach(p => { if (p) p.hidden = true; });
     activeTab?.classList.add('active');
     if (activePanel) activePanel.hidden = false;
   }
@@ -2824,6 +2919,16 @@ export function setupFeatures(ctx) {
       }
       switchMgmtTab(mgmtTabStaff, mgmtPanelStaff);
       renderStaffManagement();
+    };
+  }
+  if (mgmtTabAdminLog) {
+    mgmtTabAdminLog.onclick = () => {
+      if (getSignedInAccount()?.role !== 'admin') {
+        toast('Chỉ Quản trị viên (Admin) mới có quyền xem Nhật ký Admin Log.');
+        return;
+      }
+      switchMgmtTab(mgmtTabAdminLog, mgmtPanelAdminLog);
+      window.__renderManagementAdminLogPanel?.();
     };
   }
   if (mgmtTabStudents) {
@@ -3011,6 +3116,7 @@ export function setupFeatures(ctx) {
 
       getStudents().push(newStudent);
       saveStudentRecords(getStudents(), ctx.getMakeupStudents ? ctx.getMakeupStudents() : []);
+      window.__logAdminSessionAction?.(`Thêm học sinh ${name} vào danh sách lớp gốc`, `Trường: ${school || '—'} · SĐT PH: ${phone || '—'}`, 'class', '', targetClassId, '_class_');
 
       $('#new-roster-student-name').value = '';
       $('#new-roster-student-school').value = '';
@@ -5829,6 +5935,7 @@ export function setupFeatures(ctx) {
     };
 
     if (ctx.saveClassSessionChanges) ctx.saveClassSessionChanges(sessionChanges);
+    window.__logAdminSessionAction?.(`Thêm lịch buổi ${category === 'extra' ? 'học tăng cường' : 'học bù'} (${date})`, `Giờ: ${startTime}–${endTime} · Phòng: ${room} · Ghi chú: "${note || '—'}"`, 'class', '', classId, date);
     $('#session-schedule-dialog')?.close();
     toast(`Đã thêm buổi học bù/tăng cường ngày ${date} cho lớp!`);
     renderMainMenu();
@@ -5860,6 +5967,7 @@ export function setupFeatures(ctx) {
     };
 
     if (ctx.saveClassSessionChanges) ctx.saveClassSessionChanges(sessionChanges);
+    window.__logAdminSessionAction?.(`Điều chỉnh lịch buổi học (${date})`, `Trạng thái: ${status} · Ghi chú: "${note || '—'}"`, 'class', '', classId, date);
     $('#session-schedule-dialog')?.close();
     toast(`Đã lưu điều chỉnh nhân sự & trợ giảng cho buổi học tiếp theo (${date})!`);
     renderMainMenu();

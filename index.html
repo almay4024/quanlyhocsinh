@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=4.2.0" />
+  <link rel="stylesheet" href="/src/styles.css?v=4.3.0" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.2</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.3</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -160,6 +160,7 @@
             <button type="button" class="sub-nav-tab active" id="mgmt-tab-classes">Danh sách Lớp học</button>
             <button type="button" class="sub-nav-tab" id="mgmt-tab-templates">Phòng học & Sơ đồ mẫu</button>
             <button type="button" class="sub-nav-tab" id="mgmt-tab-staff" hidden>Quản lý Nhân sự (Admin)</button>
+            <button type="button" class="sub-nav-tab" id="mgmt-tab-admin-log" hidden>🛡 Nhật ký Admin (Log)</button>
             <button type="button" class="sub-nav-tab" id="mgmt-tab-students">Danh bạ Học sinh toàn trung tâm</button>
           </div>
 
@@ -347,6 +348,37 @@
                 </thead>
                 <tbody id="staff-table-tbody"></tbody>
               </table>
+            </div>
+          </div>
+
+          <!-- Subtab Admin Log (Nhật ký Admin chia theo từng lớp & từng ca học - Dạng Text dễ lưu) -->
+          <div id="mgmt-panel-admin-log" hidden>
+            <div class="management-summary" style="flex-wrap:wrap; gap:10px;">
+              <span id="mgmt-admin-log-total-badge" style="background:#ede9fe; color:#5b21b6; font-weight:700;">🛡 0 thao tác</span>
+              <span>Nhật ký toàn bộ thao tác dữ liệu của các tài khoản chia theo từng lớp và từng ca học (bao gồm cả sửa thông tin lớp, thêm/sửa/xoá ca học)</span>
+              <div style="margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="outline-button" id="mgmt-copy-admin-log-btn" style="font-weight:700; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;">📋 Copy toàn bộ Text</button>
+                <button type="button" class="primary-button" id="mgmt-download-admin-log-txt-btn" style="background:#4f46e5;">💾 Tải file .txt</button>
+              </div>
+            </div>
+
+            <div class="admin-log-filter-bar" style="margin-top:12px;">
+              <select id="mgmt-admin-log-class-filter" aria-label="Chọn lớp học" style="min-width:210px; font-weight:600;">
+                <option value="all">📚 Tất cả các lớp học</option>
+              </select>
+              <select id="mgmt-admin-log-session-filter" aria-label="Chọn ca học trong lớp" style="min-width:220px; font-weight:600;">
+                <option value="all">🗓 Tất cả các ca & Thao tác lớp</option>
+              </select>
+              <select id="mgmt-admin-log-account-filter" aria-label="Chọn tài khoản" style="min-width:190px;">
+                <option value="all">👤 Tất cả tài khoản</option>
+              </select>
+              <input type="search" id="mgmt-admin-log-search-input" placeholder="Tìm theo tên tài khoản, mã NV, tên học sinh hoặc hành động..." style="flex:1; min-width:200px;" />
+            </div>
+
+            <div id="mgmt-admin-log-account-chips" class="admin-log-account-chips" style="margin-bottom:10px;"></div>
+
+            <div class="admin-log-text-wrap" style="background:#0f172a; color:#f8fafc; border:1px solid #334155; border-radius:12px; padding:14px 16px; max-height:66vh; overflow-y:auto;">
+              <pre id="mgmt-admin-log-text-output" style="margin:0; font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:13px; line-height:1.65; white-space:pre-wrap; word-break:break-word; color:#e2e8f0;">Đang tải nhật ký Admin...</pre>
             </div>
           </div>
         </section>
@@ -570,7 +602,6 @@
             <div class="session-control-actions">
               <button type="button" class="outline-button btn-session-action" id="header-class-general-btn" title="Về trang quản lý chung của lớp">Quản lý chung</button>
               <button type="button" class="outline-button btn-session-action" id="header-edit-class-btn" title="Cài đặt thông tin lớp">Cài đặt lớp</button>
-              <button type="button" class="outline-button btn-session-action btn-admin-log" id="session-admin-log-btn" hidden style="display:none;" title="Nhật ký Admin: Xem toàn bộ lịch sử thao tác dữ liệu của từng tài khoản trong ca học này (Chỉ Admin thấy)">🛡 Admin Log <span id="session-admin-log-count" class="admin-log-count-badge">0</span></button>
               <button type="button" class="outline-button btn-session-action" id="open-session-btn" hidden style="display:none!important;">Mở lớp</button>
               <button type="button" class="outline-button btn-session-action btn-danger-soft" id="close-session-btn" hidden style="display:none!important;">Đóng ca học</button>
             </div>
@@ -690,7 +721,7 @@
           <div id="teacher-view-notice" class="teacher-view-banner" style="margin-bottom:12px;" hidden>Góc nhìn Giáo viên: Đứng từ bục giảng nhìn xuống (Cuối lớp ở trên, Bảng ở dưới, lật ngược trái - phải)</div>
           <section class="classroom-wrap">
             <div class="classroom-corner-tools">
-              <button type="button" class="outline-button compact-edit-map-btn" id="toggle-seating-edit-btn" title="Bật/Tắt chế độ chỉnh sửa sơ đồ">Sửa sơ đồ: BẬT</button>
+              <button type="button" class="outline-button compact-edit-map-btn" id="toggle-seating-edit-btn" title="Bật/Tắt chế độ chỉnh sửa sơ đồ" style="background:#f9fafb; color:#6b7280; border-color:#d1d5db;">Sửa sơ đồ: TẮT</button>
             </div>
             <div class="board-label"><span></span>BẢNG · ĐẦU LỚP</div>
             <div id="classroom" class="classroom"></div>
@@ -828,8 +859,11 @@
                 </div>
               </div>
             </div>
-            <label class="field-label">Ghi chú buổi học
+            <label class="field-label">Ghi chú buổi học (nội bộ trong ca)
               <textarea id="session-note" rows="3" placeholder="Ví dụ: Lớp học tập trung, 2 bạn bàn cuối cần nhắc nhở thêm..."></textarea>
+            </label>
+            <label class="field-label" style="margin-top:12px;">Ghi chú chung của ca gửi phụ huynh <span class="optional-label">(xuất hiện ở dòng cuối cùng trong toàn bộ tin nhắn gửi phụ huynh)</span>
+              <textarea id="parent-general-note" class="checklist-session-field" data-checklist-field="parentGeneralNote" rows="2" placeholder="Ví dụ: Link chữa BTVN buổi trước: https://... (Nếu để trống sẽ tự xoá dòng này khỏi tin nhắn gửi PH)"></textarea>
             </label>
             <div class="checklist-note-actions">
               <small id="session-note-status"></small>
@@ -2199,7 +2233,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.2</span></strong>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.3</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2336,56 +2370,39 @@ function jsonOut_(obj) {
   
 
   <div id="toast" class="toast" role="status"></div>
-  <!-- Hộp thoại Nhật ký Admin (Admin Audit Log) cho từng ca học - Chỉ Admin nhìn thấy -->
+  <!-- Hộp thoại Nhật ký Admin (Admin Audit Log dạng Text chia theo Lớp & Ca) - Chỉ Admin nhìn thấy -->
   <dialog id="session-admin-log-dialog" class="roster-admin-dialog admin-log-dialog">
-    <div class="dialog-panel" style="width:min(960px, 95vw); max-height:88vh; display:flex; flex-direction:column;">
+    <div class="dialog-panel" style="width:min(980px, 95vw); max-height:88vh; display:flex; flex-direction:column;">
       <div class="dialog-head" style="border-bottom:1px solid #e2e8f0; padding-bottom:12px;">
         <div>
-          <span class="eyebrow" style="color:#4f46e5; font-weight:700;">🛡 NHẬT KÝ KIỂM TRA DỮ LIỆU CA HỌC (CHỈ ADMIN)</span>
-          <h2 id="admin-log-dialog-title" style="margin:2px 0 0; font-size:19px;">Admin Log · Ca học</h2>
-          <p id="admin-log-dialog-sub" style="margin:3px 0 0; font-size:13px; color:#64748b;">Ghi nhận chi tiết mọi thao tác tác động lên dữ liệu của từng tài khoản trong ca học này.</p>
+          <span class="eyebrow" style="color:#4f46e5; font-weight:700;">🛡 NHẬT KÝ DỮ LIỆU ADMIN (DẠNG TEXT · CHIA THEO LỚP & CA)</span>
+          <h2 id="admin-log-dialog-title" style="margin:2px 0 0; font-size:19px;">Admin Log · Quản lý Lớp & Ca học</h2>
+          <p id="admin-log-dialog-sub" style="margin:3px 0 0; font-size:13px; color:#64748b;">Ghi nhận toàn bộ thao tác của từng tài khoản (bao gồm sửa thông tin lớp, thêm/sửa/xoá ca học và thao tác trong từng ca).</p>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button type="button" class="outline-button" id="export-admin-log-excel-btn" style="padding:7px 12px; font-size:13px; font-weight:700; color:#1e40af; border-color:#bfdbfe; background:#eff6ff;" title="Xuất nhật ký Admin của ca học này ra file Excel">📥 Xuất Excel Log</button>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" class="outline-button" id="copy-admin-log-text-btn" style="padding:7px 12px; font-size:13px; font-weight:700; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;">📋 Copy Text</button>
+          <button type="button" class="primary-button" id="export-admin-log-excel-btn" style="padding:7px 12px; font-size:13px; font-weight:700; background:#4f46e5;">💾 Tải file .txt</button>
           <button type="button" class="icon-close" id="close-admin-log-dialog" aria-label="Đóng">✕</button>
         </div>
       </div>
 
-      <!-- Thống kê nhanh theo từng tài khoản thao tác trong ca -->
       <div id="admin-log-account-summary" class="admin-log-account-chips" style="margin-top:12px;"></div>
 
-      <!-- Bộ lọc tìm kiếm theo tài khoản, phân loại hành động, từ khóa -->
       <div class="admin-log-filter-bar">
-        <select id="admin-log-account-filter" aria-label="Lọc theo tài khoản" style="min-width:200px;">
-          <option value="all">👤 Tất cả tài khoản thao tác</option>
+        <select id="admin-log-class-filter" aria-label="Lọc theo lớp học" style="min-width:195px; font-weight:600;">
+          <option value="all">📚 Tất cả các lớp</option>
         </select>
-        <select id="admin-log-category-filter" aria-label="Lọc theo loại hành động" style="min-width:175px;">
-          <option value="all">📂 Tất cả loại tác động</option>
-          <option value="attendance">Điểm danh & Chỗ ngồi</option>
-          <option value="homework">Bài tập về nhà (BTVN)</option>
-          <option value="score">Điểm số (BTVN / Test)</option>
-          <option value="student">Hồ sơ & Ghi chú học sinh</option>
-          <option value="checklist">Checklist & Bàn giao ca</option>
-          <option value="layout">Sơ đồ bàn ghế</option>
-          <option value="session">Mở / Đóng / Cài đặt ca</option>
+        <select id="admin-log-session-filter" aria-label="Lọc theo ca học" style="min-width:205px; font-weight:600;">
+          <option value="all">🗓 Tất cả các ca & Thao tác lớp</option>
         </select>
-        <input type="search" id="admin-log-search-input" placeholder="Tìm theo tên tài khoản, mã NV, tên học sinh hoặc hành động..." style="flex:1; min-width:200px;" />
+        <select id="admin-log-account-filter" aria-label="Lọc theo tài khoản" style="min-width:185px;">
+          <option value="all">👤 Tất cả tài khoản</option>
+        </select>
+        <input type="search" id="admin-log-search-input" placeholder="Tìm theo tên tài khoản, mã NV, tên học sinh hoặc hành động..." style="flex:1; min-width:190px;" />
       </div>
 
-      <div class="attendance-table-wrap" style="flex:1; overflow-y:auto; max-height:52vh; border:1px solid #e2e8f0; border-radius:10px;">
-        <table class="attendance-report-table" style="font-size:13.5px;">
-          <thead style="position:sticky; top:0; z-index:2; background:#f8fafc;">
-            <tr>
-              <th style="width:110px;">Thời gian</th>
-              <th style="width:210px;">Tài khoản thực hiện</th>
-              <th style="width:140px;">Phân loại</th>
-              <th>Hành động & Dữ liệu tác động</th>
-            </tr>
-          </thead>
-          <tbody id="admin-log-table-tbody">
-            <tr><td colspan="4" style="text-align:center; padding:24px; color:#64748b;">Chưa có dữ liệu thao tác nào trong ca học này.</td></tr>
-          </tbody>
-        </table>
+      <div class="admin-log-text-wrap" style="flex:1; overflow-y:auto; max-height:54vh; background:#0f172a; color:#f8fafc; border:1px solid #334155; border-radius:10px; padding:14px 16px;">
+        <pre id="admin-log-text-output" style="margin:0; font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:13px; line-height:1.65; white-space:pre-wrap; word-break:break-word; color:#e2e8f0;">Chưa có dữ liệu thao tác nào.</pre>
       </div>
 
       <div class="dialog-actions" style="margin-top:12px; padding-top:10px; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
@@ -2395,7 +2412,7 @@ function jsonOut_(obj) {
     </div>
   </dialog>
 
-  <script type="module" src="/src/app.js?v=4.2.0"></script>
+  <script type="module" src="/src/app.js?v=4.3.0"></script>
 
   <!-- Hộp thoại Thêm / Sửa Ca Học Trong Quá Khứ -->
   <dialog id="past-session-manage-dialog" class="class-config-dialog">
