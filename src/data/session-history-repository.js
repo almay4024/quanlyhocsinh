@@ -29,8 +29,17 @@ export function loadSessionHistory(storage = (typeof localStorage !== 'undefined
 }
 
 export function saveSessionHistory(history, storage = (typeof localStorage !== 'undefined' ? localStorage : null)) {
-  if (storage) {
-    storage.setItem(SESSION_HISTORY_KEY, JSON.stringify(history));
+  if (storage && Array.isArray(history)) {
+    const slim = history.map(rec => {
+      if (!rec || typeof rec !== 'object') return rec;
+      if ('adminAuditLogs' in rec) {
+        const copy = { ...rec };
+        delete copy.adminAuditLogs;
+        return copy;
+      }
+      return rec;
+    });
+    storage.setItem(SESSION_HISTORY_KEY, JSON.stringify(slim));
   }
 }
 
@@ -684,15 +693,7 @@ export function appendSessionAdminAuditLog({
     } catch {}
   }
 
-  // Mirror top 250 logs into session-history.v2 record if the session already exists in history
-  try {
-    const history = loadSessionHistory(storage);
-    const rec = history.find(s => s.classId === classId && s.date === date);
-    if (rec) {
-      rec.adminAuditLogs = nextLogs.slice(0, 250);
-      saveSessionHistory(history, storage);
-    }
-  } catch {}
+  // Không nhân bản 250 log vào lopvui.session-history.v2 để tránh làm phình dung lượng session-history.v2 và tránh đẩy lại cả cục lịch sử mỗi lần ghi log!
 
   return entry;
 }

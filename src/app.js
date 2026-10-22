@@ -1,14 +1,14 @@
-const APP_VERSION = "4.4.0";
+const APP_VERSION = "4.4.1";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.4.0';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.4.0';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.4.1';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.4.1';
 const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=4.4.0';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.4.0';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.4.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.4.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount } from './data/class-catalog-repository.js?v=4.4.0';
+import { setupFeatures } from './features.js?v=4.4.1';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.4.1';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.4.1';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.4.1';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount } from './data/class-catalog-repository.js?v=4.4.1';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -437,6 +437,11 @@ function _isJsonSemanticallyEqual(strA, strB) {
   }
 }
 
+/**
+ * 100% Deterministic & Idempotent CRDT Desk Merge:
+ * Tuyệt đối KHÔNG sinh ngẫu nhiên (Math.random) hay Date.now() bên trong hàm merge để đảm bảo:
+ * merge(A, B) === merge(B, A) và merge(merged, B) === merged (không bao giờ gây vòng lặp đẩy lại).
+ */
 function _mergeDeskItemsObjects(localDesks, remoteDesks, remoteTs = 0, localTs = 0, deletedMap = {}) {
   if (!localDesks || typeof localDesks !== 'object' || Array.isArray(localDesks)) return remoteDesks;
   if (!remoteDesks || typeof remoteDesks !== 'object' || Array.isArray(remoteDesks)) return localDesks;
@@ -445,20 +450,21 @@ function _mergeDeskItemsObjects(localDesks, remoteDesks, remoteTs = 0, localTs =
   const rResetAt = Number(remoteDesks.__resetAt || 0);
   const maxResetAt = Math.max(lResetAt, rResetAt);
 
-  const lTomb = localDesks.__tombstones || {};
-  const rTomb = remoteDesks.__tombstones || {};
+  const lTomb = localDesks.__tombstones;
+  const rTomb = remoteDesks.__tombstones;
+  const hasAnyTomb = Boolean(lTomb || rTomb);
   const mergedTombstones = {
-    entries: { ...(lTomb.entries || {}) },
-    students: { ...(lTomb.students || {}) },
-    lateRemoved: { ...(lTomb.lateRemoved || {}) }
+    entries: { ...(lTomb?.entries || {}) },
+    students: { ...(lTomb?.students || {}) },
+    lateRemoved: { ...(lTomb?.lateRemoved || {}) }
   };
-  for (const [k, ts] of Object.entries(rTomb.entries || {})) {
+  for (const [k, ts] of Object.entries(rTomb?.entries || {})) {
     mergedTombstones.entries[k] = Math.max(Number(mergedTombstones.entries[k]) || 0, Number(ts) || 0);
   }
-  for (const [k, ts] of Object.entries(rTomb.students || {})) {
+  for (const [k, ts] of Object.entries(rTomb?.students || {})) {
     mergedTombstones.students[k] = Math.max(Number(mergedTombstones.students[k]) || 0, Number(ts) || 0);
   }
-  for (const [k, ts] of Object.entries(rTomb.lateRemoved || {})) {
+  for (const [k, ts] of Object.entries(rTomb?.lateRemoved || {})) {
     mergedTombstones.lateRemoved[k] = Math.max(Number(mergedTombstones.lateRemoved[k]) || 0, Number(ts) || 0);
   }
 
@@ -470,39 +476,51 @@ function _mergeDeskItemsObjects(localDesks, remoteDesks, remoteTs = 0, localTs =
 
     const attTsA = Number(entA?.attendance?._updatedAt || tsA);
     const attTsB = Number(entB?.attendance?._updatedAt || tsB);
-    const mergedAtt = (attTsB >= attTsA ? (entB?.attendance || entA?.attendance) : (entA?.attendance || entB?.attendance)) || null;
+    const mergedAtt = (attTsB >= attTsA ? (entB?.attendance ?? entA?.attendance) : (entA?.attendance ?? entB?.attendance)) ?? null;
 
-    const hwTsA = Number(entA?.homework?._updatedAt || tsA);
-    const hwTsB = Number(entB?.homework?._updatedAt || tsB);
-    const newerHw = hwTsB >= hwTsA ? (entB?.homework || {}) : (entA?.homework || {});
-    const olderHw = hwTsB >= hwTsA ? (entA?.homework || {}) : (entB?.homework || {});
-    let mergedHw = { ...olderHw, ...newerHw };
-    if ((!mergedHw.status || mergedHw.status === 'uncollected') && olderHw.status && olderHw.status !== 'uncollected' && !newerHw._explicitReset) {
-      mergedHw.status = olderHw.status;
-      if (olderHw.reason && !mergedHw.reason) mergedHw.reason = olderHw.reason;
+    let mergedHw = newerEnt?.homework;
+    if (entA?.homework || entB?.homework) {
+      const hwTsA = Number(entA?.homework?._updatedAt || tsA);
+      const hwTsB = Number(entB?.homework?._updatedAt || tsB);
+      const newerHw = hwTsB >= hwTsA ? (entB?.homework || {}) : (entA?.homework || {});
+      const olderHw = hwTsB >= hwTsA ? (entA?.homework || {}) : (entB?.homework || {});
+      mergedHw = { ...olderHw, ...newerHw };
+      if ((!mergedHw.status || mergedHw.status === 'uncollected') && olderHw.status && olderHw.status !== 'uncollected' && !newerHw._explicitReset) {
+        mergedHw.status = olderHw.status;
+        if (olderHw.reason && !mergedHw.reason) mergedHw.reason = olderHw.reason;
+      }
+      if ((mergedHw.score === null || mergedHw.score === undefined || mergedHw.score === '') && olderHw.score !== null && olderHw.score !== undefined && olderHw.score !== '' && !newerHw._scoreCleared) {
+        if (hwTsB <= hwTsA) mergedHw.score = olderHw.score;
+      }
+      if (entA?.homework?._updatedAt !== undefined || entB?.homework?._updatedAt !== undefined) {
+        mergedHw._updatedAt = Math.max(hwTsA, hwTsB);
+      }
     }
-    if ((mergedHw.score === null || mergedHw.score === undefined || mergedHw.score === '') && olderHw.score !== null && olderHw.score !== undefined && olderHw.score !== '' && !newerHw._scoreCleared) {
-      if (hwTsB <= hwTsA) mergedHw.score = olderHw.score;
-    }
-    mergedHw._updatedAt = Math.max(hwTsA, hwTsB);
 
-    const testTsA = Number(entA?._testUpdatedAt || (entA?.testScore !== undefined && entA?.testScore !== null ? tsA : 0));
-    const testTsB = Number(entB?._testUpdatedAt || (entB?.testScore !== undefined && entB?.testScore !== null ? tsB : 0));
-    const mergedTestScore = testTsB >= testTsA
-      ? (entB?.testScore !== undefined ? entB.testScore : (entA?.testScore ?? null))
-      : (entA?.testScore !== undefined ? entA.testScore : (entB?.testScore ?? null));
-
-    return {
+    const out = {
       ...olderEnt,
-      ...newerEnt,
-      entryId: newerEnt?.entryId || olderEnt?.entryId || _newSeatEntryId(),
-      studentId: newerEnt?.studentId || olderEnt?.studentId || null,
-      attendance: mergedAtt,
-      homework: mergedHw,
-      testScore: mergedTestScore,
-      _testUpdatedAt: Math.max(testTsA, testTsB),
-      _updatedAt: Math.max(tsA, tsB)
+      ...newerEnt
     };
+    const resolvedEntryId = newerEnt?.entryId || olderEnt?.entryId;
+    if (resolvedEntryId) out.entryId = resolvedEntryId;
+    out.studentId = newerEnt?.studentId || olderEnt?.studentId || null;
+    if ('attendance' in (entA || {}) || 'attendance' in (entB || {})) out.attendance = mergedAtt;
+    if (mergedHw !== undefined) out.homework = mergedHw;
+
+    if ('testScore' in (entA || {}) || 'testScore' in (entB || {})) {
+      const testTsA = Number(entA?._testUpdatedAt || (entA?.testScore !== undefined && entA?.testScore !== null ? tsA : 0));
+      const testTsB = Number(entB?._testUpdatedAt || (entB?.testScore !== undefined && entB?.testScore !== null ? tsB : 0));
+      out.testScore = testTsB >= testTsA
+        ? (entB?.testScore !== undefined ? entB.testScore : (entA?.testScore ?? null))
+        : (entA?.testScore !== undefined ? entA.testScore : (entB?.testScore ?? null));
+      if ('_testUpdatedAt' in (entA || {}) || '_testUpdatedAt' in (entB || {})) {
+        out._testUpdatedAt = Math.max(testTsA, testTsB);
+      }
+    }
+    if ('_updatedAt' in (entA || {}) || '_updatedAt' in (entB || {})) {
+      out._updatedAt = Math.max(tsA, tsB);
+    }
+    return out;
   };
 
   const allDeskIds = new Set([
@@ -536,7 +554,7 @@ function _mergeDeskItemsObjects(localDesks, remoteDesks, remoteTs = 0, localTs =
           index: idx,
           entTs,
           isRemoteSnap,
-          entry: _ensureSeatEntryMeta({ ...ent }, entTs || Date.now())
+          entry: { ...ent }
         });
       } else {
         const shouldUseNewDesk = entTs > prev.entTs || (entTs === prev.entTs && isRemoteSnap && remoteTs >= localTs);
@@ -585,10 +603,10 @@ function _mergeDeskItemsObjects(localDesks, remoteDesks, remoteTs = 0, localTs =
           continue;
         }
         seenAnonEntryIds.add(ent.entryId);
-        anonByDesk.get(dId).push({ index: idx, entry: _ensureSeatEntryMeta({ ...ent }, entTs || Date.now()) });
+        anonByDesk.get(dId).push({ index: idx, entry: { ...ent } });
       } else {
         if ((remoteTs >= localTs && snapTs === remoteTs) || (localTs > remoteTs && snapTs === localTs)) {
-          anonByDesk.get(dId).push({ index: idx, entry: _ensureSeatEntryMeta({ ...ent }, entTs || Date.now()) });
+          anonByDesk.get(dId).push({ index: idx, entry: { ...ent } });
         }
       }
     }
@@ -613,7 +631,9 @@ function _mergeDeskItemsObjects(localDesks, remoteDesks, remoteTs = 0, localTs =
       .sort((a, b) => a.order - b.order)
       .map(x => x.entry);
   }
-  mergedDesks.__tombstones = mergedTombstones;
+  if (hasAnyTomb) {
+    mergedDesks.__tombstones = mergedTombstones;
+  }
   if (maxResetAt > 0) mergedDesks.__resetAt = maxResetAt;
   return mergedDesks;
 }
@@ -657,9 +677,14 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
         const mergeStudentSubArrays = (olderStu, newerStu) => {
           const combined = {
             ...olderStu,
-            ...newerStu,
-            classLearningNotes: { ...(olderStu.classLearningNotes || {}), ...(newerStu.classLearningNotes || {}) }
+            ...newerStu
           };
+          // Tuyệt đối không gắn thuộc tính tạm `.history` vào JSON lưu trữ vì sanitizeStudentForStorage luôn xoá `.history`
+          delete combined.history;
+
+          if (olderStu.classLearningNotes || newerStu.classLearningNotes) {
+            combined.classLearningNotes = { ...(olderStu.classLearningNotes || {}), ...(newerStu.classLearningNotes || {}) };
+          }
 
           const mergedDeletedScores = { ...(olderStu._deletedScores || {}) };
           for (const [k, ts] of Object.entries(newerStu._deletedScores || {})) {
@@ -680,7 +705,7 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           if (Object.keys(mergedRemovedSeat).length) combined._removedSeatingDates = mergedRemovedSeat;
 
           // 1. Merge attendanceHistory
-          {
+          if (Array.isArray(olderStu.attendanceHistory) || Array.isArray(newerStu.attendanceHistory)) {
             const aOlder = Array.isArray(olderStu.attendanceHistory) ? olderStu.attendanceHistory : [];
             const aNewer = Array.isArray(newerStu.attendanceHistory) ? newerStu.attendanceHistory : [];
             const mapAtt = new Map();
@@ -714,11 +739,10 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
               }
             }
             combined.attendanceHistory = Array.from(mapAtt.values());
-            combined.history = combined.attendanceHistory;
           }
 
           // 2. Merge sessionNotes field-by-field (homeworkScore, testScore, note, homeworkStatus)
-          {
+          if (Array.isArray(olderStu.sessionNotes) || Array.isArray(newerStu.sessionNotes)) {
             const nOlder = Array.isArray(olderStu.sessionNotes) ? olderStu.sessionNotes : [];
             const nNewer = Array.isArray(newerStu.sessionNotes) ? newerStu.sessionNotes : [];
             const mapNotes = new Map();
@@ -751,30 +775,36 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
                     base.homeworkStatus = prev.homeworkStatus;
                   }
                 }
-                base._hwUpdatedAt = Math.max(prevHwTs, curHwTs);
-                if ((Number(mergedDeletedScores[`${subKey}_BTVN`]) || 0) > base._hwUpdatedAt) {
+                if ('_hwUpdatedAt' in prev || '_hwUpdatedAt' in entry) {
+                  base._hwUpdatedAt = Math.max(prevHwTs, curHwTs);
+                }
+                if ((Number(mergedDeletedScores[`${subKey}_BTVN`]) || 0) > Math.max(prevHwTs, curHwTs)) {
                   base.homeworkScore = null;
                 }
 
                 const prevTestTs = Number(prev._testUpdatedAt || prevTs);
                 const curTestTs = Number(entry._testUpdatedAt || curTs);
                 if (curTestTs > prevTestTs) {
-                  base.testScore = entry.testScore !== undefined ? entry.testScore : prev.testScore;
+                  if (entry.testScore !== undefined) base.testScore = entry.testScore;
                 } else if (prevTestTs > curTestTs) {
-                  base.testScore = prev.testScore !== undefined ? prev.testScore : entry.testScore;
-                } else if (base.testScore === null || base.testScore === undefined) {
-                  base.testScore = prev.testScore ?? entry.testScore ?? null;
+                  if (prev.testScore !== undefined) base.testScore = prev.testScore;
+                } else if ((base.testScore === null || base.testScore === undefined) && (prev.testScore !== undefined || entry.testScore !== undefined)) {
+                  base.testScore = prev.testScore ?? entry.testScore;
                 }
-                base._testUpdatedAt = Math.max(prevTestTs, curTestTs);
-                if ((Number(mergedDeletedScores[`${subKey}_Test`]) || 0) > base._testUpdatedAt) {
+                if ('_testUpdatedAt' in prev || '_testUpdatedAt' in entry) {
+                  base._testUpdatedAt = Math.max(prevTestTs, curTestTs);
+                }
+                if ((Number(mergedDeletedScores[`${subKey}_Test`]) || 0) > Math.max(prevTestTs, curTestTs)) {
                   base.testScore = null;
                 }
 
                 const prevNoteTs = Number(prev._noteUpdatedAt || prevTs);
                 const curNoteTs = Number(entry._noteUpdatedAt || curTs);
                 base.note = curNoteTs >= prevNoteTs ? (entry.note ?? prev.note ?? '') : (prev.note ?? entry.note ?? '');
-                base._noteUpdatedAt = Math.max(prevNoteTs, curNoteTs);
-                base.updatedAt = Math.max(prevTs, curTs, base._hwUpdatedAt, base._testUpdatedAt, base._noteUpdatedAt);
+                if ('_noteUpdatedAt' in prev || '_noteUpdatedAt' in entry) {
+                  base._noteUpdatedAt = Math.max(prevNoteTs, curNoteTs);
+                }
+                base.updatedAt = Math.max(prevTs, curTs, prevHwTs, curHwTs, prevTestTs, curTestTs, prevNoteTs, curNoteTs);
                 mapNotes.set(subKey, base);
               }
             }
@@ -782,7 +812,7 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           }
 
           // 3. Merge seatingHistory
-          {
+          if (Array.isArray(olderStu.seatingHistory) || Array.isArray(newerStu.seatingHistory)) {
             const sOlder = Array.isArray(olderStu.seatingHistory) ? olderStu.seatingHistory : [];
             const sNewer = Array.isArray(newerStu.seatingHistory) ? newerStu.seatingHistory : [];
             const mapSeat = new Map();
@@ -820,67 +850,37 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           return combined;
         };
 
-        const mergeSessionHistoryRecords = (olderSess, newerSess) => {
-          const mergedSess = { ...olderSess, ...newerSess };
-          if (olderSess.deskItems && newerSess.deskItems) {
-            mergedSess.deskItems = _mergeDeskItemsObjects(olderSess.deskItems, newerSess.deskItems, remoteTs, localTs, deletedMap);
-          }
-          if (Array.isArray(olderSess.studentsSnapshot) && Array.isArray(newerSess.studentsSnapshot)) {
-            const snapMap = new Map();
-            for (const st of [...olderSess.studentsSnapshot, ...newerSess.studentsSnapshot]) {
-              if (!st || !st.studentId) continue;
-              const prev = snapMap.get(st.studentId);
-              if (!prev) {
-                snapMap.set(st.studentId, { ...st });
-              } else {
-                const mergedHw = { ...(prev.homework || {}), ...(st.homework || {}) };
-                if ((!mergedHw.status || mergedHw.status === 'uncollected') && prev.homework?.status && prev.homework.status !== 'uncollected') {
-                  mergedHw.status = prev.homework.status;
-                }
-                if ((mergedHw.score === null || mergedHw.score === undefined) && prev.homework?.score !== null && prev.homework?.score !== undefined) {
-                  mergedHw.score = prev.homework.score;
-                }
-                snapMap.set(st.studentId, {
-                  ...prev,
-                  ...st,
-                  homework: mergedHw,
-                  testScore: st.testScore ?? prev.testScore ?? null,
-                  note: st.note || prev.note || ''
-                });
-              }
-            }
-            mergedSess.studentsSnapshot = Array.from(snapMap.values());
-          }
-          return mergedSess;
-        };
-
         for (const item of localArr) {
           if (!item || !item.id || deletedMap[item.id]) continue;
-          mergedById.set(item.id, item);
+          if (key === 'lopvui.session-history.v2' && 'adminAuditLogs' in item) {
+            const copy = { ...item };
+            delete copy.adminAuditLogs;
+            mergedById.set(item.id, copy);
+          } else {
+            mergedById.set(item.id, item);
+          }
         }
         for (const rItem of remoteArr) {
           if (!rItem || !rItem.id || deletedMap[rItem.id]) continue;
-          const lItem = mergedById.get(rItem.id);
+          const cleanRItem = (key === 'lopvui.session-history.v2' && 'adminAuditLogs' in rItem)
+            ? (() => { const c = { ...rItem }; delete c.adminAuditLogs; return c; })()
+            : rItem;
+          const lItem = mergedById.get(cleanRItem.id);
           if (!lItem) {
-            mergedById.set(rItem.id, rItem);
+            mergedById.set(cleanRItem.id, cleanRItem);
           } else {
             const lItemTs = parseTs(lItem, localTs);
-            const rItemTs = parseTs(rItem, remoteTs);
-            const rRev = Number(rItem.revision || rItem.authVersion || 0);
+            const rItemTs = parseTs(cleanRItem, remoteTs);
+            const rRev = Number(cleanRItem.revision || cleanRItem.authVersion || 0);
             const lRev = Number(lItem.revision || lItem.authVersion || 0);
             const isRemoteNewer = rRev > lRev || (rRev === lRev && rItemTs >= lItemTs);
             if (key === 'lopvui.students.v9' || key === 'lopvui.makeup-students.v1') {
               mergedById.set(
-                rItem.id,
-                isRemoteNewer ? mergeStudentSubArrays(lItem, rItem) : mergeStudentSubArrays(rItem, lItem)
-              );
-            } else if (key === 'lopvui.session-history.v2') {
-              mergedById.set(
-                rItem.id,
-                isRemoteNewer ? mergeSessionHistoryRecords(lItem, rItem) : mergeSessionHistoryRecords(rItem, lItem)
+                cleanRItem.id,
+                isRemoteNewer ? mergeStudentSubArrays(lItem, cleanRItem) : mergeStudentSubArrays(cleanRItem, lItem)
               );
             } else if (isRemoteNewer) {
-              mergedById.set(rItem.id, rItem);
+              mergedById.set(cleanRItem.id, cleanRItem);
             }
           }
         }
@@ -888,7 +888,7 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       }
     }
 
-    // Granular per-desk & per-student CRDT merge for desk-items.v7 so multiple devices adding/moving/removing seats concurrently never overwrite each other
+    // Granular per-desk & per-student CRDT merge for desk-items.v7
     if (key.startsWith('lopvui.desk-items.v7.')) {
       const localDesks = JSON.parse(localPlain);
       const remoteDesks = JSON.parse(remotePlain);
@@ -924,7 +924,7 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       }
     }
 
-    // Granular merge for checklist.v1
+    // Granular merge for checklist.v1 (including live testScores & hwScores)
     if (key.startsWith('lopvui.checklist.v1.')) {
       const localChk = JSON.parse(localPlain);
       const remoteChk = JSON.parse(remotePlain);
@@ -966,13 +966,21 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           }
         }
 
+        const mergedHwScores = { ...(older.hwScores || {}) };
+        for (const [stuId, hwEntry] of Object.entries(newer.hwScores || {})) {
+          const prevHw = mergedHwScores[stuId];
+          if (!prevHw || Number(hwEntry?._updatedAt || 0) >= Number(prevHw?._updatedAt || 0)) {
+            mergedHwScores[stuId] = hwEntry;
+          }
+        }
+
         const oFieldTs = older._fieldUpdatedAt || {};
         const nFieldTs = newer._fieldUpdatedAt || {};
         const mergedFieldTs = { ...oFieldTs };
         const pickChecklistField = (field) => {
           const tO = Number(oFieldTs[field] || 0);
           const tN = Number(nFieldTs[field] || 0);
-          mergedFieldTs[field] = Math.max(tO, tN);
+          if (tO || tN) mergedFieldTs[field] = Math.max(tO, tN);
           if (tN > tO) return newer[field] ?? older[field];
           if (tO > tN) return older[field] ?? newer[field];
           return newer[field] ?? older[field];
@@ -985,17 +993,17 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           endItems: mergeChkItems(older.endItems, newer.endItems),
           tests: { ...(older.tests || {}), ...(newer.tests || {}) },
           testScores: mergedTestScores,
-          testScoreUpdatedAt: mergedTestScoreTs,
-          _removedItemIds: removedItems,
-          _fieldUpdatedAt: mergedFieldTs,
-          lessonTitle: pickChecklistField('lessonTitle'),
-          homeworkAssignment: pickChecklistField('homeworkAssignment'),
-          homeworkLink: pickChecklistField('homeworkLink'),
-          notebookLink: pickChecklistField('notebookLink'),
-          parentGeneralNote: pickChecklistField('parentGeneralNote'),
           classNote: (Number(newer.noteSavedAt || 0) >= Number(older.noteSavedAt || 0)) ? (newer.classNote ?? older.classNote) : (older.classNote ?? newer.classNote),
           noteSavedAt: Math.max(Number(newer.noteSavedAt || 0), Number(older.noteSavedAt || 0))
         };
+        if (Object.keys(mergedTestScoreTs).length) mergedChk.testScoreUpdatedAt = mergedTestScoreTs;
+        if (Object.keys(mergedHwScores).length) mergedChk.hwScores = mergedHwScores;
+        if (Object.keys(removedItems).length) mergedChk._removedItemIds = removedItems;
+        if (Object.keys(mergedFieldTs).length) mergedChk._fieldUpdatedAt = mergedFieldTs;
+        for (const f of ['lessonTitle', 'homeworkAssignment', 'homeworkLink', 'notebookLink', 'parentGeneralNote']) {
+          const val = pickChecklistField(f);
+          if (val !== undefined) mergedChk[f] = val;
+        }
         return JSON.stringify(mergedChk);
       }
     }
@@ -1015,7 +1023,8 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           ...Object.keys(localNotes).filter(k => k !== '__updatedAt'),
           ...Object.keys(remoteNotes).filter(k => k !== '__updatedAt')
         ]);
-        const mergedNotes = { __updatedAt: mergedTsMap };
+        const mergedNotes = {};
+        if (Object.keys(mergedTsMap).length) mergedNotes.__updatedAt = mergedTsMap;
         for (const stuId of allNoteKeys) {
           const lT = Number(lTsMap[stuId] || localTs || 0);
           const rT = Number(rTsMap[stuId] || remoteTs || 0);
@@ -1087,6 +1096,9 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
   return remoteTs >= localTs ? remotePlain : localPlain;
 }
 
+const _lastLocalKeyWriteAt = {};
+const _lastConflictRepushAt = {};
+
 function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, remoteDeletedMap = {}) {
   if (!entries || typeof entries !== 'object') return false;
   if (remoteDeletedMap && Object.keys(remoteDeletedMap).length) {
@@ -1094,31 +1106,34 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
   }
   const changed = [];
   const keyTsMap = _getKeyTimestamps();
+  const now = Date.now();
   _rtApplyingRemote = true;
   try {
     for (const [k, v] of Object.entries(entries)) {
       if (!_shouldSyncKey(k)) continue;
       const curPlain = _readDecryptedLocal(k);
       const remoteClientId = remoteMetaMap[k]?.clientId || '';
-      const remoteTs = remoteMetaMap[k]?.updatedAt || (source === 'cloud-poll' ? 0 : Date.now());
+      const remoteTs = remoteMetaMap[k]?.updatedAt || (source === 'cloud-poll' ? 0 : now);
       const localTs = keyTsMap[k] || 0;
 
-      // Nếu đang chờ đẩy key này lên Cloud, hợp nhất ngay bản đang chờ với bản từ máy khác để không mất dữ liệu của cả 2 máy!
-      if (_rtPendingCloudEntries.has(k) && v !== null && v !== undefined && curPlain !== null) {
+      // 1. Nếu key này đang nằm trong hàng đợi chuẩn bị đẩy lên Cloud của chính máy này -> gộp trực tiếp vào hàng đợi (không tốn thêm request!)
+      const pendingMap = _HEAVY_ARCHIVE_KEYS.has(k) ? _rtPendingHeavyCloudEntries : _rtPendingCloudEntries;
+      if (pendingMap.has(k) && v !== null && v !== undefined && curPlain !== null) {
         const remotePlain = decryptVaultPayload(String(v), k);
         const mergedPlain = _mergeGranularJsonValue(k, curPlain, remotePlain, remoteTs, localTs, remoteDeletedMap);
         if (mergedPlain && !_isJsonSemanticallyEqual(mergedPlain, curPlain)) {
           _writeEncryptedLocal(k, mergedPlain);
-          const nextTs = Math.max(localTs, remoteTs, Date.now());
+          const nextTs = Math.max(localTs, remoteTs, now);
           _setKeyTimestamp(k, nextTs);
           const encVal = encryptVaultPayload(mergedPlain, k);
           const encKey = encryptVaultPayload(k, 'firebase_key_meta');
-          _rtPendingCloudEntries.set(k, { encKey, value: encVal, updatedAt: nextTs, clientId: RT_CLIENT_ID });
+          pendingMap.set(k, { encKey, value: encVal, updatedAt: nextTs, clientId: RT_CLIENT_ID });
           changed.push(k);
         }
         continue;
       }
 
+      // 2. Nếu gói tin từ Cloud chính là của máy này vừa đẩy lên -> bỏ qua
       if ((source === 'cloud-poll' || source === 'cloud-sse') && remoteClientId === RT_CLIENT_ID && localTs >= remoteTs && curPlain !== null) {
         continue;
       }
@@ -1142,13 +1157,22 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
         } else if (source === 'broadcast-tab') {
           changed.push(k);
         }
-        // CƠ CHẾ RE-PUSH MERGED STATE:
-        // Nếu sau khi hợp nhất (merge), bản hợp nhất (mergedPlain) có chứa thêm dữ liệu của máy này mà bản trên Cloud (remotePlain) chưa có
-        // (bất kể localTs > remoteTs hay localTs <= remoteTs khi 2 máy bấm cùng lúc), tự động đẩy bản hợp nhất lên lại Cloud để máy kia nhận đủ 100%!
-        if (curPlain !== null && !_isJsonSemanticallyEqual(mergedPlain, remotePlain) && source !== 'broadcast-tab') {
-          const pushTs = Math.max(nextTs + 1, Date.now());
-          _setKeyTimestamp(k, pushTs);
-          _scheduleFirebaseCloudPush(k, mergedPlain, pushTs);
+
+        // 3. CHỐNG VÒNG LẶP BĂNG THÔNG (ANTI-PING-PONG):
+        // Chỉ đẩy ngược bản hợp nhất (Re-push) trong 2 trường hợp:
+        // (a) Khi F5 khởi động (source === 'cloud-init') mà máy có dữ liệu mới hơn hẳn trên Cloud (localTs > remoteTs).
+        // (b) Khi 2 máy vừa cùng bấm thao tác trên CÙNG 1 KEY trong vòng 3.5 giây qua ((now - lastLocalWrite) < 3500)
+        //     và có giới hạn Cooldown tối소 6 giây / key để tuyệt đối KHÔNG BAO GIỜ tạo vòng lặp ping-pong giữa 2 máy!
+        if (curPlain !== null && source !== 'broadcast-tab' && remoteClientId !== RT_CLIENT_ID) {
+          const isInitNewerLocal = (source === 'cloud-init' && localTs > remoteTs);
+          const wasRecentlyEditedHere = (now - (_lastLocalKeyWriteAt[k] || 0)) < 3500;
+          const cooldownPassed = (now - (_lastConflictRepushAt[k] || 0)) > 6000;
+          if ((isInitNewerLocal || (wasRecentlyEditedHere && cooldownPassed)) && !_isJsonSemanticallyEqual(mergedPlain, remotePlain)) {
+            _lastConflictRepushAt[k] = now;
+            const pushTs = Math.max(nextTs + 1, now);
+            _setKeyTimestamp(k, pushTs);
+            _scheduleFirebaseCloudPush(k, mergedPlain, pushTs);
+          }
         }
       }
     }
@@ -1173,6 +1197,9 @@ const _HEAVY_ARCHIVE_KEYS = new Set([
   'lopvui.session-history.v2'
 ]);
 
+let _rtPendingHeavyCloudEntries = new Map();
+let _rtHeavyCloudPushTimer = null;
+
 function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
   const dbUrl = getConfiguredFirebaseDbUrl();
   if (!dbUrl || !_shouldSyncKey(key)) return;
@@ -1180,92 +1207,72 @@ function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
     ? null
     : encryptVaultPayload(decryptVaultPayload(String(plainOrEncVal), key), key);
   const encKey = encryptVaultPayload(key, 'firebase_key_meta');
-  _rtPendingCloudEntries.set(key, { encKey, value: encVal, updatedAt: ts, clientId: RT_CLIENT_ID });
-  if (_rtCloudPushTimer) clearTimeout(_rtCloudPushTimer);
-  const hasOnlyHeavyKeys = Array.from(_rtPendingCloudEntries.keys()).every(k => _HEAVY_ARCHIVE_KEYS.has(k));
-  const delayMs = hasOnlyHeavyKeys ? 260 : 90;
-  _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false), delayMs);
+  const itemPayload = { encKey, value: encVal, updatedAt: ts, clientId: RT_CLIENT_ID };
+
+  // Tách riêng hàng đợi Key nhẹ (Sơ đồ bàn, Checklist, Điểm trong ca: ~1.5 KB -> đẩy sau 220ms)
+  // và Key lưu trữ nặng (students.v9, session-history.v2: ~300 KB -> gom nhóm đẩy sau 2500ms để tiết kiệm 95% băng thông!)
+  if (_HEAVY_ARCHIVE_KEYS.has(key)) {
+    _rtPendingHeavyCloudEntries.set(key, itemPayload);
+    if (_rtHeavyCloudPushTimer) clearTimeout(_rtHeavyCloudPushTimer);
+    _rtHeavyCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false, true), 2500);
+  } else {
+    _rtPendingCloudEntries.set(key, itemPayload);
+    if (_rtCloudPushTimer) clearTimeout(_rtCloudPushTimer);
+    _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false, false), 220);
+  }
 }
 
 let _lastSeenCloudMetaTs = 0;
 let _seenSafeKeyTimestamps = {};
 let _lastSyncedDeletedCount = 0;
 let _rtCloudEventSource = null;
+let _rtPullInFlightPromise = null;
 
-async function _flushFirebaseCloudPush(isUnloading = false) {
+async function _flushFirebaseCloudPush(isUnloading = false, includeHeavy = false) {
   const dbUrl = getConfiguredFirebaseDbUrl();
-  if (!dbUrl || !_rtPendingCloudEntries.size) return;
-  if (_rtCloudPushTimer) {
+  if (!dbUrl) return;
+
+  const hasFast = _rtPendingCloudEntries.size > 0;
+  const hasHeavy = (includeHeavy || isUnloading) && _rtPendingHeavyCloudEntries.size > 0;
+  if (!hasFast && !hasHeavy) return;
+
+  if (hasFast && _rtCloudPushTimer) {
     clearTimeout(_rtCloudPushTimer);
     _rtCloudPushTimer = null;
   }
-  const batch = Array.from(_rtPendingCloudEntries.entries());
-  _rtPendingCloudEntries.clear();
+  if (hasHeavy && _rtHeavyCloudPushTimer) {
+    clearTimeout(_rtHeavyCloudPushTimer);
+    _rtHeavyCloudPushTimer = null;
+  }
+
+  const batch = [];
+  if (hasFast) {
+    for (const entry of _rtPendingCloudEntries.entries()) batch.push(entry);
+    _rtPendingCloudEntries.clear();
+  }
+  if (hasHeavy) {
+    for (const entry of _rtPendingHeavyCloudEntries.entries()) batch.push(entry);
+    _rtPendingHeavyCloudEntries.clear();
+  }
 
   const now = Date.now();
   const delMap = _getDeletedIdsMap();
   const kvPayload = {};
   const metaKeyTsPatch = {};
-  const mergedLocalKeys = [];
+
+  for (const [k, item] of batch) {
+    const safeK = _encodeFirebaseSafeKey(k);
+    const itemTs = item.updatedAt || now;
+    kvPayload[safeK] = item;
+    metaKeyTsPatch[safeK] = itemTs;
+    _seenSafeKeyTimestamps[safeK] = itemTs;
+  }
+
+  const kvBody = JSON.stringify(kvPayload);
+  const useKeepalive = Boolean(isUnloading && kvBody.length < 58000);
 
   _rtIsPushingCloud = true;
   try {
-    // CƠ CHẾ PRE-PUSH READ-MERGE-WRITE:
-    // Trước khi ghi đè lên nhánh kv trên Cloud, kiểm tra nhanh xem có máy nào khác vừa cập nhật cùng key đó trên Cloud không.
-    // Nếu có, tải bản trên Cloud về hợp nhất (merge) với bản của máy này rồi mới đẩy bản gộp lên!
-    if (!isUnloading) {
-      try {
-        const metaCheckRes = await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, { cache: 'no-store' });
-        if (metaCheckRes.ok) {
-          const remoteMeta = await metaCheckRes.json();
-          const remoteKeyTsMap = remoteMeta?.keyTimestamps || {};
-          await Promise.all(batch.map(async ([k, item]) => {
-            if (!item || item.value === null || item.value === undefined) return;
-            const safeK = _encodeFirebaseSafeKey(k);
-            const rTs = Number(remoteKeyTsMap[safeK]) || 0;
-            const seenTs = Number(_seenSafeKeyTimestamps[safeK]) || 0;
-            if (rTs > seenTs) {
-              const kRes = await fetch(`${dbUrl}/lopvui_cloud_v3/kv/${safeK}.json`, { cache: 'no-store' });
-              if (kRes.ok) {
-                const remoteItem = await kRes.json();
-                if (remoteItem && remoteItem.value && remoteItem.clientId !== RT_CLIENT_ID) {
-                  const localPlain = decryptVaultPayload(item.value, k);
-                  const remotePlain = decryptVaultPayload(remoteItem.value, k);
-                  const mergedPlain = _mergeGranularJsonValue(k, localPlain, remotePlain, remoteItem.updatedAt || rTs, item.updatedAt || now, delMap);
-                  if (mergedPlain) {
-                    const nextTs = Math.max(now, rTs + 1);
-                    item.value = encryptVaultPayload(mergedPlain, k);
-                    item.updatedAt = nextTs;
-                    if (!_isJsonSemanticallyEqual(mergedPlain, localPlain)) {
-                      _rtApplyingRemote = true;
-                      try {
-                        _writeEncryptedLocal(k, mergedPlain);
-                        _setKeyTimestamp(k, nextTs);
-                      } finally {
-                        _rtApplyingRemote = false;
-                      }
-                      mergedLocalKeys.push(k);
-                    }
-                  }
-                }
-              }
-            }
-          }));
-        }
-      } catch {}
-    }
-
-    for (const [k, item] of batch) {
-      const safeK = _encodeFirebaseSafeKey(k);
-      const itemTs = item.updatedAt || now;
-      kvPayload[safeK] = item;
-      metaKeyTsPatch[safeK] = itemTs;
-      _seenSafeKeyTimestamps[safeK] = itemTs;
-    }
-
-    const kvBody = JSON.stringify(kvPayload);
-    const useKeepalive = Boolean(isUnloading || kvBody.length < 58000);
-
     const res = await fetch(`${dbUrl}/lopvui_cloud_v3/kv.json`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1281,17 +1288,16 @@ async function _flushFirebaseCloudPush(isUnloading = false) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: delBody,
-        keepalive: delBody.length < 58000
+        keepalive: Boolean(isUnloading && delBody.length < 58000)
       });
     }
 
-    // Ghi keyTimestamps TRƯỚC khi ghi meta.lastUpdatedAt để khi SSE trên máy khác nhận sự kiện meta, keyTimestamps đã luôn có sẵn 100%!
     const tsBody = JSON.stringify(metaKeyTsPatch);
     await fetch(`${dbUrl}/lopvui_cloud_v3/meta/keyTimestamps.json`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: tsBody,
-      keepalive: tsBody.length < 58000
+      keepalive: Boolean(isUnloading && tsBody.length < 58000)
     });
 
     const metaNow = Math.max(now, ...Object.values(metaKeyTsPatch));
@@ -1307,20 +1313,17 @@ async function _flushFirebaseCloudPush(isUnloading = false) {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: metaBody,
-      keepalive: true
+      keepalive: Boolean(isUnloading)
     });
 
     _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, metaNow);
-    if (mergedLocalKeys.length > 0) {
-      _scheduleRtUIRefresh(mergedLocalKeys, 'cloud-prepush-merge');
-    }
     if (res.ok) {
       _notifyRtStatus('realtime-cloud', metaNow, 'cloud-pushed');
     }
   } catch {} finally {
     _rtIsPushingCloud = false;
     if (_rtPendingCloudEntries.size > 0 && !_rtCloudPushTimer) {
-      _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false), 90);
+      _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false, false), 220);
     }
   }
 }
@@ -1384,77 +1387,92 @@ async function _pullFullCloudSnapshotOnce(source = 'cloud-init') {
 }
 
 /**
- * Đồng bộ Delta siêu tiết kiệm băng thông & chống bỏ sót gói tin khi nhiều máy làm việc cùng lúc
+ * Đồng bộ Delta siêu tiết kiệm băng thông (chống tải trùng lặp song song bằng _rtPullInFlightPromise)
  */
 async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
+  if (_rtPullInFlightPromise) return _rtPullInFlightPromise;
   const dbUrl = getConfiguredFirebaseDbUrl();
   if (!dbUrl) return { ok: false, reason: 'no-url' };
-  try {
-    const metaRes = await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, { cache: 'no-store' });
-    if (!metaRes.ok) return { ok: false, reason: `HTTP ${metaRes.status}` };
-    const meta = await metaRes.json();
-    _notifyRtStatus('realtime-cloud', Date.now(), 'connected');
 
-    if (!meta || typeof meta !== 'object' || !meta.deltaSyncV392) {
-      return await _pullFullCloudSnapshotOnce(source);
-    }
+  _rtPullInFlightPromise = (async () => {
+    try {
+      const metaRes = await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, { cache: 'no-store' });
+      if (!metaRes.ok) return { ok: false, reason: `HTTP ${metaRes.status}` };
+      const meta = await metaRes.json();
+      _notifyRtStatus('realtime-cloud', Date.now(), 'connected');
 
-    const remoteLastUpdated = Number(meta.lastUpdatedAt) || 0;
-    const remoteKeyTsMap = meta.keyTimestamps || {};
+      if (!meta || typeof meta !== 'object' || !meta.deltaSyncV392) {
+        return await _pullFullCloudSnapshotOnce(source);
+      }
 
-    // Luôn kiểm tra trực tiếp từng safeKey trong remoteKeyTsMap (vì meta.json đã tải về rồi) để không bao giờ bỏ sót key khi 2 máy đẩy cùng lúc
-    const changedSafeKeys = Object.keys(remoteKeyTsMap).filter(safeK => {
-      const rTs = Number(remoteKeyTsMap[safeK]) || 0;
-      const seenTs = Number(_seenSafeKeyTimestamps[safeK]) || 0;
-      return rTs > seenTs;
-    });
+      const remoteLastUpdated = Number(meta.lastUpdatedAt) || 0;
+      const remoteKeyTsMap = meta.keyTimestamps || {};
 
-    if (!changedSafeKeys.length && _lastSeenCloudMetaTs > 0 && (Number(meta.deletedCount) || 0) <= _lastSyncedDeletedCount) {
+      // Nếu bản cập nhật cuối trên Cloud chính là do máy này đẩy lên và không có key nào mới hơn -> dừng ngay (0 KB tải thêm!)
+      const changedSafeKeys = Object.keys(remoteKeyTsMap).filter(safeK => {
+        const rTs = Number(remoteKeyTsMap[safeK]) || 0;
+        const seenTs = Number(_seenSafeKeyTimestamps[safeK]) || 0;
+        return rTs > seenTs;
+      });
+
+      if (!changedSafeKeys.length && _lastSeenCloudMetaTs > 0 && (Number(meta.deletedCount) || 0) <= _lastSyncedDeletedCount) {
+        _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, remoteLastUpdated);
+        return { ok: true, emptyCloud: Object.keys(remoteKeyTsMap).length === 0, changed: false, count: 0 };
+      }
+
+      if (_lastSeenCloudMetaTs === 0 && changedSafeKeys.length > 8) {
+        return await _pullFullCloudSnapshotOnce(source);
+      }
+
+      // Đánh dấu _seenSafeKeyTimestamps ngay lập tức trước khi tải để các lần gọi kế tiếp không bao giờ tải trùng lại cùng 1 safeK
+      changedSafeKeys.forEach(safeK => {
+        const rTs = Number(remoteKeyTsMap[safeK]) || 0;
+        if (rTs > 0) {
+          _seenSafeKeyTimestamps[safeK] = Math.max(Number(_seenSafeKeyTimestamps[safeK]) || 0, rTs);
+        }
+      });
+
+      const entries = {};
+      const metaMap = {};
+      await Promise.all(changedSafeKeys.map(async (safeK) => {
+        try {
+          const kRes = await fetch(`${dbUrl}/lopvui_cloud_v3/kv/${safeK}.json`, { cache: 'no-store' });
+          if (!kRes.ok) return;
+          const item = await kRes.json();
+          const rTs = Number(remoteKeyTsMap[safeK]) || Date.now();
+          if (!item) return;
+          const resolvedKey = item.encKey
+            ? decryptVaultPayload(item.encKey, 'firebase_key_meta')
+            : item.rawKey;
+          if (resolvedKey && _shouldSyncKey(resolvedKey)) {
+            entries[resolvedKey] = item.value;
+            metaMap[resolvedKey] = { updatedAt: item.updatedAt || rTs, clientId: item.clientId || '' };
+          }
+        } catch {}
+      }));
+
+      let remoteDeleted = {};
+      if ((Number(meta.deletedCount) || 0) > _lastSyncedDeletedCount) {
+        try {
+          const delRes = await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, { cache: 'no-store' });
+          if (delRes.ok) {
+            remoteDeleted = (await delRes.json()) || {};
+            _lastSyncedDeletedCount = Object.keys(remoteDeleted).length;
+          }
+        } catch {}
+      }
+
       _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, remoteLastUpdated);
-      return { ok: true, emptyCloud: Object.keys(remoteKeyTsMap).length === 0, changed: false, count: 0 };
+      const changed = _applyRtRemoteEntries(entries, source, metaMap, remoteDeleted);
+      return { ok: true, emptyCloud: Object.keys(remoteKeyTsMap).length === 0, changed, count: Object.keys(entries).length };
+    } catch (err) {
+      return { ok: false, reason: String(err?.message || 'network-error') };
+    } finally {
+      _rtPullInFlightPromise = null;
     }
+  })();
 
-    if (_lastSeenCloudMetaTs === 0 && changedSafeKeys.length > 8) {
-      return await _pullFullCloudSnapshotOnce(source);
-    }
-
-    const entries = {};
-    const metaMap = {};
-    await Promise.all(changedSafeKeys.map(async (safeK) => {
-      try {
-        const kRes = await fetch(`${dbUrl}/lopvui_cloud_v3/kv/${safeK}.json`, { cache: 'no-store' });
-        if (!kRes.ok) return;
-        const item = await kRes.json();
-        const rTs = Number(remoteKeyTsMap[safeK]) || Date.now();
-        _seenSafeKeyTimestamps[safeK] = Math.max(Number(_seenSafeKeyTimestamps[safeK]) || 0, rTs);
-        if (!item) return;
-        const resolvedKey = item.encKey
-          ? decryptVaultPayload(item.encKey, 'firebase_key_meta')
-          : item.rawKey;
-        if (resolvedKey && _shouldSyncKey(resolvedKey)) {
-          entries[resolvedKey] = item.value;
-          metaMap[resolvedKey] = { updatedAt: item.updatedAt || rTs, clientId: item.clientId || '' };
-        }
-      } catch {}
-    }));
-
-    let remoteDeleted = {};
-    if ((Number(meta.deletedCount) || 0) > _lastSyncedDeletedCount) {
-      try {
-        const delRes = await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, { cache: 'no-store' });
-        if (delRes.ok) {
-          remoteDeleted = (await delRes.json()) || {};
-          _lastSyncedDeletedCount = Object.keys(remoteDeleted).length;
-        }
-      } catch {}
-    }
-
-    _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, remoteLastUpdated);
-    const changed = _applyRtRemoteEntries(entries, source, metaMap, remoteDeleted);
-    return { ok: true, emptyCloud: Object.keys(remoteKeyTsMap).length === 0, changed, count: Object.keys(entries).length };
-  } catch (err) {
-    return { ok: false, reason: String(err?.message || 'network-error') };
-  }
+  return _rtPullInFlightPromise;
 }
 
 async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
@@ -1566,8 +1584,6 @@ function _installStorageVaultInterceptor() {
             }
           } catch {}
         }
-        // CƠ CHẾ READ-MODIFY-WRITE TẠI LOCALSTORAGE:
-        // Trước khi lưu đè xuống localStorage, trộn (merge) bản mới nhất đang có trong localStorage (vừa đồng bộ dưới nền) với bản đang lưu!
         if (prevPlain && prevPlain !== plainStr) {
           const prevTs = _getKeyTimestamps()[kStr] || 0;
           try {
@@ -1583,8 +1599,9 @@ function _installStorageVaultInterceptor() {
       try { _nativeSetItem.call(this, key, toStore); } catch { return; }
 
       if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote) {
-        if (prevPlain !== plainStr) {
+        if (prevPlain !== plainStr && !_isJsonSemanticallyEqual(prevPlain, plainStr)) {
           _rtLastLocalWriteAt = now;
+          _lastLocalKeyWriteAt[kStr] = now;
           _setKeyTimestamp(kStr, now);
           if (_rtChannel) {
             try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [kStr]: toStore } }); } catch {}
@@ -1602,6 +1619,7 @@ function _installStorageVaultInterceptor() {
       if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote && had) {
         const now = Date.now();
         _rtLastLocalWriteAt = now;
+        _lastLocalKeyWriteAt[kStr] = now;
         _setKeyTimestamp(kStr, now);
         if (_rtChannel) {
           try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [kStr]: null } }); } catch {}
@@ -1664,8 +1682,11 @@ function initRealtimeSync(onSyncCallback) {
             if (!payload || typeof payload !== 'object') return;
             const remoteClient = payload.lastClientId || '';
             const remoteUpdated = Number(payload.lastUpdatedAt) || 0;
-            if (remoteClient === RT_CLIENT_ID && remoteUpdated <= _lastSeenCloudMetaTs) return;
-            if (remoteUpdated > _lastSeenCloudMetaTs || remoteClient !== RT_CLIENT_ID) {
+            if (remoteClient === RT_CLIENT_ID) {
+              _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, remoteUpdated);
+              return;
+            }
+            if (remoteUpdated > _lastSeenCloudMetaTs) {
               pullFromFirebaseCloudNow('cloud-sse');
             }
           } catch {}
@@ -1705,16 +1726,16 @@ function initRealtimeSync(onSyncCallback) {
       window.addEventListener(evt, _markUserActive, { passive: true });
     });
 
-    // Khi Refresh (beforeunload), đóng trang (pagehide) hoặc ẩn tab: đẩy ngay lập tức với cờ keepalive=true để không bao giờ mất dữ liệu khi F5
+    // Khi Refresh (beforeunload), đóng trang (pagehide) hoặc ẩn tab: đẩy ngay lập tức cả key nhanh và key nặng với cờ keepalive=true
     window.addEventListener('beforeunload', () => {
-      if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush(true);
+      if (_rtPendingCloudEntries.size > 0 || _rtPendingHeavyCloudEntries.size > 0) _flushFirebaseCloudPush(true, true);
     });
     window.addEventListener('pagehide', () => {
-      if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush(true);
+      if (_rtPendingCloudEntries.size > 0 || _rtPendingHeavyCloudEntries.size > 0) _flushFirebaseCloudPush(true, true);
     });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        if (_rtPendingCloudEntries.size > 0) _flushFirebaseCloudPush(true);
+        if (_rtPendingCloudEntries.size > 0 || _rtPendingHeavyCloudEntries.size > 0) _flushFirebaseCloudPush(true, true);
       } else if (getConfiguredFirebaseDbUrl()) {
         _lastUserActivityAt = Date.now();
         _lastCloudPollAt = Date.now();
@@ -1739,8 +1760,8 @@ function initRealtimeSync(onSyncCallback) {
           _connectFirebaseMetaSSE();
         }
         const idleMs = now - _lastUserActivityAt;
-        const activeInterval = sseHealthy ? 4500 : 2000;
-        const minInterval = idleMs < 180000 ? activeInterval : (idleMs < 900000 ? 16000 : 45000);
+        const activeInterval = sseHealthy ? 8000 : 2500;
+        const minInterval = idleMs < 180000 ? activeInterval : (idleMs < 900000 ? 20000 : 60000);
         if (now - _lastCloudPollAt < minInterval - 150) return;
         _lastCloudPollAt = now;
         pullFromFirebaseCloudNow('cloud-poll');
@@ -3358,7 +3379,16 @@ function reloadClassSessionData(classId, date) {
     const btvnScoreEntry = (student.scores || []).find(sc => sc.classId === CURRENT_CLASS_ID && sc.date === checklistDate && (!sc.type || sc.type === 'BTVN'));
     const scoreEntry = (student.scores || []).find(sc => sc.classId === CURRENT_CLASS_ID && sc.date === checklistDate && sc.type && sc.type !== 'BTVN');
 
-    const resolvedHwScore = seatedEntry?.homework?.score ?? savedNote?.homeworkScore ?? btvnScoreEntry?.score ?? null;
+    const chkHwObj = checklist?.hwScores?.[student.id];
+    const seatHwTs = Number(seatedEntry?.homework?._updatedAt || 0);
+    const chkHwTs = Number(chkHwObj?._updatedAt || 0);
+    const noteHwTs = Number(savedNote?._hwUpdatedAt || 0);
+    const bestLiveHwScore = (chkHwTs >= seatHwTs && chkHwTs >= noteHwTs && chkHwObj !== undefined)
+      ? chkHwObj.score
+      : (seatHwTs >= noteHwTs && seatedEntry?.homework?.score !== undefined ? seatedEntry.homework.score : undefined);
+    const resolvedHwScore = bestLiveHwScore !== undefined
+      ? bestLiveHwScore
+      : (seatedEntry?.homework?.score ?? chkHwObj?.score ?? savedNote?.homeworkScore ?? btvnScoreEntry?.score ?? null);
     const resolvedHwStatus = seatedEntry?.homework?.status
       || savedNote?.homeworkStatus
       || (resolvedHwScore !== null && resolvedHwScore !== undefined ? 'submitted' : 'uncollected');
@@ -8571,6 +8601,9 @@ function applyStudentManualScore(studentId, field, rawValue) {
       seated.entry.homeworkSaved = true;
       seated.entry._updatedAt = now;
     }
+    checklist.hwScores = checklist.hwScores || {};
+    checklist.hwScores[studentId] = { status: nextStatus, score: numVal, _scoreCleared: numVal === null, _updatedAt: now };
+    saveChecklist();
     student.homework = nextHw;
     recordStudentScore(student, numVal, 'BTVN');
     const effAtt = isOnMap
