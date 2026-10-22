@@ -1,14 +1,14 @@
-const APP_VERSION = "4.3.0";
+const APP_VERSION = "4.4.0";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.3.0';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.3.0';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.4.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.4.0';
 const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=4.3.0';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.3.0';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.3.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.3.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount } from './data/class-catalog-repository.js?v=4.3.0';
+import { setupFeatures } from './features.js?v=4.4.0';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.4.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.4.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.4.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount } from './data/class-catalog-repository.js?v=4.4.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -365,6 +365,259 @@ function _scheduleRtUIRefresh(changedKeys, source = 'remote') {
  * Granular ID-level Merge for Array collections (students, sessionHistory, classCatalog, etc.)
  * Operates on decrypted plaintext in memory so concurrent edits on multiple devices never overwrite each other.
  */
+function _newSeatEntryId() {
+  return `seat_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function _ensureSeatEntryMeta(entry, fallbackTs = Date.now()) {
+  if (!entry || typeof entry !== 'object') return entry;
+  if (!entry.entryId) entry.entryId = _newSeatEntryId();
+  if (!entry._updatedAt) entry._updatedAt = fallbackTs;
+  if (entry.attendance && typeof entry.attendance === 'object' && !entry.attendance._updatedAt) {
+    entry.attendance._updatedAt = entry._updatedAt;
+  }
+  if (entry.homework && typeof entry.homework === 'object' && !entry.homework._updatedAt) {
+    entry.homework._updatedAt = entry._updatedAt;
+  }
+  return entry;
+}
+
+function _ensureDeskTombstones(desksObj) {
+  if (!desksObj || typeof desksObj !== 'object' || Array.isArray(desksObj)) return { entries: {}, students: {}, lateRemoved: {} };
+  if (!desksObj.__tombstones || typeof desksObj.__tombstones !== 'object') {
+    desksObj.__tombstones = { entries: {}, students: {}, lateRemoved: {} };
+  }
+  desksObj.__tombstones.entries = desksObj.__tombstones.entries || {};
+  desksObj.__tombstones.students = desksObj.__tombstones.students || {};
+  desksObj.__tombstones.lateRemoved = desksObj.__tombstones.lateRemoved || {};
+  return desksObj.__tombstones;
+}
+
+function recordDeskTombstone(desksObj, { entryId = null, studentId = null, lateRemoved = false, keepInLateQueue = false, timestamp = Date.now() } = {}) {
+  const tomb = _ensureDeskTombstones(desksObj);
+  if (entryId) {
+    tomb.entries[entryId] = Math.max(Number(tomb.entries[entryId]) || 0, timestamp);
+  }
+  if (studentId && !keepInLateQueue) {
+    tomb.students[studentId] = Math.max(Number(tomb.students[studentId]) || 0, timestamp);
+  }
+  if (studentId && lateRemoved) {
+    tomb.lateRemoved[studentId] = Math.max(Number(tomb.lateRemoved[studentId]) || 0, timestamp);
+  }
+}
+
+function clearDeskTombstoneForStudent(desksObj, studentId, entryId = null) {
+  if (!desksObj || typeof desksObj !== 'object') return;
+  const tomb = _ensureDeskTombstones(desksObj);
+  if (studentId && tomb.students) delete tomb.students[studentId];
+  if (studentId && tomb.lateRemoved) delete tomb.lateRemoved[studentId];
+  if (entryId && tomb.entries) delete tomb.entries[entryId];
+}
+
+function _canonicalizeJsonVal(val) {
+  if (val === null || val === undefined || typeof val !== 'object') return val;
+  if (Array.isArray(val)) return val.map(_canonicalizeJsonVal);
+  const sortedKeys = Object.keys(val).sort();
+  const out = {};
+  for (const k of sortedKeys) {
+    if (val[k] !== undefined) out[k] = _canonicalizeJsonVal(val[k]);
+  }
+  return out;
+}
+
+function _isJsonSemanticallyEqual(strA, strB) {
+  if (strA === strB) return true;
+  if (!strA || !strB) return false;
+  try {
+    const objA = JSON.parse(strA);
+    const objB = JSON.parse(strB);
+    return JSON.stringify(_canonicalizeJsonVal(objA)) === JSON.stringify(_canonicalizeJsonVal(objB));
+  } catch {
+    return strA === strB;
+  }
+}
+
+function _mergeDeskItemsObjects(localDesks, remoteDesks, remoteTs = 0, localTs = 0, deletedMap = {}) {
+  if (!localDesks || typeof localDesks !== 'object' || Array.isArray(localDesks)) return remoteDesks;
+  if (!remoteDesks || typeof remoteDesks !== 'object' || Array.isArray(remoteDesks)) return localDesks;
+
+  const lResetAt = Number(localDesks.__resetAt || 0);
+  const rResetAt = Number(remoteDesks.__resetAt || 0);
+  const maxResetAt = Math.max(lResetAt, rResetAt);
+
+  const lTomb = localDesks.__tombstones || {};
+  const rTomb = remoteDesks.__tombstones || {};
+  const mergedTombstones = {
+    entries: { ...(lTomb.entries || {}) },
+    students: { ...(lTomb.students || {}) },
+    lateRemoved: { ...(lTomb.lateRemoved || {}) }
+  };
+  for (const [k, ts] of Object.entries(rTomb.entries || {})) {
+    mergedTombstones.entries[k] = Math.max(Number(mergedTombstones.entries[k]) || 0, Number(ts) || 0);
+  }
+  for (const [k, ts] of Object.entries(rTomb.students || {})) {
+    mergedTombstones.students[k] = Math.max(Number(mergedTombstones.students[k]) || 0, Number(ts) || 0);
+  }
+  for (const [k, ts] of Object.entries(rTomb.lateRemoved || {})) {
+    mergedTombstones.lateRemoved[k] = Math.max(Number(mergedTombstones.lateRemoved[k]) || 0, Number(ts) || 0);
+  }
+
+  const mergeSeatEntryFields = (entA, entB) => {
+    const tsA = Number(entA?._updatedAt || 0);
+    const tsB = Number(entB?._updatedAt || 0);
+    const newerEnt = tsB >= tsA ? entB : entA;
+    const olderEnt = tsB >= tsA ? entA : entB;
+
+    const attTsA = Number(entA?.attendance?._updatedAt || tsA);
+    const attTsB = Number(entB?.attendance?._updatedAt || tsB);
+    const mergedAtt = (attTsB >= attTsA ? (entB?.attendance || entA?.attendance) : (entA?.attendance || entB?.attendance)) || null;
+
+    const hwTsA = Number(entA?.homework?._updatedAt || tsA);
+    const hwTsB = Number(entB?.homework?._updatedAt || tsB);
+    const newerHw = hwTsB >= hwTsA ? (entB?.homework || {}) : (entA?.homework || {});
+    const olderHw = hwTsB >= hwTsA ? (entA?.homework || {}) : (entB?.homework || {});
+    let mergedHw = { ...olderHw, ...newerHw };
+    if ((!mergedHw.status || mergedHw.status === 'uncollected') && olderHw.status && olderHw.status !== 'uncollected' && !newerHw._explicitReset) {
+      mergedHw.status = olderHw.status;
+      if (olderHw.reason && !mergedHw.reason) mergedHw.reason = olderHw.reason;
+    }
+    if ((mergedHw.score === null || mergedHw.score === undefined || mergedHw.score === '') && olderHw.score !== null && olderHw.score !== undefined && olderHw.score !== '' && !newerHw._scoreCleared) {
+      if (hwTsB <= hwTsA) mergedHw.score = olderHw.score;
+    }
+    mergedHw._updatedAt = Math.max(hwTsA, hwTsB);
+
+    const testTsA = Number(entA?._testUpdatedAt || (entA?.testScore !== undefined && entA?.testScore !== null ? tsA : 0));
+    const testTsB = Number(entB?._testUpdatedAt || (entB?.testScore !== undefined && entB?.testScore !== null ? tsB : 0));
+    const mergedTestScore = testTsB >= testTsA
+      ? (entB?.testScore !== undefined ? entB.testScore : (entA?.testScore ?? null))
+      : (entA?.testScore !== undefined ? entA.testScore : (entB?.testScore ?? null));
+
+    return {
+      ...olderEnt,
+      ...newerEnt,
+      entryId: newerEnt?.entryId || olderEnt?.entryId || _newSeatEntryId(),
+      studentId: newerEnt?.studentId || olderEnt?.studentId || null,
+      attendance: mergedAtt,
+      homework: mergedHw,
+      testScore: mergedTestScore,
+      _testUpdatedAt: Math.max(testTsA, testTsB),
+      _updatedAt: Math.max(tsA, tsB)
+    };
+  };
+
+  const allDeskIds = new Set([
+    ...Object.keys(localDesks).filter(k => !k.startsWith('__')),
+    ...Object.keys(remoteDesks).filter(k => !k.startsWith('__'))
+  ]);
+
+  const studentBestMap = new Map();
+  const claimedEntryIds = new Set();
+
+  const inspectNamedList = (deskId, arr, fallbackSnapTs, isRemoteSnap) => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach((ent, idx) => {
+      if (!ent || typeof ent !== 'object' || !ent.studentId) return;
+      const stuId = ent.studentId;
+      if (deletedMap[stuId]) return;
+      const entTs = Number(ent._updatedAt || fallbackSnapTs || 0);
+      if (maxResetAt > 0 && entTs < maxResetAt) return;
+      const stuTombTs = Number(mergedTombstones.students[stuId] || 0);
+      if (stuTombTs > entTs) return;
+      if (ent.entryId) {
+        const entTombTs = Number(mergedTombstones.entries[ent.entryId] || 0);
+        if (entTombTs > entTs) return;
+        claimedEntryIds.add(ent.entryId);
+      }
+
+      const prev = studentBestMap.get(stuId);
+      if (!prev) {
+        studentBestMap.set(stuId, {
+          deskId,
+          index: idx,
+          entTs,
+          isRemoteSnap,
+          entry: _ensureSeatEntryMeta({ ...ent }, entTs || Date.now())
+        });
+      } else {
+        const shouldUseNewDesk = entTs > prev.entTs || (entTs === prev.entTs && isRemoteSnap && remoteTs >= localTs);
+        const mergedEntry = mergeSeatEntryFields(prev.entry, ent);
+        if (mergedEntry.entryId) claimedEntryIds.add(mergedEntry.entryId);
+        studentBestMap.set(stuId, {
+          deskId: shouldUseNewDesk ? deskId : prev.deskId,
+          index: shouldUseNewDesk ? idx : prev.index,
+          entTs: Math.max(prev.entTs, entTs),
+          isRemoteSnap: shouldUseNewDesk ? isRemoteSnap : prev.isRemoteSnap,
+          entry: mergedEntry
+        });
+      }
+    });
+  };
+
+  for (const dId of allDeskIds) {
+    inspectNamedList(dId, localDesks[dId], localTs, false);
+    inspectNamedList(dId, remoteDesks[dId], remoteTs, true);
+  }
+
+  const anonByDesk = new Map();
+  const seenAnonEntryIds = new Set();
+  for (const dId of allDeskIds) {
+    anonByDesk.set(dId, []);
+    const lArr = Array.isArray(localDesks[dId]) ? localDesks[dId] : [];
+    const rArr = Array.isArray(remoteDesks[dId]) ? remoteDesks[dId] : [];
+    const combinedAnon = [
+      ...lArr.map((e, i) => ({ ent: e, idx: i, snapTs: localTs })),
+      ...rArr.map((e, i) => ({ ent: e, idx: i, snapTs: remoteTs }))
+    ];
+    for (const { ent, idx, snapTs } of combinedAnon) {
+      if (!ent || typeof ent !== 'object' || ent.studentId) continue;
+      const entTs = Number(ent._updatedAt || snapTs || 0);
+      if (maxResetAt > 0 && entTs < maxResetAt) continue;
+      if (ent.entryId) {
+        if (claimedEntryIds.has(ent.entryId)) continue;
+        const tombTs = Number(mergedTombstones.entries[ent.entryId] || 0);
+        if (tombTs > entTs) continue;
+        if (seenAnonEntryIds.has(ent.entryId)) {
+          const existingList = anonByDesk.get(dId) || [];
+          const exIdx = existingList.findIndex(x => x.entry.entryId === ent.entryId);
+          if (exIdx >= 0) {
+            existingList[exIdx].entry = mergeSeatEntryFields(existingList[exIdx].entry, ent);
+          }
+          continue;
+        }
+        seenAnonEntryIds.add(ent.entryId);
+        anonByDesk.get(dId).push({ index: idx, entry: _ensureSeatEntryMeta({ ...ent }, entTs || Date.now()) });
+      } else {
+        if ((remoteTs >= localTs && snapTs === remoteTs) || (localTs > remoteTs && snapTs === localTs)) {
+          anonByDesk.get(dId).push({ index: idx, entry: _ensureSeatEntryMeta({ ...ent }, entTs || Date.now()) });
+        }
+      }
+    }
+  }
+
+  const mergedDesks = {};
+  for (const dId of allDeskIds) {
+    mergedDesks[dId] = [];
+  }
+  for (const info of studentBestMap.values()) {
+    mergedDesks[info.deskId] = mergedDesks[info.deskId] || [];
+    mergedDesks[info.deskId].push({ order: info.index, entry: info.entry });
+  }
+  for (const [dId, anonList] of anonByDesk.entries()) {
+    mergedDesks[dId] = mergedDesks[dId] || [];
+    anonList.forEach(item => {
+      mergedDesks[dId].push({ order: item.index + 0.5, entry: item.entry });
+    });
+  }
+  for (const dId of Object.keys(mergedDesks)) {
+    mergedDesks[dId] = mergedDesks[dId]
+      .sort((a, b) => a.order - b.order)
+      .map(x => x.entry);
+  }
+  mergedDesks.__tombstones = mergedTombstones;
+  if (maxResetAt > 0) mergedDesks.__resetAt = maxResetAt;
+  return mergedDesks;
+}
+
 function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, localTs = 0, remoteDeletedMap = {}) {
   const localPlain = localRawStr ? decryptVaultPayload(localRawStr, key) : localRawStr;
   const remotePlain = remoteRawStr ? decryptVaultPayload(remoteRawStr, key) : remoteRawStr;
@@ -379,6 +632,7 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       const localArr = JSON.parse(localPlain);
       const remoteArr = JSON.parse(remotePlain);
       if (Array.isArray(localArr) && Array.isArray(remoteArr)) {
+        if (remoteArr.length === 0 && remoteTs > localTs) return '[]';
         const byId = new Map();
         for (const item of [...remoteArr, ...localArr]) {
           if (item && item.id) byId.set(item.id, item);
@@ -387,6 +641,7 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
         return JSON.stringify(combined);
       }
     }
+
     if (GRANULAR_ARRAY_KEYS.has(key)) {
       const localArr = JSON.parse(localPlain);
       const remoteArr = JSON.parse(remotePlain);
@@ -398,34 +653,205 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           if (typeof item.updatedAt === 'string') return Date.parse(item.updatedAt) || fallback;
           return fallback;
         };
+
         const mergeStudentSubArrays = (olderStu, newerStu) => {
-          const combined = { ...olderStu, ...newerStu };
-          for (const subField of ['attendanceHistory', 'sessionNotes', 'seatingHistory']) {
-            const aOlder = Array.isArray(olderStu[subField]) ? olderStu[subField] : [];
-            const aNewer = Array.isArray(newerStu[subField]) ? newerStu[subField] : [];
-            const mapSub = new Map();
+          const combined = {
+            ...olderStu,
+            ...newerStu,
+            classLearningNotes: { ...(olderStu.classLearningNotes || {}), ...(newerStu.classLearningNotes || {}) }
+          };
+
+          const mergedDeletedScores = { ...(olderStu._deletedScores || {}) };
+          for (const [k, ts] of Object.entries(newerStu._deletedScores || {})) {
+            mergedDeletedScores[k] = Math.max(Number(mergedDeletedScores[k]) || 0, Number(ts) || 0);
+          }
+          if (Object.keys(mergedDeletedScores).length) combined._deletedScores = mergedDeletedScores;
+
+          const mergedRemovedAtt = { ...(olderStu._removedAttendanceDates || {}) };
+          for (const [k, ts] of Object.entries(newerStu._removedAttendanceDates || {})) {
+            mergedRemovedAtt[k] = Math.max(Number(mergedRemovedAtt[k]) || 0, Number(ts) || 0);
+          }
+          if (Object.keys(mergedRemovedAtt).length) combined._removedAttendanceDates = mergedRemovedAtt;
+
+          const mergedRemovedSeat = { ...(olderStu._removedSeatingDates || {}) };
+          for (const [k, ts] of Object.entries(newerStu._removedSeatingDates || {})) {
+            mergedRemovedSeat[k] = Math.max(Number(mergedRemovedSeat[k]) || 0, Number(ts) || 0);
+          }
+          if (Object.keys(mergedRemovedSeat).length) combined._removedSeatingDates = mergedRemovedSeat;
+
+          // 1. Merge attendanceHistory
+          {
+            const aOlder = Array.isArray(olderStu.attendanceHistory) ? olderStu.attendanceHistory : [];
+            const aNewer = Array.isArray(newerStu.attendanceHistory) ? newerStu.attendanceHistory : [];
+            const mapAtt = new Map();
             for (const entry of [...aOlder, ...aNewer]) {
               if (!entry || !entry.date) continue;
               const subKey = `${entry.classId || ''}_${entry.date}`;
-              const prev = mapSub.get(subKey);
-              const prevSubTs = Number(prev?.updatedAt || prev?.timestamp || 0);
-              const curSubTs = Number(entry?.updatedAt || entry?.timestamp || 0);
-              if (!prev || curSubTs >= prevSubTs) {
-                mapSub.set(subKey, entry);
+              const curSubTs = Number(entry.updatedAt || entry.timestamp || 0);
+              if ((Number(mergedRemovedAtt[subKey]) || 0) > curSubTs) continue;
+              const prev = mapAtt.get(subKey);
+              if (!prev) {
+                mapAtt.set(subKey, { ...entry });
+              } else {
+                const prevSubTs = Number(prev.updatedAt || prev.timestamp || 0);
+                const newerAtt = curSubTs >= prevSubTs ? entry : prev;
+                const olderAtt = curSubTs >= prevSubTs ? prev : entry;
+                const hwTsNew = Number(newerAtt.homework?._updatedAt || Math.max(curSubTs, prevSubTs));
+                const hwTsOld = Number(olderAtt.homework?._updatedAt || Math.min(curSubTs, prevSubTs));
+                let mergedHw = hwTsNew >= hwTsOld
+                  ? { ...(olderAtt.homework || {}), ...(newerAtt.homework || {}) }
+                  : { ...(newerAtt.homework || {}), ...(olderAtt.homework || {}) };
+                const delBtvnTs = Number(mergedDeletedScores[`${subKey}_BTVN`] || 0);
+                if (delBtvnTs > Math.max(hwTsNew, hwTsOld)) {
+                  mergedHw.score = null;
+                }
+                mapAtt.set(subKey, {
+                  ...olderAtt,
+                  ...newerAtt,
+                  homework: mergedHw,
+                  timestamp: Math.max(curSubTs, prevSubTs)
+                });
               }
             }
-            combined[subField] = Array.from(mapSub.values());
+            combined.attendanceHistory = Array.from(mapAtt.values());
+            combined.history = combined.attendanceHistory;
           }
-          if (combined.attendanceHistory) combined.history = combined.attendanceHistory;
+
+          // 2. Merge sessionNotes field-by-field (homeworkScore, testScore, note, homeworkStatus)
+          {
+            const nOlder = Array.isArray(olderStu.sessionNotes) ? olderStu.sessionNotes : [];
+            const nNewer = Array.isArray(newerStu.sessionNotes) ? newerStu.sessionNotes : [];
+            const mapNotes = new Map();
+            for (const entry of [...nOlder, ...nNewer]) {
+              if (!entry || !entry.date) continue;
+              const subKey = `${entry.classId || ''}_${entry.date}`;
+              const prev = mapNotes.get(subKey);
+              if (!prev) {
+                mapNotes.set(subKey, { ...entry });
+              } else {
+                const prevTs = Number(prev.updatedAt || prev.timestamp || 0);
+                const curTs = Number(entry.updatedAt || entry.timestamp || 0);
+                const base = curTs >= prevTs ? { ...prev, ...entry } : { ...entry, ...prev };
+
+                const prevHwTs = Number(prev._hwUpdatedAt || prevTs);
+                const curHwTs = Number(entry._hwUpdatedAt || curTs);
+                if (curHwTs > prevHwTs) {
+                  base.homeworkStatus = entry.homeworkStatus ?? prev.homeworkStatus;
+                  base.homeworkScore = entry.homeworkScore !== undefined ? entry.homeworkScore : prev.homeworkScore;
+                  base.homeworkReason = entry.homeworkReason ?? prev.homeworkReason;
+                } else if (prevHwTs > curHwTs) {
+                  base.homeworkStatus = prev.homeworkStatus ?? entry.homeworkStatus;
+                  base.homeworkScore = prev.homeworkScore !== undefined ? prev.homeworkScore : entry.homeworkScore;
+                  base.homeworkReason = prev.homeworkReason ?? entry.homeworkReason;
+                } else {
+                  if ((base.homeworkScore === null || base.homeworkScore === undefined) && (prev.homeworkScore !== null && prev.homeworkScore !== undefined)) {
+                    base.homeworkScore = prev.homeworkScore;
+                  }
+                  if ((!base.homeworkStatus || base.homeworkStatus === 'uncollected') && prev.homeworkStatus && prev.homeworkStatus !== 'uncollected') {
+                    base.homeworkStatus = prev.homeworkStatus;
+                  }
+                }
+                base._hwUpdatedAt = Math.max(prevHwTs, curHwTs);
+                if ((Number(mergedDeletedScores[`${subKey}_BTVN`]) || 0) > base._hwUpdatedAt) {
+                  base.homeworkScore = null;
+                }
+
+                const prevTestTs = Number(prev._testUpdatedAt || prevTs);
+                const curTestTs = Number(entry._testUpdatedAt || curTs);
+                if (curTestTs > prevTestTs) {
+                  base.testScore = entry.testScore !== undefined ? entry.testScore : prev.testScore;
+                } else if (prevTestTs > curTestTs) {
+                  base.testScore = prev.testScore !== undefined ? prev.testScore : entry.testScore;
+                } else if (base.testScore === null || base.testScore === undefined) {
+                  base.testScore = prev.testScore ?? entry.testScore ?? null;
+                }
+                base._testUpdatedAt = Math.max(prevTestTs, curTestTs);
+                if ((Number(mergedDeletedScores[`${subKey}_Test`]) || 0) > base._testUpdatedAt) {
+                  base.testScore = null;
+                }
+
+                const prevNoteTs = Number(prev._noteUpdatedAt || prevTs);
+                const curNoteTs = Number(entry._noteUpdatedAt || curTs);
+                base.note = curNoteTs >= prevNoteTs ? (entry.note ?? prev.note ?? '') : (prev.note ?? entry.note ?? '');
+                base._noteUpdatedAt = Math.max(prevNoteTs, curNoteTs);
+                base.updatedAt = Math.max(prevTs, curTs, base._hwUpdatedAt, base._testUpdatedAt, base._noteUpdatedAt);
+                mapNotes.set(subKey, base);
+              }
+            }
+            combined.sessionNotes = Array.from(mapNotes.values());
+          }
+
+          // 3. Merge seatingHistory
+          {
+            const sOlder = Array.isArray(olderStu.seatingHistory) ? olderStu.seatingHistory : [];
+            const sNewer = Array.isArray(newerStu.seatingHistory) ? newerStu.seatingHistory : [];
+            const mapSeat = new Map();
+            for (const entry of [...sOlder, ...sNewer]) {
+              if (!entry || !entry.date) continue;
+              const subKey = `${entry.classId || ''}_${entry.date}`;
+              const curSubTs = Number(entry.updatedAt || entry.timestamp || 0);
+              if ((Number(mergedRemovedSeat[subKey]) || 0) > curSubTs) continue;
+              const prev = mapSeat.get(subKey);
+              const prevSubTs = Number(prev?.updatedAt || prev?.timestamp || 0);
+              if (!prev || curSubTs >= prevSubTs) {
+                mapSeat.set(subKey, entry);
+              }
+            }
+            combined.seatingHistory = Array.from(mapSeat.values());
+          }
+
+          // 4. Merge scores array per (classId, date, type) with timestamp & deletion tombstone awareness
           if (Array.isArray(olderStu.scores) || Array.isArray(newerStu.scores)) {
             const sMap = new Map();
             for (const sc of [...(olderStu.scores || []), ...(newerStu.scores || [])]) {
               if (!sc || !sc.date) continue;
-              sMap.set(`${sc.classId || ''}_${sc.date}_${sc.type || 'BTVN'}`, sc);
+              const sType = sc.type || 'BTVN';
+              const sKey = `${sc.classId || ''}_${sc.date}_${sType}`;
+              const scTs = Number(sc.timestamp || sc.updatedAt || 0);
+              if ((Number(mergedDeletedScores[sKey]) || 0) > scTs) continue;
+              const prevSc = sMap.get(sKey);
+              const prevScTs = Number(prevSc?.timestamp || prevSc?.updatedAt || 0);
+              if (!prevSc || scTs >= prevScTs) {
+                sMap.set(sKey, sc);
+              }
             }
             combined.scores = Array.from(sMap.values());
           }
           return combined;
+        };
+
+        const mergeSessionHistoryRecords = (olderSess, newerSess) => {
+          const mergedSess = { ...olderSess, ...newerSess };
+          if (olderSess.deskItems && newerSess.deskItems) {
+            mergedSess.deskItems = _mergeDeskItemsObjects(olderSess.deskItems, newerSess.deskItems, remoteTs, localTs, deletedMap);
+          }
+          if (Array.isArray(olderSess.studentsSnapshot) && Array.isArray(newerSess.studentsSnapshot)) {
+            const snapMap = new Map();
+            for (const st of [...olderSess.studentsSnapshot, ...newerSess.studentsSnapshot]) {
+              if (!st || !st.studentId) continue;
+              const prev = snapMap.get(st.studentId);
+              if (!prev) {
+                snapMap.set(st.studentId, { ...st });
+              } else {
+                const mergedHw = { ...(prev.homework || {}), ...(st.homework || {}) };
+                if ((!mergedHw.status || mergedHw.status === 'uncollected') && prev.homework?.status && prev.homework.status !== 'uncollected') {
+                  mergedHw.status = prev.homework.status;
+                }
+                if ((mergedHw.score === null || mergedHw.score === undefined) && prev.homework?.score !== null && prev.homework?.score !== undefined) {
+                  mergedHw.score = prev.homework.score;
+                }
+                snapMap.set(st.studentId, {
+                  ...prev,
+                  ...st,
+                  homework: mergedHw,
+                  testScore: st.testScore ?? prev.testScore ?? null,
+                  note: st.note || prev.note || ''
+                });
+              }
+            }
+            mergedSess.studentsSnapshot = Array.from(snapMap.values());
+          }
+          return mergedSess;
         };
 
         for (const item of localArr) {
@@ -436,7 +862,6 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
           if (!rItem || !rItem.id || deletedMap[rItem.id]) continue;
           const lItem = mergedById.get(rItem.id);
           if (!lItem) {
-            // Always retain non-deleted items from remote so concurrent additions on multiple devices never drop
             mergedById.set(rItem.id, rItem);
           } else {
             const lItemTs = parseTs(lItem, localTs);
@@ -449,6 +874,11 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
                 rItem.id,
                 isRemoteNewer ? mergeStudentSubArrays(lItem, rItem) : mergeStudentSubArrays(rItem, lItem)
               );
+            } else if (key === 'lopvui.session-history.v2') {
+              mergedById.set(
+                rItem.id,
+                isRemoteNewer ? mergeSessionHistoryRecords(lItem, rItem) : mergeSessionHistoryRecords(rItem, lItem)
+              );
             } else if (isRemoteNewer) {
               mergedById.set(rItem.id, rItem);
             }
@@ -458,70 +888,12 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       }
     }
 
-    // Granular per-desk & per-student merge for desk-items.v7 so two devices marking seats concurrently never overwrite each other
+    // Granular per-desk & per-student CRDT merge for desk-items.v7 so multiple devices adding/moving/removing seats concurrently never overwrite each other
     if (key.startsWith('lopvui.desk-items.v7.')) {
       const localDesks = JSON.parse(localPlain);
       const remoteDesks = JSON.parse(remotePlain);
       if (localDesks && remoteDesks && typeof localDesks === 'object' && typeof remoteDesks === 'object' && !Array.isArray(localDesks) && !Array.isArray(remoteDesks)) {
-        const primary = remoteTs >= localTs ? remoteDesks : localDesks;
-        const secondary = remoteTs >= localTs ? localDesks : remoteDesks;
-        const allDeskIds = new Set([...Object.keys(primary), ...Object.keys(secondary)]);
-        const mergedDesks = {};
-        const claimedStudents = new Set();
-
-        // First pass: collect entries from primary (newer snapshot), merging richer fields from secondary for same student
-        const secByStudent = new Map();
-        for (const [dId, arr] of Object.entries(secondary)) {
-          if (!Array.isArray(arr)) continue;
-          arr.forEach((ent, idx) => {
-            if (ent && ent.studentId && !deletedMap[ent.studentId]) {
-              secByStudent.set(ent.studentId, { deskId: dId, index: idx, entry: ent });
-            }
-          });
-        }
-
-        for (const dId of allDeskIds) {
-          const pArr = Array.isArray(primary[dId]) ? primary[dId] : [];
-          mergedDesks[dId] = [];
-          for (const pEnt of pArr) {
-            if (!pEnt) continue;
-            if (!pEnt.studentId) {
-              mergedDesks[dId].push(pEnt);
-              continue;
-            }
-            if (deletedMap[pEnt.studentId] || claimedStudents.has(pEnt.studentId)) continue;
-            const secMatch = secByStudent.get(pEnt.studentId);
-            if (secMatch) {
-              const pTs = Number(pEnt._updatedAt || 0);
-              const sTs = Number(secMatch.entry._updatedAt || 0);
-              const bestEnt = (sTs > pTs) ? { ...pEnt, ...secMatch.entry } : { ...secMatch.entry, ...pEnt };
-              // Preserve non-uncollected homework or testScore if one side just updated homework while the other updated attendance
-              if ((bestEnt.homework?.status === 'uncollected' || !bestEnt.homework?.status) && secMatch.entry.homework?.status && secMatch.entry.homework.status !== 'uncollected') {
-                bestEnt.homework = secMatch.entry.homework;
-              }
-              if ((bestEnt.homework?.status === 'uncollected' || !bestEnt.homework?.status) && pEnt.homework?.status && pEnt.homework.status !== 'uncollected') {
-                bestEnt.homework = pEnt.homework;
-              }
-              mergedDesks[dId].push(bestEnt);
-            } else {
-              mergedDesks[dId].push(pEnt);
-            }
-            claimedStudents.add(pEnt.studentId);
-          }
-        }
-
-        // Second pass: if secondary has a student seated recently (or when timestamps are within 12s concurrent window) that primary hasn't seen yet, keep them on their desk!
-        const isConcurrentWindow = Math.abs((remoteTs || 0) - (localTs || 0)) < 15000;
-        for (const [stuId, secInfo] of secByStudent.entries()) {
-          if (claimedStudents.has(stuId) || deletedMap[stuId]) continue;
-          const entryTs = Number(secInfo.entry._updatedAt || 0);
-          const isRecentEntry = entryTs > 0 && (Date.now() - entryTs < 20000);
-          if (isConcurrentWindow || isRecentEntry) {
-            mergedDesks[secInfo.deskId] = mergedDesks[secInfo.deskId] || [];
-            mergedDesks[secInfo.deskId].push(secInfo.entry);
-            claimedStudents.add(stuId);
-          }
-        }
+        const mergedDesks = _mergeDeskItemsObjects(localDesks, remoteDesks, remoteTs, localTs, deletedMap);
         return JSON.stringify(mergedDesks);
       }
     }
@@ -531,11 +903,24 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       const localQ = JSON.parse(localPlain);
       const remoteQ = JSON.parse(remotePlain);
       if (Array.isArray(localQ) && Array.isArray(remoteQ)) {
-        const isConcurrent = Math.abs((remoteTs || 0) - (localTs || 0)) < 12000;
-        const base = remoteTs >= localTs ? remoteQ : localQ;
-        const other = remoteTs >= localTs ? localQ : remoteQ;
-        const combined = isConcurrent ? [...new Set([...base, ...other])] : base;
-        return JSON.stringify(combined.filter(id => id && !deletedMap[id]));
+        const restKey = key.slice('lopvui.late-queue.v6.'.length);
+        const deskRaw = _readDecryptedLocal(`lopvui.desk-items.v7.${restKey}`);
+        let seatedIds = new Set();
+        let tombStudents = {};
+        let tombLate = {};
+        if (deskRaw) {
+          try {
+            const dObj = JSON.parse(deskRaw);
+            tombStudents = dObj?.__tombstones?.students || {};
+            tombLate = dObj?.__tombstones?.lateRemoved || {};
+            for (const [k, arr] of Object.entries(dObj || {})) {
+              if (k.startsWith('__') || !Array.isArray(arr)) continue;
+              arr.forEach(e => { if (e?.studentId) seatedIds.add(e.studentId); });
+            }
+          } catch {}
+        }
+        const combined = [...new Set([...localQ, ...remoteQ])];
+        return JSON.stringify(combined.filter(id => id && !deletedMap[id] && !seatedIds.has(id) && !tombStudents[id] && !tombLate[id]));
       }
     }
 
@@ -546,25 +931,68 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       if (localChk && remoteChk && typeof localChk === 'object' && typeof remoteChk === 'object') {
         const newer = remoteTs >= localTs ? remoteChk : localChk;
         const older = remoteTs >= localTs ? localChk : remoteChk;
+        const removedItems = { ...(older._removedItemIds || {}), ...(newer._removedItemIds || {}) };
         const mergeChkItems = (arr1 = [], arr2 = []) => {
           const map = new Map();
-          for (const it of arr1) { if (it?.id) map.set(it.id, it); }
+          for (const it of arr1) {
+            if (it?.id && !removedItems[it.id]) map.set(it.id, it);
+          }
           for (const it of arr2) {
-            if (!it?.id) continue;
+            if (!it?.id || removedItems[it.id]) continue;
             const prev = map.get(it.id);
-            if (!prev || Number(it.doneAt || 0) >= Number(prev.doneAt || 0)) {
+            if (!prev || Number(it.doneAt || it._updatedAt || 0) >= Number(prev.doneAt || prev._updatedAt || 0)) {
               map.set(it.id, it);
             }
           }
           return Array.from(map.values());
         };
+
+        const mergedTestScoreTs = { ...(older.testScoreUpdatedAt || {}) };
+        for (const [stuId, ts] of Object.entries(newer.testScoreUpdatedAt || {})) {
+          mergedTestScoreTs[stuId] = Math.max(Number(mergedTestScoreTs[stuId]) || 0, Number(ts) || 0);
+        }
+        const allTestStuIds = new Set([
+          ...Object.keys(older.testScores || {}),
+          ...Object.keys(newer.testScores || {}),
+          ...Object.keys(mergedTestScoreTs)
+        ]);
+        const mergedTestScores = {};
+        for (const stuId of allTestStuIds) {
+          const oTs = Number(older.testScoreUpdatedAt?.[stuId] || (stuId in (older.testScores || {}) ? 1 : 0));
+          const nTs = Number(newer.testScoreUpdatedAt?.[stuId] || (stuId in (newer.testScores || {}) ? 1 : 0));
+          const val = nTs >= oTs ? newer.testScores?.[stuId] : older.testScores?.[stuId];
+          if (val !== null && val !== undefined && val !== '') {
+            mergedTestScores[stuId] = val;
+          }
+        }
+
+        const oFieldTs = older._fieldUpdatedAt || {};
+        const nFieldTs = newer._fieldUpdatedAt || {};
+        const mergedFieldTs = { ...oFieldTs };
+        const pickChecklistField = (field) => {
+          const tO = Number(oFieldTs[field] || 0);
+          const tN = Number(nFieldTs[field] || 0);
+          mergedFieldTs[field] = Math.max(tO, tN);
+          if (tN > tO) return newer[field] ?? older[field];
+          if (tO > tN) return older[field] ?? newer[field];
+          return newer[field] ?? older[field];
+        };
+
         const mergedChk = {
           ...older,
           ...newer,
           items: mergeChkItems(older.items, newer.items),
           endItems: mergeChkItems(older.endItems, newer.endItems),
           tests: { ...(older.tests || {}), ...(newer.tests || {}) },
-          testScores: { ...(older.testScores || {}), ...(newer.testScores || {}) },
+          testScores: mergedTestScores,
+          testScoreUpdatedAt: mergedTestScoreTs,
+          _removedItemIds: removedItems,
+          _fieldUpdatedAt: mergedFieldTs,
+          lessonTitle: pickChecklistField('lessonTitle'),
+          homeworkAssignment: pickChecklistField('homeworkAssignment'),
+          homeworkLink: pickChecklistField('homeworkLink'),
+          notebookLink: pickChecklistField('notebookLink'),
+          parentGeneralNote: pickChecklistField('parentGeneralNote'),
           classNote: (Number(newer.noteSavedAt || 0) >= Number(older.noteSavedAt || 0)) ? (newer.classNote ?? older.classNote) : (older.classNote ?? newer.classNote),
           noteSavedAt: Math.max(Number(newer.noteSavedAt || 0), Number(older.noteSavedAt || 0))
         };
@@ -577,9 +1005,24 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       const localNotes = JSON.parse(localPlain);
       const remoteNotes = JSON.parse(remotePlain);
       if (localNotes && remoteNotes && typeof localNotes === 'object' && typeof remoteNotes === 'object') {
-        const mergedNotes = remoteTs >= localTs
-          ? { ...localNotes, ...remoteNotes }
-          : { ...remoteNotes, ...localNotes };
+        const lTsMap = localNotes.__updatedAt || {};
+        const rTsMap = remoteNotes.__updatedAt || {};
+        const mergedTsMap = { ...lTsMap };
+        for (const [k, ts] of Object.entries(rTsMap)) {
+          mergedTsMap[k] = Math.max(Number(mergedTsMap[k]) || 0, Number(ts) || 0);
+        }
+        const allNoteKeys = new Set([
+          ...Object.keys(localNotes).filter(k => k !== '__updatedAt'),
+          ...Object.keys(remoteNotes).filter(k => k !== '__updatedAt')
+        ]);
+        const mergedNotes = { __updatedAt: mergedTsMap };
+        for (const stuId of allNoteKeys) {
+          const lT = Number(lTsMap[stuId] || localTs || 0);
+          const rT = Number(rTsMap[stuId] || remoteTs || 0);
+          mergedNotes[stuId] = rT >= lT
+            ? (remoteNotes[stuId] !== undefined ? remoteNotes[stuId] : localNotes[stuId])
+            : (localNotes[stuId] !== undefined ? localNotes[stuId] : remoteNotes[stuId]);
+        }
         return JSON.stringify(mergedNotes);
       }
     }
@@ -660,11 +1103,11 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
       const remoteTs = remoteMetaMap[k]?.updatedAt || (source === 'cloud-poll' ? 0 : Date.now());
       const localTs = keyTsMap[k] || 0;
 
-      // Nếu đang chờ đẩy key này lên Cloud, thay vì bỏ qua bản từ máy khác, ta hợp nhất (merge) ngay để không mất dữ liệu của cả 2 máy!
+      // Nếu đang chờ đẩy key này lên Cloud, hợp nhất ngay bản đang chờ với bản từ máy khác để không mất dữ liệu của cả 2 máy!
       if (_rtPendingCloudEntries.has(k) && v !== null && v !== undefined && curPlain !== null) {
         const remotePlain = decryptVaultPayload(String(v), k);
         const mergedPlain = _mergeGranularJsonValue(k, curPlain, remotePlain, remoteTs, localTs, remoteDeletedMap);
-        if (mergedPlain && mergedPlain !== curPlain) {
+        if (mergedPlain && !_isJsonSemanticallyEqual(mergedPlain, curPlain)) {
           _writeEncryptedLocal(k, mergedPlain);
           const nextTs = Math.max(localTs, remoteTs, Date.now());
           _setKeyTimestamp(k, nextTs);
@@ -676,7 +1119,6 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
         continue;
       }
 
-      // Nếu bản ghi trên cloud chính là do máy này vừa đẩy lên và máy này đã có bản mới hơn hoặc bằng -> bỏ qua
       if ((source === 'cloud-poll' || source === 'cloud-sse') && remoteClientId === RT_CLIENT_ID && localTs >= remoteTs && curPlain !== null) {
         continue;
       }
@@ -692,16 +1134,21 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
       } else {
         const remotePlain = decryptVaultPayload(String(v), k);
         const mergedPlain = _mergeGranularJsonValue(k, curPlain, remotePlain, remoteTs, localTs, remoteDeletedMap);
-        if (curPlain !== mergedPlain) {
+        const nextTs = Math.max(remoteTs, localTs);
+        if (!_isJsonSemanticallyEqual(curPlain, mergedPlain)) {
           _writeEncryptedLocal(k, mergedPlain);
-          _setKeyTimestamp(k, Math.max(remoteTs, localTs));
+          _setKeyTimestamp(k, nextTs);
           changed.push(k);
         } else if (source === 'broadcast-tab') {
           changed.push(k);
         }
-        // Nếu sau khi F5 (cloud-init) bản trên máy có dữ liệu mới hơn bản trên Cloud (mergedPlain !== remotePlain), tự động đẩy bản hợp nhất lên Cloud để không bao giờ mất dữ liệu khi Refresh!
-        if (curPlain !== null && localTs > remoteTs && mergedPlain !== remotePlain && source !== 'broadcast-tab') {
-          _scheduleFirebaseCloudPush(k, mergedPlain, localTs);
+        // CƠ CHẾ RE-PUSH MERGED STATE:
+        // Nếu sau khi hợp nhất (merge), bản hợp nhất (mergedPlain) có chứa thêm dữ liệu của máy này mà bản trên Cloud (remotePlain) chưa có
+        // (bất kể localTs > remoteTs hay localTs <= remoteTs khi 2 máy bấm cùng lúc), tự động đẩy bản hợp nhất lên lại Cloud để máy kia nhận đủ 100%!
+        if (curPlain !== null && !_isJsonSemanticallyEqual(mergedPlain, remotePlain) && source !== 'broadcast-tab') {
+          const pushTs = Math.max(nextTs + 1, Date.now());
+          _setKeyTimestamp(k, pushTs);
+          _scheduleFirebaseCloudPush(k, mergedPlain, pushTs);
         }
       }
     }
@@ -735,9 +1182,8 @@ function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
   const encKey = encryptVaultPayload(key, 'firebase_key_meta');
   _rtPendingCloudEntries.set(key, { encKey, value: encVal, updatedAt: ts, clientId: RT_CLIENT_ID });
   if (_rtCloudPushTimer) clearTimeout(_rtCloudPushTimer);
-  // Fast 120ms push for live session / account keys so concurrent devices sync in near real-time; 350ms for heavy archive keys
   const hasOnlyHeavyKeys = Array.from(_rtPendingCloudEntries.keys()).every(k => _HEAVY_ARCHIVE_KEYS.has(k));
-  const delayMs = hasOnlyHeavyKeys ? 350 : 120;
+  const delayMs = hasOnlyHeavyKeys ? 260 : 90;
   _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false), delayMs);
 }
 
@@ -757,28 +1203,76 @@ async function _flushFirebaseCloudPush(isUnloading = false) {
   _rtPendingCloudEntries.clear();
 
   const now = Date.now();
+  const delMap = _getDeletedIdsMap();
   const kvPayload = {};
   const metaKeyTsPatch = {};
-  for (const [k, item] of batch) {
-    const safeK = _encodeFirebaseSafeKey(k);
-    const itemTs = item.updatedAt || now;
-    kvPayload[safeK] = item;
-    metaKeyTsPatch[safeK] = itemTs;
-    _seenSafeKeyTimestamps[safeK] = itemTs;
-  }
-
-  const kvBody = JSON.stringify(kvPayload);
-  const useKeepalive = Boolean(isUnloading || kvBody.length < 58000);
+  const mergedLocalKeys = [];
 
   _rtIsPushingCloud = true;
   try {
+    // CƠ CHẾ PRE-PUSH READ-MERGE-WRITE:
+    // Trước khi ghi đè lên nhánh kv trên Cloud, kiểm tra nhanh xem có máy nào khác vừa cập nhật cùng key đó trên Cloud không.
+    // Nếu có, tải bản trên Cloud về hợp nhất (merge) với bản của máy này rồi mới đẩy bản gộp lên!
+    if (!isUnloading) {
+      try {
+        const metaCheckRes = await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, { cache: 'no-store' });
+        if (metaCheckRes.ok) {
+          const remoteMeta = await metaCheckRes.json();
+          const remoteKeyTsMap = remoteMeta?.keyTimestamps || {};
+          await Promise.all(batch.map(async ([k, item]) => {
+            if (!item || item.value === null || item.value === undefined) return;
+            const safeK = _encodeFirebaseSafeKey(k);
+            const rTs = Number(remoteKeyTsMap[safeK]) || 0;
+            const seenTs = Number(_seenSafeKeyTimestamps[safeK]) || 0;
+            if (rTs > seenTs) {
+              const kRes = await fetch(`${dbUrl}/lopvui_cloud_v3/kv/${safeK}.json`, { cache: 'no-store' });
+              if (kRes.ok) {
+                const remoteItem = await kRes.json();
+                if (remoteItem && remoteItem.value && remoteItem.clientId !== RT_CLIENT_ID) {
+                  const localPlain = decryptVaultPayload(item.value, k);
+                  const remotePlain = decryptVaultPayload(remoteItem.value, k);
+                  const mergedPlain = _mergeGranularJsonValue(k, localPlain, remotePlain, remoteItem.updatedAt || rTs, item.updatedAt || now, delMap);
+                  if (mergedPlain) {
+                    const nextTs = Math.max(now, rTs + 1);
+                    item.value = encryptVaultPayload(mergedPlain, k);
+                    item.updatedAt = nextTs;
+                    if (!_isJsonSemanticallyEqual(mergedPlain, localPlain)) {
+                      _rtApplyingRemote = true;
+                      try {
+                        _writeEncryptedLocal(k, mergedPlain);
+                        _setKeyTimestamp(k, nextTs);
+                      } finally {
+                        _rtApplyingRemote = false;
+                      }
+                      mergedLocalKeys.push(k);
+                    }
+                  }
+                }
+              }
+            }
+          }));
+        }
+      } catch {}
+    }
+
+    for (const [k, item] of batch) {
+      const safeK = _encodeFirebaseSafeKey(k);
+      const itemTs = item.updatedAt || now;
+      kvPayload[safeK] = item;
+      metaKeyTsPatch[safeK] = itemTs;
+      _seenSafeKeyTimestamps[safeK] = itemTs;
+    }
+
+    const kvBody = JSON.stringify(kvPayload);
+    const useKeepalive = Boolean(isUnloading || kvBody.length < 58000);
+
     const res = await fetch(`${dbUrl}/lopvui_cloud_v3/kv.json`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: kvBody,
       keepalive: useKeepalive
     });
-    const delMap = _getDeletedIdsMap();
+
     const delCount = Object.keys(delMap).length;
     if (delCount > _lastSyncedDeletedCount) {
       _lastSyncedDeletedCount = delCount;
@@ -790,38 +1284,43 @@ async function _flushFirebaseCloudPush(isUnloading = false) {
         keepalive: delBody.length < 58000
       });
     }
+
+    // Ghi keyTimestamps TRƯỚC khi ghi meta.lastUpdatedAt để khi SSE trên máy khác nhận sự kiện meta, keyTimestamps đã luôn có sẵn 100%!
+    const tsBody = JSON.stringify(metaKeyTsPatch);
+    await fetch(`${dbUrl}/lopvui_cloud_v3/meta/keyTimestamps.json`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: tsBody,
+      keepalive: tsBody.length < 58000
+    });
+
+    const metaNow = Math.max(now, ...Object.values(metaKeyTsPatch));
     const metaBody = JSON.stringify({
       cleanSlateV35: true,
       encryptedV38: true,
       deltaSyncV392: true,
-      lastUpdatedAt: now,
+      lastUpdatedAt: metaNow,
       lastClientId: RT_CLIENT_ID,
       deletedCount: delCount
     });
-    const tsBody = JSON.stringify(metaKeyTsPatch);
-    await Promise.all([
-      fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: metaBody,
-        keepalive: true
-      }),
-      fetch(`${dbUrl}/lopvui_cloud_v3/meta/keyTimestamps.json`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: tsBody,
-        keepalive: tsBody.length < 58000
-      })
-    ]);
-    _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, now);
+    await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: metaBody,
+      keepalive: true
+    });
+
+    _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, metaNow);
+    if (mergedLocalKeys.length > 0) {
+      _scheduleRtUIRefresh(mergedLocalKeys, 'cloud-prepush-merge');
+    }
     if (res.ok) {
-      _notifyRtStatus('realtime-cloud', now, 'cloud-pushed');
+      _notifyRtStatus('realtime-cloud', metaNow, 'cloud-pushed');
     }
   } catch {} finally {
     _rtIsPushingCloud = false;
-    // If more entries were queued while pushing, flush them immediately
     if (_rtPendingCloudEntries.size > 0 && !_rtCloudPushTimer) {
-      _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false), 120);
+      _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false), 90);
     }
   }
 }
@@ -862,7 +1361,6 @@ async function _pullFullCloudSnapshotOnce(source = 'cloud-init') {
       }
     }
     _lastSeenCloudMetaTs = maxTs;
-    // Nếu trên Cloud chưa có nhánh /meta (từ bản v3.8/v3.9 cũ), tự động ghi nhánh /meta nhẹ lên Cloud
     if (!data.meta || !data.meta.deltaSyncV392) {
       fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
         method: 'PUT',
@@ -886,10 +1384,7 @@ async function _pullFullCloudSnapshotOnce(source = 'cloud-init') {
 }
 
 /**
- * Đồng bộ Delta siêu tiết kiệm băng thông (v3.9.2):
- * Bước 1: Chỉ tải /lopvui_cloud_v3/meta.json (~250 bytes).
- * Bước 2: Nếu lastUpdatedAt không đổi -> DỪNG NGAY (0 KB tải thêm!).
- * Bước 3: Nếu có thay đổi -> chỉ tải đúng những safeKey có timestamp mới hơn máy hiện tại!
+ * Đồng bộ Delta siêu tiết kiệm băng thông & chống bỏ sót gói tin khi nhiều máy làm việc cùng lúc
  */
 async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
   const dbUrl = getConfiguredFirebaseDbUrl();
@@ -900,7 +1395,6 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
     const meta = await metaRes.json();
     _notifyRtStatus('realtime-cloud', Date.now(), 'connected');
 
-    // Nếu chưa có nhánh meta trên Cloud, chạy đồng bộ đầy đủ 1 lần để khởi tạo meta
     if (!meta || typeof meta !== 'object' || !meta.deltaSyncV392) {
       return await _pullFullCloudSnapshotOnce(source);
     }
@@ -908,29 +1402,22 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
     const remoteLastUpdated = Number(meta.lastUpdatedAt) || 0;
     const remoteKeyTsMap = meta.keyTimestamps || {};
 
-    // Nếu không phải lần khởi động đầu tiên và không có thay đổi nào mới trên Cloud -> tốn đúng ~250 bytes!
-    if (source === 'cloud-poll' && _lastSeenCloudMetaTs > 0 && remoteLastUpdated <= _lastSeenCloudMetaTs) {
-      return { ok: true, emptyCloud: false, changed: false, count: 0 };
-    }
-
-    // Xác định danh sách các safeKey thực sự có thay đổi mới hơn bản máy đang giữ
+    // Luôn kiểm tra trực tiếp từng safeKey trong remoteKeyTsMap (vì meta.json đã tải về rồi) để không bao giờ bỏ sót key khi 2 máy đẩy cùng lúc
     const changedSafeKeys = Object.keys(remoteKeyTsMap).filter(safeK => {
       const rTs = Number(remoteKeyTsMap[safeK]) || 0;
       const seenTs = Number(_seenSafeKeyTimestamps[safeK]) || 0;
       return rTs > seenTs;
     });
 
-    if (!changedSafeKeys.length && _lastSeenCloudMetaTs > 0) {
+    if (!changedSafeKeys.length && _lastSeenCloudMetaTs > 0 && (Number(meta.deletedCount) || 0) <= _lastSyncedDeletedCount) {
       _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, remoteLastUpdated);
       return { ok: true, emptyCloud: Object.keys(remoteKeyTsMap).length === 0, changed: false, count: 0 };
     }
 
-    // Nếu là lần đầu mở trang và có nhiều hơn 8 key cần tải -> tải 1 lần gói tổng hợp cho nhanh
     if (_lastSeenCloudMetaTs === 0 && changedSafeKeys.length > 8) {
       return await _pullFullCloudSnapshotOnce(source);
     }
 
-    // Chỉ tải từng key vừa thay đổi (vài KB thay vì cả cục nhiều MB)
     const entries = {};
     const metaMap = {};
     await Promise.all(changedSafeKeys.map(async (safeK) => {
@@ -939,7 +1426,7 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
         if (!kRes.ok) return;
         const item = await kRes.json();
         const rTs = Number(remoteKeyTsMap[safeK]) || Date.now();
-        _seenSafeKeyTimestamps[safeK] = rTs;
+        _seenSafeKeyTimestamps[safeK] = Math.max(Number(_seenSafeKeyTimestamps[safeK]) || 0, rTs);
         if (!item) return;
         const resolvedKey = item.encKey
           ? decryptVaultPayload(item.encKey, 'firebase_key_meta')
@@ -1064,7 +1551,32 @@ function _installStorageVaultInterceptor() {
       if (this === window.localStorage) {
         try { prevPlain = _readDecryptedLocal(kStr); } catch {}
       }
-      const plainStr = decryptVaultPayload(String(value), kStr);
+      let plainStr = decryptVaultPayload(String(value), kStr);
+      const now = Date.now();
+
+      if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote) {
+        if (prevPlain && GRANULAR_ARRAY_KEYS.has(kStr)) {
+          try {
+            const oldArr = JSON.parse(prevPlain);
+            const newArr = JSON.parse(plainStr);
+            if (Array.isArray(oldArr) && Array.isArray(newArr)) {
+              const newIds = new Set(newArr.map(x => x?.id).filter(Boolean));
+              const removed = oldArr.map(x => x?.id).filter(id => id && !newIds.has(id));
+              if (removed.length) _recordDeletedIds(removed, now);
+            }
+          } catch {}
+        }
+        // CƠ CHẾ READ-MODIFY-WRITE TẠI LOCALSTORAGE:
+        // Trước khi lưu đè xuống localStorage, trộn (merge) bản mới nhất đang có trong localStorage (vừa đồng bộ dưới nền) với bản đang lưu!
+        if (prevPlain && prevPlain !== plainStr) {
+          const prevTs = _getKeyTimestamps()[kStr] || 0;
+          try {
+            const merged = _mergeGranularJsonValue(kStr, prevPlain, plainStr, now, prevTs, _getDeletedIdsMap());
+            if (merged) plainStr = merged;
+          } catch {}
+        }
+      }
+
       const toStore = (this === window.localStorage && _shouldEncryptKey(kStr))
         ? encryptVaultPayload(plainStr, kStr)
         : String(value);
@@ -1072,19 +1584,7 @@ function _installStorageVaultInterceptor() {
 
       if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote) {
         if (prevPlain !== plainStr) {
-          const now = Date.now();
           _rtLastLocalWriteAt = now;
-          if (prevPlain && GRANULAR_ARRAY_KEYS.has(kStr)) {
-            try {
-              const oldArr = JSON.parse(prevPlain);
-              const newArr = JSON.parse(plainStr);
-              if (Array.isArray(oldArr) && Array.isArray(newArr)) {
-                const newIds = new Set(newArr.map(x => x?.id).filter(Boolean));
-                const removed = oldArr.map(x => x?.id).filter(id => id && !newIds.has(id));
-                if (removed.length) _recordDeletedIds(removed, now);
-              }
-            } catch {}
-          }
           _setKeyTimestamp(kStr, now);
           if (_rtChannel) {
             try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [kStr]: toStore } }); } catch {}
@@ -1834,8 +2334,38 @@ function undoSeating() {
     toast('Không có thao tác nào để hoàn tác.');
     return;
   }
+  const now = Date.now();
   const prev = seatingUndoStack.pop();
-  deskItems = prev.deskItems;
+  const nextDesks = prev.deskItems || {};
+  _ensureDeskTombstones(nextDesks);
+  const nextEntryIds = new Set();
+  const nextStuIds = new Set(Array.isArray(prev.lateQueue) ? prev.lateQueue : []);
+  for (const [dId, arr] of Object.entries(nextDesks)) {
+    if (dId.startsWith('__') || !Array.isArray(arr)) continue;
+    arr.forEach(ent => {
+      if (!ent || typeof ent !== 'object') return;
+      _ensureSeatEntryMeta(ent, now);
+      ent._updatedAt = now;
+      nextEntryIds.add(ent.entryId);
+      if (ent.studentId) {
+        nextStuIds.add(ent.studentId);
+        clearDeskTombstoneForStudent(nextDesks, ent.studentId, ent.entryId);
+      }
+    });
+  }
+  for (const [dId, arr] of Object.entries(deskItems || {})) {
+    if (dId.startsWith('__') || !Array.isArray(arr)) continue;
+    arr.forEach(ent => {
+      if (!ent || typeof ent !== 'object') return;
+      if (ent.entryId && !nextEntryIds.has(ent.entryId)) {
+        recordDeskTombstone(nextDesks, { entryId: ent.entryId, timestamp: now });
+      }
+      if (ent.studentId && !nextStuIds.has(ent.studentId)) {
+        recordDeskTombstone(nextDesks, { studentId: ent.studentId, timestamp: now });
+      }
+    });
+  }
+  deskItems = nextDesks;
   lateQueue = prev.lateQueue;
   if (Array.isArray(prev.studentsSnapshot)) {
     students = prev.studentsSnapshot;
@@ -1924,23 +2454,222 @@ let activeSpot=null,selectedStudentId=null,selectedLateId=null,activeProfileId=n
 const classroom=document.querySelector('#classroom');const $=selector=>document.querySelector(selector);
 const studentIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="3.5"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg>';
 const toast=message=>{const el=$('#toast'),host=document.querySelector('dialog[open]')||document.querySelector('.app-shell');if(host&&!host.contains(el))host.append(el);el.textContent=message;el.classList.add('show');clearTimeout(el._hideTimer);el._hideTimer=setTimeout(()=>{el.classList.remove('show');const shell=document.querySelector('.app-shell');if(shell&&!shell.contains(el))shell.append(el);},2500);};
+let _lastKnownDeskSnapshot = { sessionKey: '', entryIds: new Set(), studentIds: new Set(), lateIds: new Set() };
+
+function _captureKnownDeskSnapshot() {
+  const sKey = `${CURRENT_CLASS_ID}::${checklistDate}`;
+  const eIds = new Set();
+  const sIds = new Set();
+  for (const [dId, arr] of Object.entries(deskItems || {})) {
+    if (dId.startsWith('__') || !Array.isArray(arr)) continue;
+    arr.forEach(ent => {
+      if (!ent || typeof ent !== 'object') return;
+      _ensureSeatEntryMeta(ent);
+      if (ent.entryId) eIds.add(ent.entryId);
+      if (ent.studentId) sIds.add(ent.studentId);
+    });
+  }
+  _lastKnownDeskSnapshot = {
+    sessionKey: sKey,
+    entryIds: eIds,
+    studentIds: sIds,
+    lateIds: new Set(Array.isArray(lateQueue) ? lateQueue : [])
+  };
+}
+
+/**
+ * ĐỒNG BỘ DỮ LIỆU ĐIỂM DANH VỚI DỮ LIỆU CHỖ NGỒI (INVARIANT):
+ * 1. Nếu học sinh có mặt / đến muộn trên sơ đồ lớp (deskItems hoặc lateQueue) -> bắt buộc có trạng thái điểm danh Có mặt / Đi muộn.
+ * 2. Nếu học sinh bị xoá khỏi sơ đồ lớp / không có trên sơ đồ lớp -> tự động về trạng thái mặc định Chưa điểm danh (null),
+ *    HOẶC giữ nguyên Vắng có phép / Vắng không phép (absent_excused / absent_unexcused / absent) khi được đánh dấu vắng.
+ */
+function reconcileSessionAttendanceWithSeating() {
+  if (isClassHistoryViewMode) return;
+  const now = Date.now();
+  _ensureDeskTombstones(deskItems);
+
+  const seenSeatedStu = new Set();
+  const seatedMap = new Map();
+  for (const { desk } of desks()) {
+    deskItems[desk.id] = Array.isArray(deskItems[desk.id]) ? deskItems[desk.id] : [];
+    const filtered = [];
+    for (const ent of deskItems[desk.id]) {
+      if (!ent || typeof ent !== 'object') continue;
+      _ensureSeatEntryMeta(ent, now);
+      if (ent.studentId) {
+        const stu = studentById(ent.studentId);
+        if (!stu || seenSeatedStu.has(ent.studentId)) continue;
+        seenSeatedStu.add(ent.studentId);
+        seatedMap.set(ent.studentId, { deskId: desk.id, index: filtered.length, entry: ent });
+      }
+      filtered.push(ent);
+    }
+    deskItems[desk.id] = filtered;
+  }
+
+  // Học sinh đã ngồi vào bàn thì không nằm trùng trong lateQueue
+  if (Array.isArray(lateQueue)) {
+    lateQueue = lateQueue.filter(id => id && !seenSeatedStu.has(id) && studentById(id));
+  } else {
+    lateQueue = [];
+  }
+  const lateSet = new Set(lateQueue);
+
+  const subKey = `${CURRENT_CLASS_ID}_${checklistDate}`;
+  for (const student of [...(students || []), ...(makeupStudents || [])]) {
+    if (!student) continue;
+    const seatedInfo = seatedMap.get(student.id);
+    const inLate = lateSet.has(student.id);
+    const isOnSeatingMap = Boolean(seatedInfo || inLate);
+    const attHistList = Array.isArray(student.attendanceHistory) ? student.attendanceHistory : [];
+    const attHistIdx = attHistList.findIndex(h => h && h.classId === CURRENT_CLASS_ID && h.date === checklistDate);
+    const attHistEntry = attHistIdx >= 0 ? attHistList[attHistIdx] : null;
+
+    if (isOnSeatingMap) {
+      clearDeskTombstoneForStudent(deskItems, student.id, seatedInfo?.entry?.entryId);
+      if (student._removedAttendanceDates && student._removedAttendanceDates[subKey]) {
+        delete student._removedAttendanceDates[subKey];
+      }
+      if (seatedInfo && student._removedSeatingDates && student._removedSeatingDates[subKey]) {
+        delete student._removedSeatingDates[subKey];
+      }
+      const rawAtt = seatedInfo?.entry?.attendance || student.attendance || attHistEntry || { status: inLate ? 'late' : 'present' };
+      const lateDet = resolveLateDetails(student, seatedInfo?.entry || { attendance: rawAtt });
+      const isLate = Boolean((rawAtt?.status === 'late' || inLate) && lateDet.isLate && lateDet.lateMinutes > 0 && rawAtt?.status !== 'present');
+      const attTs = Number(seatedInfo?.entry?.attendance?._updatedAt || student.attendance?._updatedAt || attHistEntry?.timestamp || now);
+      const nextAtt = isLate
+        ? {
+            status: 'late',
+            arrivalTime: lateDet.arrivalTime,
+            lateMinutes: lateDet.lateMinutes,
+            minutesLate: lateDet.lateMinutes,
+            reason: rawAtt?.reason || null,
+            note: rawAtt?.note || '',
+            _updatedAt: attTs
+          }
+        : {
+            status: 'present',
+            arrivalTime: lateDet.arrivalTime || rawAtt?.arrivalTime || student.arrivalTime || null,
+            lateMinutes: 0,
+            minutesLate: 0,
+            reason: rawAtt?.reason || null,
+            note: rawAtt?.note || '',
+            _updatedAt: attTs
+          };
+      student.attendance = nextAtt;
+      student.arrivalTime = nextAtt.arrivalTime;
+      student.lateMinutes = nextAtt.lateMinutes;
+      if (seatedInfo) {
+        seatedInfo.entry.attendance = nextAtt;
+      }
+    } else {
+      // Học sinh KHÔNG có trên sơ đồ lớp (không ở trong deskItems và không ở trong lateQueue)
+      const curStatus = student.attendance?.status || attHistEntry?.status || null;
+      const isExplicitAbsent = curStatus === 'absent' || curStatus === 'absent_excused' || curStatus === 'absent_unexcused';
+      if (isExplicitAbsent) {
+        const absReason = student.attendance?.reason ?? attHistEntry?.reason ?? '';
+        const absTs = Number(student.attendance?._updatedAt || attHistEntry?.timestamp || now);
+        student.attendance = { status: curStatus, reason: absReason, _updatedAt: absTs };
+        student.arrivalTime = null;
+        student.lateMinutes = 0;
+      } else {
+        // Nếu đang là Có mặt / Đi muộn (hoặc trạng thái khác) mà không có trên sơ đồ lớp -> đưa về mặc định Chưa điểm danh (null)!
+        if (student.attendance !== null || attHistEntry) {
+          student.attendance = null;
+          student.arrivalTime = null;
+          student.lateMinutes = 0;
+          student.minutesLate = 0;
+          if (attHistIdx >= 0) {
+            student.attendanceHistory.splice(attHistIdx, 1);
+            student.history = student.attendanceHistory;
+            student._removedAttendanceDates = student._removedAttendanceDates || {};
+            student._removedAttendanceDates[subKey] = now;
+            student.updatedAt = now;
+          }
+        }
+      }
+      if (Array.isArray(student.seatingHistory)) {
+        const shIdx = student.seatingHistory.findIndex(sh => sh && sh.classId === CURRENT_CLASS_ID && sh.date === checklistDate);
+        if (shIdx >= 0) {
+          student.seatingHistory.splice(shIdx, 1);
+          student._removedSeatingDates = student._removedSeatingDates || {};
+          student._removedSeatingDates[subKey] = now;
+        }
+      }
+    }
+  }
+}
+
 const save=()=>{
   const now = Date.now();
+  _ensureDeskTombstones(deskItems);
+  const currentEntryIds = new Set();
+  const currentStudentIds = new Set();
+
   for (const dId of Object.keys(deskItems || {})) {
+    if (dId.startsWith('__')) continue;
     if (Array.isArray(deskItems[dId])) {
       deskItems[dId].forEach(ent => {
-        if (ent && typeof ent === 'object' && !ent._updatedAt) ent._updatedAt = now;
+        if (ent && typeof ent === 'object') {
+          _ensureSeatEntryMeta(ent, now);
+          currentEntryIds.add(ent.entryId);
+          if (ent.studentId) {
+            currentStudentIds.add(ent.studentId);
+            clearDeskTombstoneForStudent(deskItems, ent.studentId, ent.entryId);
+          }
+        }
       });
     }
   }
+
+  // Tự động phát hiện bất kỳ ghế hoặc học sinh nào vừa bị xoá khỏi deskItems trong phiên hiện tại để ghi Tombstone chống hồi sinh khi đồng bộ
+  const curSessKey = `${CURRENT_CLASS_ID}::${checklistDate}`;
+  if (_lastKnownDeskSnapshot.sessionKey === curSessKey) {
+    for (const oldEId of _lastKnownDeskSnapshot.entryIds) {
+      if (!currentEntryIds.has(oldEId)) {
+        recordDeskTombstone(deskItems, { entryId: oldEId, timestamp: now });
+      }
+    }
+    const curLateSet = new Set(Array.isArray(lateQueue) ? lateQueue : []);
+    for (const oldSId of _lastKnownDeskSnapshot.studentIds) {
+      if (!currentStudentIds.has(oldSId) && !curLateSet.has(oldSId)) {
+        recordDeskTombstone(deskItems, { studentId: oldSId, timestamp: now });
+      }
+    }
+    for (const oldLId of _lastKnownDeskSnapshot.lateIds) {
+      if (!curLateSet.has(oldLId) && !currentStudentIds.has(oldLId)) {
+        recordDeskTombstone(deskItems, { studentId: oldLId, lateRemoved: true, timestamp: now });
+      }
+    }
+  }
+
+  reconcileSessionAttendanceWithSeating();
+
+  const deskKey = `lopvui.desk-items.v7.${CURRENT_CLASS_ID}.${checklistDate}`;
+  const lateKey = `lopvui.late-queue.v6.${CURRENT_CLASS_ID}.${checklistDate}`;
   localStorage.setItem(`lopvui.layout.v5.${CURRENT_CLASS_ID}.${checklistDate}`,JSON.stringify(layout));
-  localStorage.setItem(`lopvui.desk-items.v7.${CURRENT_CLASS_ID}.${checklistDate}`,JSON.stringify(deskItems));
-  localStorage.setItem(`lopvui.late-queue.v6.${CURRENT_CLASS_ID}.${checklistDate}`,JSON.stringify(lateQueue));
+  localStorage.setItem(deskKey,JSON.stringify(deskItems));
+  localStorage.setItem(lateKey,JSON.stringify(lateQueue));
+
+  // Cập nhật lại biến RAM từ bản vừa được hợp nhất (Read-Modify-Write) trong localStorage
+  try {
+    const mergedDesks = JSON.parse(localStorage.getItem(deskKey) || 'null');
+    if (mergedDesks && typeof mergedDesks === 'object') deskItems = mergedDesks;
+    const mergedLate = JSON.parse(localStorage.getItem(lateKey) || 'null');
+    if (Array.isArray(mergedLate)) lateQueue = mergedLate;
+  } catch {}
+
+  _captureKnownDeskSnapshot();
   syncLiveSessionData();
   saveStudentRecords(students,makeupStudents);
 };
 const saveChecklist=()=>{
-  localStorage.setItem(getChecklistKey(),JSON.stringify(checklist));
+  const chkKey = getChecklistKey();
+  localStorage.setItem(chkKey,JSON.stringify(checklist));
+  try {
+    const mergedChk = JSON.parse(localStorage.getItem(chkKey) || 'null');
+    if (mergedChk && typeof mergedChk === 'object') checklist = mergedChk;
+  } catch {}
   syncLiveSessionData();
 };
 const desks=()=>layout.flatMap((aisle,ci)=>aisle.desks.map((desk,di)=>({aisle,desk,ci,di})));
@@ -2034,9 +2763,13 @@ function isStudentLateInSession(student, seatedEntry = null, clsObj = null, date
   return Boolean(det.isLate && det.lateMinutes > 0);
 }
 const studentById=id=>students.find(s=>s.id===id)||makeupStudents.find(s=>s.id===id);
-const sessionNoteFor=id=>attendanceNotes[id]??studentById(id)?.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate)?.note??'';
+const sessionNoteFor=id=>(id&&id!=='__updatedAt'?attendanceNotes[id]:undefined)??studentById(id)?.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate)?.note??'';
 function saveSessionNote(id,value){
+  if (!id || id === '__updatedAt') return;
+  const now = Date.now();
   attendanceNotes[id]=value;
+  attendanceNotes.__updatedAt = attendanceNotes.__updatedAt || {};
+  attendanceNotes.__updatedAt[id] = now;
   localStorage.setItem(getAttendanceNotesKey(),JSON.stringify(attendanceNotes));
   const student=studentById(id);
   if(student){
@@ -2047,11 +2780,14 @@ function saveSessionNote(id,value){
       return;
     }
     if(!note){
-      note={classId:CURRENT_CLASS_ID,date:checklistDate,note:'',updatedAt:Date.now()};
+      note={classId:CURRENT_CLASS_ID,date:checklistDate,note:'',updatedAt:now,_noteUpdatedAt:now};
       student.sessionNotes.push(note);
     }
     note.note=value;
-    note.updatedAt=Date.now();
+    note._noteUpdatedAt=now;
+    note.updatedAt=now;
+    student.updatedAt=now;
+    student.revision=(Number(student.revision)||0)+1;
     save();
     logAdminSessionAction(`Cập nhật ghi chú buổi học của HS ${student.name}`, value ? `Nội dung: "${value}"` : 'Đã xoá ghi chú buổi học', 'student', `sess-note-${student.id}`);
   }
@@ -2254,10 +2990,10 @@ function renderChecklist(){renderChecklistCore();renderChecklistDetails();}
 document.querySelectorAll('[data-checklist-field]').forEach(field=>field.addEventListener('input',()=>{const key=field.dataset.checklistField;checklist[key]=field.value;saveChecklist();const status=key==='lessonTitle'?$('#lesson-title-status'):$('#homework-details-status');if(status)status.textContent='Đã lưu';if(key==='notebookLink'||key==='homeworkLink')renderChecklistDetails();logAdminSessionAction(`Cập nhật thông tin bài học (${key})`, `Giá trị: "${field.value.trim()}"`, 'checklist', `chk-field-${key}`);}));
 $('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-item]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;if(checklist.items[0]?.id===item.id&&input.checked&&!checklist.workStart)checklist.workStart={name:currentStaffName(),at:Date.now()};addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');logAdminSessionAction(`${input.checked?'Hoàn thành':'Bỏ tích'} checklist đầu giờ`, `Mục: ${item.label}`, 'checklist');if(checklist.items.length&&checklist.items.every(entry=>entry.done)){createClassNotification('Checklist setup đã xong','Tất cả công việc chuẩn bị đầu giờ đã được hoàn thành.','checklist',`setup-done-${checklistDate}`);addClassActivity(`${currentStaffName()} đã hoàn thành toàn bộ checklist setup đầu giờ`,'checklist');}saveChecklist();renderChecklist();});
 $('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-label]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistLabel);if(!item)return;const label=input.value.trim();if(!label){input.value=item.label;toast('Tên công việc không được để trống.');return;}item.label=label;saveChecklist();logAdminSessionAction('Đổi tên mục checklist đầu giờ', `Nội dung: ${label}`, 'checklist', `chk-lbl-${item.id}`);});
-$('#checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-remove-checklist-item]');if(!button)return;const removed=checklist.items.find(i=>i.id===button.dataset.removeChecklistItem);checklist.items=checklist.items.filter(item=>item.id!==button.dataset.removeChecklistItem);saveChecklist();renderChecklist();logAdminSessionAction('Xoá mục checklist đầu giờ', `Mục: ${removed?.label || ''}`, 'checklist');});
+$('#checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-remove-checklist-item]');if(!button)return;const removed=checklist.items.find(i=>i.id===button.dataset.removeChecklistItem);checklist._removedItemIds=checklist._removedItemIds||{};checklist._removedItemIds[button.dataset.removeChecklistItem]=Date.now();checklist.items=checklist.items.filter(item=>item.id!==button.dataset.removeChecklistItem);saveChecklist();renderChecklist();logAdminSessionAction('Xoá mục checklist đầu giờ', `Mục: ${removed?.label || ''}`, 'checklist');});
 $('#add-checklist-item').onclick=()=>{const item={id:`task-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,label:'Việc mới',done:false};checklist.items.push(item);saveChecklist();renderChecklist();logAdminSessionAction('Thêm mục checklist đầu giờ mới', '', 'checklist');const input=$(`[data-checklist-label="${item.id}"]`);input?.focus();input?.select?.();};
 $('#end-checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-end-checklist-item]');if(input){const item=checklist.endItems.find(row=>row.id===input.dataset.endChecklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');logAdminSessionAction(`${input.checked?'Hoàn thành':'Bỏ tích'} checklist cuối giờ`, `Mục: ${item.label}`, 'checklist');saveChecklist();renderChecklist();return;}const label=e.target.closest('[data-end-checklist-label]');if(!label)return;const item=checklist.endItems.find(row=>row.id===label.dataset.endChecklistLabel);if(item&&label.value.trim()){item.label=label.value.trim();saveChecklist();logAdminSessionAction('Đổi tên mục checklist cuối giờ', `Nội dung: ${item.label}`, 'checklist', `end-chk-lbl-${item.id}`);}else if(item)label.value=item.label;});
-$('#end-checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-end-checklist-remove]');if(!button)return;const item=checklist.endItems.find(row=>row.id===button.dataset.endChecklistRemove);if(item&&confirm(`Xóa mục “${item.label}” khỏi checklist?`)){checklist.endItems=checklist.endItems.filter(row=>row.id!==item.id);saveChecklist();renderChecklist();logAdminSessionAction('Xoá mục checklist cuối giờ', `Mục: ${item.label}`, 'checklist');}});
+$('#end-checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-end-checklist-remove]');if(!button)return;const item=checklist.endItems.find(row=>row.id===button.dataset.endChecklistRemove);if(item&&confirm(`Xóa mục “${item.label}” khỏi checklist?`)){checklist._removedItemIds=checklist._removedItemIds||{};checklist._removedItemIds[item.id]=Date.now();checklist.endItems=checklist.endItems.filter(row=>row.id!==item.id);saveChecklist();renderChecklist();logAdminSessionAction('Xoá mục checklist cuối giờ', `Mục: ${item.label}`, 'checklist');}});
 $('#add-end-checklist-item').onclick=()=>{const item={id:`end-task-${Date.now()}`,label:'Việc mới',done:false};checklist.endItems.push(item);saveChecklist();renderChecklist();logAdminSessionAction('Thêm mục checklist cuối giờ mới', '', 'checklist');const input=$(`[data-end-checklist-label="${item.id}"]`);input?.focus();input?.select?.();};
 $('#save-session-note').onclick=()=>{checklist.classNote=$('#session-note').value.trim();if($('#parent-general-note'))checklist.parentGeneralNote=$('#parent-general-note').value.trim();checklist.noteSavedAt=Date.now();saveChecklist();addClassActivity(`${currentStaffName()} đã lưu ghi chú chung của buổi học`,'checklist');logAdminSessionAction('Lưu ghi chú trong ca & ghi chú gửi phụ huynh', `Ghi chú ca: "${checklist.classNote || '—'}" · Ghi chú gửi PH: "${checklist.parentGeneralNote || '—'}"`, 'checklist', 'save-session-note');renderChecklist();toast('Đã lưu ghi chú buổi học & ghi chú chung gửi phụ huynh.');};
 $('#session-note')?.addEventListener('input',()=>{checklist.classNote=$('#session-note').value;checklist.noteSavedAt=Date.now();saveChecklist();logAdminSessionAction('Cập nhật ghi chú chung của buổi học', checklist.classNote ? `Nội dung: "${checklist.classNote.slice(0, 120)}"` : 'Trống', 'checklist', 'auto-session-note');const st=$('#session-note-status');if(st)st.textContent=`Đã tự động lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`;});
@@ -2604,8 +3340,10 @@ function reloadClassSessionData(classId, date) {
   }
 
   // Hydrate attendanceNotes & scope student transient fields (.attendance, .homework) strictly to (CURRENT_CLASS_ID, checklistDate)
-  const seatedEntries = allEntries().filter(e => e.entry.studentId);
+  _ensureDeskTombstones(deskItems);
+  const seatedEntries = allEntries().filter(e => e.entry && e.entry.studentId);
   const seatedMap = new Map(seatedEntries.map(e => [e.entry.studentId, e.entry]));
+  lateQueue = Array.isArray(lateQueue) ? lateQueue.filter(id => id && !seatedMap.has(id)) : [];
   const lateSet = new Set(lateQueue);
 
   for (const student of [...students, ...makeupStudents]) {
@@ -2617,40 +3355,83 @@ function reloadClassSessionData(classId, date) {
     const seatedEntry = seatedMap.get(student.id);
     const snapEntry = histRecord?.studentsSnapshot?.find(s => s.studentId === student.id);
     const attHistEntry = (student.attendanceHistory || []).find(h => h.classId === CURRENT_CLASS_ID && h.date === checklistDate);
-    const scoreEntry = (student.scores || []).find(sc => sc.classId === CURRENT_CLASS_ID && sc.date === checklistDate && sc.type !== 'BTVN');
+    const btvnScoreEntry = (student.scores || []).find(sc => sc.classId === CURRENT_CLASS_ID && sc.date === checklistDate && (!sc.type || sc.type === 'BTVN'));
+    const scoreEntry = (student.scores || []).find(sc => sc.classId === CURRENT_CLASS_ID && sc.date === checklistDate && sc.type && sc.type !== 'BTVN');
+
+    const resolvedHwScore = seatedEntry?.homework?.score ?? savedNote?.homeworkScore ?? btvnScoreEntry?.score ?? null;
+    const resolvedHwStatus = seatedEntry?.homework?.status
+      || savedNote?.homeworkStatus
+      || (resolvedHwScore !== null && resolvedHwScore !== undefined ? 'submitted' : 'uncollected');
+    const resolvedHwReason = seatedEntry?.homework?.reason || savedNote?.homeworkReason || '';
+    const resolvedHwTs = Number(seatedEntry?.homework?._updatedAt || savedNote?._hwUpdatedAt || btvnScoreEntry?.timestamp || 0);
 
     const resolvedArrivalTime = seatedEntry?.attendance?.arrivalTime || attHistEntry?.time || attHistEntry?.arrivalTime || snapEntry?.attendance?.arrivalTime || null;
     if (seatedEntry) {
-      student.attendance = seatedEntry.attendance || attHistEntry || { status: 'present' };
-      if (resolvedArrivalTime && student.attendance) student.attendance.arrivalTime = resolvedArrivalTime;
-      student.homework = seatedEntry.homework || (savedNote?.homeworkStatus ? { status: savedNote.homeworkStatus, score: savedNote.homeworkScore ?? null, reason: savedNote.homeworkReason || '' } : { status: 'uncollected' });
-      student.arrivalTime = resolvedArrivalTime;
+      const baseAtt = seatedEntry.attendance || attHistEntry || { status: 'present' };
+      const det = resolveLateDetails(student, { attendance: baseAtt });
+      const isLate = Boolean(baseAtt?.status === 'late' && det.isLate && det.lateMinutes > 0);
+      student.attendance = isLate
+        ? { ...baseAtt, status: 'late', arrivalTime: det.arrivalTime, lateMinutes: det.lateMinutes, minutesLate: det.lateMinutes }
+        : { ...baseAtt, status: 'present', arrivalTime: resolvedArrivalTime || det.arrivalTime || null, lateMinutes: 0, minutesLate: 0 };
+      seatedEntry.attendance = student.attendance;
+      student.homework = {
+        ...(seatedEntry.homework || {}),
+        status: resolvedHwStatus === 'graded' ? 'submitted' : resolvedHwStatus,
+        score: resolvedHwScore,
+        reason: resolvedHwReason,
+        _updatedAt: resolvedHwTs || Date.now()
+      };
+      seatedEntry.homework = student.homework;
+      student.arrivalTime = student.attendance.arrivalTime;
+      student.lateMinutes = student.attendance.lateMinutes || 0;
     } else if (lateSet.has(student.id)) {
       const det = resolveLateDetails(student, { attendance: attHistEntry || student.attendance });
-      student.attendance = attHistEntry
-        ? { ...attHistEntry, status: det.isLate ? 'late' : 'present', arrivalTime: resolvedArrivalTime || det.arrivalTime, lateMinutes: det.lateMinutes, minutesLate: det.lateMinutes }
-        : { status: det.isLate ? 'late' : 'present', arrivalTime: resolvedArrivalTime || det.arrivalTime, lateMinutes: det.lateMinutes, minutesLate: det.lateMinutes };
-      student.homework = savedNote?.homeworkStatus ? { status: savedNote.homeworkStatus, score: savedNote.homeworkScore ?? null, reason: savedNote.homeworkReason || '' } : { status: 'uncollected' };
+      student.attendance = {
+        ...(attHistEntry || {}),
+        status: det.isLate ? 'late' : 'present',
+        arrivalTime: resolvedArrivalTime || det.arrivalTime,
+        lateMinutes: det.lateMinutes,
+        minutesLate: det.lateMinutes
+      };
+      student.homework = {
+        status: resolvedHwStatus === 'graded' ? 'submitted' : resolvedHwStatus,
+        score: resolvedHwScore,
+        reason: resolvedHwReason,
+        _updatedAt: resolvedHwTs
+      };
       student.arrivalTime = resolvedArrivalTime || det.arrivalTime;
-    } else if (attHistEntry) {
-      student.attendance = { status: attHistEntry.status, arrivalTime: resolvedArrivalTime, reason: attHistEntry.reason || '', lateMinutes: attHistEntry.lateMinutes || attHistEntry.minutesLate || 0, minutesLate: attHistEntry.minutesLate || attHistEntry.lateMinutes || 0 };
-      student.homework = savedNote?.homeworkStatus ? { status: savedNote.homeworkStatus, score: savedNote.homeworkScore ?? null, reason: savedNote.homeworkReason || '' } : (attHistEntry.homework || { status: 'uncollected' });
-      student.arrivalTime = resolvedArrivalTime;
-    } else if (snapEntry) {
-      student.attendance = snapEntry.attendance || null;
-      student.homework = snapEntry.homework || { status: 'uncollected' };
-      student.arrivalTime = resolvedArrivalTime;
+      student.lateMinutes = det.lateMinutes || 0;
     } else {
-      student.attendance = null;
-      student.homework = { status: 'uncollected' };
+      // Học sinh KHÔNG có trên sơ đồ lớp (deskItems / lateQueue):
+      // Chỉ giữ trạng thái Vắng có phép / Vắng không phép; nếu đang là Có mặt / Đi muộn thì reset về Chưa điểm danh (null)!
+      const candStatus = attHistEntry?.status || snapEntry?.attendance?.status || null;
+      const isAbsent = candStatus === 'absent' || candStatus === 'absent_excused' || candStatus === 'absent_unexcused';
+      if (isAbsent) {
+        student.attendance = {
+          status: candStatus,
+          reason: attHistEntry?.reason || snapEntry?.attendance?.reason || '',
+          _updatedAt: Number(attHistEntry?.timestamp || 0)
+        };
+      } else {
+        student.attendance = null;
+        if (attHistEntry && !isClassHistoryViewMode) {
+          student.attendanceHistory = (student.attendanceHistory || []).filter(h => !(h.classId === CURRENT_CLASS_ID && h.date === checklistDate));
+          student.history = student.attendanceHistory;
+        }
+      }
+      student.homework = {
+        status: resolvedHwStatus === 'graded' ? 'submitted' : resolvedHwStatus,
+        score: resolvedHwScore,
+        reason: resolvedHwReason,
+        _updatedAt: resolvedHwTs
+      };
       student.arrivalTime = null;
       student.lateMinutes = 0;
     }
-    if (student.homework?.status === 'graded') student.homework.status = 'submitted';
-    if (seatedEntry?.homework?.status === 'graded') seatedEntry.homework.status = 'submitted';
 
-    student.testScore = seatedEntry?.testScore ?? checklist.testScores?.[student.id] ?? snapEntry?.testScore ?? scoreEntry?.score ?? null;
+    student.testScore = seatedEntry?.testScore ?? checklist.testScores?.[student.id] ?? savedNote?.testScore ?? snapEntry?.testScore ?? scoreEntry?.score ?? null;
   }
+  _captureKnownDeskSnapshot();
 }
 
 
@@ -3811,9 +4592,10 @@ function renderStudentList(){
     const attHist=(student.attendanceHistory||[]).find(h=>h.classId===CURRENT_CLASS_ID&&h.date===checklistDate);
     const sessNote=(student.sessionNotes||[]).find(n=>n.classId===CURRENT_CLASS_ID&&n.date===checklistDate);
 
+    const isAttHistAbsent = Boolean(attHist && (attHist.status === 'absent' || attHist.status === 'absent_excused' || attHist.status === 'absent_unexcused'));
     const rawAtt = place?.entry.attendance
       || (inLate ? (student.attendance || (attHist ? { status: attHist.status, arrivalTime: attHist.time || attHist.arrivalTime, lateMinutes: attHist.lateMinutes ?? attHist.minutesLate } : { status: 'late' })) : null)
-      || (attHist ? { status: attHist.status, reason: attHist.reason, arrivalTime: attHist.time || attHist.arrivalTime, lateMinutes: attHist.lateMinutes ?? attHist.minutesLate } : null);
+      || (isAttHistAbsent ? { status: attHist.status, reason: attHist.reason, arrivalTime: null, lateMinutes: 0 } : null);
     const lateCheckDet = rawAtt ? resolveLateDetails(student, place?.entry || { attendance: rawAtt }) : null;
     const attendance = (rawAtt && (rawAtt.status === 'late' || inLate))
       ? (lateCheckDet?.isLate
@@ -3862,6 +4644,24 @@ function renderStudentList(){
   if ($('#list-homework-count')) $('#list-homework-count').textContent=noHomework;
 
   if (document.activeElement && host.contains(document.activeElement) && document.activeElement.matches('[data-session-note], [data-live-list-hw-score], [data-live-list-test-score]')) {
+    // Cập nhật trực tiếp (in-place) điểm và ghi chú của các học sinh khác mà không làm mất con trỏ ô đang gõ
+    allSessionRecords.forEach(rec => {
+      const sid = rec.student.id;
+      const hwInp = host.querySelector(`[data-live-list-hw-score="${sid}"]`);
+      if (hwInp && hwInp !== document.activeElement) {
+        const nextHwStr = (rec.homework?.score !== null && rec.homework?.score !== undefined && rec.homework?.score !== '') ? formatScoreVN(rec.homework.score) : '';
+        if (hwInp.value !== nextHwStr) hwInp.value = nextHwStr;
+      }
+      const testInp = host.querySelector(`[data-live-list-test-score="${sid}"]`);
+      if (testInp && testInp !== document.activeElement) {
+        const nextTestStr = (rec.testScore !== null && rec.testScore !== undefined && rec.testScore !== '') ? formatScoreVN(rec.testScore) : '';
+        if (testInp.value !== nextTestStr) testInp.value = nextTestStr;
+      }
+      const noteInp = host.querySelector(`[data-session-note="${sid}"]`);
+      if (noteInp && noteInp !== document.activeElement) {
+        if (noteInp.value !== (rec.note || '')) noteInp.value = rec.note || '';
+      }
+    });
     return;
   }
 
@@ -4990,15 +5790,41 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
     </div>
   `;
 
-  const applyInlineSessionChanges = () => {
-    const newAttStatus = $('#sess-prof-att-status')?.value || 'unmarked';
+  const applyInlineSessionChanges = (changedFieldId = '') => {
+    const now = Date.now();
+    let newAttStatus = $('#sess-prof-att-status')?.value || 'unmarked';
     const newLateMins = Number($('#sess-prof-late-mins')?.value) || 0;
-    const newDeskId = $('#sess-prof-seat-select')?.value || '';
+    let newDeskId = $('#sess-prof-seat-select')?.value || '';
     let newHwStatus = $('#sess-prof-hw-status')?.value || 'uncollected';
     const newHwReason = $('#sess-prof-hw-reason')?.value || '';
     const rawHwScore = $('#sess-prof-hw-score')?.value?.trim() ?? '';
     const rawTestScore = $('#sess-prof-test-score')?.value?.trim() ?? '';
     const newNote = $('#sess-prof-note')?.value?.trim() ?? '';
+
+    // Đồng bộ 2 chiều giữa Trạng thái điểm danh và Vị trí chỗ ngồi trên sơ đồ lớp
+    if (isCurrentLiveSession) {
+      if (changedFieldId === 'sess-prof-seat-select') {
+        if (newDeskId && (newAttStatus === 'unmarked' || newAttStatus.startsWith('absent'))) {
+          newAttStatus = 'present';
+          if ($('#sess-prof-att-status')) $('#sess-prof-att-status').value = 'present';
+        } else if (!newDeskId && (newAttStatus === 'present' || newAttStatus === 'late')) {
+          newAttStatus = 'unmarked';
+          if ($('#sess-prof-att-status')) $('#sess-prof-att-status').value = 'unmarked';
+        }
+      } else {
+        if ((newAttStatus === 'present' || newAttStatus === 'late') && !newDeskId && !lateQueue.includes(student.id)) {
+          const allDesksList = desks();
+          const availDesk = allDesksList.find(d => (deskItems[d.desk.id] || []).length < (d.desk.seats || 2))?.desk || allDesksList[0]?.desk;
+          if (availDesk) {
+            newDeskId = availDesk.id;
+            if ($('#sess-prof-seat-select')) $('#sess-prof-seat-select').value = newDeskId;
+          }
+        } else if (newAttStatus === 'unmarked' || newAttStatus.startsWith('absent')) {
+          newDeskId = '';
+          if ($('#sess-prof-seat-select')) $('#sess-prof-seat-select').value = '';
+        }
+      }
+    }
 
     if ($('#sess-prof-late-mins-wrap')) $('#sess-prof-late-mins-wrap').hidden = (newAttStatus !== 'late');
     if ($('#sess-prof-hw-reason-wrap')) $('#sess-prof-hw-reason-wrap').hidden = (newHwStatus !== 'not_submitted');
@@ -5017,23 +5843,47 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
       status: newHwStatus,
       score: numHwScore,
       reason: newHwStatus === 'not_submitted' ? newHwReason : null,
-      note: newNote
+      note: newNote,
+      _scoreCleared: numHwScore === null,
+      _updatedAt: now
     };
     const attObj = newAttStatus === 'unmarked'
       ? null
-      : { status: newAttStatus, lateMinutes: newAttStatus === 'late' ? newLateMins : 0, minutesLate: newAttStatus === 'late' ? newLateMins : 0 };
+      : {
+          status: newAttStatus,
+          lateMinutes: newAttStatus === 'late' ? newLateMins : 0,
+          minutesLate: newAttStatus === 'late' ? newLateMins : 0,
+          _updatedAt: now
+        };
 
     if (isCurrentLiveSession) {
       const existingPlace = allEntries().find(p => p.entry.studentId === student.id);
       if (newDeskId && (!existingPlace || existingPlace.deskId !== newDeskId)) {
+        const preservedEntryId = existingPlace?.entry?.entryId || _newSeatEntryId();
         if (existingPlace) {
           deskItems[existingPlace.deskId] = (deskItems[existingPlace.deskId] || []).filter(e => e.studentId !== student.id);
         }
+        clearDeskTombstoneForStudent(deskItems, student.id, preservedEntryId);
         deskItems[newDeskId] = deskItems[newDeskId] || [];
-        deskItems[newDeskId].push({ studentId: student.id, attendance: attObj, homework: hwObj, testScore: numTestScore });
+        deskItems[newDeskId].push({
+          entryId: preservedEntryId,
+          studentId: student.id,
+          attendance: attObj,
+          homework: hwObj,
+          testScore: numTestScore,
+          _testUpdatedAt: now,
+          _updatedAt: now
+        });
         lateQueue = lateQueue.filter(id => id !== student.id);
-      } else if (!newDeskId && existingPlace) {
-        deskItems[existingPlace.deskId] = (deskItems[existingPlace.deskId] || []).filter(e => e.studentId !== student.id);
+      } else if (!newDeskId && (existingPlace || lateQueue.includes(student.id))) {
+        if (existingPlace) {
+          recordDeskTombstone(deskItems, { entryId: existingPlace.entry.entryId, studentId: student.id, timestamp: now });
+          deskItems[existingPlace.deskId] = (deskItems[existingPlace.deskId] || []).filter(e => e.studentId !== student.id);
+        }
+        if (lateQueue.includes(student.id) && (newAttStatus === 'unmarked' || newAttStatus.startsWith('absent'))) {
+          recordDeskTombstone(deskItems, { studentId: student.id, lateRemoved: true, timestamp: now });
+          lateQueue = lateQueue.filter(id => id !== student.id);
+        }
       }
 
       const activePlace = allEntries().find(p => p.entry.studentId === student.id);
@@ -5041,6 +5891,8 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
         activePlace.entry.attendance = attObj;
         activePlace.entry.homework = hwObj;
         activePlace.entry.testScore = numTestScore;
+        activePlace.entry._testUpdatedAt = now;
+        activePlace.entry._updatedAt = now;
       }
 
       student.attendance = attObj;
@@ -5048,20 +5900,37 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
       student.testScore = numTestScore;
       if (checklist) {
         checklist.testScores = checklist.testScores || {};
+        checklist.testScoreUpdatedAt = checklist.testScoreUpdatedAt || {};
+        checklist.testScoreUpdatedAt[student.id] = now;
         if (numTestScore !== null) checklist.testScores[student.id] = numTestScore;
         else delete checklist.testScores[student.id];
       }
       saveSessionNote(student.id, newNote);
     }
 
+    const subKey = `${targetClassId}_${targetDate}`;
     student.attendanceHistory = Array.isArray(student.attendanceHistory) ? student.attendanceHistory : [];
     const ahIdx = student.attendanceHistory.findIndex(h => h.classId === targetClassId && h.date === targetDate);
     if (attObj) {
-      const entry = { classId: targetClassId, date: targetDate, status: attObj.status, lateMinutes: attObj.lateMinutes || 0, minutesLate: attObj.lateMinutes || 0, homework: hwObj, timestamp: Date.now() };
+      const entry = {
+        classId: targetClassId,
+        date: targetDate,
+        status: attObj.status,
+        lateMinutes: attObj.lateMinutes || 0,
+        minutesLate: attObj.lateMinutes || 0,
+        homework: hwObj,
+        timestamp: now,
+        updatedAt: now
+      };
       if (ahIdx >= 0) student.attendanceHistory[ahIdx] = entry;
       else student.attendanceHistory.unshift(entry);
+      if (student._removedAttendanceDates && student._removedAttendanceDates[subKey]) {
+        delete student._removedAttendanceDates[subKey];
+      }
     } else if (ahIdx >= 0) {
       student.attendanceHistory.splice(ahIdx, 1);
+      student._removedAttendanceDates = student._removedAttendanceDates || {};
+      student._removedAttendanceDates[subKey] = now;
     }
     student.history = student.attendanceHistory;
 
@@ -5074,21 +5943,34 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
       homeworkStatus: hwObj.status,
       homeworkScore: numHwScore,
       homeworkReason: hwObj.reason || '',
+      _hwUpdatedAt: now,
       testScore: numTestScore,
-      note: newNote
+      _testUpdatedAt: now,
+      note: newNote,
+      _noteUpdatedAt: now,
+      updatedAt: now
     };
     if (snIdx >= 0) student.sessionNotes[snIdx] = snEntry;
     else student.sessionNotes.unshift(snEntry);
 
+    student._deletedScores = student._deletedScores || {};
     student.scores = Array.isArray(student.scores) ? student.scores : [];
     student.scores = student.scores.filter(sc => !(sc.classId === targetClassId && sc.date === targetDate));
     if (numHwScore !== null) {
-      student.scores.unshift({ classId: targetClassId, date: targetDate, type: 'BTVN', score: numHwScore });
+      delete student._deletedScores[`${subKey}_BTVN`];
+      student.scores.unshift({ classId: targetClassId, date: targetDate, type: 'BTVN', score: numHwScore, timestamp: now, updatedAt: now });
+    } else {
+      student._deletedScores[`${subKey}_BTVN`] = now;
     }
     if (numTestScore !== null) {
-      student.scores.unshift({ classId: targetClassId, date: targetDate, type: 'Test', score: numTestScore });
+      delete student._deletedScores[`${subKey}_Test`];
+      student.scores.unshift({ classId: targetClassId, date: targetDate, type: 'Test', score: numTestScore, timestamp: now, updatedAt: now });
+    } else {
+      student._deletedScores[`${subKey}_Test`] = now;
     }
 
+    student.updatedAt = now;
+    student.revision = (Number(student.revision) || 0) + 1;
     saveStudentRecords(students, makeupStudents);
     save();
     const attText = newAttStatus === 'present' ? 'Có mặt' : newAttStatus === 'late' ? `Đi muộn ${newLateMins}p` : newAttStatus.startsWith('absent') ? 'Vắng mặt' : 'Chưa điểm danh';
@@ -5105,9 +5987,9 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
   };
 
   $('#student-session-profile-content').querySelectorAll('input, select, textarea').forEach(el => {
-    el.addEventListener('change', applyInlineSessionChanges);
+    el.addEventListener('change', (ev) => applyInlineSessionChanges(ev.target?.id || ''));
     if (el.tagName === 'TEXTAREA' || el.type === 'number') {
-      el.addEventListener('input', applyInlineSessionChanges);
+      el.addEventListener('input', (ev) => applyInlineSessionChanges(ev.target?.id || ''));
     }
   });
 
@@ -5480,11 +6362,11 @@ function ensureCurrentSeatEntry() {
   const list = deskItems[activeSpot.deskId] || (deskItems[activeSpot.deskId] = []);
   const targetIdx = Math.max(0, Math.min(Number(activeSpot.index) || 0, list.length));
   if (!list[targetIdx]) {
-    entry = { studentId: selectedStudentId || null, homework: { status: 'uncollected' }, attendance: null };
+    entry = _ensureSeatEntryMeta({ entryId: _newSeatEntryId(), studentId: selectedStudentId || null, homework: { status: 'uncollected', _updatedAt: Date.now() }, attendance: null, _updatedAt: Date.now() });
     list.splice(targetIdx, 0, entry);
     activeSpot.index = targetIdx;
   } else {
-    entry = list[targetIdx];
+    entry = _ensureSeatEntryMeta(list[targetIdx]);
   }
   return entry;
 }
@@ -5644,14 +6526,26 @@ function renderHomeworkHistoryPanel(prefix) {
 
 function resetStudentSessionRecord(studentId, targetClassId = CURRENT_CLASS_ID, targetDate = checklistDate) {
   if (!studentId) return;
+  const now = Date.now();
+  const subKey = `${targetClassId}_${targetDate}`;
+  if (targetClassId === CURRENT_CLASS_ID && targetDate === checklistDate) {
+    recordDeskTombstone(deskItems, { studentId, lateRemoved: true, timestamp: now });
+  }
   const person = studentById(studentId);
   if (person) {
     person.attendance = null;
-    person.homework = { status: 'uncollected' };
+    person.homework = { status: 'uncollected', _explicitReset: true, _scoreCleared: true, _updatedAt: now };
     delete person.arrivalTime;
     delete person.lateMinutes;
     delete person.minutesLate;
     delete person.testScore;
+    person._removedAttendanceDates = person._removedAttendanceDates || {};
+    person._removedAttendanceDates[subKey] = now;
+    person._removedSeatingDates = person._removedSeatingDates || {};
+    person._removedSeatingDates[subKey] = now;
+    person._deletedScores = person._deletedScores || {};
+    person._deletedScores[`${subKey}_BTVN`] = now;
+    person._deletedScores[`${subKey}_Test`] = now;
     if (Array.isArray(person.attendanceHistory)) {
       person.attendanceHistory = person.attendanceHistory.filter(h => !((!h.classId || h.classId === targetClassId) && h.date === targetDate));
       person.history = person.attendanceHistory;
@@ -5972,11 +6866,11 @@ function openStudent(deskId,index){
 }
 
 function insertIntoDesk(entry,destDeskId,destIndex,source){
-  pushSeatingUndo();const target=deskItems[destDeskId]||(deskItems[destDeskId]=[]);if(source?.type==='seat'){const from=deskItems[source.deskId];from.splice(source.index,1);if(source.deskId===destDeskId&&source.index<destIndex)destIndex--;}else if(source?.type==='late')lateQueue=lateQueue.filter(id=>id!==source.studentId);destIndex=Math.max(0,Math.min(destIndex,target.length));target.splice(destIndex,0,entry);const stu=studentById(entry.studentId);recordSeatHistory(stu,destDeskId,destIndex);const destLabel=desks().find(d=>d.desk.id===destDeskId)?.label||destDeskId;logAdminSessionAction(`Di chuyển chỗ ngồi ${stu?`HS ${stu.name}`:'ghế trống'}`, `Chuyển tới ${destLabel} (Ghế ${destIndex+1})`, 'attendance');save();render();}
+  pushSeatingUndo();const now=Date.now();_ensureSeatEntryMeta(entry,now);entry._updatedAt=now;if(entry.studentId)clearDeskTombstoneForStudent(deskItems,entry.studentId,entry.entryId);const target=deskItems[destDeskId]||(deskItems[destDeskId]=[]);if(source?.type==='seat'){const from=deskItems[source.deskId];from.splice(source.index,1);if(source.deskId===destDeskId&&source.index<destIndex)destIndex--;}else if(source?.type==='late')lateQueue=lateQueue.filter(id=>id!==source.studentId);destIndex=Math.max(0,Math.min(destIndex,target.length));target.splice(destIndex,0,entry);const stu=studentById(entry.studentId);recordSeatHistory(stu,destDeskId,destIndex);const destLabel=desks().find(d=>d.desk.id===destDeskId)?.label||destDeskId;logAdminSessionAction(`Di chuyển chỗ ngồi ${stu?`HS ${stu.name}`:'ghế trống'}`, `Chuyển tới ${destLabel} (Ghế ${destIndex+1})`, 'attendance');save();render();}
 function dropIndexAt(deskEl,x){const tokens=[...deskEl.querySelectorAll('.desk-seats [data-entry-index]')].sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left);if(!tokens.length)return 0;const centers=tokens.map(token=>{const r=token.getBoundingClientRect();return r.left+r.width/2;});if(x<centers[0])return 0;for(let i=1;i<centers.length;i++)if(x<centers[i])return i;return tokens.length;}
 function showDropMarker(deskEl,index){const area=deskEl.querySelector('.desk-seats');if(!area)return;const marker=area.querySelector('.drop-marker')||document.createElement('span'),tokens=[...area.querySelectorAll('[data-entry-index]')].sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left),rect=area.getBoundingClientRect();marker.className='drop-marker';marker.setAttribute('aria-hidden','true');let x=rect.width/2;if(tokens.length){if(index<=0){x=tokens[0].getBoundingClientRect().left-rect.left;}else if(index>=tokens.length){x=tokens.at(-1).getBoundingClientRect().right-rect.left;}else{x=(tokens[index-1].getBoundingClientRect().right+tokens[index].getBoundingClientRect().left)/2-rect.left;}}marker.style.left=`${Math.max(1,Math.min(rect.width-4,x-2))}px`;marker.style.top='2px';marker.style.height=`${Math.max(20,rect.height-4)}px`;if(!marker.isConnected)area.append(marker);}
 function addAnonymousToDesk(deskId,index,openMenu=false){
-  pushSeatingUndo();const list=deskItems[deskId]||(deskItems[deskId]=[]),entry={studentId:null,homework:{status:'uncollected'},attendance:null};list.splice(index,0,entry);save();render();if(openMenu)openStudent(deskId,index);}
+  pushSeatingUndo();const now=Date.now(),list=deskItems[deskId]||(deskItems[deskId]=[]),entry={entryId:_newSeatEntryId(),studentId:null,homework:{status:'uncollected',_updatedAt:now},attendance:null,_updatedAt:now};list.splice(index,0,entry);save();render();if(openMenu)openStudent(deskId,index);}
 
 document.querySelectorAll('[data-homework-choice]').forEach(button=>button.onclick=()=>{
   const status=button.dataset.homeworkChoice;
@@ -6184,6 +7078,7 @@ $('#clear-seat').onclick=()=>{
     }
 
     pushSeatingUndo();
+    recordDeskTombstone(deskItems, { entryId: entry.entryId, studentId: stuId, timestamp: Date.now() });
     if (Array.isArray(deskItems[activeSpot.deskId])) {
       deskItems[activeSpot.deskId].splice(activeSpot.index, 1);
     }
@@ -6209,6 +7104,9 @@ $('#clear-seat').onclick=()=>{
   }
 
   pushSeatingUndo();
+  if (entry?.entryId) {
+    recordDeskTombstone(deskItems, { entryId: entry.entryId, timestamp: Date.now() });
+  }
   if (Array.isArray(deskItems[activeSpot.deskId])) {
     deskItems[activeSpot.deskId].splice(activeSpot.index, 1);
   }
@@ -6475,40 +7373,57 @@ $('#layout-form').addEventListener('submit',e=>{
 function historyHtml(id){const history=studentById(id)?.history||[],cutoff=Date.now()-28*86400000,rows=history.filter(x=>!x.timestamp||x.timestamp>=cutoff);return rows.length?rows.slice(0,12).map(x=>`<div class="history-row"><span>${x.date||''}</span><span class="history-attendance ${x.status==='late'?'late':''}">${x.status==='late'?'Đi muộn':'Đúng giờ'}${x.time?` · ${x.time}`:''}</span><span class="history-homework ${homeworkClass(x.homework?.status)}" title="${homeworkLabel(x.homework?.status)}">${homeworkSymbol(x.homework)}</span></div>`).join(''):'<div class="empty-list">Chưa có lịch sử 4 tuần được lưu.</div>';}
 function recordHistory(student,attendance,homework){
   if(!student) return;
+  const now = Date.now();
+  const subKey = `${CURRENT_CLASS_ID}_${checklistDate}`;
   student.attendanceHistory = Array.isArray(student.attendanceHistory) ? student.attendanceHistory : [];
-  const isLate = attendance?.status === 'late';
-  const lateDet = isLate ? resolveLateDetails(student, { attendance }) : null;
-  const minsLate = isLate ? lateDet.lateMinutes : 0;
-  const arrTime = isLate ? lateDet.arrivalTime : (attendance?.arrivalTime || null);
-  const attEntry = {
-    classId: CURRENT_CLASS_ID,
-    date: checklistDate,
-    status: attendance?.status || 'present',
-    minutesLate: minsLate,
-    lateMinutes: minsLate,
-    time: arrTime,
-    arrivalTime: arrTime,
-    reason: attendance?.reason || null,
-    homework: homework ? { ...homework } : { status: 'uncollected' },
-    timestamp: Date.now()
-  };
   const existingIdx = student.attendanceHistory.findIndex(h => h.classId === CURRENT_CLASS_ID && h.date === checklistDate);
-  if (existingIdx >= 0) student.attendanceHistory[existingIdx] = attEntry;
-  else student.attendanceHistory.unshift(attEntry);
+
+  const effStatus = attendance?.status || null;
+  if (effStatus && effStatus !== 'unrecorded' && effStatus !== 'unmarked') {
+    const isLate = effStatus === 'late';
+    const lateDet = isLate ? resolveLateDetails(student, { attendance }) : null;
+    const minsLate = isLate ? lateDet.lateMinutes : 0;
+    const arrTime = isLate ? lateDet.arrivalTime : (attendance?.arrivalTime || null);
+    const hwCopy = homework ? { ...homework, _updatedAt: homework._updatedAt || now } : { status: 'uncollected', _updatedAt: now };
+    const attEntry = {
+      classId: CURRENT_CLASS_ID,
+      date: checklistDate,
+      status: effStatus,
+      minutesLate: minsLate,
+      lateMinutes: minsLate,
+      time: arrTime,
+      arrivalTime: arrTime,
+      reason: attendance?.reason || null,
+      homework: hwCopy,
+      timestamp: now,
+      updatedAt: now
+    };
+    if (existingIdx >= 0) student.attendanceHistory[existingIdx] = attEntry;
+    else student.attendanceHistory.unshift(attEntry);
+    if (student._removedAttendanceDates && student._removedAttendanceDates[subKey]) {
+      delete student._removedAttendanceDates[subKey];
+    }
+  } else if (existingIdx >= 0) {
+    student.attendanceHistory.splice(existingIdx, 1);
+    student._removedAttendanceDates = student._removedAttendanceDates || {};
+    student._removedAttendanceDates[subKey] = now;
+  }
   student.history = student.attendanceHistory;
 
   student.sessionNotes = Array.isArray(student.sessionNotes) ? student.sessionNotes : [];
   const noteIdx = student.sessionNotes.findIndex(n => n.classId === CURRENT_CLASS_ID && n.date === checklistDate);
   const noteText = sessionNoteFor(student.id) || '';
+  const prevNote = noteIdx >= 0 ? student.sessionNotes[noteIdx] : {};
   const noteEntry = {
-    ...(noteIdx >= 0 ? student.sessionNotes[noteIdx] : {}),
+    ...prevNote,
     classId: CURRENT_CLASS_ID,
     date: checklistDate,
-    homeworkStatus: homework?.status || 'uncollected',
-    homeworkReason: homework?.reason || '',
-    homeworkScore: homework?.score ?? null,
+    homeworkStatus: homework?.status || prevNote.homeworkStatus || 'uncollected',
+    homeworkReason: homework?.reason ?? prevNote.homeworkReason ?? '',
+    homeworkScore: homework?.score !== undefined ? homework.score : (prevNote.homeworkScore ?? null),
+    _hwUpdatedAt: homework ? (homework._updatedAt || now) : (prevNote._hwUpdatedAt || now),
     note: noteText,
-    updatedAt: Date.now()
+    updatedAt: now
   };
   if (noteIdx >= 0) student.sessionNotes[noteIdx] = noteEntry;
   else student.sessionNotes.unshift(noteEntry);
@@ -6516,6 +7431,11 @@ function recordHistory(student,attendance,homework){
 
 function recordSeatHistory(student,deskId,index){
   if(!student) return;
+  const now = Date.now();
+  const subKey = `${CURRENT_CLASS_ID}_${checklistDate}`;
+  if (student._removedSeatingDates && student._removedSeatingDates[subKey]) {
+    delete student._removedSeatingDates[subKey];
+  }
   const spot = desks().find(item => item.desk.id === deskId);
   student.seatingHistory = Array.isArray(student.seatingHistory) ? student.seatingHistory : [];
   const seatEntry = {
@@ -6525,7 +7445,8 @@ function recordSeatHistory(student,deskId,index){
     aisle: spot ? spot.ci + 1 : null,
     desk: spot ? spot.di + 1 : null,
     position: (Number(index) || 0) + 1,
-    timestamp: Date.now()
+    timestamp: now,
+    updatedAt: now
   };
   const seatIdx = student.seatingHistory.findIndex(sh => sh.classId === CURRENT_CLASS_ID && sh.date === checklistDate);
   if (seatIdx >= 0) student.seatingHistory[seatIdx] = seatEntry;
@@ -6534,18 +7455,25 @@ function recordSeatHistory(student,deskId,index){
 
 function recordStudentScore(student,score,type='BTVN'){
   if(!student) return;
+  const now = Date.now();
+  const normType = type || 'BTVN';
+  const sKey = `${CURRENT_CLASS_ID}_${checklistDate}_${normType}`;
+  student._deletedScores = student._deletedScores || {};
   student.scores = Array.isArray(student.scores) ? student.scores : [];
-  const scIdx = student.scores.findIndex(sc => sc.classId === CURRENT_CLASS_ID && sc.date === checklistDate && (sc.type === type || (!sc.type && type === 'BTVN')));
+  const scIdx = student.scores.findIndex(sc => sc.classId === CURRENT_CLASS_ID && sc.date === checklistDate && (sc.type === normType || (!sc.type && normType === 'BTVN')));
   if (score === null || score === undefined || score === '') {
     if (scIdx >= 0) student.scores.splice(scIdx, 1);
+    student._deletedScores[sKey] = now;
     return;
   }
+  delete student._deletedScores[sKey];
   const scEntry = {
     classId: CURRENT_CLASS_ID,
     date: checklistDate,
-    type,
+    type: normType,
     score: Number(score),
-    timestamp: Date.now()
+    timestamp: now,
+    updatedAt: now
   };
   if (scIdx >= 0) student.scores[scIdx] = scEntry;
   else student.scores.unshift(scEntry);
@@ -7160,8 +8088,16 @@ function refreshUIOnRealtimeUpdate(changedKeys = [], source = 'remote') {
     reloadClassSessionData(CURRENT_CLASS_ID, checklistDate);
     if (preservedSpot && preservedEntry && openDlg.id === 'seat-dialog') {
       deskItems[preservedSpot.deskId] = deskItems[preservedSpot.deskId] || [];
-      if (deskItems[preservedSpot.deskId][preservedSpot.index]) {
-        deskItems[preservedSpot.deskId][preservedSpot.index] = preservedEntry;
+      const list = deskItems[preservedSpot.deskId];
+      const existingIdx = list.findIndex(e => (preservedEntry.entryId && e?.entryId === preservedEntry.entryId) || (preservedEntry.studentId && e?.studentId === preservedEntry.studentId));
+      if (existingIdx >= 0) {
+        list[existingIdx] = { ...list[existingIdx], ...preservedEntry };
+        activeSpot.index = existingIdx;
+      } else if (list[preservedSpot.index] && !list[preservedSpot.index].studentId && !preservedEntry.studentId) {
+        list[preservedSpot.index] = preservedEntry;
+      } else {
+        list.push(preservedEntry);
+        activeSpot.index = list.length - 1;
       }
     }
     if (openDlg.id === 'attendance-export-dialog') {
@@ -7612,7 +8548,11 @@ function applyStudentManualScore(studentId, field, rawValue) {
   const numVal = cleanVal === '' ? null : Math.max(0, Math.min(10, Number(cleanVal)));
   if (cleanVal !== '' && isNaN(numVal)) return;
 
+  const now = Date.now();
   const seated = allEntries().find(e => e.entry.studentId === studentId);
+  const inLate = Array.isArray(lateQueue) && lateQueue.includes(studentId);
+  const isOnMap = Boolean(seated || inLate);
+
   if (field === 'hw') {
     const prevHw = seated?.entry.homework || student.homework || { status: 'uncollected' };
     const basePrevSt = prevHw.status === 'graded' ? 'submitted' : (prevHw.status || 'uncollected');
@@ -7622,17 +8562,25 @@ function applyStudentManualScore(studentId, field, rawValue) {
     const nextHw = {
       ...prevHw,
       status: nextStatus,
-      score: numVal
+      score: numVal,
+      _scoreCleared: numVal === null,
+      _updatedAt: now
     };
     if (seated) {
       seated.entry.homework = nextHw;
       seated.entry.homeworkSaved = true;
+      seated.entry._updatedAt = now;
     }
     student.homework = nextHw;
     recordStudentScore(student, numVal, 'BTVN');
-    recordHistory(student, seated?.entry.attendance || student.attendance || { status: seated ? 'present' : 'unrecorded' }, nextHw);
+    const effAtt = isOnMap
+      ? (seated?.entry.attendance || student.attendance || { status: inLate ? 'late' : 'present' })
+      : (student.attendance?.status?.startsWith('absent') ? student.attendance : null);
+    recordHistory(student, effAtt, nextHw);
   } else if (field === 'test') {
     checklist.testScores = checklist.testScores || {};
+    checklist.testScoreUpdatedAt = checklist.testScoreUpdatedAt || {};
+    checklist.testScoreUpdatedAt[studentId] = now;
     if (numVal === null) {
       delete checklist.testScores[studentId];
     } else {
@@ -7640,11 +8588,25 @@ function applyStudentManualScore(studentId, field, rawValue) {
     }
     if (seated) {
       seated.entry.testScore = numVal;
+      seated.entry._testUpdatedAt = now;
+      seated.entry._updatedAt = now;
     }
     student.testScore = numVal;
+    student.sessionNotes = Array.isArray(student.sessionNotes) ? student.sessionNotes : [];
+    const snIdx = student.sessionNotes.findIndex(n => n.classId === CURRENT_CLASS_ID && n.date === checklistDate);
+    const snEntry = {
+      ...(snIdx >= 0 ? student.sessionNotes[snIdx] : { classId: CURRENT_CLASS_ID, date: checklistDate }),
+      testScore: numVal,
+      _testUpdatedAt: now,
+      updatedAt: now
+    };
+    if (snIdx >= 0) student.sessionNotes[snIdx] = snEntry;
+    else student.sessionNotes.unshift(snEntry);
     recordStudentScore(student, numVal, 'Test');
     saveChecklist();
   }
+  student.updatedAt = now;
+  student.revision = (Number(student.revision) || 0) + 1;
   save();
   logAdminSessionAction(
     `Nhập điểm ${field === 'test' ? 'bài Test' : 'BTVN'} cho HS ${student.name}`,
@@ -7675,10 +8637,7 @@ function renderScoresView() {
   const tbody = $('#scores-tab-tbody');
   if (!tbody) return;
 
-  // Do not wipe DOM if user is actively typing inside #scores-tab-tbody
-  if (document.activeElement && tbody.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') {
-    return;
-  }
+  const isTypingInsideScoresTbody = Boolean(document.activeElement && tbody.contains(document.activeElement) && document.activeElement.tagName === 'INPUT');
 
   const hasTest = Boolean(checklist.testRequired);
   if ($('#scores-tab-test-toggle')) $('#scores-tab-test-toggle').checked = hasTest;
@@ -7708,9 +8667,10 @@ function renderScoresView() {
     const attHist = (s.attendanceHistory || []).find(h => h.classId === CURRENT_CLASS_ID && h.date === checklistDate);
     const sessNote = (s.sessionNotes || []).find(n => n.classId === CURRENT_CLASS_ID && n.date === checklistDate);
 
+    const isAttHistAbsent = Boolean(attHist && (attHist.status === 'absent' || attHist.status === 'absent_excused' || attHist.status === 'absent_unexcused'));
     const rawAtt = place?.entry.attendance
       || (inLate ? (s.attendance || (attHist ? { status: attHist.status, arrivalTime: attHist.time || attHist.arrivalTime, lateMinutes: attHist.lateMinutes ?? attHist.minutesLate } : { status: 'late' })) : null)
-      || (attHist ? { status: attHist.status, reason: attHist.reason, arrivalTime: attHist.time || attHist.arrivalTime, lateMinutes: attHist.lateMinutes ?? attHist.minutesLate } : null);
+      || (isAttHistAbsent ? { status: attHist.status, reason: attHist.reason, arrivalTime: null, lateMinutes: 0 } : null);
     const lateScoreCheck = rawAtt ? resolveLateDetails(s, place?.entry || { attendance: rawAtt }) : null;
     const attendance = (rawAtt && (rawAtt.status === 'late' || inLate))
       ? (lateScoreCheck?.isLate
@@ -7764,6 +8724,30 @@ function renderScoresView() {
   };
 
   let items = combinedStudents.map(buildScoreRowItem);
+  if (isTypingInsideScoresTbody) {
+    items.forEach(item => {
+      const sid = item.student.id;
+      const hwInp = tbody.querySelector(`[data-score-tab-hw="${sid}"]`);
+      if (hwInp && hwInp !== document.activeElement) {
+        const nextVal = item.hwScore !== null && item.hwScore !== undefined ? formatScoreVN(item.hwScore) : '';
+        if (hwInp.value !== nextVal) hwInp.value = nextVal;
+      }
+      const testInp = tbody.querySelector(`[data-score-tab-test="${sid}"]`);
+      if (testInp && testInp !== document.activeElement) {
+        const nextVal = item.testScore !== null && item.testScore !== undefined ? formatScoreVN(item.testScore) : '';
+        if (testInp.value !== nextVal) testInp.value = nextVal;
+      }
+      const noteInp = tbody.querySelector(`[data-session-note="${sid}"]`);
+      if (noteInp && noteInp !== document.activeElement) {
+        if (noteInp.value !== (item.note || '')) noteInp.value = item.note || '';
+      }
+      const learnInp = tbody.querySelector(`[data-learning-note="${sid}"]`);
+      if (learnInp && learnInp !== document.activeElement) {
+        if (learnInp.value !== (item.learningNotes || '')) learnInp.value = item.learningNotes || '';
+      }
+    });
+    return;
+  }
 
   if (query) {
     const matchedIds = new Set(searchStudents(items.map(r => r.student), query).map(s => s.id));

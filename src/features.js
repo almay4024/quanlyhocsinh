@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=4.3.0';
+import { matchesAcronymOrText } from './student-search.js?v=4.4.0';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.3.0';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.3.0';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.3.0';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.4.0';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.4.0';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.4.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.3.0';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.4.0';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -30,7 +30,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   syncSessionToGoogleSheets
-} from './excel-import-export.js?v=4.3.0';
+} from './excel-import-export.js?v=4.4.0';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -42,7 +42,7 @@ import {
   getStaffShiftData,
   getStudentClassDeepDive,
   evaluateStudentEarlyWarning
-} from './data/session-history-repository.js?v=4.3.0';
+} from './data/session-history-repository.js?v=4.4.0';
 
 export function setupFeatures(ctx) {
   const {
@@ -1851,16 +1851,18 @@ export function setupFeatures(ctx) {
     const btvnScoreObj = (student.scores || []).find(sc => (!sc.classId || sc.classId === currentClass.id) && sc.date === date && (!sc.type || sc.type === 'BTVN'));
     const testScoreObj = (student.scores || []).find(sc => (!sc.classId || sc.classId === currentClass.id) && sc.date === date && sc.type && sc.type !== 'BTVN');
 
+    const isOnSeatingMap = Boolean(seated || lateQueueIds.includes(student.id));
+    const candStoredAtt = (isCurrentActiveSession ? student.attendance?.status : null) || attHist?.status || '';
+    const isExplicitAbsent = candStoredAtt === 'absent' || candStoredAtt === 'absent_excused' || candStoredAtt === 'absent_unexcused';
     const rawAttStatus = seated?.entry.attendance?.status
       || (lateQueueIds.includes(student.id) ? (student.attendance?.status || 'present') : null)
-      || (isCurrentActiveSession ? student.attendance?.status : null)
-      || attHist?.status
+      || (isExplicitAbsent ? candStoredAtt : (!isCurrentActiveSession ? candStoredAtt : ''))
       || '';
 
-    const isLate = ctx.isStudentLateInSession
+    const isLate = isOnSeatingMap && (ctx.isStudentLateInSession
       ? ctx.isStudentLateInSession(student, seated?.entry || (attHist ? { attendance: attHist } : null), currentClass, date)
-      : (rawAttStatus === 'late');
-    const isPresent = Boolean(seated || lateQueueIds.includes(student.id) || rawAttStatus === 'present');
+      : (rawAttStatus === 'late'));
+    const isPresent = Boolean(isOnSeatingMap || (!isCurrentActiveSession && rawAttStatus === 'present'));
     const isMakeup = student.studentType === 'makeup' || !(student.classIds || []).includes(currentClass.id);
 
     let attStatusText = '';
