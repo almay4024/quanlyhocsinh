@@ -187,6 +187,19 @@ function sanitizeStudentForStorage(s, photoStore) {
     ? String(copy.studentCode).trim().toUpperCase()
     : null;
 
+  // Prune stale CRDT tombstones older than 60 days so student objects don't bloat over time
+  const tombCutoff = Date.now() - 60 * 86400000;
+  for (const field of ['_deletedScores', '_removedAttendanceDates', '_removedSeatingDates']) {
+    if (copy[field] && typeof copy[field] === 'object') {
+      const pruned = {};
+      for (const [k, ts] of Object.entries(copy[field])) {
+        if ((Number(ts) || 0) >= tombCutoff) pruned[k] = ts;
+      }
+      if (Object.keys(pruned).length) copy[field] = pruned;
+      else delete copy[field];
+    }
+  }
+
   // Nếu học sinh đã có ảnh trên Google Drive (photoDriveFileId), chỉ lưu link Drive nhẹ, xoá ảnh Base64 nặng
   if (copy.photoDriveFileId) {
     copy.photoURL = `https://drive.google.com/thumbnail?id=${encodeURIComponent(copy.photoDriveFileId)}&sz=w600`;

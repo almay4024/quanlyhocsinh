@@ -8,7 +8,7 @@ import { setupFeatures } from './features.js?v=4.4.1';
 import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.4.1';
 import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.4.1';
 import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.4.1';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount } from './data/class-catalog-repository.js?v=4.4.1';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.4.1';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -279,14 +279,102 @@ function _readDecryptedLocal(key) {
   }
 }
 
+const _DAILY_SCRATCH_KEY_RE = /^lopvui\.(layout\.v5|desk-items\.v7|late-queue\.v6|checklist\.v1|attendance-notes\.v1|session-record\.v1|admin-audit-log\.v1)\.([^.]+)\.(\d{4}-\d{2}-\d{2})$/;
+
+function cleanupStaleDailyScratchKeys(retentionDays = 45, aggressive = false) {
+  try {
+    const days = Math.max(7, Number(retentionDays) || 45);
+    const cutoffMs = Date.now() - days * 86400000;
+    const auditCutoffMs = aggressive ? cutoffMs : (Date.now() - Math.max(days, 90) * 86400000);
+
+    let closedSessionSet = new Set();
+    let activeSessionSet = new Set();
+    try {
+      const histRaw = _readDecryptedLocal('lopvui.session-history.v2');
+      const histArr = histRaw ? JSON.parse(histRaw) : [];
+      if (Array.isArray(histArr)) {
+        for (const rec of histArr) {
+          if (!rec || !rec.classId || !rec.date) continue;
+          const pair = `${rec.classId}::${rec.date}`;
+          if (rec.status === 'active') activeSessionSet.add(pair);
+          else closedSessionSet.add(pair);
+        }
+      }
+    } catch {}
+
+    const activeClass = typeof CURRENT_CLASS_ID === 'string' ? CURRENT_CLASS_ID : '';
+    const activeDate = typeof checklistDate === 'string' ? checklistDate : '';
+    const keysToRemove = [];
+
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (!k) continue;
+      const m = k.match(_DAILY_SCRATCH_KEY_RE);
+      if (!m) continue;
+      const [, kind, clsId, dateStr] = m;
+      if (clsId === activeClass && dateStr === activeDate) continue;
+      const pair = `${clsId}::${dateStr}`;
+      if (activeSessionSet.has(pair)) continue;
+
+      const dateMs = Date.parse(`${dateStr}T00:00:00`);
+      if (Number.isNaN(dateMs)) continue;
+
+      if (kind === 'admin-audit-log.v1') {
+        if (dateMs < auditCutoffMs) keysToRemove.push(k);
+        continue;
+      }
+
+      if (dateMs < cutoffMs && (aggressive || closedSessionSet.has(pair) || (Date.now() - dateMs > (days + 15) * 86400000))) {
+        keysToRemove.push(k);
+      }
+    }
+
+    if (keysToRemove.length > 0) {
+      const tsMap = _getKeyTimestamps();
+      let tsChanged = false;
+      for (const k of keysToRemove) {
+        try { _nativeRemoveItem.call(window.localStorage, k); } catch {}
+        if (k in tsMap) {
+          delete tsMap[k];
+          tsChanged = true;
+        }
+      }
+      if (tsChanged) {
+        try { _nativeSetItem.call(window.localStorage, 'lopvui.key-timestamps.v1', JSON.stringify(tsMap)); } catch {}
+      }
+    }
+    return keysToRemove.length;
+  } catch {
+    return 0;
+  }
+}
+
+function _safeNativeSetLocalItem(storage, key, value) {
+  try {
+    _nativeSetItem.call(storage, key, value);
+    return true;
+  } catch (err) {
+    if (storage === window.localStorage) {
+      try {
+        _migrateLocalStorageToCompactPlain();
+        cleanupStaleDailyScratchKeys(14, true);
+        _nativeSetItem.call(storage, key, value);
+        return true;
+      } catch (retryErr) {
+        console.warn('[Storage] QuotaExceededError on key:', key, retryErr);
+      }
+    }
+    return false;
+  }
+}
+
 function _writeEncryptedLocal(key, plainValue) {
   try {
+    // Lưu trực tiếp JSON thuần vào LocalStorage để tiết kiệm ~38% dung lượng 5MB của trình duyệt
+    // (dữ liệu đẩy lên Firebase Cloud vẫn tiếp tục được mã hoá lvenc_v38$ 100%)
     const strPlain = decryptVaultPayload(String(plainValue), String(key));
-    const toStore = _shouldEncryptKey(String(key))
-      ? encryptVaultPayload(strPlain, String(key))
-      : strPlain;
-    _nativeSetItem.call(window.localStorage, key, toStore);
-    return toStore;
+    _safeNativeSetLocalItem(window.localStorage, key, strPlain);
+    return strPlain;
   } catch {
     return String(plainValue);
   }
@@ -312,14 +400,26 @@ function _setKeyTimestamp(key, ts = Date.now()) {
   try {
     const map = _getKeyTimestamps();
     map[key] = ts;
-    _nativeSetItem.call(window.localStorage, 'lopvui.key-timestamps.v1', JSON.stringify(map));
+    _safeNativeSetLocalItem(window.localStorage, 'lopvui.key-timestamps.v1', JSON.stringify(map));
   } catch {}
 }
 
 function _getDeletedIdsMap() {
   try {
     const raw = _readDecryptedLocal('lopvui.deleted-ids.v1');
-    return JSON.parse(raw || '{}') || {};
+    const parsed = JSON.parse(raw || '{}') || {};
+    const cutoff = Date.now() - 90 * 86400000;
+    let pruned = false;
+    for (const [id, ts] of Object.entries(parsed)) {
+      if (typeof ts === 'number' && ts > 0 && ts < cutoff) {
+        delete parsed[id];
+        pruned = true;
+      }
+    }
+    if (pruned) {
+      _writeEncryptedLocal('lopvui.deleted-ids.v1', JSON.stringify(parsed));
+    }
+    return parsed;
   } catch {
     return {};
   }
@@ -1210,11 +1310,11 @@ function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
   const itemPayload = { encKey, value: encVal, updatedAt: ts, clientId: RT_CLIENT_ID };
 
   // Tách riêng hàng đợi Key nhẹ (Sơ đồ bàn, Checklist, Điểm trong ca: ~1.5 KB -> đẩy sau 220ms)
-  // và Key lưu trữ nặng (students.v9, session-history.v2: ~300 KB -> gom nhóm đẩy sau 2500ms để tiết kiệm 95% băng thông!)
+  // và Key lưu trữ nặng (students.v9, session-history.v2: ~300 KB -> gom nhóm đẩy sau 6500ms để tiết kiệm tối đa băng thông!)
   if (_HEAVY_ARCHIVE_KEYS.has(key)) {
     _rtPendingHeavyCloudEntries.set(key, itemPayload);
     if (_rtHeavyCloudPushTimer) clearTimeout(_rtHeavyCloudPushTimer);
-    _rtHeavyCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false, true), 2500);
+    _rtHeavyCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false, true), 6500);
   } else {
     _rtPendingCloudEntries.set(key, itemPayload);
     if (_rtCloudPushTimer) clearTimeout(_rtCloudPushTimer);
@@ -1227,6 +1327,61 @@ let _seenSafeKeyTimestamps = {};
 let _lastSyncedDeletedCount = 0;
 let _rtCloudEventSource = null;
 let _rtPullInFlightPromise = null;
+let _cachedCloudMeta = null;
+let _rtPendingFollowUpSsePull = false;
+
+function _updateCachedCloudMetaFromSSE(parsed, eventType) {
+  if (!parsed || typeof parsed !== 'object') return null;
+  const path = String(parsed.path || '/');
+  const data = parsed.data;
+  if (eventType === 'put' && path === '/') {
+    if (data && typeof data === 'object') {
+      _cachedCloudMeta = {
+        ...data,
+        keyTimestamps: { ...(data.keyTimestamps || {}) }
+      };
+    } else {
+      _cachedCloudMeta = null;
+    }
+    return _cachedCloudMeta;
+  }
+  if (!_cachedCloudMeta || typeof _cachedCloudMeta !== 'object') {
+    if (path === '/' && data && typeof data === 'object' && data.keyTimestamps && typeof data.keyTimestamps === 'object') {
+      _cachedCloudMeta = {
+        ...data,
+        keyTimestamps: { ...data.keyTimestamps }
+      };
+    } else {
+      return null;
+    }
+  }
+  if (! _cachedCloudMeta.keyTimestamps || typeof _cachedCloudMeta.keyTimestamps !== 'object') {
+    _cachedCloudMeta.keyTimestamps = {};
+  }
+  if (path === '/' && data && typeof data === 'object') {
+    for (const [k, v] of Object.entries(data)) {
+      if (k === 'keyTimestamps' && v && typeof v === 'object') {
+        Object.assign(_cachedCloudMeta.keyTimestamps, v);
+      } else if (k.startsWith('keyTimestamps/')) {
+        const safeK = k.slice('keyTimestamps/'.length);
+        if (safeK) _cachedCloudMeta.keyTimestamps[safeK] = v;
+      } else {
+        _cachedCloudMeta[k] = v;
+      }
+    }
+  } else if (path === '/keyTimestamps' && data && typeof data === 'object') {
+    Object.assign(_cachedCloudMeta.keyTimestamps, data);
+  } else if (path.startsWith('/keyTimestamps/')) {
+    const safeK = path.slice('/keyTimestamps/'.length).replace(/^\//, '');
+    if (safeK) _cachedCloudMeta.keyTimestamps[safeK] = data;
+  } else if (path.startsWith('/') && path.length > 1) {
+    const topField = path.slice(1);
+    if (!topField.includes('/')) {
+      _cachedCloudMeta[topField] = data;
+    }
+  }
+  return _cachedCloudMeta;
+}
 
 async function _flushFirebaseCloudPush(isUnloading = false, includeHeavy = false) {
   const dbUrl = getConfiguredFirebaseDbUrl();
@@ -1257,63 +1412,60 @@ async function _flushFirebaseCloudPush(isUnloading = false, includeHeavy = false
 
   const now = Date.now();
   const delMap = _getDeletedIdsMap();
-  const kvPayload = {};
   const metaKeyTsPatch = {};
+  const multiPathPayload = {};
 
   for (const [k, item] of batch) {
     const safeK = _encodeFirebaseSafeKey(k);
     const itemTs = item.updatedAt || now;
-    kvPayload[safeK] = item;
+    multiPathPayload[`kv/${safeK}`] = item;
+    multiPathPayload[`meta/keyTimestamps/${safeK}`] = itemTs;
     metaKeyTsPatch[safeK] = itemTs;
     _seenSafeKeyTimestamps[safeK] = itemTs;
   }
 
-  const kvBody = JSON.stringify(kvPayload);
-  const useKeepalive = Boolean(isUnloading && kvBody.length < 58000);
+  const delCount = Object.keys(delMap).length;
+  if (delCount > _lastSyncedDeletedCount) {
+    _lastSyncedDeletedCount = delCount;
+    for (const [delId, delTs] of Object.entries(delMap)) {
+      if (delId && !/[.#$\/\[\]]/.test(delId) && typeof delTs === 'number') {
+        multiPathPayload[`deletedIds/${delId}`] = delTs;
+      }
+    }
+  }
+
+  const metaNow = Math.max(now, ...Object.values(metaKeyTsPatch));
+  multiPathPayload['meta/cleanSlateV35'] = true;
+  multiPathPayload['meta/encryptedV38'] = true;
+  multiPathPayload['meta/deltaSyncV392'] = true;
+  multiPathPayload['meta/lastUpdatedAt'] = metaNow;
+  multiPathPayload['meta/lastClientId'] = RT_CLIENT_ID;
+  multiPathPayload['meta/deletedCount'] = delCount;
+
+  if (_cachedCloudMeta && typeof _cachedCloudMeta === 'object') {
+    _cachedCloudMeta.cleanSlateV35 = true;
+    _cachedCloudMeta.encryptedV38 = true;
+    _cachedCloudMeta.deltaSyncV392 = true;
+    _cachedCloudMeta.lastUpdatedAt = metaNow;
+    _cachedCloudMeta.lastClientId = RT_CLIENT_ID;
+    _cachedCloudMeta.deletedCount = delCount;
+    _cachedCloudMeta.keyTimestamps = {
+      ...(_cachedCloudMeta.keyTimestamps || {}),
+      ...metaKeyTsPatch
+    };
+  }
+
+  const bodyStr = JSON.stringify(multiPathPayload);
+  const useKeepalive = Boolean(isUnloading && bodyStr.length < 58000);
 
   _rtIsPushingCloud = true;
   try {
-    const res = await fetch(`${dbUrl}/lopvui_cloud_v3/kv.json`, {
+    // Gộp cả kv, deletedIds, meta/keyTimestamps và meta vào 1 request multi-path PATCH duy nhất!
+    const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: kvBody,
+      body: bodyStr,
       keepalive: useKeepalive
-    });
-
-    const delCount = Object.keys(delMap).length;
-    if (delCount > _lastSyncedDeletedCount) {
-      _lastSyncedDeletedCount = delCount;
-      const delBody = JSON.stringify(delMap);
-      await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: delBody,
-        keepalive: Boolean(isUnloading && delBody.length < 58000)
-      });
-    }
-
-    const tsBody = JSON.stringify(metaKeyTsPatch);
-    await fetch(`${dbUrl}/lopvui_cloud_v3/meta/keyTimestamps.json`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: tsBody,
-      keepalive: Boolean(isUnloading && tsBody.length < 58000)
-    });
-
-    const metaNow = Math.max(now, ...Object.values(metaKeyTsPatch));
-    const metaBody = JSON.stringify({
-      cleanSlateV35: true,
-      encryptedV38: true,
-      deltaSyncV392: true,
-      lastUpdatedAt: metaNow,
-      lastClientId: RT_CLIENT_ID,
-      deletedCount: delCount
-    });
-    await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: metaBody,
-      keepalive: Boolean(isUnloading)
     });
 
     _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, metaNow);
@@ -1324,6 +1476,9 @@ async function _flushFirebaseCloudPush(isUnloading = false, includeHeavy = false
     _rtIsPushingCloud = false;
     if (_rtPendingCloudEntries.size > 0 && !_rtCloudPushTimer) {
       _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false, false), 220);
+    }
+    if (_rtPendingHeavyCloudEntries.size > 0 && !_rtHeavyCloudPushTimer) {
+      _rtHeavyCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false, true), 6500);
     }
   }
 }
@@ -1364,19 +1519,21 @@ async function _pullFullCloudSnapshotOnce(source = 'cloud-init') {
       }
     }
     _lastSeenCloudMetaTs = maxTs;
+    const nextMeta = {
+      cleanSlateV35: true,
+      encryptedV38: true,
+      deltaSyncV392: true,
+      lastUpdatedAt: maxTs,
+      lastClientId: data.meta?.lastClientId || RT_CLIENT_ID,
+      deletedCount: _lastSyncedDeletedCount,
+      keyTimestamps: { ...(data.meta?.keyTimestamps || {}), ...keyTimestamps }
+    };
+    _cachedCloudMeta = nextMeta;
     if (!data.meta || !data.meta.deltaSyncV392) {
       fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cleanSlateV35: true,
-          encryptedV38: true,
-          deltaSyncV392: true,
-          lastUpdatedAt: maxTs,
-          lastClientId: RT_CLIENT_ID,
-          deletedCount: _lastSyncedDeletedCount,
-          keyTimestamps
-        })
+        body: JSON.stringify(nextMeta)
       }).catch(() => {});
     }
     const changed = _applyRtRemoteEntries(entries, source, metaMap, remoteDeleted);
@@ -1387,18 +1544,33 @@ async function _pullFullCloudSnapshotOnce(source = 'cloud-init') {
 }
 
 /**
- * Đồng bộ Delta siêu tiết kiệm băng thông (chống tải trùng lặp song song bằng _rtPullInFlightPromise)
+ * Đồng bộ Delta siêu tiết kiệm băng thông (chống tải trùng lặp song song bằng _rtPullInFlightPromise,
+ * tái sử dụng trực tiếp snapshot meta từ SSE để không cần tải lại meta.json)
  */
-async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
-  if (_rtPullInFlightPromise) return _rtPullInFlightPromise;
+async function pullFromFirebaseCloudNow(source = 'cloud-pull', sseMetaSnapshot = null) {
+  if (_rtPullInFlightPromise) {
+    if (source === 'cloud-sse') _rtPendingFollowUpSsePull = true;
+    return _rtPullInFlightPromise;
+  }
   const dbUrl = getConfiguredFirebaseDbUrl();
   if (!dbUrl) return { ok: false, reason: 'no-url' };
 
   _rtPullInFlightPromise = (async () => {
     try {
-      const metaRes = await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, { cache: 'no-store' });
-      if (!metaRes.ok) return { ok: false, reason: `HTTP ${metaRes.status}` };
-      const meta = await metaRes.json();
+      let meta = (sseMetaSnapshot && typeof sseMetaSnapshot === 'object' && sseMetaSnapshot.deltaSyncV392 && sseMetaSnapshot.keyTimestamps)
+        ? sseMetaSnapshot
+        : null;
+      if (!meta) {
+        const metaRes = await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, { cache: 'no-store' });
+        if (!metaRes.ok) return { ok: false, reason: `HTTP ${metaRes.status}` };
+        meta = await metaRes.json();
+        if (meta && typeof meta === 'object') {
+          _cachedCloudMeta = {
+            ...meta,
+            keyTimestamps: { ...(meta.keyTimestamps || {}) }
+          };
+        }
+      }
       _notifyRtStatus('realtime-cloud', Date.now(), 'connected');
 
       if (!meta || typeof meta !== 'object' || !meta.deltaSyncV392) {
@@ -1469,6 +1641,10 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull') {
       return { ok: false, reason: String(err?.message || 'network-error') };
     } finally {
       _rtPullInFlightPromise = null;
+      if (_rtPendingFollowUpSsePull) {
+        _rtPendingFollowUpSsePull = false;
+        pullFromFirebaseCloudNow('cloud-sse', _cachedCloudMeta);
+      }
     }
   })();
 
@@ -1505,19 +1681,21 @@ async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
     }
     const delMap = _getDeletedIdsMap();
     _lastSyncedDeletedCount = Object.keys(delMap).length;
+    const nextMeta = {
+      cleanSlateV35: true,
+      encryptedV38: true,
+      deltaSyncV392: true,
+      lastUpdatedAt: now,
+      lastClientId: RT_CLIENT_ID,
+      deletedCount: _lastSyncedDeletedCount,
+      keyTimestamps
+    };
+    _cachedCloudMeta = nextMeta;
     const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        meta: {
-          cleanSlateV35: true,
-          encryptedV38: true,
-          deltaSyncV392: true,
-          lastUpdatedAt: now,
-          lastClientId: RT_CLIENT_ID,
-          deletedCount: _lastSyncedDeletedCount,
-          keyTimestamps
-        },
+        meta: nextMeta,
         kv: kvPayload,
         deletedIds: delMap,
         cleanSlateV35: true,
@@ -1536,21 +1714,26 @@ async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
   }
 }
 
-function _migrateAllLocalStorageKeysToEncrypted() {
+function _migrateLocalStorageToCompactPlain() {
   try {
+    const keys = [];
     for (let i = 0; i < window.localStorage.length; i++) {
       const k = window.localStorage.key(i);
-      if (k && _shouldEncryptKey(k)) {
-        const raw = _nativeGetItem.call(window.localStorage, k);
-        if (raw && !String(raw).startsWith('lvenc_v38$')) {
-          _nativeSetItem.call(window.localStorage, k, encryptVaultPayload(raw, k));
+      if (k && k.startsWith(RT_PREFIX)) keys.push(k);
+    }
+    for (const k of keys) {
+      const raw = _nativeGetItem.call(window.localStorage, k);
+      if (raw && String(raw).startsWith('lvenc_v38$')) {
+        const plain = decryptVaultPayload(raw, k);
+        if (plain && !plain.startsWith('lvenc_v38$')) {
+          try { _nativeSetItem.call(window.localStorage, k, plain); } catch {}
         }
       }
     }
   } catch {}
 }
 
-// KÍCH HOẠT NGAY LẬP TỨC BỘ GIẢI MÃ / MÃ HOÁ LOCALSTORAGE TRƯỚC KHI ĐỌC BẤT KỲ DỮ LIỆU NÀO KHI KHỞI ĐỘNG
+// KÍCH HOẠT NGAY LẬP TỨC BỘ ĐỒNG BỘ LOCALSTORAGE TRƯỚC KHI ĐỌC BẤT KỲ DỮ LIỆU NÀO KHI KHỞI ĐỘNG
 function _installStorageVaultInterceptor() {
   if (window.__lopvuiVaultStorageInstalled) return;
   window.__lopvuiVaultStorageInstalled = true;
@@ -1593,10 +1776,8 @@ function _installStorageVaultInterceptor() {
         }
       }
 
-      const toStore = (this === window.localStorage && _shouldEncryptKey(kStr))
-        ? encryptVaultPayload(plainStr, kStr)
-        : String(value);
-      try { _nativeSetItem.call(this, key, toStore); } catch { return; }
+      const toStoreLocal = this === window.localStorage ? plainStr : String(value);
+      if (!_safeNativeSetLocalItem(this, key, toStoreLocal)) return;
 
       if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote) {
         if (prevPlain !== plainStr && !_isJsonSemanticallyEqual(prevPlain, plainStr)) {
@@ -1604,9 +1785,9 @@ function _installStorageVaultInterceptor() {
           _lastLocalKeyWriteAt[kStr] = now;
           _setKeyTimestamp(kStr, now);
           if (_rtChannel) {
-            try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [kStr]: toStore } }); } catch {}
+            try { _rtChannel.postMessage({ type: 'sync-entries', clientId: RT_CLIENT_ID, timestamp: now, entries: { [kStr]: plainStr } }); } catch {}
           }
-          _scheduleFirebaseCloudPush(kStr, toStore, now);
+          _scheduleFirebaseCloudPush(kStr, plainStr, now);
           _notifyRtStatus(getConfiguredFirebaseDbUrl() ? 'realtime-cloud' : _rtState, now, 'local-save');
         }
       }
@@ -1637,7 +1818,7 @@ function initRealtimeSync(onSyncCallback) {
   if (!window.__lopvuiRtInitV34) {
     window.__lopvuiRtInitV34 = true;
     _installStorageVaultInterceptor();
-    _migrateAllLocalStorageKeysToEncrypted();
+    _migrateLocalStorageToCompactPlain();
 
     if (typeof BroadcastChannel !== 'undefined') {
       try {
@@ -1678,7 +1859,8 @@ function initRealtimeSync(onSyncCallback) {
           try {
             if (!ev || !ev.data) return;
             const parsed = JSON.parse(ev.data);
-            const payload = parsed?.data;
+            const updatedMeta = _updateCachedCloudMetaFromSSE(parsed, ev.type);
+            const payload = updatedMeta || parsed?.data;
             if (!payload || typeof payload !== 'object') return;
             const remoteClient = payload.lastClientId || '';
             const remoteUpdated = Number(payload.lastUpdatedAt) || 0;
@@ -1686,8 +1868,8 @@ function initRealtimeSync(onSyncCallback) {
               _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, remoteUpdated);
               return;
             }
-            if (remoteUpdated > _lastSeenCloudMetaTs) {
-              pullFromFirebaseCloudNow('cloud-sse');
+            if (remoteUpdated > _lastSeenCloudMetaTs || !remoteUpdated) {
+              pullFromFirebaseCloudNow('cloud-sse', updatedMeta);
             }
           } catch {}
         };
@@ -1715,9 +1897,10 @@ function initRealtimeSync(onSyncCallback) {
     let _lastCloudPollAt = Date.now();
     const _markUserActive = () => {
       const now = Date.now();
-      const wasIdle = (now - _lastUserActivityAt) > 10000;
+      const wasIdle = (now - _lastUserActivityAt) > 15000;
       _lastUserActivityAt = now;
-      if (wasIdle && (now - _lastCloudPollAt > 3000) && getConfiguredFirebaseDbUrl() && !document.hidden) {
+      const sseHealthy = Boolean(_rtCloudEventSource && _rtCloudEventSource.readyState === 1);
+      if (wasIdle && !sseHealthy && (now - _lastCloudPollAt > 3000) && getConfiguredFirebaseDbUrl() && !document.hidden) {
         _lastCloudPollAt = now;
         pullFromFirebaseCloudNow('cloud-poll');
       }
@@ -1739,14 +1922,15 @@ function initRealtimeSync(onSyncCallback) {
       } else if (getConfiguredFirebaseDbUrl()) {
         _lastUserActivityAt = Date.now();
         _lastCloudPollAt = Date.now();
-        pullFromFirebaseCloudNow('cloud-poll');
         if (!_rtCloudEventSource || _rtCloudEventSource.readyState === 2) {
           _connectFirebaseMetaSSE();
+          pullFromFirebaseCloudNow('cloud-poll');
         }
       }
     });
 
-    // Adaptive Cloud Polling: 2s khi đang mở ca học (hoặc 5s khi đã có kết nối SSE), giảm xuống 16s–45s khi máy chờ (idle)
+    // Adaptive Cloud Polling: khi SSE đang kết nối ổn định (readyState === 1), chỉ kiểm tra dự phòng mỗi 60s–180s;
+    // chỉ khi mất kết nối SSE mới fallback về 3s để tiết kiệm >90% băng thông tải xuống của gói Firebase Spark!
     setInterval(() => {
       if (getConfiguredFirebaseDbUrl()) {
         if (typeof document !== 'undefined' && document.hidden) return;
@@ -1760,13 +1944,13 @@ function initRealtimeSync(onSyncCallback) {
           _connectFirebaseMetaSSE();
         }
         const idleMs = now - _lastUserActivityAt;
-        const activeInterval = sseHealthy ? 8000 : 2500;
-        const minInterval = idleMs < 180000 ? activeInterval : (idleMs < 900000 ? 20000 : 60000);
+        const activeInterval = sseHealthy ? 60000 : 3000;
+        const minInterval = idleMs < 180000 ? activeInterval : (sseHealthy ? 180000 : 20000);
         if (now - _lastCloudPollAt < minInterval - 150) return;
         _lastCloudPollAt = now;
         pullFromFirebaseCloudNow('cloud-poll');
       }
-    }, 2000);
+    }, 2500);
 
     // Tự động dọn dẹp các key nháp theo ngày của những ca đã đóng quá 45 ngày (đã lưu trong session-history.v2)
     setTimeout(() => {
@@ -1789,6 +1973,9 @@ function initRealtimeSync(onSyncCallback) {
 
 async function forceSyncNow(reason = 'manual-click') {
   if (getConfiguredFirebaseDbUrl()) {
+    if (_rtPendingCloudEntries.size > 0 || _rtPendingHeavyCloudEntries.size > 0) {
+      await _flushFirebaseCloudPush(false, true);
+    }
     await pullFromFirebaseCloudNow(reason);
   }
   _scheduleRtUIRefresh(['*'], reason);
@@ -1800,7 +1987,7 @@ const baseLayout=[
   {id:'aisle-3',desks:[{id:'d31',seats:2,dividerAfter:false},{id:'d32',seats:2,dividerAfter:false}]}
 ];
 const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}};
-// v3.5+ Clean-Slate & v3.8 Encryption Initialization
+// v3.5+ Clean-Slate & Compact LocalStorage Initialization
 (function ensureCleanSlateV35() {
   try {
     if (_nativeGetItem.call(localStorage, 'lopvui.clean-slate.v35') !== '1') {
@@ -1822,13 +2009,26 @@ const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fa
       _nativeSetItem.call(localStorage, 'lopvui.explicit-logout.v1', '1');
       _nativeSetItem.call(localStorage, 'lopvui.clean-slate.v35', '1');
     } else {
-      _migrateAllLocalStorageKeysToEncrypted();
+      _migrateLocalStorageToCompactPlain();
     }
   } catch {}
 })();
 let masterData=loadMasterData();
 let sessionChanges=loadClassSessionChanges();
-let signedInAccount=read('lopvui.signed-in-account.v1',{employeeId:'employee-ta-001',role:'assistant'});
+function resolveVerifiedSignedInAccount(rawAcc) {
+  if (!rawAcc || typeof rawAcc !== 'object' || !rawAcc.employeeId) return null;
+  const emp = (masterData?.employees || []).map(normalizeEmployeeAccount).find(e => e && e.id === rawAcc.employeeId);
+  if (!emp || emp.isActive === false) return null;
+  if (!verifySessionAuthSignature(rawAcc, emp)) return null;
+  return {
+    ...rawAcc,
+    employeeId: emp.id,
+    code: emp.code,
+    name: emp.name,
+    role: emp.role || 'assistant'
+  };
+}
+let signedInAccount=resolveVerifiedSignedInAccount(read('lopvui.signed-in-account.v1',null))||{employeeId:null,role:'assistant'};
 let classCatalog=loadClassCatalog(localStorage,masterData);
 const defaultClassId='class-math-8a-algebra';
 // Undo history & Teacher view state
@@ -3074,7 +3274,10 @@ $('#scores-sidebar-tab')?.addEventListener('click', ()=>{ setClassView('scores')
 $('#checklist-view-tab').onclick=()=>{ setClassView('checklist'); updateSubtabUrl('checklist'); };
 $('#students-view-tab').onclick=()=>{ setClassView('students'); updateSubtabUrl('students'); };
 const weekdayNames=['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
-const selectedRole=()=>['assistant','office','teacher','admin'].includes(signedInAccount?.role)?signedInAccount.role:'assistant';
+const selectedRole=()=>{
+  const verified = resolveVerifiedSignedInAccount(signedInAccount);
+  return ['assistant','office','teacher','admin'].includes(verified?.role) ? verified.role : 'assistant';
+};
 function occurrenceDate(classInfo,from=new Date()){const date=new Date(from);date.setHours(0,0,0,0);let days=(Number(classInfo.weekday)-date.getDay()+7)%7;const startToday=new Date(date),endToday=new Date(date);const [hour,minute]=String(classInfo.startTime||'15:30').split(':').map(Number),[endHour,endMinute]=String(classInfo.endTime||'17:00').split(':').map(Number);startToday.setHours(hour,minute,0,0);endToday.setHours(endHour,endMinute,0,0);if(days===0&&startToday<from&&from>=endToday)days=7;date.setDate(date.getDate()+days);return date;}
 function formatSessionDate(date){const today=new Date();today.setHours(0,0,0,0);const tomorrow=new Date(today);tomorrow.setDate(tomorrow.getDate()+1);const dateOnly=new Date(date);dateOnly.setHours(0,0,0,0);if(dateOnly.getTime()===today.getTime())return 'Hôm nay';if(dateOnly.getTime()===tomorrow.getTime())return 'Ngày mai';return `${weekdayNames[date.getDay()]}, ${date.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}`;}
 function classScheduleStamp(classInfo,date){const [hour,minute]=String(classInfo.startTime||'15:30').split(':').map(Number),stamp=new Date(date);stamp.setHours(hour,minute,0,0);return stamp;}
@@ -8033,8 +8236,9 @@ const features = setupFeatures({
   },
   getSignedInAccount: () => signedInAccount,
   setSignedInAccount: (acc) => {
-    signedInAccount = acc;
-    currentEmployeeId = acc?.employeeId || null;
+    const verified = resolveVerifiedSignedInAccount(acc);
+    signedInAccount = verified || { employeeId: null, role: null };
+    currentEmployeeId = verified?.employeeId || null;
     personalWorkDays = loadPersonalWorkDays();
     renderPersonalWork();
   },

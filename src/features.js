@@ -386,33 +386,8 @@ export function setupFeatures(ctx) {
     const master = getMasterData();
     const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
 
-    // If explicitly logged out, require login on #login-screen
+    // If explicitly logged out or no valid account in storage, require login on #login-screen
     if (explicitLogout || !account || !account.employeeId) {
-      if (!explicitLogout && !account) {
-        // First bootstrap fallback if session existed before v3.1
-        const defaultEmp = employees.find(e => e.id === 'employee-ta-001' && e.isActive !== false) || employees.find(e => e.isActive !== false);
-        if (defaultEmp) {
-          account = {
-            employeeId: defaultEmp.id,
-            code: defaultEmp.code,
-            name: defaultEmp.name,
-            role: defaultEmp.role,
-            authVersion: defaultEmp.authVersion || 1
-          };
-          localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
-          setSignedInAccount(account);
-          updateCurrentUserDisplay();
-          if (loginScreen) {
-            loginScreen.hidden = true;
-            loginScreen.style.display = 'none';
-          }
-          if (appShell) {
-            appShell.hidden = false;
-            appShell.style.display = '';
-          }
-          return true;
-        }
-      }
       if (appShell) {
         appShell.hidden = true;
         appShell.style.display = 'none';

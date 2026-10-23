@@ -262,12 +262,9 @@ export function computeSessionAuthSignature(emp) {
 }
 
 export function verifySessionAuthSignature(account, emp) {
-  if (!account || !emp) return false;
+  if (!account || !emp || !account.authSig) return false;
   const norm = normalizeEmployeeAccount(emp);
   if (account.role !== norm.role || account.employeeId !== norm.id) return false;
-  if (!account.authSig) {
-    return norm.role === account.role;
-  }
   return account.authSig === computeSessionAuthSignature(norm);
 }
 

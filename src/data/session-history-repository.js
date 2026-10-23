@@ -32,12 +32,17 @@ export function saveSessionHistory(history, storage = (typeof localStorage !== '
   if (storage && Array.isArray(history)) {
     const slim = history.map(rec => {
       if (!rec || typeof rec !== 'object') return rec;
-      if ('adminAuditLogs' in rec) {
-        const copy = { ...rec };
-        delete copy.adminAuditLogs;
-        return copy;
+      const needCleanAudit = 'adminAuditLogs' in rec;
+      const needCleanTomb = rec.status === 'closed' && rec.deskItems && typeof rec.deskItems === 'object' && ('__tombstones' in rec.deskItems);
+      if (!needCleanAudit && !needCleanTomb) return rec;
+      const copy = { ...rec };
+      delete copy.adminAuditLogs;
+      if (needCleanTomb) {
+        const cleanDesks = { ...copy.deskItems };
+        delete cleanDesks.__tombstones;
+        copy.deskItems = cleanDesks;
       }
-      return rec;
+      return copy;
     });
     storage.setItem(SESSION_HISTORY_KEY, JSON.stringify(slim));
   }

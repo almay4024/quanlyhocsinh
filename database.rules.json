@@ -4,26 +4,35 @@
     ".write": false,
     "lopvui_cloud_v3": {
       ".read": true,
+      ".write": true,
       "meta": {
-        ".write": true,
-        ".validate": "newData.hasChildren(['lastUpdatedAt'])"
+        ".validate": "newData.hasChildren(['lastUpdatedAt']) && newData.child('lastUpdatedAt').isNumber() && (!newData.child('lastClientId').exists() || (newData.child('lastClientId').isString() && newData.child('lastClientId').val().length <= 80))",
+        "keyTimestamps": {
+          "$safeKey": {
+            ".validate": "$safeKey.beginsWith('k_') && $safeKey.length === 18 && newData.isNumber()"
+          }
+        }
       },
       "kv": {
-        ".write": true,
         "$safeKey": {
-          ".validate": "newData.hasChildren(['value', 'updatedAt']) && newData.child('updatedAt').isNumber()"
+          ".validate": "$safeKey.beginsWith('k_') && $safeKey.length === 18 && (!newData.exists() || (newData.hasChildren(['updatedAt']) && newData.child('updatedAt').isNumber() && (!newData.child('value').exists() || (newData.child('value').isString() && newData.child('value').val().length <= 4500000))))"
         }
       },
       "deletedIds": {
-        ".write": true
+        "$delId": {
+          ".validate": "$delId.length <= 128 && newData.isNumber()"
+        }
       },
-      "cleanSlateV35": { ".write": true },
-      "encryptedV38": { ".write": true },
-      "lastFullPushAt": { ".write": true }
+      "cleanSlateV35": { ".validate": "newData.isBoolean()" },
+      "encryptedV38": { ".validate": "newData.isBoolean()" },
+      "lastFullPushAt": { ".validate": "newData.isNumber()" },
+      "$other": {
+        ".validate": false
+      }
     },
     "lopvui_sync": {
-      ".read": true,
-      ".write": true
+      ".read": false,
+      ".write": false
     }
   }
 }

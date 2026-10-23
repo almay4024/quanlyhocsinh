@@ -5,8 +5,9 @@
   "description": "Hệ thống quản lý lớp học, sơ đồ chỗ ngồi & lớp bổ trợ (v3.3)",
   "scripts": {
     "start": "node server.mjs",
-    "deploy": "firebase deploy --only hosting",
-    "deploy:all": "git add -A && git commit -m \"Update Lop Hoc Vui v3.3\" && git push && npx firebase-tools deploy --only hosting"
+    "deploy": "firebase deploy --only hosting,database",
+    "deploy:rules": "firebase deploy --only database",
+    "deploy:all": "git add -A && git commit -m \"Update Lop Hoc Vui\" && git push && npx firebase-tools deploy --only hosting,database"
   },
   "type": "module"
 }
