@@ -764,6 +764,8 @@
               <label class="test-required-toggle scores-test-toggle" style="margin:0; padding:6px 12px; background:#f5f3ff; border:1px solid #c4b5fd; border-radius:8px; color:#5b21b6; font-weight:700; cursor:pointer;" title="Đồng bộ với mục Ca này có test bên tab Checklist">
                 <input type="checkbox" id="scores-tab-test-toggle" /> Ca này có test (Hiện cột Điểm Test)
               </label>
+              <button type="button" class="outline-button" id="import-scores-excel-btn" style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; font-weight:700;" title="Nhập nhanh điểm BTVN / Test bằng file Excel hoặc dán 2 cột Mã HS + Điểm">📥 Nhập điểm bằng Excel</button>
+              <button type="button" class="outline-button" id="export-scores-template-btn" title="Tải file Excel (.xlsx) mẫu có sẵn Mã HS và Tên học sinh của lớp này">📤 Xuất mẫu Excel</button>
               <span id="scores-tab-save-status" style="font-size:14px; color:#2e6d42; font-weight:700;">Tự động lưu khi nhập</span>
             </div>
           </div>
@@ -960,6 +962,7 @@
             </div>
             <div class="student-list-heading-actions">
               <span class="count-pill" id="session-student-total">0 học sinh</span>
+              <button type="button" class="outline-button" id="add-makeup-from-other-class-btn" style="background:#faf5ff; color:#6d28d9; border-color:#d8b4fe; font-weight:700;" title="Chọn học sinh từ lớp khác sang học bù ca này">+ Học bù từ lớp khác</button>
               <button type="button" class="outline-button" id="google-sheets-sync-btn">Đồng bộ Google Sheets</button>
               <button type="button" class="primary-button" id="export-attendance-button">Trung tâm báo cáo & Xuất file</button>
             </div>
@@ -1340,44 +1343,151 @@
     </form>
   </dialog>
 
+  <!-- Hộp thoại Nhập nhanh Điểm BTVN / Test bằng File Excel hoặc Dán theo Mã HS (#import-scores-dialog) -->
+  <dialog id="import-scores-dialog" class="import-roster-dialog">
+    <div class="dialog-form">
+      <button type="button" class="close-button" id="close-import-scores-dialog" tabindex="-1" aria-label="Đóng">×</button>
+      <div class="eyebrow">NHẬP ĐIỂM NHANH THEO MÃ HỌC SINH</div>
+      <h2>Nhập điểm BTVN & Điểm Test bằng Excel (.xlsx / Dán nhanh)</h2>
+      <p class="dialog-hint">Chọn file Excel (<code>.xlsx, .csv, .tsv</code>) hoặc dán trực tiếp từ Excel / Google Sheets (<code>Ctrl + V</code>) gồm cột <strong>Mã học sinh</strong> kèm <strong>Điểm BTVN</strong> và/hoặc <strong>Điểm Test</strong>.</p>
+
+      <div class="import-top-controls-grid">
+        <label class="field-label" style="margin:0;">Tải file điểm từ máy tính (.xlsx, .csv, .tsv, .txt):
+          <input type="file" id="import-scores-file-input" accept=".xlsx, .csv, .tsv, .txt" style="margin-top:4px;" />
+        </label>
+        <div style="display:flex; flex-direction:column; gap:6px; justify-content:center;">
+          <label class="time-toggle" style="margin:0;">
+            <input type="checkbox" id="import-scores-auto-submit-hw" checked /> Tự động chuyển BTVN sang <strong>"Đã nộp"</strong> khi có điểm BTVN (trừ HS đang Chưa nộp)
+          </label>
+          <label class="time-toggle" style="margin:0;">
+            <input type="checkbox" id="import-scores-has-header" /> Dòng đầu tiên là dòng tiêu đề cột
+          </label>
+        </div>
+      </div>
+
+      <label class="field-label" style="margin-top:10px;">Hoặc dán trực tiếp cột Mã HS + Điểm từ Excel / Google Sheets (Ctrl + V):
+        <textarea id="import-scores-paste-textarea" rows="3" placeholder="Ví dụ:&#10;K9.1832	8,5	9&#10;K9.1845	7,5	8"></textarea>
+      </label>
+
+      <div id="import-scores-preview-wrap" style="margin-top:10px;" hidden>
+        <div class="import-grid-summary-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div>
+            <strong>Kết quả đối chiếu Mã HS:</strong> Khớp <span id="import-scores-matched-count" class="import-count-highlight">0</span> học sinh · Chưa khớp: <strong id="import-scores-unmatched-count" style="color:#b91c1c;">0</strong>.
+            <small style="display:block; color:#526656;">Bạn có thể đổi vai trò từng cột ngay trên thanh tiêu đề bảng bên dưới.</small>
+          </div>
+          <button type="button" class="outline-button" id="redetect-scores-columns-btn">Tự nhận diện lại cột</button>
+        </div>
+        <div class="attendance-table-wrap import-interactive-grid-wrap" style="max-height:46vh; overflow:auto;">
+          <table class="attendance-report-table import-interactive-grid-table" id="import-scores-preview-table">
+            <thead id="import-scores-preview-thead"></thead>
+            <tbody id="import-scores-preview-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" class="outline-button" id="cancel-import-scores-btn">Hủy</button>
+        <button type="button" class="primary-button" id="confirm-import-scores-btn" disabled>✓ Áp dụng điểm vào ca học</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Google Sheets Sync Configuration Dialog -->
-  <dialog id="google-sheets-sync-dialog" class="class-config-dialog">
+  <dialog id="google-sheets-sync-dialog" class="class-config-dialog" style="width:min(760px, calc(100vw - 24px));">
     <div class="dialog-form">
       <button type="button" class="close-button" id="close-sheets-sync-dialog" aria-label="Đóng">×</button>
-      <div class="eyebrow">TÍCH HỢP GOOGLE SHEETS API</div>
-      <h2>Đồng bộ dữ liệu điểm danh sang Google Sheets</h2>
-      <p class="dialog-hint">Kiến trúc sẵn sàng kết nối Google Sheets API. Khi trung tâm cấp quyền truy cập file gốc, hệ thống có thể đẩy dữ liệu trực tiếp vào các ô (cells) trên Sheet online của trung tâm.</p>
+      <div class="eyebrow">ĐỒNG BỘ GOOGLE SHEETS 2 CHIỀU THEO MÃ HỌC SINH</div>
+      <h2>Đồng bộ Import / Export dữ liệu dựa trên Mã học sinh</h2>
+      <p class="dialog-hint">Đối chiếu chính xác theo <strong>Mã học sinh (Student Code)</strong> để đẩy dữ liệu (Export) lên Google Sheets hoặc kéo/cập nhật dữ liệu (Import Hồ sơ, Lớp học, Điểm danh, Điểm BTVN/Test, Ghi chú) từ Google Sheets về Web.</p>
 
-      <label class="field-label">Google Spreadsheet ID hoặc Đường link Google Sheets:
-        <input id="sheets-spreadsheet-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms hoặc https://docs.google.com/spreadsheets/d/..." />
-      </label>
-      <label class="field-label">Tên trang tính (Sheet Name):
-        <input id="sheets-tab-name" value="DiemDanh" placeholder="DiemDanh" />
-      </label>
-      <label class="time-toggle">
-        <input type="checkbox" id="sheets-autosync-toggle" /> Tự động đồng bộ mỗi khi Chốt sĩ số hoặc Hoàn tất ghi nhận
-      </label>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
+        <label class="field-label" style="margin:0;">Google Spreadsheet ID hoặc Link Google Sheets:
+          <input id="sheets-spreadsheet-id" placeholder="Dán link https://docs.google.com/spreadsheets/d/... hoặc ID" />
+        </label>
+        <label class="field-label" style="margin:0;">Tên trang tính (Sheet Name):
+          <input id="sheets-tab-name" value="DiemDanh" placeholder="VD: DiemDanh hoặc DanhSachHS" />
+        </label>
+      </div>
+
+      <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-top:8px;">
+        <label class="time-toggle" style="margin:0;">
+          <input type="checkbox" id="sheets-autosync-toggle" /> Tự động đẩy lên Google Sheets mỗi khi Chốt sĩ số / Kết ca
+        </label>
+        <label class="time-toggle" style="margin:0;">
+          <input type="checkbox" id="sheets-sync-scope-all-classes" /> Đồng bộ toàn bộ học sinh mọi lớp (bỏ tích = chỉ lớp đang mở)
+        </label>
+      </div>
+
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; padding:10px 12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px;">
+        <button type="button" class="primary-button" id="trigger-sheets-sync-btn" style="background:#15803d;">📤 Đẩy dữ liệu lên Google Sheet (Export theo Mã HS)</button>
+        <button type="button" class="outline-button" id="pull-sheets-sync-btn" style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; font-weight:700;">📥 Kéo dữ liệu từ Google Sheet về Web (Import theo Mã HS)</button>
+        <button type="button" class="outline-button" id="copy-sheets-tsv-btn" title="Copy toàn bộ bảng chuẩn theo Mã HS để Ctrl+V thẳng vào Google Sheets">📋 Copy bảng dán vào Sheet</button>
+        <button type="button" class="outline-button" id="export-sheets-xlsx-btn" title="Tải file .xlsx chuẩn đồng bộ theo Mã HS">📥 Xuất file Sheet (.xlsx)</button>
+      </div>
+
+      <div style="margin-top:12px; padding:10px 12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px;">
+        <label class="field-label" style="margin:0; font-weight:700; color:#1e293b;">⚡ Đồng bộ nhanh bằng cách Dán bảng từ Google Sheets / Excel (Ctrl + V) hoặc tải file (.xlsx / .csv) theo Mã HS:
+          <textarea id="sheets-paste-sync-textarea" rows="3" placeholder="Dán các dòng từ Google Sheets (có cột Mã HS kèm Tên, Trường, Lớp, Điểm BTVN, Điểm Test, Ghi chú...) vào đây để đồng bộ nhanh..." style="margin-top:6px; font-family:monospace; font-size:12.5px;"></textarea>
+        </label>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:8px;">
+          <input type="file" id="sheets-sync-file-input" accept=".xlsx, .csv, .tsv, .txt" style="font-size:12.5px;" />
+          <button type="button" class="primary-button" id="apply-sheets-paste-sync-btn" style="background:#1d4ed8;">✓ Đồng bộ dữ liệu đã dán / file theo Mã HS</button>
+        </div>
+      </div>
 
       <div id="sheets-sync-status-box" class="checklist-log" style="margin-top:10px;">
         Chưa thực hiện đồng bộ.
       </div>
 
-      <div style="margin-top:16px; padding-top:14px; border-top:1.5px dashed #cfe0d2;">
-        <div class="eyebrow" style="color:#166534;">KHO ẢNH CHÂN DUNG FULL-SIZE TRÊN GOOGLE DRIVE</div>
-        <h3 style="margin:4px 0 6px; font-size:16px; color:#1e3a29;">Kết nối Google Drive tự động lưu & đổi tên ảnh học sinh</h3>
-        <p class="dialog-hint" style="margin-bottom:10px;">
-          Ảnh tải lên được đặt tên tự động theo quy tắc <code>{Mã_HS}_{Họ_Tên}_{Lớp}_{ID4}.jpg</code> (hoặc <code>CHUAMA_...</code> nếu chưa có mã HS). Khi đổi tên hoặc cập nhật mã HS trên web, file trên Drive tự động đổi tên theo mà vẫn giữ nguyên link cũ.
-        </p>
-        <label class="field-label">Google Apps Script Web App URL (Dùng chung cho Ảnh Drive & Sheets):
-          <input id="drive-script-url-input" placeholder="https://script.google.com/macros/s/.../exec" />
-        </label>
-        <label class="field-label">ID Thư mục Google Drive chứa ảnh học sinh (Không bắt buộc):
-          <input id="drive-folder-id-input" placeholder="Ví dụ: 1aBcDeFgHiJkLmNoPqRsTuVwXyZ (Để trống sẽ tự tạo thư mục LopHocVui_AnhHocSinh)" />
-        </label>
+      <div style="margin-top:14px; padding-top:12px; border-top:1.5px dashed #cfe0d2;">
+        <div class="eyebrow" style="color:#166534;">KẾT NỐI GOOGLE APPS SCRIPT (DÙNG CHUNG CHO GOOGLE SHEETS 2 CHIỀU & KHO ẢNH DRIVE)</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; margin-top:6px;">
+          <label class="field-label" style="margin:0;">Google Apps Script Web App URL:
+            <input id="drive-script-url-input" placeholder="https://script.google.com/macros/s/.../exec" />
+          </label>
+          <label class="field-label" style="margin:0;">ID Thư mục Google Drive chứa ảnh (Không bắt buộc):
+            <input id="drive-folder-id-input" placeholder="Để trống sẽ tự tạo LopHocVui_AnhHocSinh" />
+          </label>
+        </div>
         <details style="margin-top:8px; background:#f8fbf9; border:1px solid #d5e4d8; border-radius:8px; padding:8px 12px; font-size:13px;">
-          <summary style="cursor:pointer; font-weight:700; color:#1f5f33;">📋 Xem mã Google Apps Script mẫu (Copy dán vào script.google.com)</summary>
+          <summary style="cursor:pointer; font-weight:700; color:#1f5f33;">📋 Xem mã Google Apps Script mẫu hỗ trợ cả Đồng bộ Google Sheets 2 chiều theo Mã HS & Ảnh Drive</summary>
           <pre style="margin:8px 0 0; padding:10px; background:#1e293b; color:#f8fafc; border-radius:6px; overflow-x:auto; font-size:12px; line-height:1.45;">function doPost(e) {
   var data = JSON.parse(e.postData.contents || '{}');
+  if (data.action === 'syncStudentsByCode') {
+    var ss = SpreadsheetApp.openById(data.spreadsheetId);
+    var sh = ss.getSheetByName(data.sheetName || 'DiemDanh') || ss.insertSheet(data.sheetName || 'DiemDanh');
+    var headers = data.headers || [];
+    var rows = data.rows || [];
+    var existing = sh.getDataRange().getValues();
+    if (!existing.length || !existing[0][0]) {
+      if (headers.length) sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+      if (rows.length) sh.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+      return jsonOut_({ ok: true, updatedCount: 0, insertedCount: rows.length });
+    }
+    var codeMap = {};
+    for (var r = 1; r < existing.length; r++) {
+      var code = String(existing[r][0] || '').trim().toUpperCase();
+      if (code) codeMap[code] = r + 1;
+    }
+    var updated = 0, inserted = 0;
+    rows.forEach(function(row) {
+      var c = String(row[0] || '').trim().toUpperCase();
+      if (c && codeMap[c]) {
+        sh.getRange(codeMap[c], 1, 1, row.length).setValues([row]);
+        updated++;
+      } else {
+        sh.appendRow(row);
+        inserted++;
+      }
+    });
+    return jsonOut_({ ok: true, updatedCount: updated, insertedCount: inserted });
+  }
+  if (data.action === 'readSheetByCode') {
+    var ss2 = SpreadsheetApp.openById(data.spreadsheetId);
+    var sh2 = ss2.getSheetByName(data.sheetName || 'DiemDanh') || ss2.getSheets()[0];
+    var vals = sh2 ? sh2.getDataRange().getDisplayValues() : [];
+    return jsonOut_({ ok: true, rows: vals });
+  }
   if (data.action === 'uploadStudentPhoto') {
     var folder = data.folderId ? DriveApp.getFolderById(data.folderId) : getOrCreateFolder_('LopHocVui_AnhHocSinh');
     if (data.oldFileId) { try { DriveApp.getFileById(data.oldFileId).setTrashed(true); } catch (err) {} }
@@ -1406,8 +1516,8 @@ function jsonOut_(obj) {
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; flex-wrap:wrap;">
-        <button type="button" class="outline-button" id="save-drive-photo-config-btn">Lưu cấu hình Google Drive</button>
-        <button type="button" class="primary-button" id="trigger-sheets-sync-btn">Đồng bộ ngay bây giờ</button>
+        <button type="button" class="outline-button" id="save-drive-photo-config-btn">💾 Lưu cấu hình Sheets & Drive</button>
+        <button type="button" class="outline-button" id="close-sheets-sync-btn">Đóng</button>
       </div>
     </div>
   </dialog>

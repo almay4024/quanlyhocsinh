@@ -393,6 +393,9 @@ export function getStudentClassDeepDive(student, classId, currentRoster = [], st
   (student.seatingHistory || []).forEach(sh => {
     if (sh.classId === classId || !sh.classId) sessionDatesSet.add(sh.date);
   });
+  (student.makeupSessions || []).forEach(ms => {
+    if (ms && ms.classId === classId && ms.date) sessionDatesSet.add(ms.date);
+  });
   classSessions.forEach(cs => {
     if (cs.studentsSnapshot?.some(s => s.studentId === student.id)) {
       sessionDatesSet.add(cs.date);
@@ -414,8 +417,11 @@ export function getStudentClassDeepDive(student, classId, currentRoster = [], st
     const snap = classSession?.studentsSnapshot?.find(s => s.studentId === student.id);
     const att = (student.attendanceHistory || []).find(h => (h.classId === classId || !h.classId) && h.date === date);
     const sn = (student.sessionNotes || []).find(n => (n.classId === classId || !n.classId) && n.date === date);
-    const sc = (student.scores || []).find(s => (s.classId === classId || !s.classId) && s.date === date);
+    const scTest = (student.scores || []).find(s => (s.classId === classId || !s.classId) && s.date === date && s.type && s.type !== 'BTVN');
+    const scBtvn = (student.scores || []).find(s => (s.classId === classId || !s.classId) && s.date === date && (!s.type || s.type === 'BTVN'));
     const seat = (student.seatingHistory || []).find(s => (s.classId === classId || !s.classId) && s.date === date);
+    const makeupRec = (student.makeupSessions || []).find(ms => ms && ms.classId === classId && ms.date === date);
+    const isMakeupSession = Boolean(makeupRec || att?.isMakeup || sn?.isMakeup || !(student.classIds || []).includes(classId));
 
     const attStatus = snap?.attendance?.status || att?.status || 'present';
     const minutesLate = snap?.attendance?.minutesLate || snap?.attendance?.lateMinutes || att?.minutesLate || att?.lateMinutes || 0;
@@ -429,13 +435,13 @@ export function getStudentClassDeepDive(student, classId, currentRoster = [], st
 
     const hwStatus = snap?.homework?.status || sn?.homeworkStatus || 'uncollected';
     const hwReason = snap?.homework?.reason || sn?.homeworkReason || '';
-    const hwScore = snap?.homework?.score ?? sn?.homeworkScore ?? null;
-    if (hwStatus === 'submitted' || hwStatus === 'submitted' || hwStatus === 'submitted' || hwStatus === 'graded') hwSubmitted++;
+    const hwScore = snap?.homework?.score ?? sn?.homeworkScore ?? scBtvn?.score ?? null;
+    if (hwStatus === 'submitted' || hwStatus === 'graded') hwSubmitted++;
     else if (hwStatus === 'not_submitted') hwMissing++;
 
-    const testScore = snap?.testScore ?? sc?.score ?? null;
+    const testScore = snap?.testScore ?? sn?.testScore ?? scTest?.score ?? null;
     if (testScore !== null && testScore !== undefined) {
-      scoresInClass.push({ classId, date, type: sc?.type || 'Kiểm tra', score: Number(testScore) });
+      scoresInClass.push({ classId, date, type: scTest?.type || 'Kiểm tra', score: Number(testScore) });
     }
 
     const aisle = seat?.aisle ?? null;
@@ -456,6 +462,8 @@ export function getStudentClassDeepDive(student, classId, currentRoster = [], st
       closedBy: classSession?.closedBy?.name || '',
       closedAt: classSession?.closedAt || '',
       isClosed: classSession?.status === 'closed',
+      isMakeupSession,
+      makeupSourceClassName: makeupRec?.sourceClassName || att?.sourceClassName || '',
       attendance: {
         status: attStatus,
         minutesLate,
@@ -522,7 +530,20 @@ export function getPreviousSessionSeatingRecord(classId, currentDate, historyArg
 
 export function evaluateStudentEarlyWarning(student, classId = null, historyArg = null) {
   if (!student) {
-    return { hasWarning: false, reasons: [], badgeText: '', tooltip: '', attendedCount: 0, totalRecordedCount: 0 };
+    return {
+      hasWarning: false,
+      level: 0,
+      autoLevel: 0,
+      violationCount: 0,
+      isManual: false,
+      customNoteTag: '',
+      reasons: [],
+      badgeText: '',
+      shortTag: '',
+      tooltip: '',
+      attendedCount: 0,
+      totalRecordedCount: 0
+    };
   }
   const attList = (student.attendanceHistory || []).filter(h => !classId || !h.classId || h.classId === classId);
   const noteList = (student.sessionNotes || []).filter(n => !classId || !n.classId || n.classId === classId);
@@ -542,42 +563,92 @@ export function evaluateStudentEarlyWarning(student, classId = null, historyArg 
     if (st === 'present' || st === 'late') attendedCount++;
   });
 
-  const recent3 = sortedDates.slice(0, 3);
-  let recentAbsences = 0;
-  let recentMissingHw = 0;
-  let recentLowScores = 0;
+  const formatShortD = (dStr) => {
+    const m = String(dStr || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}` : String(dStr || '');
+  };
 
-  recent3.forEach(d => {
+  // Chỉ tính lỗi trong 4 buổi gần nhất (1 lỗi = Mức 1, 2 lỗi = Mức 2, 3 lỗi = Mức 3, >= 4 lỗi = Mức 4)
+  const recent4 = sortedDates.slice(0, 4);
+  const violations = [];
+
+  recent4.forEach(d => {
     const att = attList.find(h => h.date === d);
     const sn = noteList.find(n => n.date === d);
     const st = att?.status;
+    const shortD = formatShortD(d);
+
     if (st === 'absent' || st === 'absent_excused' || st === 'absent_unexcused') {
-      recentAbsences++;
+      violations.push(`Vắng (${shortD})`);
+    } else if (st === 'late') {
+      const mins = Number(att?.lateMinutes ?? att?.minutesLate ?? 0);
+      violations.push(mins > 0 ? `Muộn ${mins}p (${shortD})` : `Đi muộn (${shortD})`);
     }
+
     const hwSt = sn?.homeworkStatus || att?.homework?.status;
     if (hwSt === 'not_submitted') {
-      recentMissingHw++;
+      violations.push(`Nợ BTVN (${shortD})`);
     }
+
     const dayScores = scoreList.filter(sc => sc.date === d).map(sc => Number(sc.score)).filter(n => !Number.isNaN(n));
     if (sn?.homeworkScore !== null && sn?.homeworkScore !== undefined && sn?.homeworkScore !== '') {
       const n = Number(String(sn.homeworkScore).replace(',', '.'));
       if (!Number.isNaN(n)) dayScores.push(n);
     }
     if (dayScores.length && Math.min(...dayScores) < 5) {
-      recentLowScores++;
+      violations.push(`Điểm < 5 (${shortD})`);
     }
   });
 
-  const reasons = [];
-  if (recentMissingHw >= 2) reasons.push(`Nợ BTVN ${recentMissingHw} buổi gần đây`);
-  if (recentAbsences >= 2) reasons.push(`Vắng ${recentAbsences} buổi gần đây`);
-  if (recentLowScores >= 2) reasons.push(`Điểm < 5 ở ${recentLowScores} buổi gần đây`);
+  const autoViolationCount = violations.length;
+  const autoLevel = autoViolationCount >= 4 ? 4 : autoViolationCount;
+
+  // Hỗ trợ ghi đè (chỉnh sửa) mức cảnh báo & tag lưu ý ngắn gọn theo lớp hoặc toàn cục
+  const clsCfg = (classId && student.classWarningConfig && student.classWarningConfig[classId])
+    ? student.classWarningConfig[classId]
+    : null;
+  const globalCfg = student.warningConfig || null;
+  const activeCfg = clsCfg || globalCfg || null;
+
+  const isManual = Boolean(activeCfg && activeCfg.mode === 'manual' && activeCfg.manualLevel !== undefined && activeCfg.manualLevel !== null);
+  const effectiveLevel = isManual
+    ? Math.max(0, Math.min(4, Number(activeCfg.manualLevel) || 0))
+    : autoLevel;
+  const customNoteTag = String(activeCfg?.customNoteTag ?? student.warningNoteTag ?? '').trim();
+
+  const hasWarning = effectiveLevel > 0 || Boolean(customNoteTag);
+  const levelLabel = effectiveLevel > 0 ? `Mức ${effectiveLevel}` : '';
+  const shortTag = levelLabel && customNoteTag
+    ? `${levelLabel} · ${customNoteTag}`
+    : (levelLabel || customNoteTag);
+
+  const reasons = [...violations];
+  if (customNoteTag && !reasons.includes(customNoteTag)) {
+    reasons.unshift(`Lưu ý: ${customNoteTag}`);
+  }
+
+  const tooltipParts = [];
+  if (effectiveLevel > 0) {
+    tooltipParts.push(`Cảnh báo ${levelLabel}${isManual ? ' (Gán thủ công)' : ` (${autoViolationCount} lỗi / 4 buổi gần nhất)`}`);
+  }
+  if (violations.length) {
+    tooltipParts.push(`Chi tiết lỗi 4 buổi gần nhất: ${violations.join(', ')}`);
+  }
+  if (customNoteTag) {
+    tooltipParts.push(`Lưu ý: ${customNoteTag}`);
+  }
 
   return {
-    hasWarning: reasons.length > 0,
+    hasWarning,
+    level: effectiveLevel,
+    autoLevel,
+    violationCount: autoViolationCount,
+    isManual,
+    customNoteTag,
     reasons,
-    badgeText: reasons[0] || '',
-    tooltip: reasons.join(' · '),
+    badgeText: shortTag,
+    shortTag,
+    tooltip: tooltipParts.join(' — ') || 'Bấm để chỉnh sửa mức cảnh báo & lưu ý học sinh',
     attendedCount,
     totalRecordedCount: sortedDates.length
   };

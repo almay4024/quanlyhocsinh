@@ -4609,13 +4609,16 @@ body,
 .attendance-report-table td.col-allow-wrap,
 .portal-table th.col-allow-wrap,
 .portal-table td.col-allow-wrap,
+#scores-tab-table th.col-allow-wrap,
+#scores-tab-table td.col-allow-wrap,
 #master-student-table td.col-allow-wrap,
 #staff-table td.col-allow-wrap,
 #general-roster-table td.col-allow-wrap,
 #import-preview-table td.col-allow-wrap {
-  white-space: normal !important;
-  min-width: 180px !important;
-  max-width: 340px !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  min-width: 220px !important;
+  max-width: 540px !important;
   line-height: 1.45 !important;
 }
 
@@ -9059,4 +9062,116 @@ button:active,
 .late-token.late-token-ontime small {
   color: #15803d !important;
   font-weight: 600 !important;
+}
+
+/* v4.5: Cột ghi chú tự mở rộng & xuống dòng gọn gàng + Tag cảnh báo Mức 1/2/3/4 + Nút Copy gửi PH cột trước Tên HS */
+textarea.auto-expand-note {
+  width: 100%;
+  min-width: 210px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd8cd;
+  background: #ffffff;
+  color: #1f2937;
+  font: 500 13.5px/1.42 "Manrope", system-ui, sans-serif;
+  resize: vertical;
+  overflow-y: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+textarea.auto-expand-note:focus {
+  outline: none;
+  border-color: #2e6d42;
+  box-shadow: 0 0 0 3px rgba(46, 109, 66, 0.14);
+}
+
+.office-copy-before-name-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 10px !important;
+  font-size: 12.5px !important;
+  font-weight: 800 !important;
+  border-radius: 8px !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border: 1.5px solid #93c5fd !important;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.office-copy-before-name-btn:hover {
+  background: #dbeafe !important;
+  border-color: #3b82f6 !important;
+  transform: translateY(-1px);
+}
+
+.early-warning-pill.warn-level-1 {
+  background: #fef9c3 !important;
+  color: #854d0e !important;
+  border: 1px solid #fde047 !important;
+}
+
+.early-warning-pill.warn-level-2 {
+  background: #ffedd5 !important;
+  color: #9a3412 !important;
+  border: 1px solid #fdba74 !important;
+}
+
+.early-warning-pill.warn-level-3 {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #fca5a5 !important;
+}
+
+.early-warning-pill.warn-level-4 {
+  background: #7f1d1d !important;
+  color: #ffffff !important;
+  border: 1px solid #991b1b !important;
+  box-shadow: 0 1px 4px rgba(127, 29, 29, 0.25);
+}
+
+.early-warning-pill.warn-level-note {
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+  border: 1px solid #7dd3fc !important;
+}
+
+.add-warning-tag-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  margin-left: 4px;
+  border-radius: 999px;
+  border: 1px dashed #94a3b8;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.add-warning-tag-btn:hover {
+  background: #f1f5f9;
+  border-color: #64748b;
+  color: #1e293b;
+}
+
+.student-class-tab.old-class-tab {
+  border-style: dashed !important;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.student-class-tab.makeup-class-tab {
+  border-color: #d8b4fe !important;
+  background: #faf5ff;
+  color: #6b21a8;
 }

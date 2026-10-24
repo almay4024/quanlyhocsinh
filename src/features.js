@@ -15,12 +15,15 @@ import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
+  SCORE_IMPORT_COLUMN_ROLE_OPTIONS,
   isStatusWord,
   normalizeEnrollmentStatus,
   parseRawTable,
   splitVietnameseName,
   autoDetectGridColumnRoles,
   extractStudentsFromGrid,
+  autoDetectScoreColumnRoles,
+  extractScoresFromGrid,
   autoDetectColumnMapping,
   mapCustomColumns,
   parseRosterText,
@@ -29,7 +32,9 @@ import {
   parseXlsxArrayBuffer,
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
-  syncSessionToGoogleSheets
+  extractSpreadsheetId,
+  syncSessionToGoogleSheets,
+  pullStudentsFromGoogleSheets
 } from './excel-import-export.js?v=4.4.1';
 import {
   loadSessionHistory,
@@ -1523,7 +1528,10 @@ export function setupFeatures(ctx) {
 
     const currentClass = getActiveClassConfig();
     const curDate = getChecklistDate();
-    const roster = [...classStudents(), ...(ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id && m.attendingSessionDate === curDate) : [])];
+    const makeupsInSess = ctx.sessionMakeupStudents
+      ? ctx.sessionMakeupStudents()
+      : (ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id && m.attendingSessionDate === curDate) : []);
+    const roster = [...classStudents(), ...makeupsInSess];
     const assignedIdsSet = new Set(occupants.map(x => x.entry.studentId).filter(Boolean));
     const lateQueueList = getLateQueue();
 
@@ -1980,23 +1988,25 @@ export function setupFeatures(ctx) {
     const lateQueueIds = getLateQueue();
     const regularRoster = [...classStudents()].sort(byAlpha);
     const allMakeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
-    // Học sinh học bù chỉ xuất hiện trong đúng lớp và đúng buổi hôm đó
-    const sessionMakeups = allMakeups.filter(m =>
+    // Học sinh học bù (gồm cả học sinh chọn từ lớp khác sang học bù) xuất hiện trong đúng lớp và đúng buổi hôm đó
+    const sessionMakeups = (ctx.sessionMakeupStudents ? ctx.sessionMakeupStudents() : allMakeups.filter(m =>
       (m.attendingClassId === currentClass.id && m.attendingSessionDate === date) ||
       entries.some(e => e.entry.studentId === m.id) ||
       lateQueueIds.includes(m.id)
-    ).sort(byAlpha);
+    )).sort(byAlpha);
 
     const roster = [...regularRoster, ...sessionMakeups];
     const container = $('#attendance-export-content');
     if (!container) return;
+
+    const getMakeupSourceLabel = (s) => ctx.getMakeupSourceClassDisplay ? ctx.getMakeupSourceClassDisplay(s) : (s.sourceClassName || 'Lớp khác');
 
     const getFamGiv = (s) => {
       const parts = splitVietnameseName(s.name);
       return {
         fam: s.familyName ?? parts.familyName,
         giv: s.givenName ?? parts.givenName,
-        isMakeup: s.studentType === 'makeup' || !(s.classIds || []).includes(currentClass.id)
+        isMakeup: ctx.isMakeupInCurrentSession ? ctx.isMakeupInCurrentSession(s) : (s.studentType === 'makeup' || !(s.classIds || []).includes(currentClass.id))
       };
     };
 
@@ -2124,7 +2134,7 @@ export function setupFeatures(ctx) {
                       const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
                       const reason = reasonMap[seated?.entry.homework?.reason || s.homework?.reason] || seated?.entry.homework?.reason || s.homework?.reason || 'Chưa làm';
                       const noteInSession = getStudentSessionNote(s, seated);
-                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
+                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school||'—'))}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td></tr>`;
                     }).join('')}
                   </tbody>
                 </table>
@@ -2148,7 +2158,7 @@ export function setupFeatures(ctx) {
                       const arrTime = lateDet?.arrivalTime || resolveStudentArrivalTime(s, seated, date, currentClass.id) || '—';
                       const mins = lateDet?.lateMinutes ?? seated?.entry.attendance?.lateMinutes ?? seated?.entry.attendance?.minutesLate ?? s.attendance?.lateMinutes ?? s.lateMinutes ?? 10;
                       const noteInSession = getStudentSessionNote(s, seated);
-                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td><strong>${escapeHtml(arrTime || '—')}</strong></td><td style="color:#c2410c; font-weight:700;">muộn ${mins}’</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
+                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school||'—'))}</td><td><strong>${escapeHtml(arrTime || '—')}</strong></td><td style="color:#c2410c; font-weight:700;">muộn ${mins}’</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td></tr>`;
                     }).join('')}
                   </tbody>
                 </table>
@@ -2183,7 +2193,7 @@ export function setupFeatures(ctx) {
                       const hwScore = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
                       const testScore = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
                       const noteInSession = getStudentSessionNote(s, seated);
-                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${s.sourceClassName || 'Lớp khác'}` : (s.school||'—'))}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(hwScore)}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(testScore)}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
+                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school||'—'))}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(hwScore)}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(testScore)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td></tr>`;
                     }).join('')}
                   </tbody>
                 </table>
@@ -2209,7 +2219,7 @@ export function setupFeatures(ctx) {
                       const hwScore = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
                       const testScore = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
                       const noteInSession = getStudentSessionNote(s, seated);
-                      return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge">Học bù</span></td><td>${escapeHtml(s.sourceClassName||'Lớp khác')}</td><td><strong>${escapeHtml(attText)}</strong></td><td>BTVN: ${escapeHtml(hwScore)} · Test: ${escapeHtml(testScore)}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
+                      return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge">Học bù</span></td><td>${escapeHtml(getMakeupSourceLabel(s))}</td><td><strong>${escapeHtml(attText)}</strong></td><td>BTVN: ${escapeHtml(hwScore)} · Test: ${escapeHtml(testScore)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td></tr>`;
                     }).join('')}
                   </tbody>
                 </table>
@@ -2313,7 +2323,7 @@ export function setupFeatures(ctx) {
                 const hwStatusText = resolveHomeworkStatusWithReason(hwObj);
                 const hwScore = formatScoreVN(hwObj.score ?? '', '');
                 const testScore = formatScoreVN(seated?.entry.testScore ?? s.testScore ?? '', '');
-                const schoolText = isMakeup ? `Học bù từ: ${s.sourceClassName || s.school || 'Lớp khác'}` : (s.school || '');
+                const schoolText = isMakeup ? `Học bù từ: ${getMakeupSourceLabel(s)}` : (s.school || '');
                 const noteText = getStudentSessionNote(s, seated);
 
                 const tdMap = {
@@ -2325,7 +2335,7 @@ export function setupFeatures(ctx) {
                   homework: `<td>${escapeHtml(hwStatusText)}</td>`,
                   hwScore: `<td style="text-align:center; font-weight:700;">${escapeHtml(hwScore)}</td>`,
                   testScore: `<td style="text-align:center; font-weight:700;">${escapeHtml(testScore)}</td>`,
-                  note: `<td>${escapeHtml(noteText)}</td>`
+                  note: `<td class="col-allow-wrap">${escapeHtml(noteText)}</td>`
                 };
 
                 return `
@@ -2515,11 +2525,11 @@ export function setupFeatures(ctx) {
     const lateQueueIds = getLateQueue();
     const regularRoster = [...classStudents()].sort(byAlpha);
     const allMakeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
-    const sessionMakeups = allMakeups.filter(m =>
+    const sessionMakeups = (ctx.sessionMakeupStudents ? ctx.sessionMakeupStudents() : allMakeups.filter(m =>
       (m.attendingClassId === currentClass.id && m.attendingSessionDate === date) ||
       entries.some(e => e.entry.studentId === m.id) ||
       lateQueueIds.includes(m.id)
-    ).sort(byAlpha);
+    )).sort(byAlpha);
     const roster = [...regularRoster, ...sessionMakeups];
 
     const colOrder = getReportColumnOrder();
@@ -2530,7 +2540,7 @@ export function setupFeatures(ctx) {
       const seated = entries.find(p => p.entry.studentId === s.id);
       const isLate = ctx.isStudentLateInSession ? ctx.isStudentLateInSession(s, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late');
       const isPresent = Boolean(seated || lateQueueIds.includes(s.id));
-      const isMakeup = s.studentType === 'makeup' || !(s.classIds || []).includes(currentClass.id);
+      const isMakeup = ctx.isMakeupInCurrentSession ? ctx.isMakeupInCurrentSession(s) : (s.studentType === 'makeup' || !(s.classIds || []).includes(currentClass.id));
       const mergedAtt = formatMergedAttendanceAndArrival(s, seated, isLate, isPresent, isMakeup, date, currentClass.id);
       const hwObj = seated?.entry.homework || s.homework || { status: 'uncollected' };
       const hwText = resolveHomeworkStatusWithReason(hwObj);
@@ -2539,12 +2549,13 @@ export function setupFeatures(ctx) {
       const fam = s.familyName || splitVietnameseName(s.name).familyName;
       const giv = s.givenName || splitVietnameseName(s.name).givenName;
       const noteText = (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '';
+      const srcCls = ctx.getMakeupSourceClassDisplay ? ctx.getMakeupSourceClassDisplay(s) : (s.sourceClassName || s.school || '');
 
       const valMap = {
         family: fam,
         given: giv,
         code: s.studentCode || '',
-        school: isMakeup ? `Học bù (${s.sourceClassName || s.school || ''})` : (s.school || ''),
+        school: isMakeup ? `Học bù (${srcCls})` : (s.school || ''),
         attendance: mergedAtt,
         homework: hwText,
         hwScore,
@@ -3829,10 +3840,24 @@ export function setupFeatures(ctx) {
         return `<span class="plain-class-link" data-open-student-class="${escapeHtml(s.id)}" data-class-id="${escapeHtml(cid)}" title="Bấm xem tình hình học lớp ${escapeHtml(cCode)}">${escapeHtml(cCode)}</span>`;
       }).join(', ') || '<small style="color:#a8b4aa;">Chưa gán lớp</small>';
 
-      const ew = evaluateStudentEarlyWarning(s);
-      const warnBadgeHtml = ew.hasWarning
-        ? ` <span class="early-warning-pill" title="Cảnh báo sớm: ${escapeHtml(ew.tooltip)}">⚠ ${escapeHtml(ew.badgeText)}</span>`
+      const prevClassIds = (s.previousClassIds || []).filter(cid => !(s.classIds || []).includes(cid) && (isAdmin || visibleClassIdsSet.has(cid)));
+      const prevClassLinksHtml = prevClassIds.length
+        ? `<div style="margin-top:3px; font-size:12px; color:#64748b;">Lớp cũ: ${prevClassIds.map(cid => {
+            const c = fullCatalog.find(x => x.id === cid);
+            const cCode = c ? (c.code || c.name) : cid;
+            return `<span class="plain-class-link" data-open-student-class="${escapeHtml(s.id)}" data-class-id="${escapeHtml(cid)}" style="color:#64748b; text-decoration:underline dashed;" title="Bấm xem lịch sử lớp cũ đã chuyển: ${escapeHtml(cCode)}">${escapeHtml(cCode)}</span>`;
+          }).join(', ')}</div>`
         : '';
+
+      const warnClassContext = selectedClass !== 'all' ? selectedClass : ((s.classIds || [])[0] || null);
+      const warnBadgeHtml = ctx.renderStudentWarningTag
+        ? ctx.renderStudentWarningTag(s, warnClassContext)
+        : (() => {
+            const ew = evaluateStudentEarlyWarning(s, warnClassContext);
+            return ew.hasWarning
+              ? ` <span class="early-warning-pill warn-level-${ew.level || 1}" title="Cảnh báo sớm: ${escapeHtml(ew.tooltip)}">⚠ ${escapeHtml(ew.badgeText)}</span>`
+              : '';
+          })();
       const parentDisplay = [s.parentContact?.name, s.parentContact?.phone].filter(Boolean).join(' · ') || '—';
 
       const cellMap = {
@@ -3842,7 +3867,7 @@ export function setupFeatures(ctx) {
         school: `<td>${escapeHtml(s.school || '—')}</td>`,
         parent: `<td><div>${escapeHtml(parentDisplay)}</div></td>`,
         status: `<td style="white-space:nowrap;"><span class="enrollment-status-pill ${stClass}">${escapeHtml(stVal)}</span></td>`,
-        classes: `<td class="col-allow-wrap plain-class-cell">${classPlainLinks}</td>`
+        classes: `<td class="col-allow-wrap plain-class-cell">${classPlainLinks}${prevClassLinksHtml}</td>`
       };
 
       return `
@@ -3889,6 +3914,15 @@ export function setupFeatures(ctx) {
           ctx.openStudentProfile(btn.dataset.viewStudentDetail, { from: 'directory' });
         } else {
           openStudentClassProfile(btn.dataset.viewStudentDetail);
+        }
+      };
+    });
+
+    tbody.querySelectorAll('[data-edit-warning]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        if (ctx.openEditStudentWarningDialog) {
+          ctx.openEditStudentWarningDialog(btn.dataset.editWarning, btn.dataset.warnClass || null);
         }
       };
     });
@@ -3954,8 +3988,28 @@ export function setupFeatures(ctx) {
     const allTutoring = loadTutoringSessions();
     const studentTutoringSessions = allTutoring.filter(t => t.studentId === student.id || (t.studentName && t.studentName.trim().toLowerCase() === student.name.trim().toLowerCase()));
 
-    const classIds = student.classIds && student.classIds.length ? [...student.classIds] : [catalog[0]?.id || ''];
-    if ((studentTutoringSessions.length > 0 || (student.classIds || []).includes(TUTORING_CLASS_ID)) && !classIds.includes(TUTORING_CLASS_ID)) {
+    const activeClassIds = Array.isArray(student.classIds) ? [...student.classIds] : [];
+    const oldClassSet = new Set(Array.isArray(student.previousClassIds) ? student.previousClassIds : []);
+    (student.classTransferHistory || []).forEach(tr => { if (tr?.fromClassId) oldClassSet.add(tr.fromClassId); });
+    (student.attendanceHistory || []).forEach(a => { if (a?.classId && !activeClassIds.includes(a.classId)) oldClassSet.add(a.classId); });
+    (student.scores || []).forEach(sc => { if (sc?.classId && !activeClassIds.includes(sc.classId)) oldClassSet.add(sc.classId); });
+    (student.sessionNotes || []).forEach(sn => { if (sn?.classId && !activeClassIds.includes(sn.classId)) oldClassSet.add(sn.classId); });
+
+    const makeupClassSet = new Set();
+    (student.makeupSessions || []).forEach(ms => {
+      if (ms?.attendingClassId && !activeClassIds.includes(ms.attendingClassId)) {
+        makeupClassSet.add(ms.attendingClassId);
+      }
+    });
+
+    const historicalOldClassIds = Array.from(oldClassSet).filter(cid => cid && !activeClassIds.includes(cid) && !makeupClassSet.has(cid));
+    const makeupOnlyClassIds = Array.from(makeupClassSet).filter(cid => cid && !activeClassIds.includes(cid));
+
+    const classIds = [...activeClassIds, ...historicalOldClassIds, ...makeupOnlyClassIds];
+    if (!classIds.length && catalog[0]?.id) {
+      classIds.push(catalog[0].id);
+    }
+    if ((studentTutoringSessions.length > 0 || activeClassIds.includes(TUTORING_CLASS_ID)) && !classIds.includes(TUTORING_CLASS_ID)) {
       classIds.push(TUTORING_CLASS_ID);
     }
 
@@ -3964,19 +4018,28 @@ export function setupFeatures(ctx) {
     function renderContent(clsId) {
       currentClassId = clsId;
       const isTutoringClass = clsId === TUTORING_CLASS_ID;
+      const isOldTransferredClass = historicalOldClassIds.includes(clsId);
+      const isMakeupOnlyClass = makeupOnlyClassIds.includes(clsId);
       const targetClass = isTutoringClass ? TUTORING_CLASS_CONFIG : catalog.find(c => c.id === clsId);
       const metrics = isTutoringClass ? null : getStudentClassDeepDive(student, clsId);
 
       const classTabsHtml = classIds.length ? `
         <div style="margin-top:10px;">
-          <small style="color:#556658; font-weight:600;"> Bấm vào từng lớp để xem chi tiết tình hình học tập:</small>
-          <div class="student-class-tabs" style="margin-top:4px;">
+          <small style="color:#556658; font-weight:600;"> Bấm vào từng lớp (bao gồm cả lớp đang học, lớp cũ đã chuyển & lớp học bù) để xem chi tiết:</small>
+          <div class="student-class-tabs" style="margin-top:4px; display:flex; flex-wrap:wrap; gap:6px;">
             ${classIds.map(cid => {
               if (cid === TUTORING_CLASS_ID) {
                 return `<button type="button" class="student-class-tab ${cid === currentClassId ? 'active' : ''}" data-switch-class-tab="${cid}" style="font-weight:700; ${cid === currentClassId ? 'background:#f3e8ff; color:#7e22ce; border-color:#c084fc;' : ''}">BOTRO (Bổ trợ & Gia sư)</button>`;
               }
               const c = catalog.find(x => x.id === cid);
-              return `<button type="button" class="student-class-tab ${cid === currentClassId ? 'active' : ''}" data-switch-class-tab="${cid}" style="font-weight:700;">${escapeHtml(c?.code || cid)}</button>`;
+              const isOld = historicalOldClassIds.includes(cid);
+              const isMk = makeupOnlyClassIds.includes(cid);
+              const extraBadge = isOld
+                ? ' <span style="font-size:11px; padding:1px 6px; border-radius:999px; background:#e2e8f0; color:#475569;">Lớp cũ</span>'
+                : isMk
+                  ? ' <span style="font-size:11px; padding:1px 6px; border-radius:999px; background:#f3e8ff; color:#6b21a8;">Học bù</span>'
+                  : '';
+              return `<button type="button" class="student-class-tab ${cid === currentClassId ? 'active' : ''} ${isOld ? 'old-class-tab' : ''} ${isMk ? 'makeup-class-tab' : ''}" data-switch-class-tab="${cid}" style="font-weight:700;">${escapeHtml(c?.code || cid)}${extraBadge}</button>`;
             }).join('')}
           </div>
         </div>
@@ -4152,7 +4215,10 @@ export function setupFeatures(ctx) {
           <div style="margin: 12px 0 6px;">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
               <div>
-                <h4 style="margin:0; color:#233d31; font:700 13px Manrope,sans-serif;"> Tình hình học tại lớp: <span style="color:#215f33; font-weight:800;">${escapeHtml(targetClass?.code || clsId)}</span></h4>
+                <h4 style="margin:0; color:#233d31; font:700 13px Manrope,sans-serif;"> Tình hình học tại lớp: <span style="color:#215f33; font-weight:800;">${escapeHtml(targetClass?.code || clsId)}</span>
+                  ${isOldTransferredClass ? '<span style="font-size:11.5px; padding:2px 8px; border-radius:999px; background:#e2e8f0; color:#334155; margin-left:6px;">Lớp cũ đã chuyển (Bảo lưu dữ liệu)</span>' : ''}
+                  ${isMakeupOnlyClass ? '<span style="font-size:11.5px; padding:2px 8px; border-radius:999px; background:#f3e8ff; color:#6b21a8; margin-left:6px;">Lớp học bù</span>' : ''}
+                </h4>
                 <small style="color:#728375;">${escapeHtml(formatBirthYearLabel(targetClass?.grade))} · GV: ${escapeHtml(targetClass?.teacherName || '—')} · TA: ${escapeHtml(targetClass?.assistantName || '—')}</small>
               </div>
             </div>
@@ -4217,12 +4283,17 @@ export function setupFeatures(ctx) {
                     ? `<span class="room-chip" style="background:#ede9fe; color:#5b21b6; font-weight:700;">Test: ${s.testScore}đ</span>`
                     : '';
 
+                  const makeupBadge = s.isMakeupSession
+                    ? `<span class="makeup-status-badge" title="Ca học bù từ lớp ${escapeHtml(s.makeupSourceClassName || 'Lớp chính')}">Học bù${s.makeupSourceClassName ? ` (từ ${escapeHtml(s.makeupSourceClassName)})` : ''}</span>`
+                    : '';
+
                   return `
                     <div class="student-session-item ${isOpen ? 'open' : ''}" data-session-date="${escapeHtml(s.date)}">
                       <div class="student-session-header" data-toggle-session="${escapeHtml(s.date)}">
                         <div class="student-session-title-wrap">
                           <span class="student-session-date"> ${escapeHtml(s.shortDate)}</span>
                           <span class="student-session-lesson">${escapeHtml(s.lessonTitle)}</span>
+                          ${makeupBadge}
                         </div>
                         <div class="student-session-badges">
                           ${attBadge}
@@ -4289,13 +4360,24 @@ export function setupFeatures(ctx) {
         `;
       }
 
-      const enrolledNamesList = classIds
+      const enrolledNamesList = activeClassIds
         .map(cid => {
           if (cid === TUTORING_CLASS_ID) return 'BOTRO';
           const c = catalog.find(x => x.id === cid);
           return c ? (c.code || c.name) : cid;
         })
         .filter(Boolean);
+
+      const oldNamesList = historicalOldClassIds
+        .map(cid => {
+          const c = catalog.find(x => x.id === cid);
+          return c ? (c.code || c.name) : cid;
+        })
+        .filter(Boolean);
+
+      const heroWarnTagHtml = ctx.renderStudentWarningTag
+        ? ctx.renderStudentWarningTag(student, currentClassId, true)
+        : '';
 
       const html = `
         <div class="student-profile-hero-card">
@@ -4305,8 +4387,12 @@ export function setupFeatures(ctx) {
               <div class="student-hero-name-wrap">
                 <strong class="student-hero-name">${escapeHtml(student.name)}</strong>
                 ${renderStudentTagsBadges(student)}
+                ${heroWarnTagHtml}
               </div>
-              <span class="enrollment-status-pill status-text-hoc">● ${escapeHtml(student.enrollmentStatus || 'Học')}</span>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <button type="button" class="outline-button" id="profile-transfer-class-btn" style="padding:4px 10px; font-size:12.5px; font-weight:700; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;" title="Chuyển lớp cho học sinh và bảo lưu toàn bộ dữ liệu lớp cũ">⇄ Chuyển lớp</button>
+                <span class="enrollment-status-pill status-text-hoc">● ${escapeHtml(student.enrollmentStatus || 'Học')}</span>
+              </div>
             </div>
             <div class="student-hero-meta-grid">
               <div class="hero-meta-item">
@@ -4319,12 +4405,18 @@ export function setupFeatures(ctx) {
               </div>
               <div class="hero-meta-item">
                 <span class="hero-meta-label">Phụ huynh</span>
-                <strong class="hero-meta-value">${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong>
+                <strong class="hero-meta-value">${escapeHtml([student.parentContact?.name, student.parentContact?.phone].filter(Boolean).join(' · ') || 'Chưa cập nhật')}</strong>
               </div>
               <div class="hero-meta-item">
                 <span class="hero-meta-label">Các lớp đang học</span>
                 <strong class="hero-meta-value">${escapeHtml(enrolledNamesList.length ? enrolledNamesList.join(', ') : 'Chưa xếp lớp')}</strong>
               </div>
+              ${oldNamesList.length ? `
+                <div class="hero-meta-item">
+                  <span class="hero-meta-label">Lớp cũ đã học (Bảo lưu)</span>
+                  <strong class="hero-meta-value" style="color:#475569;">${escapeHtml(oldNamesList.join(', '))}</strong>
+                </div>
+              ` : ''}
               ${student.officeNotes ? `
                 <div class="hero-meta-item hero-meta-wide">
                   <span class="hero-meta-label">Ghi chú văn phòng</span>
@@ -4353,6 +4445,31 @@ export function setupFeatures(ctx) {
       // Wire tabs
       $('#student-class-profile-content').querySelectorAll('[data-switch-class-tab]').forEach(btn => {
         btn.onclick = () => renderContent(btn.dataset.switchClassTab);
+      });
+
+      // Wire class transfer button in profile hero
+      const profileTransferBtn = $('#student-class-profile-content').querySelector('#profile-transfer-class-btn');
+      if (profileTransferBtn) {
+        profileTransferBtn.onclick = () => {
+          openBulkStudentActionDialog({
+            mode: 'move-class',
+            studentIds: [student.id],
+            currentClassId: activeClassIds.includes(currentClassId) ? currentClassId : (activeClassIds[0] || null),
+            onComplete: () => {
+              openStudentClassProfile(student.id);
+            }
+          });
+        };
+      }
+
+      // Wire warning tag edit button in profile hero
+      $('#student-class-profile-content').querySelectorAll('[data-edit-warning]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          if (ctx.openEditStudentWarningDialog) {
+            ctx.openEditStudentWarningDialog(btn.dataset.editWarning, btn.dataset.warnClass || currentClassId);
+          }
+        };
       });
 
       // Wire class-specific learning note auto-save
@@ -4999,7 +5116,7 @@ export function setupFeatures(ctx) {
     const lateQueueIds = getLateQueue();
     const regularRoster = classStudents();
     const allMakeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
-    const sessionMakeups = allMakeups.filter(m =>
+    const sessionMakeups = ctx.sessionMakeupStudents ? ctx.sessionMakeupStudents() : allMakeups.filter(m =>
       (m.attendingClassId === currentClass.id && m.attendingSessionDate === date) ||
       entries.some(e => e.entry.studentId === m.id) ||
       lateQueueIds.includes(m.id)
@@ -5089,7 +5206,8 @@ export function setupFeatures(ctx) {
         ? sessionMakeups.map(s => {
             const seated = entries.find(p => p.entry.studentId === s.id);
             const hwSc = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '');
-            return `   - ${s.name} (Bù từ: ${s.sourceClassName || 'Lớp khác'})${hwSc ? ` · BTVN: ${hwSc}đ` : ''}${getNote(s, seated)}`;
+            const srcCls = ctx.getMakeupSourceClassDisplay ? ctx.getMakeupSourceClassDisplay(s) : (s.sourceClassName || 'Lớp khác');
+            return `   - ${s.name} (Bù từ: ${srcCls})${hwSc ? ` · BTVN: ${hwSc}đ` : ''}${getNote(s, seated)}`;
           })
         : ['   - Không có học sinh học bù.']),
       `5. Vắng mặt (${absentList.length} HS):`,
@@ -5138,14 +5256,25 @@ export function setupFeatures(ctx) {
           : `Gỡ Tag khỏi ${studentIds.length} học sinh`;
 
     const presetTags = ['Mới', 'Cần chú ý', 'HS Giỏi', 'Mục tiêu 9+', 'Hay quên BTVN'];
+    const fromClassObj = currentClassId ? catalog.find(c => c.id === currentClassId) : null;
 
     dlg.innerHTML = `
       <form id="bulk-student-action-form" class="dialog-form">
         <button type="button" class="close-button" id="close-bulk-action-dlg" aria-label="Đóng">×</button>
-        <div class="eyebrow">THAO TÁC HÀNG LOẠT (${studentIds.length} HỌC SINH)</div>
+        <div class="eyebrow">THAO TÁC LỚP & TAG (${studentIds.length} HỌC SINH)</div>
         <h2>${escapeHtml(titleText)}</h2>
         ${isClassMode ? `
-          <label class="field-label">Chọn lớp đích:
+          ${mode === 'move-class' ? `
+            <div style="background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3; padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:10px; line-height:1.45;">
+              <strong>🛡 Bảo lưu 100% dữ liệu lớp cũ:</strong> Khi chuyển lớp, học sinh sẽ chuyển sang danh sách lớp mới, nhưng <strong>toàn bộ lịch sử điểm danh, điểm BTVN/Test và ghi chú ở lớp cũ vẫn được giữ nguyên</strong> trong Hồ sơ học sinh (mục <em>Lớp cũ</em>).
+            </div>
+            ${fromClassObj ? `
+              <div style="font-size:13.5px; color:#334155; margin-bottom:8px;">
+                Lớp chuyển đi: <strong>[${escapeHtml(fromClassObj.code || fromClassObj.id)}] ${escapeHtml(fromClassObj.name)}</strong>
+              </div>
+            ` : ''}
+          ` : ''}
+          <label class="field-label">Chọn lớp đích chuyển đến:
             <select id="bulk-action-target-class" required>
               ${catalog.filter(c => mode !== 'move-class' || c.id !== currentClassId).map(c => `
                 <option value="${escapeHtml(c.id)}">[${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)} (${escapeHtml(formatBirthYearLabel(c.grade))})</option>
@@ -5154,7 +5283,7 @@ export function setupFeatures(ctx) {
           </label>
           ${mode === 'move-class' && !currentClassId ? `
             <label class="time-toggle" style="margin-top:10px;">
-              <input type="checkbox" id="bulk-move-replace-all" checked /> Thay thế toàn bộ lớp cũ bằng lớp mới này
+              <input type="checkbox" id="bulk-move-replace-all" checked /> Chuyển từ tất cả các lớp hiện tại sang lớp mới này (vẫn lưu lịch sử lớp cũ)
             </label>
           ` : ''}
         ` : `
@@ -5196,11 +5325,33 @@ export function setupFeatures(ctx) {
         if (!targetClassId) return;
         const targetCls = catalog.find(c => c.id === targetClassId);
         const replaceAll = Boolean(dlg.querySelector('#bulk-move-replace-all')?.checked);
+        const transferDate = getChecklistDate();
 
         [...allStudents, ...makeups].forEach(s => {
           if (!idSet.has(s.id)) return;
           s.classIds = Array.isArray(s.classIds) ? s.classIds : [];
+          s.previousClassIds = Array.isArray(s.previousClassIds) ? s.previousClassIds : [];
+          s.classTransferHistory = Array.isArray(s.classTransferHistory) ? s.classTransferHistory : [];
+
           if (mode === 'move-class') {
+            const removedClasses = currentClassId
+              ? s.classIds.filter(cid => cid === currentClassId)
+              : (replaceAll ? [...s.classIds] : []);
+
+            removedClasses.forEach(oldCid => {
+              if (oldCid && oldCid !== targetClassId) {
+                if (!s.previousClassIds.includes(oldCid)) {
+                  s.previousClassIds.push(oldCid);
+                }
+                s.classTransferHistory.push({
+                  fromClassId: oldCid,
+                  toClassId: targetClassId,
+                  date: transferDate,
+                  timestamp: Date.now()
+                });
+              }
+            });
+
             if (currentClassId) {
               s.classIds = s.classIds.filter(cid => cid !== currentClassId);
             } else if (replaceAll) {
@@ -5210,16 +5361,18 @@ export function setupFeatures(ctx) {
           if (!s.classIds.includes(targetClassId)) {
             s.classIds.push(targetClassId);
           }
+          // If the student is transferring back into a class that was previously in previousClassIds, keep it in classTransferHistory, or remove from previousClassIds so it shows as active
+          s.previousClassIds = s.previousClassIds.filter(cid => !s.classIds.includes(cid));
         });
 
         saveStudentRecords(allStudents, makeups);
         window.__logAdminSessionAction?.(
-          `${mode === 'move-class' ? 'Chuyển lớp hàng loạt' : 'Thêm vào lớp khác hàng loạt'} (${studentIds.length} HS)`,
+          `${mode === 'move-class' ? 'Chuyển lớp (Bảo lưu dữ liệu lớp cũ)' : 'Thêm vào lớp khác'} (${studentIds.length} HS)`,
           `Lớp đích: ${targetCls?.code || targetCls?.name || targetClassId}`,
           'student'
         );
         dlg.close();
-        toast(`${mode === 'move-class' ? 'Đã chuyển' : 'Đã thêm'} ${studentIds.length} học sinh vào lớp ${targetCls?.code || targetCls?.name || targetClassId}.`);
+        toast(`${mode === 'move-class' ? 'Đã chuyển lớp (vẫn lưu dữ liệu lớp cũ trong hồ sơ)' : 'Đã thêm'} ${studentIds.length} học sinh vào lớp ${targetCls?.code || targetCls?.name || targetClassId}.`);
       } else {
         const rawTag = (dlg.querySelector('#bulk-action-tag-input')?.value || '').trim();
         if (mode === 'add-tag' && !rawTag) return;
@@ -5737,6 +5890,497 @@ export function setupFeatures(ctx) {
     toast('✓ Đã áp dụng thứ tự cột mới cho bảng hiển thị và xuất file.');
   });
 
+  // ====================================================
+  // TÍNH NĂNG NHẬP ĐIỂM BẰNG FILE EXCEL THEO MÃ HỌC SINH (#import-scores-dialog)
+  // ====================================================
+  let scoreImportRawRows = [];
+  let scoreImportColRoles = {};
+  let scoreImportHasHeader = true;
+
+  function findStudentByCodeOrName(codeRaw, nameRaw) {
+    const codeNorm = String(codeRaw || '').trim().toUpperCase();
+    const nameNorm = String(nameRaw || '').trim().toLowerCase();
+    const curCls = getActiveClassConfig();
+    const curDate = getChecklistDate();
+    const makeupsInSess = ctx.sessionMakeupStudents
+      ? ctx.sessionMakeupStudents()
+      : (ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === curCls.id && m.attendingSessionDate === curDate) : []);
+    const sessionPool = [...classStudents(), ...makeupsInSess];
+    const allPool = [...getStudents(), ...(ctx.getMakeupStudents ? ctx.getMakeupStudents() : [])];
+
+    if (codeNorm) {
+      const exactInSession = sessionPool.find(s => String(s.studentCode || '').trim().toUpperCase() === codeNorm);
+      if (exactInSession) return { student: exactInSession, inCurrentSession: true };
+      const exactInAll = allPool.find(s => String(s.studentCode || '').trim().toUpperCase() === codeNorm);
+      if (exactInAll) return { student: exactInAll, inCurrentSession: false };
+    }
+    if (nameNorm) {
+      const byNameInSession = sessionPool.find(s => String(s.name || '').trim().toLowerCase() === nameNorm);
+      if (byNameInSession) return { student: byNameInSession, inCurrentSession: true };
+    }
+    return null;
+  }
+
+  function renderScoreImportPreview() {
+    const wrap = $('#import-scores-preview-wrap');
+    const thead = $('#import-scores-preview-thead');
+    const tbody = $('#import-scores-preview-tbody');
+    const badge = $('#import-scores-match-badge');
+    if (!wrap || !thead || !tbody) return;
+
+    if (!scoreImportRawRows.length) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+
+    const maxCols = Math.max(...scoreImportRawRows.map(r => r.length), 1);
+    const headerRow = scoreImportHasHeader ? (scoreImportRawRows[0] || []) : [];
+
+    thead.innerHTML = `
+      <tr style="background:#eef2ff;">
+        <th style="width:42px; text-align:center;">#</th>
+        ${Array.from({ length: maxCols }, (_, c) => {
+          const curRole = scoreImportColRoles[c] || 'ignore';
+          return `
+            <th style="padding:6px;">
+              <select class="score-col-role-select" data-score-col-idx="${c}" style="width:100%; padding:5px 6px; border-radius:6px; border:1px solid ${curRole !== 'ignore' ? '#4f46e5' : '#cbd5e1'}; background:${curRole !== 'ignore' ? '#e0e7ff' : '#fff'}; font-weight:700; font-size:12.5px; color:#1e293b;">
+                ${SCORE_IMPORT_COLUMN_ROLE_OPTIONS.map(opt => `<option value="${escapeHtml(opt.value)}" ${opt.value === curRole ? 'selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
+              </select>
+              ${scoreImportHasHeader ? `<div style="font-size:11.5px; color:#64748b; margin-top:3px; font-weight:600;">Tiêu đề: ${escapeHtml(headerRow[c] || '—')}</div>` : ''}
+            </th>
+          `;
+        }).join('')}
+        <th style="min-width:190px;">Khớp học sinh trong lớp</th>
+      </tr>
+    `;
+
+    thead.querySelectorAll('.score-col-role-select').forEach(sel => {
+      sel.onchange = () => {
+        scoreImportColRoles[Number(sel.dataset.scoreColIdx)] = sel.value;
+        renderScoreImportPreview();
+      };
+    });
+
+    const extracted = extractScoresFromGrid(scoreImportRawRows, scoreImportColRoles, scoreImportHasHeader);
+    let matchedCount = 0;
+
+    const dataRows = scoreImportHasHeader ? scoreImportRawRows.slice(1) : scoreImportRawRows;
+    tbody.innerHTML = dataRows.slice(0, 120).map((row, idx) => {
+      const extItem = extracted.find(x => x.rowIndex === idx) || null;
+      const matchInfo = extItem ? findStudentByCodeOrName(extItem.studentCode, extItem.fullName) : null;
+      if (matchInfo?.student) matchedCount++;
+
+      const matchHtml = matchInfo?.student
+        ? `<div style="color:#166534; font-weight:700;">✓ ${escapeHtml(matchInfo.student.name)} <small style="color:#15803d;">(${escapeHtml(matchInfo.student.studentCode || '—')})</small>${!matchInfo.inCurrentSession ? ' <span class="makeup-status-badge">Học bù lớp khác</span>' : ''}</div>`
+        : `<div style="color:#b91c1c; font-weight:600;">× Chưa khớp Mã HS</div>`;
+
+      return `
+        <tr style="${matchInfo?.student ? 'background:#f0fdf4;' : 'background:#fff1f2;'}">
+          <td style="text-align:center; color:#64748b;">${idx + 1}</td>
+          ${Array.from({ length: maxCols }, (_, c) => {
+            const role = scoreImportColRoles[c] || 'ignore';
+            const val = row[c] ?? '';
+            const isHighlight = role === 'studentCode' || role === 'btvnScore' || role === 'testScore';
+            return `<td style="${isHighlight ? 'font-weight:700; color:#1e1b4b;' : 'color:#475569;'}">${escapeHtml(String(val))}</td>`;
+          }).join('')}
+          <td>${matchHtml}</td>
+        </tr>
+      `;
+    }).join('');
+
+    if (badge) {
+      badge.textContent = `Đã khớp ${matchedCount}/${extracted.length} dòng có điểm theo Mã HS`;
+      badge.style.background = matchedCount > 0 ? '#dcfce7' : '#fee2e2';
+      badge.style.color = matchedCount > 0 ? '#166534' : '#991b1b';
+    }
+  }
+
+  function handleScoreImportRowsLoaded(rows) {
+    scoreImportRawRows = (rows || []).filter(r => Array.isArray(r) && r.some(c => String(c || '').trim() !== ''));
+    scoreImportHasHeader = $('#import-scores-has-header-cb') ? $('#import-scores-has-header-cb').checked : true;
+    scoreImportColRoles = autoDetectScoreColumnRoles(scoreImportRawRows, scoreImportHasHeader);
+    renderScoreImportPreview();
+  }
+
+  $('#export-scores-template-btn')?.addEventListener('click', () => {
+    const currentClass = getActiveClassConfig();
+    const date = getChecklistDate();
+    const makeupsInSess = ctx.sessionMakeupStudents ? ctx.sessionMakeupStudents() : [];
+    const roster = [...classStudents(), ...makeupsInSess];
+    const entries = allEntries();
+
+    const headers = ['Mã HS', 'Họ và tên', 'Trường / Phân loại', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học'];
+    const rows = roster.map(s => {
+      const seated = entries.find(p => p.entry.studentId === s.id);
+      const hwObj = seated?.entry.homework || s.homework || {};
+      const hwScore = hwObj.score ?? '';
+      const testScore = seated?.entry.testScore ?? s.testScore ?? '';
+      const note = (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '';
+      const isMk = ctx.isMakeupInCurrentSession ? ctx.isMakeupInCurrentSession(s) : false;
+      return [
+        s.studentCode || '',
+        s.name || '',
+        isMk ? `Học bù (${ctx.getMakeupSourceClassDisplay ? ctx.getMakeupSourceClassDisplay(s) : 'Lớp khác'})` : (s.school || ''),
+        hwScore !== null && hwScore !== undefined ? String(hwScore) : '',
+        testScore !== null && testScore !== undefined ? String(testScore) : '',
+        note
+      ];
+    });
+
+    const outName = exportToExcel(headers, rows, `MauNhapDiem_${currentClass.code || currentClass.id}_${date}.xlsx`);
+    toast(`Đã xuất file mẫu nhập điểm Excel: ${outName}`);
+  });
+
+  $('#import-scores-excel-btn')?.addEventListener('click', () => {
+    scoreImportRawRows = [];
+    scoreImportColRoles = {};
+    if ($('#import-scores-file-input')) $('#import-scores-file-input').value = '';
+    if ($('#import-scores-raw-input')) $('#import-scores-raw-input').value = '';
+    if ($('#import-scores-preview-wrap')) $('#import-scores-preview-wrap').hidden = true;
+    $('#import-scores-dialog')?.showModal();
+  });
+
+  $('#close-import-scores-dialog')?.addEventListener('click', () => $('#import-scores-dialog')?.close());
+  $('#cancel-import-scores-btn')?.addEventListener('click', () => $('#import-scores-dialog')?.close());
+
+  $('#import-scores-has-header-cb')?.addEventListener('change', () => {
+    scoreImportHasHeader = Boolean($('#import-scores-has-header-cb')?.checked);
+    scoreImportColRoles = autoDetectScoreColumnRoles(scoreImportRawRows, scoreImportHasHeader);
+    renderScoreImportPreview();
+  });
+
+  $('#import-scores-raw-input')?.addEventListener('input', (e) => {
+    const raw = e.target.value || '';
+    if (!raw.trim()) {
+      scoreImportRawRows = [];
+      renderScoreImportPreview();
+      return;
+    }
+    const parsed = parseRawTable(raw);
+    handleScoreImportRowsLoaded(parsed);
+  });
+
+  $('#import-scores-file-input')?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    const reader = new FileReader();
+    if (isExcel) {
+      reader.onload = async (ev) => {
+        try {
+          const rows = await parseXlsxArrayBuffer(ev.target.result);
+          handleScoreImportRowsLoaded(rows);
+          toast(`Đã đọc ${rows.length} dòng từ file Excel "${file.name}".`);
+        } catch (err) {
+          toast(`Lỗi đọc file Excel: ${err.message || err}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (ev) => {
+        const rows = parseRawTable(String(ev.target.result || ''));
+        handleScoreImportRowsLoaded(rows);
+        toast(`Đã đọc ${rows.length} dòng từ file "${file.name}".`);
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+  });
+
+  $('#confirm-import-scores-btn')?.addEventListener('click', () => {
+    if (!scoreImportRawRows.length) {
+      toast('Vui lòng tải file Excel hoặc dán dữ liệu Mã HS kèm điểm trước khi áp dụng.');
+      return;
+    }
+    const extracted = extractScoresFromGrid(scoreImportRawRows, scoreImportColRoles, scoreImportHasHeader);
+    if (!extracted.length) {
+      toast('Không tìm thấy dòng dữ liệu nào có Mã HS và Điểm số hợp lệ.');
+      return;
+    }
+    if (ctx.applyBatchImportedScores) {
+      const res = ctx.applyBatchImportedScores(extracted);
+      $('#import-scores-dialog')?.close();
+      toast(`✓ Đã nhập điểm thành công cho ${res.matched} học sinh (BTVN tự động chuyển sang "Đã nộp")${res.unmatched ? ` · ${res.unmatched} mã chưa khớp` : ''}.`);
+    }
+  });
+
+  // ====================================================
+  // TÍNH NĂNG ĐỒNG BỘ GOOGLE SHEETS 2 CHIỀU DỰA TRÊN MÃ HỌC SINH (#google-sheets-sync-dialog)
+  // ====================================================
+  function setSheetsSyncStatus(message, isError = false) {
+    const banner = $('#sheets-sync-status-banner');
+    if (!banner) return;
+    banner.hidden = false;
+    banner.style.background = isError ? '#fef2f2' : '#f0fdf4';
+    banner.style.borderColor = isError ? '#fecaca' : '#bbf7d0';
+    banner.style.color = isError ? '#991b1b' : '#166534';
+    banner.innerHTML = message;
+  }
+
+  function populateSheetsSyncClassFilter() {
+    const sel = $('#sheets-sync-class-filter');
+    if (!sel) return;
+    const catalog = getClassCatalog();
+    const curVal = sel.value || getCurrentClassId() || 'all';
+    sel.innerHTML = `<option value="all">Toàn bộ danh sách học sinh trung tâm (${getStudents().length} HS)</option>` +
+      catalog.map(c => `<option value="${escapeHtml(c.id)}">Lớp [${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)}</option>`).join('');
+    if ([...sel.options].some(o => o.value === curVal)) sel.value = curVal;
+  }
+
+  function readAndSaveSheetsConfigFromDialog() {
+    const rawId = ($('#sheets-spreadsheet-id')?.value || '').trim();
+    const spreadsheetId = extractSpreadsheetId(rawId) || rawId;
+    const sheetName = ($('#sheets-tab-name')?.value || 'DiemDanh').trim() || 'DiemDanh';
+    const scriptUrl = ($('#sheets-script-url-input')?.value || '').trim();
+    const autoSync = Boolean($('#sheets-autosync-toggle')?.checked);
+    const cfg = { spreadsheetId, sheetName, scriptUrl, autoSync };
+    saveGoogleSheetsConfig(cfg);
+    return cfg;
+  }
+
+  function buildStudentSyncRowsForClass(targetClassId = 'all') {
+    const catalog = getClassCatalog();
+    const activeCls = targetClassId !== 'all'
+      ? (catalog.find(c => c.id === targetClassId) || getActiveClassConfig())
+      : getActiveClassConfig();
+    const date = getChecklistDate();
+    const entries = allEntries();
+    const lateQueueIds = getLateQueue();
+
+    const pool = targetClassId === 'all'
+      ? [...getStudents()]
+      : [
+          ...getStudents().filter(s => (s.classIds || []).includes(targetClassId)),
+          ...(targetClassId === getCurrentClassId() && ctx.sessionMakeupStudents ? ctx.sessionMakeupStudents() : [])
+        ];
+
+    return pool.map(s => {
+      const parts = splitVietnameseName(s.name);
+      const fam = s.familyName ?? parts.familyName;
+      const giv = s.givenName ?? parts.givenName;
+      const seated = entries.find(p => p.entry.studentId === s.id);
+      const isCurrentSession = targetClassId === getCurrentClassId() || targetClassId === 'all';
+      const hwObj = isCurrentSession ? (seated?.entry.homework || s.homework || {}) : (s.homework || {});
+      const isLate = isCurrentSession && ctx.isStudentLateInSession
+        ? ctx.isStudentLateInSession(s, seated?.entry || null, activeCls, date)
+        : false;
+      const isPresent = isCurrentSession ? Boolean(seated || lateQueueIds.includes(s.id)) : false;
+      const attStatus = isCurrentSession
+        ? (isPresent ? (isLate ? 'Đi muộn' : 'Có mặt') : (s.attendance?.status === 'absent_excused' ? 'Vắng có phép' : s.attendance?.status === 'absent_unexcused' ? 'Vắng không phép' : 'Chưa điểm danh'))
+        : '';
+      const hwStatus = hwObj.status === 'submitted' || hwObj.status === 'graded'
+        ? 'Đã nộp'
+        : hwObj.status === 'not_submitted'
+          ? `Chưa nộp (${hwObj.reason || 'Chưa làm'})`
+          : 'Chưa thu';
+      const btvnScore = hwObj.score ?? '';
+      const testScore = (isCurrentSession ? (seated?.entry.testScore ?? s.testScore) : s.testScore) ?? '';
+      const sessionNote = (isCurrentSession && ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '';
+      const classCodes = (s.classIds || []).map(cid => {
+        const c = catalog.find(x => x.id === cid);
+        return c ? (c.code || c.id) : cid;
+      }).join(', ');
+      const oldClassCodes = (s.previousClassIds || []).map(cid => {
+        const c = catalog.find(x => x.id === cid);
+        return c ? (c.code || c.id) : cid;
+      }).join(', ');
+
+      return {
+        studentCode: s.studentCode || '',
+        familyName: fam || '',
+        givenName: giv || '',
+        fullName: s.name || '',
+        school: s.school || '',
+        parentName: s.parentContact?.name || '',
+        parentPhone: s.parentContact?.phone || '',
+        enrollmentStatus: s.enrollmentStatus || 'Học',
+        classCodes,
+        oldClassCodes,
+        attendance: attStatus,
+        homeworkStatus: hwStatus,
+        btvnScore: btvnScore !== null && btvnScore !== undefined ? String(btvnScore) : '',
+        testScore: testScore !== null && testScore !== undefined ? String(testScore) : '',
+        sessionNote,
+        learningNotes: s.learningNotes || ''
+      };
+    });
+  }
+
+  function applyIncomingSyncedRowsByStudentCode(rawRows, sourceLabel = 'Google Sheets') {
+    if (!Array.isArray(rawRows) || !rawRows.length) {
+      toast('Không có dòng dữ liệu nào để đồng bộ.');
+      return { updated: 0, created: 0, scoresUpdated: 0 };
+    }
+    const catalog = getClassCatalog();
+    const allStudents = getStudents();
+    const makeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
+
+    // Hỗ trợ cả mảng 2 chiều (từ TSV/Excel/CSV) hoặc mảng object (từ Apps Script JSON)
+    let normalizedObjects = [];
+    if (Array.isArray(rawRows[0])) {
+      const gridRoles = autoDetectGridColumnRoles(rawRows, true);
+      const scoreRoles = autoDetectScoreColumnRoles(rawRows, true);
+      const headerRow = rawRows[0].map(c => String(c || '').trim().toLowerCase());
+      const dataRows = rawRows.slice(1);
+
+      normalizedObjects = dataRows.map(r => {
+        const obj = {};
+        r.forEach((cellVal, colIdx) => {
+          const val = String(cellVal ?? '').trim();
+          const gRole = gridRoles[colIdx];
+          const sRole = scoreRoles[colIdx];
+          const hText = headerRow[colIdx] || '';
+          if (gRole === 'studentCode' || sRole === 'studentCode' || /mã\s*hs|ma\s*hs|student\s*code/i.test(hText)) obj.studentCode = val;
+          else if (gRole === 'fullName' || sRole === 'fullName' || /họ\s*và\s*tên|họ\s*tên/i.test(hText)) obj.fullName = val;
+          else if (gRole === 'familyName' || /họ\s*đệm/i.test(hText)) obj.familyName = val;
+          else if (gRole === 'givenName' || /^tên$/i.test(hText)) obj.givenName = val;
+          else if (gRole === 'school' || /trường/i.test(hText)) obj.school = val;
+          else if (gRole === 'parentPhone' || /sđt|điện\s*thoại/i.test(hText)) obj.parentPhone = val;
+          else if (gRole === 'parentName' || /phụ\s*huynh/i.test(hText)) obj.parentName = val;
+          else if (gRole === 'status' || /trạng\s*thái\s*theo\s*học|tình\s*trạng/i.test(hText)) obj.enrollmentStatus = val;
+          else if (/mã\s*lớp|lớp\s*đang\s*học|^lớp$/i.test(hText)) obj.classCodes = val;
+          else if (sRole === 'btvnScore' || /điểm\s*btvn|btvn/i.test(hText)) obj.btvnScore = val;
+          else if (sRole === 'testScore' || /điểm\s*test|test|kiểm\s*tra/i.test(hText)) obj.testScore = val;
+          else if (sRole === 'note' || /ghi\s*chú\s*buổi|nhận\s*xét/i.test(hText)) obj.sessionNote = val;
+          else if (/ghi\s*chú\s*học\s*lực|ghi\s*chú\s*chung/i.test(hText)) obj.learningNotes = val;
+        });
+        return obj;
+      });
+    } else {
+      normalizedObjects = rawRows.map(item => ({
+        studentCode: String(item.studentCode || item['Mã HS'] || item['Mã học sinh'] || item.code || '').trim(),
+        fullName: String(item.fullName || item.name || item['Họ và tên'] || '').trim(),
+        familyName: String(item.familyName || item['Họ đệm'] || '').trim(),
+        givenName: String(item.givenName || item['Tên'] || '').trim(),
+        school: String(item.school || item['Trường'] || item['Trường học'] || '').trim(),
+        parentName: String(item.parentName || item['Phụ huynh'] || '').trim(),
+        parentPhone: String(item.parentPhone || item['SĐT Phụ huynh'] || item['SĐT'] || '').trim(),
+        enrollmentStatus: String(item.enrollmentStatus || item['Trạng thái'] || '').trim(),
+        classCodes: String(item.classCodes || item['Mã lớp'] || item['Lớp'] || '').trim(),
+        btvnScore: item.btvnScore ?? item['Điểm BTVN'] ?? '',
+        testScore: item.testScore ?? item['Điểm Test'] ?? '',
+        sessionNote: String(item.sessionNote || item['Ghi chú buổi học'] || item['Ghi chú'] || '').trim(),
+        learningNotes: String(item.learningNotes || item['Ghi chú học lực'] || '').trim()
+      }));
+    }
+
+    let updated = 0;
+    let created = 0;
+    const scoreItems = [];
+    const targetClsFilter = $('#sheets-sync-class-filter')?.value || getCurrentClassId();
+
+    normalizedObjects.forEach(row => {
+      const codeNorm = String(row.studentCode || '').trim().toUpperCase();
+      const composedName = row.fullName || [row.familyName, row.givenName].filter(Boolean).join(' ').trim();
+      if (!codeNorm && !composedName) return;
+
+      let stu = codeNorm
+        ? allStudents.find(s => String(s.studentCode || '').trim().toUpperCase() === codeNorm)
+        : allStudents.find(s => String(s.name || '').trim().toLowerCase() === composedName.toLowerCase());
+
+      // Resolve classIds from classCodes if provided
+      let resolvedClassIds = null;
+      if (row.classCodes) {
+        const tokens = String(row.classCodes).split(/[,;|]+/).map(t => t.trim()).filter(Boolean);
+        const mapped = tokens.map(tk => {
+          const found = catalog.find(c => String(c.code || '').toLowerCase() === tk.toLowerCase() || String(c.id || '').toLowerCase() === tk.toLowerCase() || String(c.name || '').toLowerCase() === tk.toLowerCase());
+          return found ? found.id : null;
+        }).filter(Boolean);
+        if (mapped.length) resolvedClassIds = mapped;
+      }
+
+      if (stu) {
+        if (composedName) {
+          stu.name = composedName;
+          const sp = splitVietnameseName(composedName);
+          stu.familyName = row.familyName || sp.familyName;
+          stu.givenName = row.givenName || sp.givenName;
+        }
+        if (row.school) stu.school = row.school;
+        if (row.parentName || row.parentPhone) {
+          stu.parentContact = stu.parentContact || {};
+          if (row.parentName) stu.parentContact.name = row.parentName;
+          if (row.parentPhone) stu.parentContact.phone = row.parentPhone;
+        }
+        if (row.enrollmentStatus) {
+          stu.enrollmentStatus = normalizeEnrollmentStatus(row.enrollmentStatus);
+        }
+        if (row.learningNotes) {
+          stu.learningNotes = row.learningNotes;
+        }
+        if (resolvedClassIds && resolvedClassIds.length) {
+          const oldIds = (stu.classIds || []).filter(cid => !resolvedClassIds.includes(cid));
+          if (oldIds.length) {
+            stu.previousClassIds = Array.from(new Set([...(stu.previousClassIds || []), ...oldIds]));
+          }
+          stu.classIds = resolvedClassIds;
+        }
+        updated++;
+      } else if (codeNorm && composedName) {
+        const sp = splitVietnameseName(composedName);
+        const defaultClsIds = resolvedClassIds || (targetClsFilter && targetClsFilter !== 'all' ? [targetClsFilter] : [getCurrentClassId()]);
+        stu = {
+          id: `stu-sync-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          studentCode: codeNorm,
+          name: composedName,
+          familyName: row.familyName || sp.familyName,
+          givenName: row.givenName || sp.givenName,
+          school: row.school || '',
+          classIds: defaultClsIds,
+          previousClassIds: [],
+          enrollmentStatus: row.enrollmentStatus ? normalizeEnrollmentStatus(row.enrollmentStatus) : 'Học',
+          parentContact: {
+            name: row.parentName || '',
+            phone: row.parentPhone || ''
+          },
+          learningNotes: row.learningNotes || '',
+          attendance: null,
+          homework: { status: 'uncollected', score: null },
+          scores: [],
+          attendanceHistory: [],
+          sessionNotes: []
+        };
+        allStudents.push(stu);
+        created++;
+      }
+
+      if (stu && (String(row.btvnScore ?? '').trim() !== '' || String(row.testScore ?? '').trim() !== '' || row.sessionNote)) {
+        const parseNum = (v) => {
+          const s = String(v ?? '').trim().replace(',', '.');
+          if (!s) return null;
+          const n = Number(s);
+          return Number.isFinite(n) && n >= 0 && n <= 10 ? Math.round(n * 100) / 100 : null;
+        };
+        const bScore = parseNum(row.btvnScore);
+        const tScore = parseNum(row.testScore);
+        if (bScore !== null || tScore !== null || row.sessionNote) {
+          scoreItems.push({
+            studentCode: stu.studentCode,
+            fullName: stu.name,
+            btvnScore: bScore,
+            testScore: tScore,
+            note: row.sessionNote || ''
+          });
+        }
+      }
+    });
+
+    saveStudentRecords(allStudents, makeups);
+    let scoresUpdated = 0;
+    if (scoreItems.length && ctx.applyBatchImportedScores) {
+      const res = ctx.applyBatchImportedScores(scoreItems);
+      scoresUpdated = res.matched || 0;
+    } else {
+      ctx.refreshAllActiveViews?.();
+      renderMasterStudentDirectory();
+    }
+
+    const msg = `✓ Đồng bộ từ ${sourceLabel} theo Mã HS hoàn tất: Cập nhật <strong>${updated}</strong> HS · Thêm mới <strong>${created}</strong> HS${scoresUpdated ? ` · Nhập điểm <strong>${scoresUpdated}</strong> HS` : ''}.`;
+    setSheetsSyncStatus(msg, false);
+    toast(`Đồng bộ thành công: Cập nhật ${updated} HS, Thêm mới ${created} HS${scoresUpdated ? `, Nhập điểm ${scoresUpdated} HS` : ''}.`);
+    return { updated, created, scoresUpdated };
+  }
+
   $('#google-sheets-sync-btn')?.addEventListener('click', () => {
     const driveCfg = loadGoogleDrivePhotoConfig();
     if ($('#drive-script-url-input')) $('#drive-script-url-input').value = driveCfg.scriptUrl || '';
@@ -5744,16 +6388,116 @@ export function setupFeatures(ctx) {
     const cfg = loadGoogleSheetsConfig();
     if ($('#sheets-spreadsheet-id')) $('#sheets-spreadsheet-id').value = cfg.spreadsheetId || '';
     if ($('#sheets-tab-name')) $('#sheets-tab-name').value = cfg.sheetName || 'DiemDanh';
+    if ($('#sheets-script-url-input')) $('#sheets-script-url-input').value = cfg.scriptUrl || '';
     if ($('#sheets-autosync-toggle')) $('#sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
+    if ($('#sheets-sync-status-banner')) $('#sheets-sync-status-banner').hidden = true;
+    populateSheetsSyncClassFilter();
     $('#google-sheets-sync-dialog')?.showModal();
   });
   $('#close-sheets-sync-dialog')?.addEventListener('click', () => $('#google-sheets-sync-dialog')?.close());
   $('#close-sheets-sync-btn')?.addEventListener('click', () => $('#google-sheets-sync-dialog')?.close());
+
+  $('#trigger-sheets-sync-btn')?.addEventListener('click', async () => {
+    const cfg = readAndSaveSheetsConfigFromDialog();
+    const targetCls = $('#sheets-sync-class-filter')?.value || 'all';
+    const rows = buildStudentSyncRowsForClass(targetCls);
+    setSheetsSyncStatus(`⏳ Đang đẩy ${rows.length} học sinh (theo Mã HS) lên Google Sheets...`, false);
+    const res = await syncSessionToGoogleSheets({
+      classId: targetCls,
+      date: getChecklistDate(),
+      students: rows
+    }, cfg);
+    setSheetsSyncStatus(escapeHtml(res.message), !res.success);
+    toast(res.message);
+  });
+
+  $('#pull-sheets-sync-btn')?.addEventListener('click', async () => {
+    const cfg = readAndSaveSheetsConfigFromDialog();
+    setSheetsSyncStatus('⏳ Đang kéo dữ liệu từ Google Sheets về Web theo Mã HS...', false);
+    const res = await pullStudentsFromGoogleSheets(cfg);
+    if (!res.success) {
+      setSheetsSyncStatus(escapeHtml(res.message), true);
+      toast(res.message);
+      return;
+    }
+    applyIncomingSyncedRowsByStudentCode(res.rows, 'Google Sheets (Trực tuyến)');
+  });
+
+  $('#copy-sheets-tsv-btn')?.addEventListener('click', () => {
+    readAndSaveSheetsConfigFromDialog();
+    const targetCls = $('#sheets-sync-class-filter')?.value || 'all';
+    const rows = buildStudentSyncRowsForClass(targetCls);
+    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh', 'Trạng thái', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
+    const tsvLines = [
+      headers.join('\t'),
+      ...rows.map(r => [
+        r.studentCode, r.familyName, r.givenName, r.fullName, r.school,
+        r.parentName, r.parentPhone, r.enrollmentStatus, r.classCodes, r.oldClassCodes,
+        r.attendance, r.homeworkStatus, r.btvnScore, r.testScore,
+        String(r.sessionNote || '').replace(/[\r\n\t]+/g, ' '),
+        String(r.learningNotes || '').replace(/[\r\n\t]+/g, ' ')
+      ].join('\t'))
+    ];
+    navigator.clipboard?.writeText(tsvLines.join('\n')).then(() => {
+      setSheetsSyncStatus(`✓ Đã copy ${rows.length} dòng chuẩn TSV theo Mã HS vào bộ nhớ tạm. Mở Google Sheets và nhấn <strong>Ctrl+V</strong>!`, false);
+      toast(`Đã copy ${rows.length} học sinh chuẩn Google Sheets (Ctrl+V để dán).`);
+    });
+  });
+
+  $('#export-sheets-xlsx-btn')?.addEventListener('click', () => {
+    readAndSaveSheetsConfigFromDialog();
+    const targetCls = $('#sheets-sync-class-filter')?.value || 'all';
+    const rows = buildStudentSyncRowsForClass(targetCls);
+    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh', 'Trạng thái', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
+    const data = rows.map(r => [
+      r.studentCode, r.familyName, r.givenName, r.fullName, r.school,
+      r.parentName, r.parentPhone, r.enrollmentStatus, r.classCodes, r.oldClassCodes,
+      r.attendance, r.homeworkStatus, r.btvnScore, r.testScore, r.sessionNote, r.learningNotes
+    ]);
+    const outName = exportToExcel(headers, data, `DongBoGoogleSheet_MaHS_${getChecklistDate()}.xlsx`);
+    toast(`Đã tải về file Excel đồng bộ theo Mã HS: ${outName}`);
+  });
+
+  $('#sheets-sync-file-input')?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    const reader = new FileReader();
+    if (isExcel) {
+      reader.onload = async (ev) => {
+        try {
+          const rows = await parseXlsxArrayBuffer(ev.target.result);
+          applyIncomingSyncedRowsByStudentCode(rows, `File "${file.name}"`);
+        } catch (err) {
+          toast(`Lỗi đọc file: ${err.message || err}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (ev) => {
+        const rows = parseRawTable(String(ev.target.result || ''));
+        applyIncomingSyncedRowsByStudentCode(rows, `File "${file.name}"`);
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+  });
+
+  $('#apply-sheets-paste-sync-btn')?.addEventListener('click', () => {
+    const raw = ($('#sheets-paste-sync-input')?.value || '').trim();
+    if (!raw) {
+      toast('Vui lòng dán vùng dữ liệu từ Google Sheets (có cột Mã HS) vào ô bên trên.');
+      return;
+    }
+    const rows = parseRawTable(raw);
+    applyIncomingSyncedRowsByStudentCode(rows, 'Bảng dán Google Sheets');
+  });
+
   $('#save-drive-photo-config-btn')?.addEventListener('click', () => {
     const scriptUrl = ($('#drive-script-url-input')?.value || '').trim();
     const folderId = ($('#drive-folder-id-input')?.value || '').trim();
     saveGoogleDrivePhotoConfig({ scriptUrl, folderId });
-    toast('✓ Đã lưu cấu hình kết nối kho ảnh chân dung Google Drive.');
+    readAndSaveSheetsConfigFromDialog();
+    toast('✓ Đã lưu cấu hình kết nối Google Sheets & Google Drive.');
   });
   $('#system-help-btn')?.addEventListener('click', () => {
     toast('Quản lý học sinh v3.1: Chọn lớp tại Menu Đi làm → Sơ đồ lớp (Thu BTVN & Điểm danh) → Nhập điểm → Checklist & Kết ca.');

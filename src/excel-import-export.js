@@ -965,20 +965,204 @@ export async function parseXlsxArrayBuffer(arrayBuffer) {
   return rows;
 }
 
+// ============================================================================
+// NHẬP ĐIỂM NHANH TỪ FILE EXCEL / DÁN BẢNG TÍNH THEO MÃ HỌC SINH (BTVN & TEST)
+// ============================================================================
+export const SCORE_IMPORT_COLUMN_ROLE_OPTIONS = [
+  { value: 'ignore', label: '— Bỏ qua cột này —' },
+  { value: 'studentCode', label: 'Mã học sinh (Bắt buộc / Ưu tiên)' },
+  { value: 'hwScore', label: 'Điểm BTVN (0 - 10)' },
+  { value: 'testScore', label: 'Điểm Test / Kiểm tra (0 - 10)' },
+  { value: 'note', label: 'Ghi chú buổi học' },
+  { value: 'fullName', label: 'Họ và tên (Phụ trợ đối chiếu)' }
+];
+
+function _isLikelyScoreVal(val) {
+  const s = String(val || '').trim().replace(',', '.');
+  if (!s) return false;
+  if (s === '/') return true;
+  if (!/^\d{1,2}(\.\d{1,2})?$/.test(s)) return false;
+  const n = Number(s);
+  return !Number.isNaN(n) && n >= 0 && n <= 10;
+}
+
+function _isLikelyStudentCodeVal(val) {
+  const s = String(val || '').trim();
+  if (!s || s.length < 2 || s.length > 24) return false;
+  if (_isLikelyScoreVal(s) && s.length <= 3) return false;
+  return /^(?:2?K\d{1,2}[._-]?\d+|HS[._-]?\d+|[A-Z]{1,5}[._-]?\d{2,6}|\d{3,8})$/i.test(s);
+}
+
+export function autoDetectScoreColumnRoles(rows, hasHeader = false) {
+  if (!rows || !rows.length) return [];
+  const maxCols = Math.max(...rows.map(r => r.length));
+  const roles = new Array(maxCols).fill('ignore');
+  const headerRow = hasHeader ? rows[0].map(c => String(c || '').toLowerCase().trim()) : [];
+  const sampleRows = (hasHeader ? rows.slice(1) : rows).slice(0, 30);
+
+  let foundCode = false;
+  let foundHw = false;
+  let foundTest = false;
+  let foundName = false;
+  let foundNote = false;
+
+  if (hasHeader && headerRow.length) {
+    headerRow.forEach((h, idx) => {
+      if (!h) return;
+      if (!foundCode && (h.includes('mã hs') || h.includes('ma hs') || h.includes('mã học sinh') || h.includes('student code') || h === 'mã' || h === 'id')) {
+        roles[idx] = 'studentCode';
+        foundCode = true;
+      } else if (!foundHw && (h.includes('btvn') || h.includes('bài tập') || h.includes('diem btvn') || h.includes('điểm btvn') || h === 'điểm' || h === 'diem')) {
+        roles[idx] = 'hwScore';
+        foundHw = true;
+      } else if (!foundTest && (h.includes('test') || h.includes('kiểm tra') || h.includes('kiem tra') || h.includes('điểm ktra') || h.includes('diem test'))) {
+        roles[idx] = 'testScore';
+        foundTest = true;
+      } else if (!foundNote && (h.includes('ghi chú') || h.includes('ghi chu') || h.includes('nhận xét') || h.includes('note'))) {
+        roles[idx] = 'note';
+        foundNote = true;
+      } else if (!foundName && (h.includes('họ tên') || h.includes('họ và tên') || h.includes('tên') || h.includes('name'))) {
+        roles[idx] = 'fullName';
+        foundName = true;
+      }
+    });
+  }
+
+  if (!sampleRows.length) return roles;
+
+  for (let col = 0; col < maxCols; col++) {
+    if (roles[col] !== 'ignore') continue;
+    const vals = sampleRows.map(r => String(r[col] || '').trim()).filter(Boolean);
+    if (!vals.length) continue;
+
+    const codeRatio = vals.filter(_isLikelyStudentCodeVal).length / vals.length;
+    const scoreRatio = vals.filter(_isLikelyScoreVal).length / vals.length;
+
+    if (!foundCode && codeRatio >= 0.45) {
+      roles[col] = 'studentCode';
+      foundCode = true;
+      continue;
+    }
+    if (scoreRatio >= 0.5) {
+      if (!foundHw) {
+        roles[col] = 'hwScore';
+        foundHw = true;
+        continue;
+      }
+      if (!foundTest) {
+        roles[col] = 'testScore';
+        foundTest = true;
+        continue;
+      }
+    }
+    const nameRatio = vals.filter(v => /[a-zA-ZÀ-ỹ]/.test(v) && !_isLikelyStudentCodeVal(v) && !_isLikelyScoreVal(v)).length / vals.length;
+    if (!foundName && nameRatio >= 0.6) {
+      roles[col] = 'fullName';
+      foundName = true;
+      continue;
+    }
+    if (!foundNote && nameRatio >= 0.3) {
+      roles[col] = 'note';
+      foundNote = true;
+    }
+  }
+
+  // Fallback for simple 2-column paste: [Mã HS, Điểm BTVN]
+  if (!foundCode && maxCols >= 2) {
+    roles[0] = 'studentCode';
+    if (!foundHw && roles[1] === 'ignore') roles[1] = 'hwScore';
+  }
+
+  return roles;
+}
+
+export function extractScoresFromGrid(rows, colRoles, hasHeader = false) {
+  if (!rows || !rows.length) return [];
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const results = [];
+
+  for (let rIdx = 0; rIdx < dataRows.length; rIdx++) {
+    const row = dataRows[rIdx];
+    if (!row || !row.length) continue;
+
+    let studentCode = '';
+    let fullName = '';
+    let rawHwScore = '';
+    let rawTestScore = '';
+    let note = '';
+
+    for (let c = 0; c < row.length; c++) {
+      const role = colRoles[c] || 'ignore';
+      const val = String(row[c] ?? '').trim();
+      if (!val || role === 'ignore') continue;
+      if (role === 'studentCode' && !studentCode) studentCode = val.toUpperCase();
+      else if (role === 'fullName') fullName = fullName ? `${fullName} ${val}` : val;
+      else if (role === 'hwScore' && rawHwScore === '') rawHwScore = val;
+      else if (role === 'testScore' && rawTestScore === '') rawTestScore = val;
+      else if (role === 'note') note = note ? `${note}; ${val}` : val;
+    }
+
+    // Skip accidental header rows when hasHeader wasn't checked
+    if (rIdx === 0 && !hasHeader) {
+      const lowCode = studentCode.toLowerCase();
+      const lowHw = rawHwScore.toLowerCase();
+      if (lowCode.includes('mã') || lowCode === 'id' || lowHw.includes('điểm') || lowHw.includes('btvn')) {
+        continue;
+      }
+    }
+
+    if (!studentCode && !fullName) continue;
+
+    const parseScoreCell = (raw) => {
+      if (raw === '' || raw === null || raw === undefined) return { hasValue: false, score: null, raw: '' };
+      const clean = String(raw).trim().replace(',', '.');
+      if (!clean) return { hasValue: false, score: null, raw: '' };
+      const num = Number(clean);
+      if (Number.isNaN(num) || num < 0 || num > 10) {
+        return { hasValue: true, score: null, invalid: true, raw: String(raw) };
+      }
+      return { hasValue: true, score: Math.round(num * 100) / 100, invalid: false, raw: String(raw) };
+    };
+
+    const hwParsed = parseScoreCell(rawHwScore);
+    const testParsed = parseScoreCell(rawTestScore);
+
+    results.push({
+      rowIndex: hasHeader ? rIdx + 2 : rIdx + 1,
+      studentCode,
+      fullName,
+      hwParsed,
+      testParsed,
+      note
+    });
+  }
+
+  return results;
+}
+
 const GOOGLE_SHEETS_CONFIG_KEY = 'lopvui.google-sheets-config.v1';
+
+export function extractSpreadsheetId(rawInput = '') {
+  const trimmed = String(rawInput || '').trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match && match[1]) return match[1];
+  return trimmed;
+}
 
 export function loadGoogleSheetsConfig(storage = localStorage) {
   try {
     return JSON.parse(storage.getItem(GOOGLE_SHEETS_CONFIG_KEY) || 'null') || {
       spreadsheetId: '',
       sheetName: 'DiemDanh',
+      scriptUrl: '',
       apiKey: '',
       autoSync: false,
       lastSyncedAt: null,
       syncStatus: 'idle'
     };
   } catch {
-    return { spreadsheetId: '', sheetName: 'DiemDanh', autoSync: false, lastSyncedAt: null };
+    return { spreadsheetId: '', sheetName: 'DiemDanh', scriptUrl: '', autoSync: false, lastSyncedAt: null };
   }
 }
 
@@ -987,22 +1171,114 @@ export function saveGoogleSheetsConfig(config, storage = localStorage) {
 }
 
 export async function syncSessionToGoogleSheets(sessionData, config) {
-  if (!config.spreadsheetId) {
-    throw new Error('Chưa cấu hình Google Spreadsheet ID');
+  const spreadsheetId = extractSpreadsheetId(config?.spreadsheetId);
+  if (!spreadsheetId) {
+    throw new Error('Vui lòng nhập Google Spreadsheet ID hoặc dán đường link Google Sheets');
   }
-  await new Promise(res => setTimeout(res, 600));
+  let scriptUrl = String(config?.scriptUrl || '').trim();
+  if (!scriptUrl) {
+    try {
+      const driveCfg = JSON.parse(localStorage.getItem('lopvui.google-drive-photo-config.v1') || '{}') || {};
+      scriptUrl = String(driveCfg.scriptUrl || '').trim();
+    } catch {}
+  }
+
   const timestamp = Date.now();
+  let remoteResult = null;
+
+  if (scriptUrl) {
+    const payload = {
+      action: 'syncStudentsByCode',
+      spreadsheetId,
+      sheetName: config?.sheetName || 'DiemDanh',
+      date: sessionData.date || '',
+      classId: sessionData.classId || '',
+      classCode: sessionData.classCode || '',
+      className: sessionData.className || '',
+      headers: sessionData.headers || [],
+      rows: sessionData.rows || [],
+      students: sessionData.students || []
+    };
+    const resp = await fetch(scriptUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+      throw new Error(`Google Apps Script trả về HTTP ${resp.status}`);
+    }
+    remoteResult = await resp.json().catch(() => ({ ok: true }));
+    if (remoteResult && remoteResult.ok === false) {
+      throw new Error(remoteResult.error || 'Apps Script báo lỗi khi ghi vào Google Sheets');
+    }
+  } else {
+    throw new Error('Chưa nhập Google Apps Script Web App URL để ghi trực tiếp lên Google Sheets (hoặc dùng nút Copy / Xuất file bên dưới).');
+  }
+
   const updatedConfig = {
     ...config,
+    spreadsheetId,
+    scriptUrl,
     lastSyncedAt: timestamp,
     syncStatus: 'success',
     lastSyncDetails: {
       date: sessionData.date,
       className: sessionData.className,
-      totalStudents: sessionData.students?.length || 0,
+      totalStudents: sessionData.rows?.length || sessionData.students?.length || 0,
+      updatedCount: remoteResult?.updatedCount ?? null,
+      insertedCount: remoteResult?.insertedCount ?? null,
       timestamp
     }
   };
   saveGoogleSheetsConfig(updatedConfig);
   return updatedConfig;
+}
+
+export async function pullStudentsFromGoogleSheets(config) {
+  const spreadsheetId = extractSpreadsheetId(config?.spreadsheetId);
+  if (!spreadsheetId) {
+    throw new Error('Vui lòng nhập Google Spreadsheet ID hoặc đường link Google Sheets');
+  }
+  const sheetName = String(config?.sheetName || 'DiemDanh').trim() || 'DiemDanh';
+  let scriptUrl = String(config?.scriptUrl || '').trim();
+  if (!scriptUrl) {
+    try {
+      const driveCfg = JSON.parse(localStorage.getItem('lopvui.google-drive-photo-config.v1') || '{}') || {};
+      scriptUrl = String(driveCfg.scriptUrl || '').trim();
+    } catch {}
+  }
+
+  // 1. Ưu tiên đọc qua Google Apps Script Web App nếu đã cấu hình
+  if (scriptUrl) {
+    try {
+      const resp = await fetch(scriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'readSheetByCode',
+          spreadsheetId,
+          sheetName
+        })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.ok && Array.isArray(data.rows)) {
+          return { rows: data.rows, source: 'apps-script' };
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Fallback: Đọc trực tiếp từ link Google Sheets (nếu file được mở quyền Xem cho bất kỳ ai có link)
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+  const csvResp = await fetch(csvUrl, { cache: 'no-store' });
+  if (!csvResp.ok) {
+    throw new Error('Không thể đọc Google Sheet. Hãy đảm bảo Sheet được mở quyền "Bất kỳ ai có đường liên kết đều có thể xem" hoặc đã cấu hình Google Apps Script URL.');
+  }
+  const csvText = await csvResp.text();
+  if (!csvText || csvText.trim().startsWith('<!DOCTYPE html')) {
+    throw new Error('Google Sheet đang ở chế độ Riêng tư. Vui lòng cấp quyền "Anyone with the link can view" hoặc cấu hình Google Apps Script Web App URL.');
+  }
+  const rows = parseRawTable(csvText);
+  return { rows, source: 'gviz-csv' };
 }
