@@ -1150,135 +1150,254 @@ export function extractSpreadsheetId(rawInput = '') {
   return trimmed;
 }
 
+export function extractSheetGid(rawInput = '') {
+  const trimmed = String(rawInput || '').trim();
+  if (!trimmed) return '';
+  const gidMatch = trimmed.match(/[?#&]gid=(\d+)/i);
+  if (gidMatch && gidMatch[1]) return gidMatch[1];
+  if (/^\d+$/.test(trimmed)) return trimmed;
+  return '';
+}
+
 export function loadGoogleSheetsConfig(storage = localStorage) {
+  const defaults = {
+    spreadsheetId: '',
+    rawSheetUrl: '',
+    sheetName: '',
+    gid: '',
+    scriptUrl: '',
+    apiKey: '',
+    autoSync: false,
+    defaultNewTag: true,
+    classDiffMode: 'transfer',
+    hasHeader: true,
+    colCode: '',
+    colName: '',
+    colClass: '',
+    colSchool: '',
+    colPhone: '',
+    colStatus: '',
+    lastSyncedAt: null,
+    syncStatus: 'idle'
+  };
   try {
-    return JSON.parse(storage.getItem(GOOGLE_SHEETS_CONFIG_KEY) || 'null') || {
-      spreadsheetId: '',
-      sheetName: 'DiemDanh',
-      scriptUrl: '',
-      apiKey: '',
-      autoSync: false,
-      lastSyncedAt: null,
-      syncStatus: 'idle'
-    };
+    const parsed = JSON.parse(storage.getItem(GOOGLE_SHEETS_CONFIG_KEY) || 'null');
+    return parsed ? { ...defaults, ...parsed } : defaults;
   } catch {
-    return { spreadsheetId: '', sheetName: 'DiemDanh', scriptUrl: '', autoSync: false, lastSyncedAt: null };
+    return defaults;
   }
 }
 
 export function saveGoogleSheetsConfig(config, storage = localStorage) {
-  storage.setItem(GOOGLE_SHEETS_CONFIG_KEY, JSON.stringify(config));
+  const current = loadGoogleSheetsConfig(storage);
+  const merged = { ...current, ...(config || {}) };
+  storage.setItem(GOOGLE_SHEETS_CONFIG_KEY, JSON.stringify(merged));
+  return merged;
 }
 
 export async function syncSessionToGoogleSheets(sessionData, config) {
-  const spreadsheetId = extractSpreadsheetId(config?.spreadsheetId);
-  if (!spreadsheetId) {
-    throw new Error('Vui lòng nhập Google Spreadsheet ID hoặc dán đường link Google Sheets');
-  }
-  let scriptUrl = String(config?.scriptUrl || '').trim();
-  if (!scriptUrl) {
-    try {
-      const driveCfg = JSON.parse(localStorage.getItem('lopvui.google-drive-photo-config.v1') || '{}') || {};
-      scriptUrl = String(driveCfg.scriptUrl || '').trim();
-    } catch {}
-  }
+  try {
+    const spreadsheetId = extractSpreadsheetId(config?.spreadsheetId || config?.rawSheetUrl);
+    if (!spreadsheetId) {
+      return {
+        success: false,
+        ok: false,
+        message: 'Vui lòng nhập Google Spreadsheet ID hoặc dán đường link Google Sheets vào phần Cấu hình.'
+      };
+    }
+    let scriptUrl = String(config?.scriptUrl || '').trim();
+    if (!scriptUrl) {
+      try {
+        const driveCfg = JSON.parse(localStorage.getItem('lopvui.google-drive-photo-config.v1') || '{}') || {};
+        scriptUrl = String(driveCfg.scriptUrl || '').trim();
+      } catch {}
+    }
 
-  const timestamp = Date.now();
-  let remoteResult = null;
+    if (!scriptUrl) {
+      return {
+        success: false,
+        ok: false,
+        message: 'Để đẩy dữ liệu tự động lên Google Sheets, vui lòng nhập Google Apps Script Web App URL (hoặc dùng nút "📋 Copy bảng dán vào Sheet" / "📥 Xuất file .xlsx").'
+      };
+    }
 
-  if (scriptUrl) {
+    const timestamp = Date.now();
+    const sheetName = String(config?.sheetName || '').trim() || 'DiemDanh';
+    const headers = sessionData.headers || [
+      'Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh',
+      'Trạng thái', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test',
+      'Ghi chú buổi học', 'Ghi chú học lực'
+    ];
+    const rows = Array.isArray(sessionData.rows) && sessionData.rows.length
+      ? sessionData.rows
+      : (sessionData.students || []).map(r => [
+          r.studentCode || '', r.familyName || '', r.givenName || '', r.fullName || '',
+          r.school || '', r.parentName || '', r.parentPhone || '', r.enrollmentStatus || 'Học',
+          r.classCodes || '', r.oldClassCodes || '', r.attendance || '', r.homeworkStatus || '',
+          r.btvnScore ?? '', r.testScore ?? '', r.sessionNote || '', r.learningNotes || ''
+        ]);
+
     const payload = {
       action: 'syncStudentsByCode',
       spreadsheetId,
-      sheetName: config?.sheetName || 'DiemDanh',
+      sheetName,
+      gid: config?.gid || '',
       date: sessionData.date || '',
       classId: sessionData.classId || '',
       classCode: sessionData.classCode || '',
       className: sessionData.className || '',
-      headers: sessionData.headers || [],
-      rows: sessionData.rows || [],
+      headers,
+      rows,
       students: sessionData.students || []
     };
+
     const resp = await fetch(scriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
     if (!resp.ok) {
-      throw new Error(`Google Apps Script trả về HTTP ${resp.status}`);
+      return {
+        success: false,
+        ok: false,
+        message: `Google Apps Script trả về lỗi HTTP ${resp.status}. Vui lòng kiểm tra lại Web App URL.`
+      };
     }
-    remoteResult = await resp.json().catch(() => ({ ok: true }));
+    const remoteResult = await resp.json().catch(() => ({ ok: true }));
     if (remoteResult && remoteResult.ok === false) {
-      throw new Error(remoteResult.error || 'Apps Script báo lỗi khi ghi vào Google Sheets');
+      return {
+        success: false,
+        ok: false,
+        message: remoteResult.error || 'Apps Script báo lỗi khi ghi vào Google Sheets.'
+      };
     }
-  } else {
-    throw new Error('Chưa nhập Google Apps Script Web App URL để ghi trực tiếp lên Google Sheets (hoặc dùng nút Copy / Xuất file bên dưới).');
-  }
 
-  const updatedConfig = {
-    ...config,
-    spreadsheetId,
-    scriptUrl,
-    lastSyncedAt: timestamp,
-    syncStatus: 'success',
-    lastSyncDetails: {
-      date: sessionData.date,
-      className: sessionData.className,
-      totalStudents: sessionData.rows?.length || sessionData.students?.length || 0,
-      updatedCount: remoteResult?.updatedCount ?? null,
-      insertedCount: remoteResult?.insertedCount ?? null,
-      timestamp
-    }
-  };
-  saveGoogleSheetsConfig(updatedConfig);
-  return updatedConfig;
+    const updatedConfig = saveGoogleSheetsConfig({
+      ...config,
+      spreadsheetId,
+      scriptUrl,
+      lastSyncedAt: timestamp,
+      syncStatus: 'success',
+      lastSyncDetails: {
+        date: sessionData.date,
+        className: sessionData.className,
+        totalStudents: rows.length,
+        updatedCount: remoteResult?.updatedCount ?? null,
+        insertedCount: remoteResult?.insertedCount ?? null,
+        timestamp
+      }
+    });
+
+    return {
+      ...updatedConfig,
+      success: true,
+      ok: true,
+      message: `✓ Đã đẩy thành công ${rows.length} học sinh lên Google Sheets${remoteResult?.updatedCount !== undefined ? ` (Cập nhật: ${remoteResult.updatedCount}, Thêm mới: ${remoteResult.insertedCount || 0})` : ''}!`
+    };
+  } catch (err) {
+    return {
+      success: false,
+      ok: false,
+      message: `Lỗi kết nối khi đẩy lên Google Sheets: ${err?.message || err}`
+    };
+  }
 }
 
 export async function pullStudentsFromGoogleSheets(config) {
-  const spreadsheetId = extractSpreadsheetId(config?.spreadsheetId);
-  if (!spreadsheetId) {
-    throw new Error('Vui lòng nhập Google Spreadsheet ID hoặc đường link Google Sheets');
-  }
-  const sheetName = String(config?.sheetName || 'DiemDanh').trim() || 'DiemDanh';
-  let scriptUrl = String(config?.scriptUrl || '').trim();
-  if (!scriptUrl) {
-    try {
-      const driveCfg = JSON.parse(localStorage.getItem('lopvui.google-drive-photo-config.v1') || '{}') || {};
-      scriptUrl = String(driveCfg.scriptUrl || '').trim();
-    } catch {}
-  }
+  try {
+    const rawUrlOrId = String(config?.rawSheetUrl || config?.spreadsheetId || '').trim();
+    const spreadsheetId = extractSpreadsheetId(rawUrlOrId);
+    const gid = String(config?.gid || extractSheetGid(rawUrlOrId) || '').trim();
+    if (!spreadsheetId) {
+      return {
+        success: false,
+        ok: false,
+        rows: [],
+        message: 'Vui lòng nhập Link Google Sheets hoặc Spreadsheet ID ở mục Cấu hình.'
+      };
+    }
+    const sheetName = String(config?.sheetName || '').trim();
+    let scriptUrl = String(config?.scriptUrl || '').trim();
+    if (!scriptUrl) {
+      try {
+        const driveCfg = JSON.parse(localStorage.getItem('lopvui.google-drive-photo-config.v1') || '{}') || {};
+        scriptUrl = String(driveCfg.scriptUrl || '').trim();
+      } catch {}
+    }
 
-  // 1. Ưu tiên đọc qua Google Apps Script Web App nếu đã cấu hình
-  if (scriptUrl) {
-    try {
-      const resp = await fetch(scriptUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'readSheetByCode',
-          spreadsheetId,
-          sheetName
-        })
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data && data.ok && Array.isArray(data.rows)) {
-          return { rows: data.rows, source: 'apps-script' };
+    // 1. Ưu tiên đọc qua Google Apps Script Web App nếu đã cấu hình
+    if (scriptUrl) {
+      try {
+        const resp = await fetch(scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'readSheetByCode',
+            spreadsheetId,
+            sheetName,
+            gid
+          })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.ok && Array.isArray(data.rows) && data.rows.length) {
+            return {
+              success: true,
+              ok: true,
+              rows: data.rows,
+              source: 'apps-script',
+              message: `Đã đọc ${data.rows.length} dòng từ Google Sheets qua Apps Script.`
+            };
+          }
         }
-      }
-    } catch {}
-  }
+      } catch {}
+    }
 
-  // 2. Fallback: Đọc trực tiếp từ link Google Sheets (nếu file được mở quyền Xem cho bất kỳ ai có link)
-  const csvUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
-  const csvResp = await fetch(csvUrl, { cache: 'no-store' });
-  if (!csvResp.ok) {
-    throw new Error('Không thể đọc Google Sheet. Hãy đảm bảo Sheet được mở quyền "Bất kỳ ai có đường liên kết đều có thể xem" hoặc đã cấu hình Google Apps Script URL.');
+    // 2. Fallback: Đọc trực tiếp từ link Google Sheets (gviz CSV hoặc export CSV)
+    const candidateUrls = [];
+    if (sheetName) {
+      candidateUrls.push(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`);
+    }
+    if (gid) {
+      candidateUrls.push(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:csv&gid=${encodeURIComponent(gid)}`);
+      candidateUrls.push(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/export?format=csv&gid=${encodeURIComponent(gid)}`);
+    }
+    candidateUrls.push(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:csv`);
+
+    for (const csvUrl of candidateUrls) {
+      try {
+        const csvResp = await fetch(csvUrl, { cache: 'no-store' });
+        if (!csvResp.ok) continue;
+        const csvText = await csvResp.text();
+        if (!csvText || csvText.trim().startsWith('<!DOCTYPE html') || csvText.trim().startsWith('<html')) {
+          continue;
+        }
+        const parsed = parseRawTable(csvText);
+        const rows = Array.isArray(parsed) ? parsed : (parsed?.rows || []);
+        if (rows.length) {
+          return {
+            success: true,
+            ok: true,
+            rows,
+            source: 'gviz-csv',
+            message: `Đã đọc ${rows.length} dòng trực tiếp từ Google Sheets.`
+          };
+        }
+      } catch {}
+    }
+
+    return {
+      success: false,
+      ok: false,
+      rows: [],
+      message: 'Không thể đọc trực tiếp Google Sheet. Hãy đảm bảo Sheet được mở quyền "Bất kỳ ai có đường liên kết đều có thể xem (Anyone with the link can view)", hoặc cấu hình Google Apps Script URL, hoặc dán trực tiếp vùng dữ liệu (Ctrl+V) vào ô bên dưới.'
+    };
+  } catch (err) {
+    return {
+      success: false,
+      ok: false,
+      rows: [],
+      message: `Lỗi khi tải dữ liệu từ Google Sheets: ${err?.message || err}`
+    };
   }
-  const csvText = await csvResp.text();
-  if (!csvText || csvText.trim().startsWith('<!DOCTYPE html')) {
-    throw new Error('Google Sheet đang ở chế độ Riêng tư. Vui lòng cấp quyền "Anyone with the link can view" hoặc cấu hình Google Apps Script Web App URL.');
-  }
-  const rows = parseRawTable(csvText);
-  return { rows, source: 'gviz-csv' };
 }

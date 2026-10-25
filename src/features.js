@@ -20,6 +20,7 @@ import {
   normalizeEnrollmentStatus,
   parseRawTable,
   splitVietnameseName,
+  resolveClassIdsFromCell,
   autoDetectGridColumnRoles,
   extractStudentsFromGrid,
   autoDetectScoreColumnRoles,
@@ -33,6 +34,7 @@ import {
   loadGoogleSheetsConfig,
   saveGoogleSheetsConfig,
   extractSpreadsheetId,
+  extractSheetGid,
   syncSessionToGoogleSheets,
   pullStudentsFromGoogleSheets
 } from './excel-import-export.js?v=4.4.1';
@@ -6105,10 +6107,13 @@ export function setupFeatures(ctx) {
   });
 
   // ====================================================
-  // TÍNH NĂNG ĐỒNG BỘ GOOGLE SHEETS 2 CHIỀU DỰA TRÊN MÃ HỌC SINH (#google-sheets-sync-dialog)
+  // TÍNH NĂNG ĐỒNG BỘ GOOGLE SHEETS & DUYỆT HỌC SINH MỚI / CHUYỂN LỚP THEO MÃ HS (#google-sheets-sync-dialog)
   // ====================================================
+  let pendingSheetsApprovalItems = [];
+  let activeSheetsApproveFilter = 'all';
+
   function setSheetsSyncStatus(message, isError = false) {
-    const banner = $('#sheets-sync-status-banner');
+    const banner = $('#sheets-sync-status-banner') || $('#sheets-sync-status-box');
     if (!banner) return;
     banner.hidden = false;
     banner.style.background = isError ? '#fef2f2' : '#f0fdf4';
@@ -6117,26 +6122,96 @@ export function setupFeatures(ctx) {
     banner.innerHTML = message;
   }
 
-  function populateSheetsSyncClassFilter() {
+  function populateSheetsSyncClassFilter(defaultScope = null) {
     const sel = $('#sheets-sync-class-filter');
     if (!sel) return;
     const catalog = getClassCatalog();
-    const curVal = sel.value || getCurrentClassId() || 'all';
-    sel.innerHTML = `<option value="all">Toàn bộ danh sách học sinh trung tâm (${getStudents().length} HS)</option>` +
+    const curVal = defaultScope || sel.value || 'all';
+    sel.innerHTML = `<option value="all">Toàn bộ danh sách tổng của Trung tâm (${getStudents().length} HS)</option>` +
       catalog.map(c => `<option value="${escapeHtml(c.id)}">Lớp [${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)}</option>`).join('');
     if ([...sel.options].some(o => o.value === curVal)) sel.value = curVal;
   }
 
   function readAndSaveSheetsConfigFromDialog() {
-    const rawId = ($('#sheets-spreadsheet-id')?.value || '').trim();
-    const spreadsheetId = extractSpreadsheetId(rawId) || rawId;
-    const sheetName = ($('#sheets-tab-name')?.value || 'DiemDanh').trim() || 'DiemDanh';
-    const scriptUrl = ($('#sheets-script-url-input')?.value || '').trim();
+    const rawSheetUrl = ($('#sheets-spreadsheet-id')?.value || '').trim();
+    const spreadsheetId = extractSpreadsheetId(rawSheetUrl) || rawSheetUrl;
+    const extractedGid = extractSheetGid(rawSheetUrl);
+    const gid = ($('#sheets-gid-input')?.value || extractedGid || '').trim();
+    if ($('#sheets-gid-input') && !$('#sheets-gid-input').value && extractedGid) {
+      $('#sheets-gid-input').value = extractedGid;
+    }
+    const sheetName = ($('#sheets-tab-name')?.value || '').trim();
+    const scriptUrl = ($('#sheets-script-url-input')?.value || $('#drive-script-url-input')?.value || '').trim();
     const autoSync = Boolean($('#sheets-autosync-toggle')?.checked);
-    const cfg = { spreadsheetId, sheetName, scriptUrl, autoSync };
+    const defaultNewTag = $('#sheets-default-new-tag-toggle') ? Boolean($('#sheets-default-new-tag-toggle').checked) : true;
+    const classDiffMode = $('#sheets-class-diff-mode')?.value || 'transfer';
+    const hasHeader = $('#sheets-has-header-toggle') ? Boolean($('#sheets-has-header-toggle').checked) : true;
+    const colCode = ($('#sheets-col-code')?.value || '').trim();
+    const colName = ($('#sheets-col-name')?.value || '').trim();
+    const colClass = ($('#sheets-col-class')?.value || '').trim();
+    const colSchool = ($('#sheets-col-school')?.value || '').trim();
+    const colPhone = ($('#sheets-col-phone')?.value || '').trim();
+    const colStatus = ($('#sheets-col-status')?.value || '').trim();
+
+    const cfg = {
+      rawSheetUrl,
+      spreadsheetId,
+      sheetName,
+      gid,
+      scriptUrl,
+      autoSync,
+      defaultNewTag,
+      classDiffMode,
+      hasHeader,
+      colCode,
+      colName,
+      colClass,
+      colSchool,
+      colPhone,
+      colStatus
+    };
     saveGoogleSheetsConfig(cfg);
+    if (scriptUrl) {
+      const driveCfg = loadGoogleDrivePhotoConfig();
+      if (!driveCfg.scriptUrl) {
+        saveGoogleDrivePhotoConfig({ ...driveCfg, scriptUrl });
+      }
+    }
     return cfg;
   }
+
+  function openGoogleSheetsSyncModal(defaultScope = 'all') {
+    const driveCfg = loadGoogleDrivePhotoConfig();
+    const cfg = loadGoogleSheetsConfig();
+    if ($('#drive-script-url-input')) $('#drive-script-url-input').value = driveCfg.scriptUrl || cfg.scriptUrl || '';
+    if ($('#drive-folder-id-input')) $('#drive-folder-id-input').value = driveCfg.folderId || '';
+    if ($('#sheets-spreadsheet-id')) $('#sheets-spreadsheet-id').value = cfg.rawSheetUrl || cfg.spreadsheetId || '';
+    if ($('#sheets-tab-name')) $('#sheets-tab-name').value = cfg.sheetName || '';
+    if ($('#sheets-gid-input')) $('#sheets-gid-input').value = cfg.gid || '';
+    if ($('#sheets-script-url-input')) $('#sheets-script-url-input').value = cfg.scriptUrl || driveCfg.scriptUrl || '';
+    if ($('#sheets-autosync-toggle')) $('#sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
+    if ($('#sheets-default-new-tag-toggle')) $('#sheets-default-new-tag-toggle').checked = cfg.defaultNewTag !== false;
+    if ($('#sheets-class-diff-mode')) $('#sheets-class-diff-mode').value = cfg.classDiffMode || 'transfer';
+    if ($('#sheets-has-header-toggle')) $('#sheets-has-header-toggle').checked = cfg.hasHeader !== false;
+    if ($('#sheets-col-code')) $('#sheets-col-code').value = cfg.colCode || '';
+    if ($('#sheets-col-name')) $('#sheets-col-name').value = cfg.colName || '';
+    if ($('#sheets-col-class')) $('#sheets-col-class').value = cfg.colClass || '';
+    if ($('#sheets-col-school')) $('#sheets-col-school').value = cfg.colSchool || '';
+    if ($('#sheets-col-phone')) $('#sheets-col-phone').value = cfg.colPhone || '';
+    if ($('#sheets-col-status')) $('#sheets-col-status').value = cfg.colStatus || '';
+
+    populateSheetsSyncClassFilter(defaultScope);
+    $('#google-sheets-sync-dialog')?.showModal();
+  }
+
+  // Auto-extract GID when user pastes full Google Sheets URL into #sheets-spreadsheet-id
+  $('#sheets-spreadsheet-id')?.addEventListener('input', (e) => {
+    const val = e.target.value || '';
+    const gid = extractSheetGid(val);
+    if (gid && $('#sheets-gid-input')) {
+      $('#sheets-gid-input').value = gid;
+    }
+  });
 
   function buildStudentSyncRowsForClass(targetClassId = 'all') {
     const catalog = getClassCatalog();
@@ -6206,196 +6281,851 @@ export function setupFeatures(ctx) {
     });
   }
 
-  function applyIncomingSyncedRowsByStudentCode(rawRows, sourceLabel = 'Google Sheets') {
-    if (!Array.isArray(rawRows) || !rawRows.length) {
-      toast('Không có dòng dữ liệu nào để đồng bộ.');
-      return { updated: 0, created: 0, scoresUpdated: 0 };
-    }
-    const catalog = getClassCatalog();
-    const allStudents = getStudents();
-    const makeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
-
-    // Hỗ trợ cả mảng 2 chiều (từ TSV/Excel/CSV) hoặc mảng object (từ Apps Script JSON)
-    let normalizedObjects = [];
-    if (Array.isArray(rawRows[0])) {
-      const gridRoles = autoDetectGridColumnRoles(rawRows, true);
-      const scoreRoles = autoDetectScoreColumnRoles(rawRows, true);
-      const headerRow = rawRows[0].map(c => String(c || '').trim().toLowerCase());
-      const dataRows = rawRows.slice(1);
-
-      normalizedObjects = dataRows.map(r => {
-        const obj = {};
-        r.forEach((cellVal, colIdx) => {
-          const val = String(cellVal ?? '').trim();
-          const gRole = gridRoles[colIdx];
-          const sRole = scoreRoles[colIdx];
-          const hText = headerRow[colIdx] || '';
-          if (gRole === 'studentCode' || sRole === 'studentCode' || /mã\s*hs|ma\s*hs|student\s*code/i.test(hText)) obj.studentCode = val;
-          else if (gRole === 'fullName' || sRole === 'fullName' || /họ\s*và\s*tên|họ\s*tên/i.test(hText)) obj.fullName = val;
-          else if (gRole === 'familyName' || /họ\s*đệm/i.test(hText)) obj.familyName = val;
-          else if (gRole === 'givenName' || /^tên$/i.test(hText)) obj.givenName = val;
-          else if (gRole === 'school' || /trường/i.test(hText)) obj.school = val;
-          else if (gRole === 'parentPhone' || /sđt|điện\s*thoại/i.test(hText)) obj.parentPhone = val;
-          else if (gRole === 'parentName' || /phụ\s*huynh/i.test(hText)) obj.parentName = val;
-          else if (gRole === 'status' || /trạng\s*thái\s*theo\s*học|tình\s*trạng/i.test(hText)) obj.enrollmentStatus = val;
-          else if (/mã\s*lớp|lớp\s*đang\s*học|^lớp$/i.test(hText)) obj.classCodes = val;
-          else if (sRole === 'btvnScore' || /điểm\s*btvn|btvn/i.test(hText)) obj.btvnScore = val;
-          else if (sRole === 'testScore' || /điểm\s*test|test|kiểm\s*tra/i.test(hText)) obj.testScore = val;
-          else if (sRole === 'note' || /ghi\s*chú\s*buổi|nhận\s*xét/i.test(hText)) obj.sessionNote = val;
-          else if (/ghi\s*chú\s*học\s*lực|ghi\s*chú\s*chung/i.test(hText)) obj.learningNotes = val;
-        });
-        return obj;
+  function resolveManualColIndices(specStr, headerRow = []) {
+    if (!specStr || !String(specStr).trim()) return [];
+    const tokens = String(specStr).split(/[,;+]+/).map(t => t.trim()).filter(Boolean);
+    const indices = [];
+    for (const tk of tokens) {
+      // 1. Excel column letter (A, B, C... Z, AA)
+      if (/^[A-Za-z]{1,2}$/.test(tk)) {
+        const up = tk.toUpperCase();
+        let idx = 0;
+        for (let i = 0; i < up.length; i++) {
+          idx = idx * 26 + (up.charCodeAt(i) - 64);
+        }
+        indices.push(idx - 1);
+        continue;
+      }
+      // 2. 1-based column number (1, 2, 3...)
+      if (/^\d+$/.test(tk)) {
+        const n = Number(tk);
+        if (n >= 1) indices.push(n - 1);
+        continue;
+      }
+      // 3. Header name match
+      const low = tk.toLowerCase();
+      headerRow.forEach((h, i) => {
+        if (h && (h === low || h.includes(low))) {
+          indices.push(i);
+        }
       });
-    } else {
-      normalizedObjects = rawRows.map(item => ({
-        studentCode: String(item.studentCode || item['Mã HS'] || item['Mã học sinh'] || item.code || '').trim(),
-        fullName: String(item.fullName || item.name || item['Họ và tên'] || '').trim(),
-        familyName: String(item.familyName || item['Họ đệm'] || '').trim(),
-        givenName: String(item.givenName || item['Tên'] || '').trim(),
-        school: String(item.school || item['Trường'] || item['Trường học'] || '').trim(),
-        parentName: String(item.parentName || item['Phụ huynh'] || '').trim(),
-        parentPhone: String(item.parentPhone || item['SĐT Phụ huynh'] || item['SĐT'] || '').trim(),
-        enrollmentStatus: String(item.enrollmentStatus || item['Trạng thái'] || '').trim(),
-        classCodes: String(item.classCodes || item['Mã lớp'] || item['Lớp'] || '').trim(),
-        btvnScore: item.btvnScore ?? item['Điểm BTVN'] ?? '',
-        testScore: item.testScore ?? item['Điểm Test'] ?? '',
-        sessionNote: String(item.sessionNote || item['Ghi chú buổi học'] || item['Ghi chú'] || '').trim(),
-        learningNotes: String(item.learningNotes || item['Ghi chú học lực'] || '').trim()
-      }));
+    }
+    return [...new Set(indices.filter(i => i >= 0))];
+  }
+
+  function extractNormalizedSheetStudents(rawInputRows, cfg) {
+    const catalog = getClassCatalog();
+    const matrixRows = Array.isArray(rawInputRows)
+      ? rawInputRows
+      : (Array.isArray(rawInputRows?.rows) ? rawInputRows.rows : []);
+
+    if (!matrixRows.length) return [];
+
+    // Trường hợp mảng các object JSON từ Apps Script
+    if (!Array.isArray(matrixRows[0]) && typeof matrixRows[0] === 'object') {
+      return matrixRows.map(item => {
+        const rawCode = String(item.studentCode || item['Mã HS'] || item['Mã học sinh'] || item.code || '').trim().toUpperCase();
+        const fullName = String(item.fullName || item.name || item['Họ và tên'] || [item.familyName || item['Họ đệm'], item.givenName || item['Tên']].filter(Boolean).join(' ')).trim();
+        const sp = splitVietnameseName(fullName);
+        const rawClassStr = String(item.classCodes || item['Mã lớp'] || item['Lớp'] || '').trim();
+        const resolvedClassIds = resolveClassIdsFromCell(rawClassStr, null, catalog);
+        return {
+          studentCode: rawCode && !isStatusWord(rawCode) ? rawCode : '',
+          fullName,
+          familyName: String(item.familyName || item['Họ đệm'] || sp.familyName).trim(),
+          givenName: String(item.givenName || item['Tên'] || sp.givenName).trim(),
+          school: String(item.school || item['Trường'] || item['Trường học'] || '').trim(),
+          parentName: String(item.parentName || item['Phụ huynh'] || '').trim(),
+          parentPhone: String(item.parentPhone || item['SĐT Phụ huynh'] || item['SĐT'] || '').trim(),
+          enrollmentStatus: normalizeEnrollmentStatus(item.enrollmentStatus || item['Trạng thái'] || 'Học'),
+          rawClassTexts: rawClassStr ? [rawClassStr] : [],
+          resolvedClassIds,
+          btvnScore: item.btvnScore ?? item['Điểm BTVN'] ?? '',
+          testScore: item.testScore ?? item['Điểm Test'] ?? '',
+          sessionNote: String(item.sessionNote || item['Ghi chú buổi học'] || item['Ghi chú'] || '').trim(),
+          learningNotes: String(item.learningNotes || item['Ghi chú học lực'] || '').trim()
+        };
+      }).filter(r => r.studentCode || r.fullName);
     }
 
-    let updated = 0;
-    let created = 0;
-    const scoreItems = [];
-    const targetClsFilter = $('#sheets-sync-class-filter')?.value || getCurrentClassId();
+    // Trường hợp mảng 2 chiều (CSV / TSV / Excel / Google Sheet)
+    const autoDetected = autoDetectGridColumnRoles(matrixRows, catalog);
+    const hasHeader = cfg.hasHeader !== undefined ? Boolean(cfg.hasHeader && autoDetected.hasHeader) : autoDetected.hasHeader;
+    const roles = [...autoDetected.roles];
+    const headerRow = (matrixRows[0] || []).map(c => String(c || '').trim().toLowerCase());
+    const scoreRoles = autoDetectScoreColumnRoles(matrixRows, hasHeader);
 
-    normalizedObjects.forEach(row => {
+    // Áp dụng cấu hình cột nâng cao nếu người dùng có chỉ định
+    const applyOverride = (specStr, roleName) => {
+      const idxs = resolveManualColIndices(specStr, headerRow);
+      if (!idxs.length) return;
+      for (let i = 0; i < roles.length; i++) {
+        if (roles[i] === roleName) roles[i] = 'ignore';
+      }
+      idxs.forEach(idx => {
+        while (roles.length <= idx) roles.push('ignore');
+        roles[idx] = roleName;
+      });
+    };
+
+    applyOverride(cfg.colCode, 'code');
+    if (cfg.colName) {
+      const nameIdxs = resolveManualColIndices(cfg.colName, headerRow);
+      if (nameIdxs.length >= 2) {
+        for (let i = 0; i < roles.length; i++) {
+          if (roles[i] === 'fullName' || roles[i] === 'familyName' || roles[i] === 'givenName') roles[i] = 'ignore';
+        }
+        roles[nameIdxs[0]] = 'familyName';
+        roles[nameIdxs[1]] = 'givenName';
+      } else if (nameIdxs.length === 1) {
+        for (let i = 0; i < roles.length; i++) {
+          if (roles[i] === 'fullName' || roles[i] === 'familyName' || roles[i] === 'givenName') roles[i] = 'ignore';
+        }
+        roles[nameIdxs[0]] = 'fullName';
+      }
+    }
+    applyOverride(cfg.colClass, 'classCode');
+    applyOverride(cfg.colSchool, 'school');
+    applyOverride(cfg.colPhone, 'phone');
+    applyOverride(cfg.colStatus, 'status');
+
+    const startIdx = hasHeader ? 1 : 0;
+    const results = [];
+
+    for (let rIdx = startIdx; rIdx < matrixRows.length; rIdx++) {
+      const row = matrixRows[rIdx];
+      if (!Array.isArray(row) || !row.some(c => String(c ?? '').trim() !== '')) continue;
+
+      // Bỏ qua dòng tiêu đề nếu vô tình lọt vào
+      const joinedLower = row.map(c => String(c || '').toLowerCase().trim()).join(' | ');
+      if (joinedLower.includes('họ và tên') || joinedLower.includes('mã học sinh') || joinedLower.includes('số thứ tự') || (joinedLower.includes('họ đệm') && joinedLower.includes('trường'))) {
+        continue;
+      }
+
+      let studentCode = '';
+      let familyName = '';
+      let givenName = '';
+      let fullName = '';
+      let school = '';
+      let parentPhone = '';
+      let parentName = '';
+      let enrollmentStatus = 'Học';
+      const rawClassTexts = [];
+      const resolvedClassIds = [];
+      let btvnScore = '';
+      let testScore = '';
+      let sessionNote = '';
+      let learningNotes = '';
+
+      for (let c = 0; c < row.length; c++) {
+        const val = String(row[c] ?? '').trim();
+        if (!val) continue;
+        const role = roles[c] || 'ignore';
+        const sRole = scoreRoles[c] || 'ignore';
+        const hText = hasHeader ? (headerRow[c] || '') : '';
+
+        if (role === 'code' || sRole === 'studentCode') {
+          if (!studentCode && !isStatusWord(val) && !/^\d{1,3}$/.test(val)) {
+            studentCode = val.toUpperCase();
+          }
+        } else if (role === 'familyName') {
+          if (!familyName) familyName = val;
+        } else if (role === 'givenName') {
+          if (!givenName) givenName = val;
+        } else if (role === 'fullName') {
+          if (!fullName) fullName = val;
+        } else if (role === 'school') {
+          if (!school) school = val;
+        } else if (role === 'phone') {
+          if (!parentPhone) parentPhone = val;
+        } else if (role === 'parentName') {
+          if (!parentName) parentName = val;
+        } else if (role === 'status') {
+          enrollmentStatus = normalizeEnrollmentStatus(val);
+        } else if (role === 'classCode') {
+          rawClassTexts.push(val);
+          const cids = resolveClassIdsFromCell(val, null, catalog);
+          cids.forEach(cid => {
+            if (cid && !resolvedClassIds.includes(cid)) resolvedClassIds.push(cid);
+          });
+        }
+
+        if (sRole === 'hwScore' && btvnScore === '') btvnScore = val;
+        else if (sRole === 'testScore' && testScore === '') testScore = val;
+        else if (sRole === 'note' && !sessionNote) sessionNote = val;
+        else if (hText && /ghi\s*chú\s*học\s*lực/i.test(hText) && !learningNotes) learningNotes = val;
+      }
+
+      if (!fullName && (familyName || givenName)) {
+        fullName = [familyName, givenName].filter(Boolean).join(' ').trim();
+      } else if (fullName && (!familyName && !givenName)) {
+        const sp = splitVietnameseName(fullName);
+        familyName = sp.familyName;
+        givenName = sp.givenName;
+      }
+
+      if (!studentCode && !fullName) continue;
+      if (fullName && (isStatusWord(fullName) || /^\d+$/.test(fullName))) continue;
+
+      results.push({
+        studentCode,
+        fullName,
+        familyName,
+        givenName,
+        school,
+        parentName,
+        parentPhone,
+        enrollmentStatus,
+        rawClassTexts,
+        resolvedClassIds,
+        btvnScore,
+        testScore,
+        sessionNote,
+        learningNotes
+      });
+    }
+
+    return results;
+  }
+
+  function formatClassIdsLabel(classIds = [], rawFallback = []) {
+    const catalog = getClassCatalog();
+    const validIds = (classIds || []).filter(Boolean);
+    if (validIds.length) {
+      return validIds.map(cid => {
+        const c = catalog.find(x => x.id === cid);
+        return c ? `${c.code || c.id}` : cid;
+      }).join(', ');
+    }
+    if (rawFallback && rawFallback.length) {
+      return rawFallback.join(', ');
+    }
+    return 'Chưa gán lớp';
+  }
+
+  function renderSheetsApprovalTable() {
+    const section = $('#sheets-approval-section');
+    const tbody = $('#sheets-approval-tbody');
+    const titleEl = $('#sheets-approval-title');
+    const summaryEl = $('#sheets-approval-selected-summary');
+    const tagAllCb = $('#sheets-approve-tag-all-cb');
+    const selectAllCb = $('#sheets-approve-select-all');
+    if (!section || !tbody) return;
+
+    if (!pendingSheetsApprovalItems.length) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+
+    const newCount = pendingSheetsApprovalItems.filter(i => i.category === 'new_student').length;
+    const diffClassCount = pendingSheetsApprovalItems.filter(i => i.category === 'class_change').length;
+    const codeUpdateCount = pendingSheetsApprovalItems.filter(i => i.category === 'code_update').length;
+
+    if ($('#sheets-count-all')) $('#sheets-count-all').textContent = String(pendingSheetsApprovalItems.length);
+    if ($('#sheets-count-new')) $('#sheets-count-new').textContent = String(newCount);
+    if ($('#sheets-count-diff-class')) $('#sheets-count-diff-class').textContent = String(diffClassCount);
+    if ($('#sheets-count-code')) $('#sheets-count-code').textContent = String(codeUpdateCount);
+
+    section.querySelectorAll('[data-sheets-approve-filter]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.sheetsApproveFilter === activeSheetsApproveFilter);
+    });
+
+    const visibleItems = activeSheetsApproveFilter === 'all'
+      ? pendingSheetsApprovalItems
+      : pendingSheetsApprovalItems.filter(i => i.category === activeSheetsApproveFilter);
+
+    const approvedCount = pendingSheetsApprovalItems.filter(i => i.approved).length;
+    const taggedNewCount = pendingSheetsApprovalItems.filter(i => i.approved && i.addNewTag).length;
+
+    if (titleEl) {
+      titleEl.textContent = `Danh sách phát hiện từ Google Sheet chờ Văn phòng duyệt (${pendingSheetsApprovalItems.length} học sinh)`;
+    }
+    if (summaryEl) {
+      summaryEl.innerHTML = `Đã chọn duyệt: <strong>${approvedCount}/${pendingSheetsApprovalItems.length}</strong> học sinh · Gắn tag <strong>"Mới"</strong>: <strong>${taggedNewCount}</strong> học sinh`;
+    }
+    if (selectAllCb) {
+      selectAllCb.checked = visibleItems.length > 0 && visibleItems.every(i => i.approved);
+    }
+    if (tagAllCb) {
+      tagAllCb.checked = visibleItems.length > 0 && visibleItems.every(i => i.addNewTag);
+    }
+
+    const catalog = getClassCatalog();
+
+    if (!visibleItems.length) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:18px; color:#64748b;">Không có học sinh nào trong nhóm lọc này.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = visibleItems.map(item => {
+      const catBadge = item.category === 'new_student'
+        ? `<span style="display:inline-block; padding:3px 8px; border-radius:999px; background:#dcfce7; color:#166534; font-weight:800; font-size:11.5px;">🆕 Học sinh mới</span>`
+        : item.category === 'class_change'
+          ? `<span style="display:inline-block; padding:3px 8px; border-radius:999px; background:#dbeafe; color:#1e40af; font-weight:800; font-size:11.5px;">⇄ Khác lớp gốc</span>`
+          : `<span style="display:inline-block; padding:3px 8px; border-radius:999px; background:#f3e8ff; color:#6b21a8; font-weight:800; font-size:11.5px;">🆔 Đồng bộ Mã HS</span>`;
+
+      const origClassText = item.existingStudent
+        ? formatClassIdsLabel(item.existingStudent.classIds, [])
+        : '— (Chưa có trong HT)';
+      const sheetClassText = formatClassIdsLabel(item.targetClassIds, item.rawClassTexts);
+      const hasUnresolvedRawClass = item.rawClassTexts.length > 0 && item.targetClassIds.length === 0;
+
+      const classSelectOptions = [
+        `<option value="">-- Giữ theo Sheet (${escapeHtml(sheetClassText)}) --</option>`,
+        ...(hasUnresolvedRawClass ? `<option value="create_new:${escapeHtml(item.rawClassTexts[0])}" ${item.customClassChoice === `create_new:${item.rawClassTexts[0]}` ? 'selected' : ''}>⚡ Tự tạo lớp mới [${escapeHtml(item.rawClassTexts[0])}]</option>` : []),
+        ...catalog.map(c => `<option value="${escapeHtml(c.id)}" ${item.targetClassIds.length === 1 && item.targetClassIds[0] === c.id && !item.customClassChoice ? 'selected' : ''}>Lớp [${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)}</option>`)
+      ].join('');
+
+      let classColumnHtml = '';
+      if (item.category === 'new_student') {
+        classColumnHtml = `
+          <div style="font-size:12px; color:#15803d; font-weight:700; margin-bottom:4px;">Lớp trên Sheet: ${escapeHtml(sheetClassText)}</div>
+          <select data-approve-target-class="${escapeHtml(item.tempId)}" style="width:100%; padding:4px 6px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px;">
+            ${classSelectOptions}
+          </select>
+        `;
+      } else if (item.category === 'class_change') {
+        classColumnHtml = `
+          <div style="font-size:12px; line-height:1.4; margin-bottom:4px;">
+            <span style="color:#b45309; font-weight:700;">Gốc: ${escapeHtml(origClassText)}</span>
+            <span style="margin:0 4px;">➔</span>
+            <strong style="color:#1d4ed8;">Sheet: ${escapeHtml(sheetClassText)}</strong>
+          </div>
+          <div style="display:flex; gap:4px;">
+            <select data-approve-class-action="${escapeHtml(item.tempId)}" style="flex:1; padding:4px 6px; font-size:11.5px; border:1px solid #93c5fd; border-radius:6px; background:#eff6ff; font-weight:700; color:#1e3a8a;">
+              <option value="transfer" ${item.classAction === 'transfer' ? 'selected' : ''}>⇄ Chuyển lớp (Lưu lớp cũ)</option>
+              <option value="add" ${item.classAction === 'add' ? 'selected' : ''}>➕ Thêm lớp song song</option>
+            </select>
+          </div>
+        `;
+      } else {
+        classColumnHtml = `<div style="font-size:12.5px; color:#334155; font-weight:600;">${escapeHtml(origClassText)}</div>`;
+      }
+
+      const oldCodeDiff = (item.existingStudent && item.existingStudent.studentCode !== item.studentCode)
+        ? `<div style="font-size:11px; color:#6b21a8; margin-top:2px;">Mã cũ: ${escapeHtml(item.existingStudent.studentCode || 'Chưa có')}</div>`
+        : '';
+
+      return `
+        <tr style="background:${item.approved ? (item.category === 'new_student' ? '#f0fdf4' : item.category === 'class_change' ? '#eff6ff' : '#ffffff') : '#f8fafc'}; opacity:${item.approved ? '1' : '0.6'};">
+          <td style="text-align:center;">
+            <input type="checkbox" data-approve-item-cb="${escapeHtml(item.tempId)}" ${item.approved ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;" />
+          </td>
+          <td>${catBadge}</td>
+          <td>
+            <input type="text" data-approve-code-input="${escapeHtml(item.tempId)}" value="${escapeHtml(item.studentCode || '')}" placeholder="Mã HS..." style="width:98px; padding:4px 6px; font-size:12.5px; font-weight:800; color:#0f172a; border:1px solid #cbd5e1; border-radius:6px; text-transform:uppercase;" />
+            ${oldCodeDiff}
+          </td>
+          <td>
+            <strong style="color:#0f172a; font-size:13.5px;">${escapeHtml(item.fullName || '—')}</strong>
+            ${item.existingStudent ? `<div style="font-size:11px; color:#475569;">Khớp hồ sơ: ${escapeHtml(item.existingStudent.name)}</div>` : ''}
+          </td>
+          <td style="font-size:12.5px; color:#334155;">
+            <div>${escapeHtml(item.school || '—')}</div>
+            ${item.parentPhone ? `<div style="color:#0369a1; font-weight:600;">📞 ${escapeHtml(item.parentPhone)}</div>` : ''}
+          </td>
+          <td>${classColumnHtml}</td>
+          <td style="text-align:center;">
+            <label style="display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border-radius:999px; cursor:pointer; font-size:12px; font-weight:800; border:1px solid ${item.addNewTag ? '#16a34a' : '#cbd5e1'}; background:${item.addNewTag ? '#dcfce7' : '#f1f5f9'}; color:${item.addNewTag ? '#166534' : '#64748b'}; user-select:none;" title="Bấm để gắn hoặc gỡ tag 'Mới' trước khi thêm vào danh sách">
+              <input type="checkbox" data-approve-new-tag-cb="${escapeHtml(item.tempId)}" ${item.addNewTag ? 'checked' : ''} style="margin:0; cursor:pointer;" />
+              <span>${item.addNewTag ? '🏷 Tag: Mới' : 'Không gắn tag'}</span>
+            </label>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Wire events inside tbody
+    tbody.querySelectorAll('[data-approve-item-cb]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const it = pendingSheetsApprovalItems.find(x => x.tempId === cb.dataset.approveItemCb);
+        if (it) it.approved = cb.checked;
+        renderSheetsApprovalTable();
+      });
+    });
+
+    tbody.querySelectorAll('[data-approve-new-tag-cb]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const it = pendingSheetsApprovalItems.find(x => x.tempId === cb.dataset.approveNewTagCb);
+        if (it) it.addNewTag = cb.checked;
+        renderSheetsApprovalTable();
+      });
+    });
+
+    tbody.querySelectorAll('[data-approve-code-input]').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const it = pendingSheetsApprovalItems.find(x => x.tempId === inp.dataset.approveCodeInput);
+        if (it) it.studentCode = inp.value.trim().toUpperCase();
+      });
+    });
+
+    tbody.querySelectorAll('[data-approve-target-class]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const it = pendingSheetsApprovalItems.find(x => x.tempId === sel.dataset.approveTargetClass);
+        if (!it) return;
+        const val = sel.value;
+        if (val.startsWith('create_new:')) {
+          it.customClassChoice = val;
+        } else if (val) {
+          it.customClassChoice = '';
+          it.targetClassIds = [val];
+        }
+      });
+    });
+
+    tbody.querySelectorAll('[data-approve-class-action]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const it = pendingSheetsApprovalItems.find(x => x.tempId === sel.dataset.approveClassAction);
+        if (it) it.classAction = sel.value;
+      });
+    });
+  }
+
+  function scanIncomingSheetsRowsForApproval(rawRows, sourceLabel = 'Google Sheets') {
+    const cfg = readAndSaveSheetsConfigFromDialog();
+    const extractedRows = extractNormalizedSheetStudents(rawRows, cfg);
+    if (!extractedRows.length) {
+      setSheetsSyncStatus('⚠ Không tìm thấy dòng dữ liệu học sinh hợp lệ nào trong Sheet. Hãy kiểm tra lại Tên trang tính (Sheet Tab Name) hoặc cấu hình cột.', true);
+      toast('Không tìm thấy dữ liệu học sinh hợp lệ trong Sheet.');
+      return;
+    }
+
+    const allStudents = getStudents();
+    const targetClsFilter = $('#sheets-sync-class-filter')?.value || 'all';
+    const defaultAddNewTag = cfg.defaultNewTag !== false;
+    const defaultClassAction = cfg.classDiffMode || 'transfer';
+
+    const normName = (str) => String(str || '').trim().toLocaleLowerCase('vi').replace(/\s+/g, ' ');
+    const normPhone = (str) => String(str || '').replace(/\D/g, '');
+
+    pendingSheetsApprovalItems = [];
+    let unchangedCount = 0;
+
+    extractedRows.forEach((row, idx) => {
       const codeNorm = String(row.studentCode || '').trim().toUpperCase();
       const composedName = row.fullName || [row.familyName, row.givenName].filter(Boolean).join(' ').trim();
       if (!codeNorm && !composedName) return;
 
-      let stu = codeNorm
-        ? allStudents.find(s => String(s.studentCode || '').trim().toUpperCase() === codeNorm)
-        : allStudents.find(s => String(s.name || '').trim().toLowerCase() === composedName.toLowerCase());
-
-      // Resolve classIds from classCodes if provided
-      let resolvedClassIds = null;
-      if (row.classCodes) {
-        const tokens = String(row.classCodes).split(/[,;|]+/).map(t => t.trim()).filter(Boolean);
-        const mapped = tokens.map(tk => {
-          const found = catalog.find(c => String(c.code || '').toLowerCase() === tk.toLowerCase() || String(c.id || '').toLowerCase() === tk.toLowerCase() || String(c.name || '').toLowerCase() === tk.toLowerCase());
-          return found ? found.id : null;
-        }).filter(Boolean);
-        if (mapped.length) resolvedClassIds = mapped;
+      // 1. Tìm học sinh trong danh sách tổng theo Mã HS trước, nếu chưa có mã HS trên hệ thống thì đối chiếu theo Họ tên + SĐT/Trường
+      let existingStu = null;
+      if (codeNorm) {
+        existingStu = allStudents.find(s => String(s.studentCode || '').trim().toUpperCase() === codeNorm);
+      }
+      if (!existingStu && composedName) {
+        existingStu = allStudents.find(s => {
+          const sameName = normName(s.name) === normName(composedName);
+          if (!sameName) return false;
+          // Nếu học sinh trên hệ thống chưa có mã HS, hoặc trùng thêm SĐT / trường học -> khớp để đồng bộ mã HS & lớp!
+          const existingCode = String(s.studentCode || '').trim().toUpperCase();
+          if (!existingCode) return true;
+          if (!codeNorm) return true;
+          const rPhone = normPhone(row.parentPhone);
+          const sPhone = normPhone(s.parentContact?.phone);
+          if (rPhone && sPhone && rPhone.length >= 7 && rPhone === sPhone) return true;
+          return false;
+        });
       }
 
-      if (stu) {
-        if (composedName) {
-          stu.name = composedName;
-          const sp = splitVietnameseName(composedName);
-          stu.familyName = row.familyName || sp.familyName;
-          stu.givenName = row.givenName || sp.givenName;
-        }
-        if (row.school) stu.school = row.school;
-        if (row.parentName || row.parentPhone) {
-          stu.parentContact = stu.parentContact || {};
-          if (row.parentName) stu.parentContact.name = row.parentName;
-          if (row.parentPhone) stu.parentContact.phone = row.parentPhone;
-        }
-        if (row.enrollmentStatus) {
-          stu.enrollmentStatus = normalizeEnrollmentStatus(row.enrollmentStatus);
-        }
-        if (row.learningNotes) {
-          stu.learningNotes = row.learningNotes;
-        }
-        if (resolvedClassIds && resolvedClassIds.length) {
-          const oldIds = (stu.classIds || []).filter(cid => !resolvedClassIds.includes(cid));
-          if (oldIds.length) {
-            stu.previousClassIds = Array.from(new Set([...(stu.previousClassIds || []), ...oldIds]));
-          }
-          stu.classIds = resolvedClassIds;
-        }
-        updated++;
-      } else if (codeNorm && composedName) {
-        const sp = splitVietnameseName(composedName);
-        const defaultClsIds = resolvedClassIds || (targetClsFilter && targetClsFilter !== 'all' ? [targetClsFilter] : [getCurrentClassId()]);
-        stu = {
-          id: `stu-sync-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      // Xác định danh sách lớp trên Sheet của dòng này
+      let sheetClassIds = [...(row.resolvedClassIds || [])];
+      if (!sheetClassIds.length && targetClsFilter && targetClsFilter !== 'all') {
+        sheetClassIds = [targetClsFilter];
+      }
+
+      if (!existingStu) {
+        // NHÓM 1: HỌC SINH MỚI CHƯA CÓ TRONG DANH SÁCH
+        const fallbackClsIds = sheetClassIds.length
+          ? sheetClassIds
+          : (getCurrentClassId() ? [getCurrentClassId()] : []);
+        pendingSheetsApprovalItems.push({
+          tempId: `sync-item-${idx}-${Date.now()}`,
+          category: 'new_student',
+          approved: true,
+          addNewTag: defaultAddNewTag,
+          classAction: 'transfer',
+          customClassChoice: (row.rawClassTexts.length && !row.resolvedClassIds.length) ? `create_new:${row.rawClassTexts[0]}` : '',
           studentCode: codeNorm,
-          name: composedName,
-          familyName: row.familyName || sp.familyName,
-          givenName: row.givenName || sp.givenName,
-          school: row.school || '',
-          classIds: defaultClsIds,
-          previousClassIds: [],
-          enrollmentStatus: row.enrollmentStatus ? normalizeEnrollmentStatus(row.enrollmentStatus) : 'Học',
-          parentContact: {
-            name: row.parentName || '',
-            phone: row.parentPhone || ''
-          },
-          learningNotes: row.learningNotes || '',
-          attendance: null,
-          homework: { status: 'uncollected', score: null },
-          scores: [],
-          attendanceHistory: [],
-          sessionNotes: []
-        };
-        allStudents.push(stu);
-        created++;
+          fullName: composedName || codeNorm,
+          familyName: row.familyName,
+          givenName: row.givenName,
+          school: row.school,
+          parentName: row.parentName,
+          parentPhone: row.parentPhone,
+          enrollmentStatus: row.enrollmentStatus || 'Học',
+          rawClassTexts: row.rawClassTexts || [],
+          targetClassIds: fallbackClsIds,
+          btvnScore: row.btvnScore,
+          testScore: row.testScore,
+          sessionNote: row.sessionNote,
+          learningNotes: row.learningNotes,
+          existingStudent: null
+        });
+        return;
       }
 
-      if (stu && (String(row.btvnScore ?? '').trim() !== '' || String(row.testScore ?? '').trim() !== '' || row.sessionNote)) {
+      // Học sinh đã tồn tại -> Kiểm tra xem lớp trên Sheet có khác với lớp gốc của học sinh không
+      const origClassIds = Array.isArray(existingStu.classIds) ? existingStu.classIds.filter(Boolean) : [];
+      const hasNewResolvedClass = sheetClassIds.length > 0 && (
+        sheetClassIds.some(cid => !origClassIds.includes(cid)) ||
+        (targetClsFilter === 'all' && origClassIds.some(cid => !sheetClassIds.includes(cid)))
+      );
+      const hasUnresolvedSheetClass = row.rawClassTexts.length > 0 && row.resolvedClassIds.length === 0;
+      const isClassDifferent = hasNewResolvedClass || hasUnresolvedSheetClass;
+
+      const existingCode = String(existingStu.studentCode || '').trim().toUpperCase();
+      const isCodeDifferent = Boolean(codeNorm && codeNorm !== existingCode);
+      const hasScoreOrInfoUpdate = Boolean(
+        isCodeDifferent ||
+        (row.school && row.school !== existingStu.school) ||
+        (row.parentPhone && row.parentPhone !== existingStu.parentContact?.phone) ||
+        String(row.btvnScore ?? '').trim() !== '' ||
+        String(row.testScore ?? '').trim() !== '' ||
+        row.sessionNote
+      );
+
+      if (isClassDifferent) {
+        // NHÓM 2: HỌC SINH CÓ LỚP TRONG SHEET KHÁC VỚI LỚP GỐC
+        pendingSheetsApprovalItems.push({
+          tempId: `sync-item-${idx}-${Date.now()}`,
+          category: 'class_change',
+          approved: true,
+          addNewTag: defaultAddNewTag,
+          classAction: defaultClassAction,
+          customClassChoice: hasUnresolvedSheetClass ? `create_new:${row.rawClassTexts[0]}` : '',
+          studentCode: codeNorm || existingCode,
+          fullName: composedName || existingStu.name,
+          familyName: row.familyName || existingStu.familyName,
+          givenName: row.givenName || existingStu.givenName,
+          school: row.school || existingStu.school || '',
+          parentName: row.parentName || existingStu.parentContact?.name || '',
+          parentPhone: row.parentPhone || existingStu.parentContact?.phone || '',
+          enrollmentStatus: row.enrollmentStatus || existingStu.enrollmentStatus || 'Học',
+          rawClassTexts: row.rawClassTexts || [],
+          targetClassIds: sheetClassIds.length ? sheetClassIds : origClassIds,
+          btvnScore: row.btvnScore,
+          testScore: row.testScore,
+          sessionNote: row.sessionNote,
+          learningNotes: row.learningNotes || existingStu.learningNotes || '',
+          existingStudent: existingStu
+        });
+      } else if (hasScoreOrInfoUpdate) {
+        // NHÓM 3: CÙNG LỚP NHƯNG CẬP NHẬT MÃ HỌC SINH / THÔNG TIN / ĐIỂM
+        pendingSheetsApprovalItems.push({
+          tempId: `sync-item-${idx}-${Date.now()}`,
+          category: 'code_update',
+          approved: true,
+          addNewTag: Boolean(existingStu.isNew),
+          classAction: 'keep',
+          customClassChoice: '',
+          studentCode: codeNorm || existingCode,
+          fullName: composedName || existingStu.name,
+          familyName: row.familyName || existingStu.familyName,
+          givenName: row.givenName || existingStu.givenName,
+          school: row.school || existingStu.school || '',
+          parentName: row.parentName || existingStu.parentContact?.name || '',
+          parentPhone: row.parentPhone || existingStu.parentContact?.phone || '',
+          enrollmentStatus: row.enrollmentStatus || existingStu.enrollmentStatus || 'Học',
+          rawClassTexts: row.rawClassTexts || [],
+          targetClassIds: origClassIds,
+          btvnScore: row.btvnScore,
+          testScore: row.testScore,
+          sessionNote: row.sessionNote,
+          learningNotes: row.learningNotes || existingStu.learningNotes || '',
+          existingStudent: existingStu
+        });
+      } else {
+        unchangedCount++;
+      }
+    });
+
+    activeSheetsApproveFilter = 'all';
+    const newCount = pendingSheetsApprovalItems.filter(i => i.category === 'new_student').length;
+    const diffClassCount = pendingSheetsApprovalItems.filter(i => i.category === 'class_change').length;
+    const codeUpdateCount = pendingSheetsApprovalItems.filter(i => i.category === 'code_update').length;
+
+    if (!pendingSheetsApprovalItems.length) {
+      renderSheetsApprovalTable();
+      setSheetsSyncStatus(
+        `✓ Đã quét <strong>${extractedRows.length}</strong> học sinh từ ${escapeHtml(sourceLabel)}: Tất cả học sinh, Mã HS và Lớp học đều đã khớp 100% với danh sách hiện tại (không phát hiện học sinh mới hay khác lớp gốc).`,
+        false
+      );
+      toast(`Đã quét ${extractedRows.length} học sinh: Không có học sinh mới hoặc khác lớp gốc.`);
+      return;
+    }
+
+    setSheetsSyncStatus(
+      `🔍 Đã quét <strong>${extractedRows.length}</strong> dòng từ ${escapeHtml(sourceLabel)} · Phát hiện: <strong>${newCount} Học sinh mới</strong>, <strong>${diffClassCount} Học sinh khác lớp gốc</strong>${codeUpdateCount ? `, <strong>${codeUpdateCount} Cập nhật Mã HS/Thông tin</strong>` : ''} (và ${unchangedCount} HS đã khớp). Vui lòng kiểm tra và bấm <strong>Duyệt</strong> bên dưới!`,
+      false
+    );
+    renderSheetsApprovalTable();
+    $('#sheets-approval-section')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function applyApprovedSheetsSyncItems() {
+    const approvedItems = pendingSheetsApprovalItems.filter(i => i.approved);
+    if (!approvedItems.length) {
+      toast('Vui lòng tích chọn ít nhất 1 học sinh trong bảng duyệt để áp dụng.');
+      return;
+    }
+
+    const catalog = getClassCatalog();
+    const allStudents = getStudents();
+    const makeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
+    const now = Date.now();
+    const scoreItems = [];
+
+    let addedCount = 0;
+    let transferredCount = 0;
+    let updatedCodeCount = 0;
+
+    // Tự động tạo lớp mới nếu có dòng chọn "create_new:<Mã lớp>"
+    const ensureCustomClassCreated = (rawCodeStr) => {
+      const cleanCode = String(rawCodeStr || '').trim().toUpperCase();
+      if (!cleanCode) return null;
+      const existingCls = catalog.find(c => String(c.code || '').toUpperCase() === cleanCode || String(c.id || '').toUpperCase() === cleanCode);
+      if (existingCls) return existingCls.id;
+      const newClsId = `class-${cleanCode.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36).slice(-3)}`;
+      const newCls = {
+        id: newClsId,
+        code: cleanCode,
+        name: cleanCode,
+        subject: 'Toán',
+        grade: '2011',
+        room: 'P.101',
+        weekday: 1,
+        startTime: '18:00',
+        endTime: '19:30',
+        scheduleText: '18:00 - 19:30'
+      };
+      catalog.push(newCls);
+      if (ctx.saveClassCatalog) ctx.saveClassCatalog(catalog);
+      return newClsId;
+    };
+
+    approvedItems.forEach(item => {
+      let finalTargetClassIds = [...(item.targetClassIds || [])];
+      if (item.customClassChoice && item.customClassChoice.startsWith('create_new:')) {
+        const rawCode = item.customClassChoice.replace(/^create_new:/, '');
+        const createdId = ensureCustomClassCreated(rawCode);
+        if (createdId) finalTargetClassIds = [createdId];
+      }
+
+      if (item.category === 'new_student') {
+        const tagsArr = item.addNewTag ? ['Mới'] : [];
+        const newStu = createStudentProfile({
+          name: item.fullName,
+          familyName: item.familyName,
+          givenName: item.givenName,
+          studentCode: item.studentCode || null,
+          school: item.school || '',
+          parentContact: {
+            name: item.parentName || '',
+            phone: item.parentPhone || ''
+          },
+          classIds: finalTargetClassIds,
+          enrollmentStatus: item.enrollmentStatus || 'Học',
+          tags: tagsArr,
+          isNew: Boolean(item.addNewTag),
+          kind: 'regular'
+        });
+        newStu.studentCode = item.studentCode || null;
+        newStu.classIds = finalTargetClassIds;
+        newStu.isNew = Boolean(item.addNewTag);
+        newStu.tags = tagsArr;
+        if (!item.addNewTag) {
+          newStu.sessionNotes = [];
+        }
+        if (item.learningNotes) newStu.learningNotes = item.learningNotes;
+        newStu.updatedAt = now;
+        newStu.revision = 1;
+        allStudents.push(newStu);
+        addedCount++;
+      } else if (item.category === 'class_change' && item.existingStudent) {
+        const stu = item.existingStudent;
+        if (item.studentCode) stu.studentCode = item.studentCode;
+        if (item.fullName) {
+          stu.name = item.fullName;
+          stu.familyName = item.familyName || stu.familyName;
+          stu.givenName = item.givenName || stu.givenName;
+        }
+        if (item.school) stu.school = item.school;
+        if (item.parentName || item.parentPhone) {
+          stu.parentContact = {
+            name: item.parentName || stu.parentContact?.name || '',
+            phone: item.parentPhone || stu.parentContact?.phone || ''
+          };
+        }
+        if (item.enrollmentStatus) stu.enrollmentStatus = item.enrollmentStatus;
+        if (item.learningNotes) stu.learningNotes = item.learningNotes;
+
+        stu.classIds = Array.isArray(stu.classIds) ? [...stu.classIds] : [];
+        stu.previousClassIds = Array.isArray(stu.previousClassIds) ? [...stu.previousClassIds] : [];
+        stu.classTransferHistory = Array.isArray(stu.classTransferHistory) ? [...stu.classTransferHistory] : [];
+
+        if (finalTargetClassIds.length) {
+          if (item.classAction === 'transfer') {
+            const oldClasses = stu.classIds.filter(cid => cid && !finalTargetClassIds.includes(cid));
+            oldClasses.forEach(oldCid => {
+              if (!stu.previousClassIds.includes(oldCid)) {
+                stu.previousClassIds.push(oldCid);
+              }
+              stu.classTransferHistory.push({
+                fromClassId: oldCid,
+                toClassId: finalTargetClassIds[0],
+                date: getChecklistDate(),
+                timestamp: now,
+                source: 'google-sheets-sync'
+              });
+            });
+            stu.classIds = [...new Set(finalTargetClassIds)];
+            stu.previousClassIds = stu.previousClassIds.filter(cid => !stu.classIds.includes(cid));
+          } else {
+            stu.classIds = [...new Set([...stu.classIds, ...finalTargetClassIds])];
+            stu.previousClassIds = stu.previousClassIds.filter(cid => !stu.classIds.includes(cid));
+          }
+        }
+
+        stu.tags = Array.isArray(stu.tags) ? [...stu.tags] : [];
+        if (item.addNewTag) {
+          stu.isNew = true;
+          if (!stu.tags.some(t => String(t).trim().toLowerCase() === 'mới')) {
+            stu.tags.unshift('Mới');
+          }
+        } else {
+          stu.isNew = false;
+          stu.tags = stu.tags.filter(t => String(t).trim().toLowerCase() !== 'mới');
+        }
+        stu.updatedAt = now;
+        stu.revision = (Number(stu.revision) || 0) + 1;
+        transferredCount++;
+      } else if (item.category === 'code_update' && item.existingStudent) {
+        const stu = item.existingStudent;
+        if (item.studentCode) stu.studentCode = item.studentCode;
+        if (item.fullName) {
+          stu.name = item.fullName;
+          stu.familyName = item.familyName || stu.familyName;
+          stu.givenName = item.givenName || stu.givenName;
+        }
+        if (item.school) stu.school = item.school;
+        if (item.parentName || item.parentPhone) {
+          stu.parentContact = {
+            name: item.parentName || stu.parentContact?.name || '',
+            phone: item.parentPhone || stu.parentContact?.phone || ''
+          };
+        }
+        if (item.enrollmentStatus) stu.enrollmentStatus = item.enrollmentStatus;
+        if (item.learningNotes) stu.learningNotes = item.learningNotes;
+
+        stu.tags = Array.isArray(stu.tags) ? [...stu.tags] : [];
+        if (item.addNewTag) {
+          stu.isNew = true;
+          if (!stu.tags.some(t => String(t).trim().toLowerCase() === 'mới')) {
+            stu.tags.unshift('Mới');
+          }
+        }
+        stu.updatedAt = now;
+        stu.revision = (Number(stu.revision) || 0) + 1;
+        updatedCodeCount++;
+      }
+
+      if (String(item.btvnScore ?? '').trim() !== '' || String(item.testScore ?? '').trim() !== '' || item.sessionNote) {
         const parseNum = (v) => {
           const s = String(v ?? '').trim().replace(',', '.');
           if (!s) return null;
           const n = Number(s);
           return Number.isFinite(n) && n >= 0 && n <= 10 ? Math.round(n * 100) / 100 : null;
         };
-        const bScore = parseNum(row.btvnScore);
-        const tScore = parseNum(row.testScore);
-        if (bScore !== null || tScore !== null || row.sessionNote) {
+        const bScore = parseNum(item.btvnScore);
+        const tScore = parseNum(item.testScore);
+        if (bScore !== null || tScore !== null || item.sessionNote) {
           scoreItems.push({
-            studentCode: stu.studentCode,
-            fullName: stu.name,
+            studentCode: item.studentCode,
+            fullName: item.fullName,
+            hwParsed: { hasValue: bScore !== null, score: bScore, invalid: false },
+            testParsed: { hasValue: tScore !== null, score: tScore, invalid: false },
             btvnScore: bScore,
             testScore: tScore,
-            note: row.sessionNote || ''
+            note: item.sessionNote || ''
           });
         }
       }
     });
+
+    // Giữ lại các dòng chưa chọn duyệt (nếu có) hoặc đóng bảng duyệt khi đã duyệt hết
+    const approvedIds = new Set(approvedItems.map(i => i.tempId));
+    pendingSheetsApprovalItems = pendingSheetsApprovalItems.filter(i => !approvedIds.has(i.tempId));
 
     saveStudentRecords(allStudents, makeups);
     let scoresUpdated = 0;
     if (scoreItems.length && ctx.applyBatchImportedScores) {
       const res = ctx.applyBatchImportedScores(scoreItems);
       scoresUpdated = res.matched || 0;
-    } else {
-      ctx.refreshAllActiveViews?.();
-      renderMasterStudentDirectory();
     }
 
-    const msg = `✓ Đồng bộ từ ${sourceLabel} theo Mã HS hoàn tất: Cập nhật <strong>${updated}</strong> HS · Thêm mới <strong>${created}</strong> HS${scoresUpdated ? ` · Nhập điểm <strong>${scoresUpdated}</strong> HS` : ''}.`;
-    setSheetsSyncStatus(msg, false);
-    toast(`Đồng bộ thành công: Cập nhật ${updated} HS, Thêm mới ${created} HS${scoresUpdated ? `, Nhập điểm ${scoresUpdated} HS` : ''}.`);
-    return { updated, created, scoresUpdated };
+    ctx.refreshAllActiveViews?.();
+    renderMasterStudentDirectory();
+    renderSheetsApprovalTable();
+
+    const summaryMsg = `✓ Đã duyệt & đồng bộ thành công vào Danh sách học sinh: Thêm mới <strong>${addedCount}</strong> HS · Chuyển/cập nhật lớp <strong>${transferredCount}</strong> HS${updatedCodeCount ? ` · Đồng bộ Mã HS/hồ sơ <strong>${updatedCodeCount}</strong> HS` : ''}${scoresUpdated ? ` · Nhập điểm <strong>${scoresUpdated}</strong> HS` : ''}.`;
+    setSheetsSyncStatus(summaryMsg, false);
+    window.__logAdminSessionAction?.(
+      `Duyệt đồng bộ Google Sheets theo Mã HS`,
+      `Thêm mới: ${addedCount} HS · Chuyển lớp: ${transferredCount} HS · Cập nhật Mã HS: ${updatedCodeCount} HS`,
+      'student'
+    );
+    toast(`✓ Đã duyệt đồng bộ: +${addedCount} HS mới, ${transferredCount} HS chuyển lớp${updatedCodeCount ? `, ${updatedCodeCount} HS cập nhật Mã HS` : ''}!`);
   }
 
+  // Nút mở hộp thoại Đồng bộ Google Sheets từ cả Danh sách lớp VÀ Danh sách tổng của Trung tâm
   $('#google-sheets-sync-btn')?.addEventListener('click', () => {
-    const driveCfg = loadGoogleDrivePhotoConfig();
-    if ($('#drive-script-url-input')) $('#drive-script-url-input').value = driveCfg.scriptUrl || '';
-    if ($('#drive-folder-id-input')) $('#drive-folder-id-input').value = driveCfg.folderId || '';
-    const cfg = loadGoogleSheetsConfig();
-    if ($('#sheets-spreadsheet-id')) $('#sheets-spreadsheet-id').value = cfg.spreadsheetId || '';
-    if ($('#sheets-tab-name')) $('#sheets-tab-name').value = cfg.sheetName || 'DiemDanh';
-    if ($('#sheets-script-url-input')) $('#sheets-script-url-input').value = cfg.scriptUrl || '';
-    if ($('#sheets-autosync-toggle')) $('#sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
-    if ($('#sheets-sync-status-banner')) $('#sheets-sync-status-banner').hidden = true;
-    populateSheetsSyncClassFilter();
-    $('#google-sheets-sync-dialog')?.showModal();
+    openGoogleSheetsSyncModal(getCurrentClassId() || 'all');
   });
+  $('#master-google-sheets-sync-btn')?.addEventListener('click', () => {
+    openGoogleSheetsSyncModal('all');
+  });
+
   $('#close-sheets-sync-dialog')?.addEventListener('click', () => $('#google-sheets-sync-dialog')?.close());
   $('#close-sheets-sync-btn')?.addEventListener('click', () => $('#google-sheets-sync-dialog')?.close());
+
+  // Bộ lọc nhanh trong bảng duyệt
+  document.querySelectorAll('[data-sheets-approve-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeSheetsApproveFilter = btn.dataset.sheetsApproveFilter || 'all';
+      renderSheetsApprovalTable();
+    });
+  });
+
+  // Chọn / bỏ chọn tất cả dòng duyệt
+  $('#sheets-approve-select-all')?.addEventListener('change', (e) => {
+    const checked = Boolean(e.target.checked);
+    pendingSheetsApprovalItems.forEach(item => {
+      if (activeSheetsApproveFilter === 'all' || item.category === activeSheetsApproveFilter) {
+        item.approved = checked;
+      }
+    });
+    renderSheetsApprovalTable();
+  });
+
+  // Bật / tắt hàng loạt Tag "Mới" trước khi thêm vào danh sách
+  $('#sheets-approve-tag-all-cb')?.addEventListener('change', (e) => {
+    const checked = Boolean(e.target.checked);
+    pendingSheetsApprovalItems.forEach(item => {
+      if (activeSheetsApproveFilter === 'all' || item.category === activeSheetsApproveFilter) {
+        item.addNewTag = checked;
+      }
+    });
+    renderSheetsApprovalTable();
+  });
+
+  $('#cancel-sheets-approval-btn')?.addEventListener('click', () => {
+    pendingSheetsApprovalItems = [];
+    renderSheetsApprovalTable();
+  });
+
+  $('#confirm-sheets-approve-btn')?.addEventListener('click', () => {
+    applyApprovedSheetsSyncItems();
+  });
 
   $('#trigger-sheets-sync-btn')?.addEventListener('click', async () => {
     const cfg = readAndSaveSheetsConfigFromDialog();
@@ -6407,20 +7137,22 @@ export function setupFeatures(ctx) {
       date: getChecklistDate(),
       students: rows
     }, cfg);
-    setSheetsSyncStatus(escapeHtml(res.message), !res.success);
-    toast(res.message);
+    setSheetsSyncStatus(escapeHtml(res.message || 'Đã thực hiện đẩy dữ liệu.'), !res.success);
+    toast(res.message || 'Đã thực hiện đẩy dữ liệu.');
   });
 
   $('#pull-sheets-sync-btn')?.addEventListener('click', async () => {
     const cfg = readAndSaveSheetsConfigFromDialog();
-    setSheetsSyncStatus('⏳ Đang kéo dữ liệu từ Google Sheets về Web theo Mã HS...', false);
+    setSheetsSyncStatus('⏳ Đang kết nối Google Sheets và quét tìm Học sinh mới & Học sinh khác lớp gốc theo Mã HS...', false);
     const res = await pullStudentsFromGoogleSheets(cfg);
     if (!res.success) {
       setSheetsSyncStatus(escapeHtml(res.message), true);
+      const fallbackDetails = $('#sheets-paste-fallback-details');
+      if (fallbackDetails) fallbackDetails.open = true;
       toast(res.message);
       return;
     }
-    applyIncomingSyncedRowsByStudentCode(res.rows, 'Google Sheets (Trực tuyến)');
+    scanIncomingSheetsRowsForApproval(res.rows, 'Google Sheets (Trực tuyến)');
   });
 
   $('#copy-sheets-tsv-btn')?.addEventListener('click', () => {
@@ -6467,7 +7199,7 @@ export function setupFeatures(ctx) {
       reader.onload = async (ev) => {
         try {
           const rows = await parseXlsxArrayBuffer(ev.target.result);
-          applyIncomingSyncedRowsByStudentCode(rows, `File "${file.name}"`);
+          scanIncomingSheetsRowsForApproval(rows, `File "${file.name}"`);
         } catch (err) {
           toast(`Lỗi đọc file: ${err.message || err}`);
         }
@@ -6475,28 +7207,31 @@ export function setupFeatures(ctx) {
       reader.readAsArrayBuffer(file);
     } else {
       reader.onload = (ev) => {
-        const rows = parseRawTable(String(ev.target.result || ''));
-        applyIncomingSyncedRowsByStudentCode(rows, `File "${file.name}"`);
+        const parsed = parseRawTable(String(ev.target.result || ''));
+        scanIncomingSheetsRowsForApproval(parsed.rows || parsed, `File "${file.name}"`);
       };
       reader.readAsText(file, 'utf-8');
     }
   });
 
   $('#apply-sheets-paste-sync-btn')?.addEventListener('click', () => {
-    const raw = ($('#sheets-paste-sync-input')?.value || '').trim();
+    const raw = ($('#sheets-paste-sync-textarea')?.value || $('#sheets-paste-sync-input')?.value || '').trim();
     if (!raw) {
       toast('Vui lòng dán vùng dữ liệu từ Google Sheets (có cột Mã HS) vào ô bên trên.');
       return;
     }
-    const rows = parseRawTable(raw);
-    applyIncomingSyncedRowsByStudentCode(rows, 'Bảng dán Google Sheets');
+    const parsed = parseRawTable(raw);
+    scanIncomingSheetsRowsForApproval(parsed.rows || parsed, 'Bảng dán Google Sheets');
   });
 
   $('#save-drive-photo-config-btn')?.addEventListener('click', () => {
-    const scriptUrl = ($('#drive-script-url-input')?.value || '').trim();
+    const scriptUrl = ($('#sheets-script-url-input')?.value || $('#drive-script-url-input')?.value || '').trim();
     const folderId = ($('#drive-folder-id-input')?.value || '').trim();
+    if ($('#drive-script-url-input') && scriptUrl) $('#drive-script-url-input').value = scriptUrl;
+    if ($('#sheets-script-url-input') && scriptUrl) $('#sheets-script-url-input').value = scriptUrl;
     saveGoogleDrivePhotoConfig({ scriptUrl, folderId });
     readAndSaveSheetsConfigFromDialog();
+    setSheetsSyncStatus('✓ Đã lưu toàn bộ cấu hình kết nối Google Sheets, quy tắc đồng bộ Mã HS & Google Drive.', false);
     toast('✓ Đã lưu cấu hình kết nối Google Sheets & Google Drive.');
   });
   $('#system-help-btn')?.addEventListener('click', () => {

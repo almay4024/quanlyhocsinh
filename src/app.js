@@ -3127,6 +3127,10 @@ function createStudentProfile({name,familyName=undefined,givenName=undefined,sch
     baseTags.unshift('Mới');
   }
   const id = `stu-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+  const nowTs = Date.now();
+  const initialSessionNotes = (!makeup && isNewStudent && CURRENT_CLASS_ID && checklistDate)
+    ? [{ classId: CURRENT_CLASS_ID, date: checklistDate, note: 'Học sinh mới', updatedAt: nowTs, _noteUpdatedAt: nowTs }]
+    : [];
   const profile = {
     id,
     familyName: familyName !== undefined && familyName !== '' ? familyName : splitParts.familyName,
@@ -3147,15 +3151,37 @@ function createStudentProfile({name,familyName=undefined,givenName=undefined,sch
     scores:[],
     attendanceHistory:[],
     seatingHistory:[],
+    sessionNotes:initialSessionNotes,
     notes:[],
     learningNotes:'',
     tags:[...new Set(baseTags.filter(Boolean))],
     isNew:isNewStudent,
     studentType:makeup?'makeup':'regular',
-    createdAt:Date.now()
+    createdAt:nowTs
   };
   profile.photoDriveFileName = buildStudentDrivePhotoFileName(profile, classCatalog);
   return profile;
+}
+function applyAutoNewStudentSessionNote(student, noteInputSelector = null) {
+  if (!student || !student.id || student.studentType === 'makeup') return '';
+  const noteInputEl = noteInputSelector ? $(noteInputSelector) : null;
+  const typedNote = (noteInputEl && (!noteInputEl.dataset.sessionNote || noteInputEl.dataset.sessionNote === student.id))
+    ? String(noteInputEl.value || '').trim()
+    : '';
+  const existingSaved = String(sessionNoteFor(student.id) || '').trim();
+  const baseNote = typedNote || existingSaved;
+  let resolvedNote = 'Học sinh mới';
+  if (baseNote) {
+    const hasPrefix = baseNote.toLocaleLowerCase('vi').includes('học sinh mới');
+    resolvedNote = hasPrefix ? baseNote : `Học sinh mới · ${baseNote}`;
+  }
+  saveSessionNote(student.id, resolvedNote);
+  if (noteInputEl) {
+    noteInputEl.value = resolvedNote;
+    noteInputEl.dataset.sessionNote = student.id;
+    noteInputEl.disabled = false;
+  }
+  return resolvedNote;
 }
 const currentStaffName=()=>masterData?.employees?.find(e=>e.id===currentEmployeeId)?.name||document.querySelector('.user-name')?.childNodes[0]?.textContent.trim()||'Trợ giảng';
 const personalWorkKey=()=>`lopvui.personal-work.v2.${currentEmployeeId||'employee-ta-001'}`;
@@ -5151,6 +5177,35 @@ function renderStudentList(){
   }
 
   const query=$('#student-list-search').value.trim(),filter=$('#student-list-filter').value;
+  const isNewSessionStudentRow = (r) => !r.isMakeupRow && (
+    isNewStudentRecord(r.student) ||
+    Boolean(r.note && String(r.note).toLocaleLowerCase('vi').includes('học sinh mới'))
+  );
+
+  // Cập nhật thanh Lọc nhanh & Khớp dữ liệu cho tài khoản Văn phòng / Admin
+  const newStudentRowCount = records.filter(r => isNewSessionStudentRow(r)).length;
+  const makeupRowCount = makeupRecords.length;
+  const totalNewAndMakeupCount = newStudentRowCount + makeupRowCount;
+  const officeBar = $('#office-student-list-bar');
+  const currentRole = selectedRole();
+  if (officeBar) {
+    const showOfficeBar = currentRole === 'office' || currentRole === 'admin' || totalNewAndMakeupCount > 0 || ['new_or_makeup', 'new_student', 'makeup'].includes(filter);
+    officeBar.hidden = !showOfficeBar;
+    const pillBoth = $('#office-pill-new-makeup-count');
+    const pillNew = $('#office-pill-new-count');
+    const pillMakeup = $('#office-pill-makeup-count');
+    if (pillBoth) pillBoth.textContent = String(totalNewAndMakeupCount);
+    if (pillNew) pillNew.textContent = String(newStudentRowCount);
+    if (pillMakeup) pillMakeup.textContent = String(makeupRowCount);
+    officeBar.querySelectorAll('[data-office-student-filter]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.officeStudentFilter === filter);
+    });
+    const matchBtn = $('#open-match-temp-students-btn');
+    if (matchBtn) {
+      matchBtn.innerHTML = `🔗 Khớp dữ liệu HS mới / Học bù với DS tổng${totalNewAndMakeupCount ? ` <span class="pill-count" style="background:#ffffff; color:#1d4ed8; margin-left:4px;">${totalNewAndMakeupCount}</span>` : ''}`;
+    }
+  }
+
   const filterAndSort = (list) => {
     let items = [...list];
     if(query){
@@ -5163,7 +5218,9 @@ function renderStudentList(){
     if(filter==='unmarked')items=items.filter(r=>!r.attendance?.status);
     if(filter==='homework')items=items.filter(r=>r.homework.status==='not_submitted');
     if(filter==='warning')items=items.filter(r=>evaluateStudentEarlyWarning(r.student, CURRENT_CLASS_ID).hasWarning);
+    if(filter==='new_student')items=items.filter(r=>isNewSessionStudentRow(r));
     if(filter==='makeup')items=items.filter(r=>r.isMakeupRow);
+    if(filter==='new_or_makeup')items=items.filter(r=>r.isMakeupRow || isNewSessionStudentRow(r));
 
     items.sort((a, b) => {
       let cmp = 0;
@@ -5197,7 +5254,7 @@ function renderStudentList(){
 
   // Makeup students are always placed at the bottom of the main table
   const visibleRegular = filter === 'makeup' ? [] : filterAndSort(records);
-  const visibleMakeup = filterAndSort(makeupRecords);
+  const visibleMakeup = filter === 'new_student' ? [] : filterAndSort(makeupRecords);
   const visible = [...visibleRegular, ...visibleMakeup];
 
   const getLiveTableColumnOrder = () => {
@@ -5309,13 +5366,17 @@ function renderStudentList(){
                 note: `<td class="col-allow-wrap"><textarea rows="1" class="attendance-note-input auto-expand-note" data-session-note="${escapeHtml(student.id)}" aria-label="Ghi chú chung cho ${escapeHtml(student.name)}" placeholder="Nhập ghi chú buổi học..." style="width:100%; min-width:150px;">${escapeHtml(note)}</textarea></td>`
               };
 
+              const isRowNewOrMakeup = isMakeupRow || isNewSessionStudentRow({ student, isMakeupRow, note });
+              const showMatchBtn = (isOfficeRole || selectedRole() === 'admin') && isRowNewOrMakeup;
+
               return `
-                <tr class="${isMakeupRow ? 'makeup-row-tr' : ''}">
+                <tr class="${isMakeupRow ? 'makeup-row-tr' : (isRowNewOrMakeup ? 'new-student-row-tr' : '')}">
                   <td style="text-align:center;">
                     <input type="checkbox" class="live-student-cb" data-student-id="${escapeHtml(student.id)}" ${selectedLiveClassStudentIds.has(student.id) ? 'checked' : ''} />
                   </td>
                   ${colOrder.map(k => cellMap[k] || '').join('')}
                   <td style="text-align:center; white-space:nowrap;">
+                    ${showMatchBtn ? `<button type="button" class="outline-button btn-match-master-row" data-match-master-student="${escapeHtml(student.id)}" title="Khớp thông tin học sinh mới / học bù này với học sinh trong danh sách tổng của trung tâm và đính dữ liệu buổi học">🔗 Khớp DS tổng</button>` : ''}
                     <button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(student.id)}" title="Mở sơ đồ lớp và tìm nhanh chỗ ngồi học sinh này">Tìm chỗ</button>
                     ${!isMakeupRow ? `<button type="button" class="outline-button" data-transfer-class-student="${escapeHtml(student.id)}" style="padding:5px 7px; font-size:12px; margin-left:3px; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;" title="Chuyển học sinh sang lớp khác (vẫn giữ dữ liệu lớp cũ)">⇄ Chuyển</button>` : ''}
                     <button type="button" class="outline-button text-danger" data-delete-class-student="${escapeHtml(student.id)}" style="padding:5px 8px; font-size:12.5px; margin-left:3px;" title="Xoá học sinh này khỏi danh sách">Xoá</button>
@@ -5330,6 +5391,14 @@ function renderStudentList(){
   };
   host.innerHTML = renderUnifiedTable(visible);
   autoResizeNoteTextareas(host);
+
+  // Wire Office Match Student with Master List button on row
+  host.querySelectorAll('[data-match-master-student]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openMatchStudentWithMasterDialog(btn.dataset.matchMasterStudent);
+    });
+  });
 
   // Wire Office quick-copy parent report button
   host.querySelectorAll('[data-quick-copy-parent-zalo]').forEach(btn => {
@@ -5542,6 +5611,637 @@ function renderStudentList(){
   });
 }
 $('#student-list-search').addEventListener('input',renderStudentList);$('#student-list-filter').addEventListener('change',renderStudentList);
+
+document.querySelectorAll('[data-office-student-filter]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const val = btn.dataset.officeStudentFilter || 'all';
+    const filterSelect = $('#student-list-filter');
+    if (filterSelect) {
+      filterSelect.value = val;
+    }
+    renderStudentList();
+  });
+});
+
+$('#open-match-temp-students-btn')?.addEventListener('click', () => {
+  openMatchStudentWithMasterDialog(null);
+});
+
+function mergeAssistantStudentIntoMasterStudent(tempStuId, masterStuId, classAction = 'keep') {
+  const tempStu = studentById(tempStuId);
+  const masterStu = students.find(s => s.id === masterStuId);
+  if (!tempStu || !masterStu || tempStu.id === masterStu.id) {
+    toast('Không tìm thấy học sinh hợp lệ để khớp dữ liệu.');
+    return false;
+  }
+
+  const now = Date.now();
+  const isTempMakeup = tempStu.studentType === 'makeup' ||
+    makeupStudents.some(m => m.id === tempStu.id) ||
+    (!(tempStu.classIds || []).includes(CURRENT_CLASS_ID) && !isNewStudentRecord(tempStu));
+
+  // 1. Gộp ghi chú buổi học hiện tại (giữ nguyên "Học sinh mới" hoặc nối thêm nếu cả 2 đều có ghi chú)
+  const tempNote = String(sessionNoteFor(tempStu.id) || '').trim();
+  const masterNote = String(sessionNoteFor(masterStu.id) || '').trim();
+  let combinedNote = masterNote || tempNote;
+  if (masterNote && tempNote && !masterNote.toLocaleLowerCase('vi').includes(tempNote.toLocaleLowerCase('vi'))) {
+    combinedNote = `${tempNote} · ${masterNote}`;
+  }
+  delete attendanceNotes[tempStu.id];
+  if (combinedNote) {
+    attendanceNotes[masterStu.id] = combinedNote;
+    attendanceNotes.__updatedAt = attendanceNotes.__updatedAt || {};
+    attendanceNotes.__updatedAt[masterStu.id] = now;
+  }
+  localStorage.setItem(getAttendanceNotesKey(), JSON.stringify(attendanceNotes));
+
+  // 2. Chuyển vị trí ngồi trên sơ đồ bàn học (deskItems) từ tempStu sang masterStu
+  let movedSeatEntry = null;
+  for (const { desk } of desks()) {
+    const list = deskItems[desk.id] || [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i]?.studentId === tempStu.id) {
+        list[i].studentId = masterStu.id;
+        list[i]._updatedAt = now;
+        if (combinedNote) {
+          if (list[i].homework) list[i].homework.note = combinedNote;
+          if (list[i].attendance) list[i].attendance.note = combinedNote;
+        }
+        movedSeatEntry = list[i];
+      }
+    }
+    // Loại bỏ ghế trùng nếu masterStu đã có 1 ghế khác trong cùng buổi
+    let seenMaster = false;
+    deskItems[desk.id] = (deskItems[desk.id] || []).filter(ent => {
+      if (ent?.studentId !== masterStu.id) return true;
+      if (!seenMaster) {
+        seenMaster = true;
+        return true;
+      }
+      return false;
+    });
+  }
+
+  // 3. Chuyển danh sách đi muộn / cuối lớp (lateQueue)
+  if (lateQueue.includes(tempStu.id)) {
+    lateQueue = lateQueue.map(id => (id === tempStu.id ? masterStu.id : id));
+    lateQueue = [...new Set(lateQueue)];
+    if (movedSeatEntry) {
+      lateQueue = lateQueue.filter(id => id !== masterStu.id);
+    }
+  }
+
+  // 4. Chuyển điểm BTVN / Test trong checklist của buổi học hiện tại
+  if (checklist) {
+    if (checklist.hwScores && tempStu.id in checklist.hwScores) {
+      if (checklist.hwScores[masterStu.id] === undefined || checklist.hwScores[masterStu.id] === '') {
+        checklist.hwScores[masterStu.id] = checklist.hwScores[tempStu.id];
+      }
+      delete checklist.hwScores[tempStu.id];
+    }
+    if (checklist.testScores && tempStu.id in checklist.testScores) {
+      if (checklist.testScores[masterStu.id] === undefined || checklist.testScores[masterStu.id] === '') {
+        checklist.testScores[masterStu.id] = checklist.testScores[tempStu.id];
+      }
+      delete checklist.testScores[tempStu.id];
+    }
+    if (Array.isArray(checklist.tests)) {
+      checklist.tests.forEach(t => {
+        if (t && t.scores && tempStu.id in t.scores) {
+          if (t.scores[masterStu.id] === undefined || t.scores[masterStu.id] === '') {
+            t.scores[masterStu.id] = t.scores[tempStu.id];
+          }
+          delete t.scores[tempStu.id];
+        }
+      });
+    }
+  }
+
+  // 5. Đính trạng thái điểm danh, BTVN, điểm Test trong buổi hiện tại vào masterStu
+  if (tempStu.attendance) {
+    masterStu.attendance = {
+      ...tempStu.attendance,
+      note: combinedNote || tempStu.attendance.note || ''
+    };
+  }
+  if (tempStu.arrivalTime) masterStu.arrivalTime = tempStu.arrivalTime;
+  if (tempStu.lateMinutes !== undefined) masterStu.lateMinutes = tempStu.lateMinutes;
+  if (tempStu.homework && (tempStu.homework.status !== 'uncollected' || tempStu.homework.score !== null)) {
+    masterStu.homework = {
+      ...tempStu.homework,
+      note: combinedNote || tempStu.homework.note || ''
+    };
+  }
+  if (tempStu.testScore !== null && tempStu.testScore !== undefined && tempStu.testScore !== '') {
+    masterStu.testScore = tempStu.testScore;
+  }
+
+  // 6. Gộp lịch sử điểm danh (attendanceHistory), chỗ ngồi (seatingHistory), điểm số (scores), ghi chú buổi (sessionNotes)
+  masterStu.attendanceHistory = Array.isArray(masterStu.attendanceHistory) ? masterStu.attendanceHistory : [];
+  for (const item of (tempStu.attendanceHistory || [])) {
+    if (!item || !item.date) continue;
+    const clsId = item.classId || CURRENT_CLASS_ID;
+    const exIdx = masterStu.attendanceHistory.findIndex(x => (x.classId || CURRENT_CLASS_ID) === clsId && x.date === item.date);
+    if (exIdx >= 0) {
+      masterStu.attendanceHistory[exIdx] = { ...masterStu.attendanceHistory[exIdx], ...item, classId: clsId, updatedAt: now };
+    } else {
+      masterStu.attendanceHistory.push({ ...item, classId: clsId, updatedAt: now });
+    }
+  }
+
+  masterStu.seatingHistory = Array.isArray(masterStu.seatingHistory) ? masterStu.seatingHistory : [];
+  for (const item of (tempStu.seatingHistory || [])) {
+    if (!item || !item.date) continue;
+    const clsId = item.classId || CURRENT_CLASS_ID;
+    const exIdx = masterStu.seatingHistory.findIndex(x => (x.classId || CURRENT_CLASS_ID) === clsId && x.date === item.date);
+    if (exIdx >= 0) {
+      masterStu.seatingHistory[exIdx] = { ...masterStu.seatingHistory[exIdx], ...item, classId: clsId, updatedAt: now };
+    } else {
+      masterStu.seatingHistory.push({ ...item, classId: clsId, updatedAt: now });
+    }
+  }
+
+  masterStu.scores = Array.isArray(masterStu.scores) ? masterStu.scores : [];
+  for (const item of (tempStu.scores || [])) {
+    if (!item || !item.date) continue;
+    const clsId = item.classId || CURRENT_CLASS_ID;
+    const lbl = item.label || 'BTVN';
+    const exIdx = masterStu.scores.findIndex(x => (x.classId || CURRENT_CLASS_ID) === clsId && x.date === item.date && (x.label || 'BTVN') === lbl);
+    if (exIdx >= 0) {
+      masterStu.scores[exIdx] = { ...masterStu.scores[exIdx], ...item, classId: clsId, updatedAt: now };
+    } else {
+      masterStu.scores.push({ ...item, classId: clsId, updatedAt: now });
+    }
+  }
+
+  masterStu.sessionNotes = Array.isArray(masterStu.sessionNotes) ? masterStu.sessionNotes : [];
+  for (const item of (tempStu.sessionNotes || [])) {
+    if (!item || !item.date) continue;
+    const clsId = item.classId || CURRENT_CLASS_ID;
+    const exIdx = masterStu.sessionNotes.findIndex(x => (x.classId || CURRENT_CLASS_ID) === clsId && x.date === item.date);
+    if (exIdx >= 0) {
+      const exNote = String(masterStu.sessionNotes[exIdx].note || '').trim();
+      const inNote = String(item.note || '').trim();
+      const mergedN = (exNote && inNote && !exNote.toLocaleLowerCase('vi').includes(inNote.toLocaleLowerCase('vi')))
+        ? `${inNote} · ${exNote}`
+        : (inNote || exNote);
+      masterStu.sessionNotes[exIdx] = {
+        ...masterStu.sessionNotes[exIdx],
+        ...item,
+        classId: clsId,
+        note: mergedN,
+        updatedAt: now,
+        _noteUpdatedAt: now
+      };
+    } else {
+      masterStu.sessionNotes.push({ ...item, classId: clsId, updatedAt: now, _noteUpdatedAt: now });
+    }
+  }
+  if (combinedNote) {
+    saveSessionNote(masterStu.id, combinedNote);
+  }
+
+  // Bổ sung thông tin trường / SĐT phụ huynh nếu hồ sơ tổng chưa có
+  const isCleanSchool = (val) => Boolean(val && val !== '—' && !String(val).includes('Chưa rõ') && !String(val).includes('Chưa cập nhật'));
+  if (!isCleanSchool(masterStu.school) && isCleanSchool(tempStu.school)) {
+    masterStu.school = tempStu.school;
+  }
+  if (tempStu.parentContact?.phone && !masterStu.parentContact?.phone) {
+    masterStu.parentContact = {
+      name: masterStu.parentContact?.name || tempStu.parentContact?.name || '',
+      phone: tempStu.parentContact.phone
+    };
+  }
+
+  // 7. Xử lý Học bù hoặc Chuyển lớp cho Học sinh mới
+  const currentClsObj = classCatalog.find(c => c.id === CURRENT_CLASS_ID);
+  const currentClsLabel = currentClsObj ? (currentClsObj.code || currentClsObj.name) : CURRENT_CLASS_ID;
+  let classActionSummary = '';
+
+  if (isTempMakeup) {
+    registerCrossClassMakeupSession(masterStu, CURRENT_CLASS_ID, checklistDate);
+    classActionSummary = `Ghi nhận ca học bù ngày ${checklistDate} tại lớp ${currentClsLabel}`;
+  } else {
+    masterStu.classIds = Array.isArray(masterStu.classIds) ? [...masterStu.classIds] : [];
+    masterStu.previousClassIds = Array.isArray(masterStu.previousClassIds) ? [...masterStu.previousClassIds] : [];
+    masterStu.classTransferHistory = Array.isArray(masterStu.classTransferHistory) ? [...masterStu.classTransferHistory] : [];
+
+    if (classAction === 'transfer') {
+      const oldClasses = masterStu.classIds.filter(cid => cid && cid !== CURRENT_CLASS_ID);
+      oldClasses.forEach(oldCid => {
+        if (!masterStu.previousClassIds.includes(oldCid)) {
+          masterStu.previousClassIds.push(oldCid);
+        }
+        masterStu.classTransferHistory.push({
+          fromClassId: oldCid,
+          toClassId: CURRENT_CLASS_ID,
+          date: checklistDate,
+          timestamp: now
+        });
+      });
+      masterStu.classIds = [CURRENT_CLASS_ID];
+      masterStu.previousClassIds = masterStu.previousClassIds.filter(cid => !masterStu.classIds.includes(cid));
+      classActionSummary = oldClasses.length
+        ? `Đã chuyển sang lớp ${currentClsLabel} (bảo lưu dữ liệu lớp cũ)`
+        : `Đã xếp vào lớp ${currentClsLabel}`;
+    } else if (classAction === 'add') {
+      if (!masterStu.classIds.includes(CURRENT_CLASS_ID)) {
+        masterStu.classIds.push(CURRENT_CLASS_ID);
+      }
+      masterStu.previousClassIds = masterStu.previousClassIds.filter(cid => !masterStu.classIds.includes(cid));
+      classActionSummary = `Đã thêm học song song lớp ${currentClsLabel}`;
+    } else {
+      // keep: giữ nguyên lớp trong DS tổng, nếu chưa thuộc lớp hiện tại thì đánh dấu tham gia buổi này để vẫn hiển thị trên bảng buổi học
+      if (!masterStu.classIds.includes(CURRENT_CLASS_ID)) {
+        registerCrossClassMakeupSession(masterStu, CURRENT_CLASS_ID, checklistDate);
+      }
+      classActionSummary = 'Giữ nguyên lớp trong danh sách tổng';
+    }
+  }
+
+  // 8. Cập nhật snapshot lịch sử buổi học nếu có
+  try {
+    const repo = window.__sessionHistoryRepository;
+    if (repo && typeof repo.getSession === 'function' && typeof repo.saveSession === 'function') {
+      const snap = repo.getSession(CURRENT_CLASS_ID, checklistDate);
+      if (snap && Array.isArray(snap.studentsSnapshot)) {
+        const tempSnap = snap.studentsSnapshot.find(s => s.studentId === tempStu.id);
+        if (tempSnap) {
+          const existingMasterSnapIdx = snap.studentsSnapshot.findIndex(s => s.studentId === masterStu.id);
+          const updatedSnapEntry = {
+            ...tempSnap,
+            studentId: masterStu.id,
+            studentCode: masterStu.studentCode || tempSnap.studentCode || '',
+            name: masterStu.name,
+            school: masterStu.school || tempSnap.school || '',
+            note: combinedNote || tempSnap.note || ''
+          };
+          if (existingMasterSnapIdx >= 0) {
+            snap.studentsSnapshot[existingMasterSnapIdx] = updatedSnapEntry;
+            snap.studentsSnapshot = snap.studentsSnapshot.filter(s => s.studentId !== tempStu.id);
+          } else {
+            Object.assign(tempSnap, updatedSnapEntry);
+          }
+          repo.saveSession(snap);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Update session snapshot after student match warning:', err);
+  }
+
+  // 9. Xoá bản ghi tạm do trợ giảng tạo & ghi nhận deletedIds
+  students = students.filter(s => s.id !== tempStu.id);
+  makeupStudents = makeupStudents.filter(s => s.id !== tempStu.id);
+  selectedLiveClassStudentIds.delete(tempStu.id);
+  if (typeof _recordDeletedIds === 'function') {
+    _recordDeletedIds([tempStu.id]);
+  }
+
+  masterStu.updatedAt = now;
+  masterStu.revision = (Number(masterStu.revision) || 0) + 1;
+
+  saveStudentRecords(students, makeupStudents);
+  save();
+  logAdminSessionAction(
+    `Khớp dữ liệu ${isTempMakeup ? 'HS học bù' : 'HS mới'} "${tempStu.name}" → "${masterStu.name}" (${masterStu.studentCode || 'Chưa có mã'})`,
+    `${classActionSummary} · Đã đính toàn bộ dữ liệu buổi học vào hồ sơ gốc`,
+    'student'
+  );
+  refreshAllActiveViews();
+  toast(`✓ Đã khớp dữ liệu "${tempStu.name}" vào hồ sơ "${masterStu.name}"${masterStu.studentCode ? ` (${masterStu.studentCode})` : ''}. ${classActionSummary}!`);
+  return true;
+}
+
+function openConfirmNewStudentClassTransferDialog(tempStu, masterStu, targetClassId, onConfirm) {
+  let dlg = document.getElementById('confirm-new-student-transfer-dialog');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'confirm-new-student-transfer-dialog';
+    dlg.className = 'modal-dialog';
+    dlg.style.maxWidth = '540px';
+    document.body.appendChild(dlg);
+  }
+
+  const targetCls = classCatalog.find(c => c.id === targetClassId);
+  const targetClsLabel = targetCls ? `${targetCls.code || targetCls.id} · ${targetCls.name}` : targetClassId;
+  const masterClasses = (masterStu.classIds || [])
+    .map(cid => {
+      const c = classCatalog.find(x => x.id === cid);
+      return c ? `${c.code || c.id} (${c.name})` : cid;
+    })
+    .filter(Boolean);
+  const currentClassesText = masterClasses.length ? masterClasses.join(', ') : 'Chưa xếp lớp chính thức';
+  const alreadyInTargetClass = (masterStu.classIds || []).includes(targetClassId);
+
+  dlg.innerHTML = `
+    <div class="dialog-header">
+      <div>
+        <p class="eyebrow" style="color:#1d4ed8;">XÁC NHẬN CHUYỂN LỚP CHO HỌC SINH MỚI</p>
+        <h2 style="margin:2px 0;">Có chuyển lớp cho học sinh "${escapeHtml(masterStu.name)}" không?</h2>
+      </div>
+      <button type="button" class="icon-button" id="close-confirm-transfer-dlg" aria-label="Đóng">×</button>
+    </div>
+    <div class="dialog-body" style="display:flex; flex-direction:column; gap:12px;">
+      <div style="padding:12px 14px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; font-size:13.5px; line-height:1.55;">
+        <div><strong>Học sinh mới do Trợ giảng nhập:</strong> <span style="color:#0f766e; font-weight:700;">${escapeHtml(tempStu.name)}</span></div>
+        <div><strong>Khớp với hồ sơ trong DS tổng:</strong> <strong style="color:#1e3a8a;">${escapeHtml(masterStu.name)}</strong> ${masterStu.studentCode ? `<span class="code-badge">${escapeHtml(masterStu.studentCode)}</span>` : ''}</div>
+        <div><strong>Lớp hiện tại trong DS tổng:</strong> <span style="color:#b45309; font-weight:700;">${escapeHtml(currentClassesText)}</span></div>
+        <div><strong>Lớp của buổi học hiện tại:</strong> <span style="color:#15803d; font-weight:800;">${escapeHtml(targetClsLabel)}</span></div>
+      </div>
+
+      <p style="margin:0; font-size:13.5px; color:#334155;">
+        ${alreadyInTargetClass
+          ? `Học sinh này đã có tên trong lớp <strong>${escapeHtml(targetClsLabel)}</strong>. Xác nhận đính toàn bộ dữ liệu buổi học vào hồ sơ của học sinh:`
+          : `Học sinh này được trợ giảng nhập dưới dạng <strong>Học sinh mới</strong> tại lớp <strong>${escapeHtml(targetClsLabel)}</strong>. Bạn có muốn <strong>chuyển lớp</strong> cho học sinh sang lớp này không?`}
+      </p>
+
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:2px;">
+        <button type="button" class="primary-button" id="confirm-transfer-choice-transfer" style="justify-content:flex-start; text-align:left; padding:10px 14px; line-height:1.4;">
+          <div>
+            <div style="font-weight:800; font-size:14px;">⇄ Có, chuyển lớp sang ${escapeHtml(targetCls?.code || targetCls?.name || targetClassId)} (Khuyên dùng)</div>
+            <div style="font-size:12px; opacity:0.92; font-weight:500;">Chuyển học sinh sang lớp này và vẫn bảo lưu đầy đủ dữ liệu lớp cũ trong hồ sơ học sinh</div>
+          </div>
+        </button>
+
+        ${!alreadyInTargetClass && masterClasses.length ? `
+        <button type="button" class="outline-button" id="confirm-transfer-choice-add" style="justify-content:flex-start; text-align:left; padding:10px 14px; line-height:1.4; border-color:#93c5fd; background:#eff6ff; color:#1e40af;">
+          <div>
+            <div style="font-weight:800; font-size:13.5px;">➕ Thêm học song song cả lớp ${escapeHtml(targetCls?.code || targetCls?.name || targetClassId)}</div>
+            <div style="font-size:12px; color:#3b82f6; font-weight:500;">Giữ nguyên lớp cũ (${escapeHtml(currentClassesText)}) và thêm lớp này vào hồ sơ</div>
+          </div>
+        </button>
+        ` : ''}
+
+        <button type="button" class="outline-button" id="confirm-transfer-choice-keep" style="justify-content:flex-start; text-align:left; padding:10px 14px; line-height:1.4;">
+          <div>
+            <div style="font-weight:700; font-size:13.5px;">⏸ Không chuyển lớp (Chỉ đính dữ liệu buổi học vào hồ sơ)</div>
+            <div style="font-size:12px; color:#64748b; font-weight:500;">Giữ nguyên lớp trong danh sách tổng (${escapeHtml(currentClassesText)}), chỉ lưu đính dữ liệu buổi học hôm nay</div>
+          </div>
+        </button>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; margin-top:4px;">
+        <button type="button" class="outline-button" id="cancel-confirm-transfer-dlg">Quay lại</button>
+      </div>
+    </div>
+  `;
+
+  const closeDlg = () => dlg.close();
+  dlg.querySelector('#close-confirm-transfer-dlg')?.addEventListener('click', closeDlg);
+  dlg.querySelector('#cancel-confirm-transfer-dlg')?.addEventListener('click', closeDlg);
+
+  dlg.querySelector('#confirm-transfer-choice-transfer')?.addEventListener('click', () => {
+    dlg.close();
+    if (typeof onConfirm === 'function') onConfirm('transfer');
+  });
+  dlg.querySelector('#confirm-transfer-choice-add')?.addEventListener('click', () => {
+    dlg.close();
+    if (typeof onConfirm === 'function') onConfirm('add');
+  });
+  dlg.querySelector('#confirm-transfer-choice-keep')?.addEventListener('click', () => {
+    dlg.close();
+    if (typeof onConfirm === 'function') onConfirm('keep');
+  });
+
+  dlg.showModal();
+}
+
+function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
+  const placements = new Map(allEntries().filter(({ entry }) => entry.studentId).map(place => [place.entry.studentId, place]));
+  const lateIds = new Set(lateQueue);
+  const roster = classStudents();
+  const classMakeups = sessionMakeupStudents(placements, lateIds);
+
+  // Tập hợp các học sinh Mới hoặc Học bù trong buổi hiện tại
+  const tempCandidates = [];
+  const seenTempIds = new Set();
+
+  for (const s of roster) {
+    const note = sessionNoteFor(s.id) || '';
+    const isNew = isNewStudentRecord(s) || Boolean(note && String(note).toLocaleLowerCase('vi').includes('học sinh mới'));
+    if (isNew && !seenTempIds.has(s.id)) {
+      seenTempIds.add(s.id);
+      tempCandidates.push({ student: s, isMakeup: false, note });
+    }
+  }
+  for (const m of classMakeups) {
+    if (m && !seenTempIds.has(m.id)) {
+      seenTempIds.add(m.id);
+      tempCandidates.push({ student: m, isMakeup: true, note: sessionNoteFor(m.id) || '' });
+    }
+  }
+
+  // Nếu bấm từ 1 dòng cụ thể mà học sinh chưa nằm trong tempCandidates thì vẫn cho phép khớp
+  if (preselectedTempStudentId && !seenTempIds.has(preselectedTempStudentId)) {
+    const preStu = studentById(preselectedTempStudentId);
+    if (preStu) {
+      const isMk = preStu.studentType === 'makeup' || !(preStu.classIds || []).includes(CURRENT_CLASS_ID);
+      tempCandidates.unshift({ student: preStu, isMakeup: isMk, note: sessionNoteFor(preStu.id) || '' });
+      seenTempIds.add(preStu.id);
+    }
+  }
+
+  if (!tempCandidates.length) {
+    toast('Trong buổi học hiện tại chưa có Học sinh mới hoặc Học sinh học bù nào cần khớp dữ liệu.');
+    return;
+  }
+
+  let dlg = document.getElementById('match-student-master-dialog');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'match-student-master-dialog';
+    dlg.className = 'modal-dialog';
+    dlg.style.maxWidth = '720px';
+    dlg.style.width = 'min(720px, calc(100vw - 24px))';
+    document.body.appendChild(dlg);
+  }
+
+  let activeTempId = (preselectedTempStudentId && seenTempIds.has(preselectedTempStudentId))
+    ? preselectedTempStudentId
+    : tempCandidates[0].student.id;
+
+  const getClassLabelsForStudent = (stu) => {
+    const cids = Array.isArray(stu.classIds) ? stu.classIds : [];
+    if (!cids.length) return 'Chưa xếp lớp';
+    return cids.map(cid => {
+      const c = classCatalog.find(x => x.id === cid);
+      return c ? (c.code || c.name) : cid;
+    }).join(', ');
+  };
+
+  const computeSimilarityScore = (tempStu, masterStu) => {
+    const norm = (str) => String(str || '').trim().toLocaleLowerCase('vi').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+    const tName = norm(tempStu.name);
+    const mName = norm(masterStu.name);
+    const tGiven = norm(tempStu.givenName || splitStudentName(tempStu.name).givenName);
+    const mGiven = norm(masterStu.givenName || splitStudentName(masterStu.name).givenName);
+    let score = 0;
+    if (tName && mName && tName === mName) score += 100;
+    else if (tName && mName && (mName.includes(tName) || tName.includes(mName))) score += 60;
+    if (tGiven && mGiven && tGiven === mGiven) score += 40;
+    const tPhone = String(tempStu.parentContact?.phone || '').replace(/\D/g, '');
+    const mPhone = String(masterStu.parentContact?.phone || '').replace(/\D/g, '');
+    if (tPhone && mPhone && tPhone.length >= 6 && (mPhone.includes(tPhone) || tPhone.includes(mPhone))) score += 90;
+    const tSchool = norm(tempStu.school || tempStu.sourceClassName);
+    const mSchool = norm(masterStu.school);
+    if (tSchool && mSchool && tSchool.length >= 2 && (mSchool.includes(tSchool) || tSchool.includes(mSchool))) score += 20;
+    return score;
+  };
+
+  const renderModalContent = () => {
+    const activeItem = tempCandidates.find(c => c.student.id === activeTempId) || tempCandidates[0];
+    const tempStu = activeItem.student;
+    const isMakeup = activeItem.isMakeup;
+    const place = placements.get(tempStu.id);
+    const desk = place && desks().find(item => item.desk.id === place.deskId);
+    const seatText = desk ? `Dãy ${desk.ci + 1} · Bàn ${desk.di + 1}` : (lateIds.has(tempStu.id) ? 'Cuối lớp (Đi muộn)' : 'Chưa xếp chỗ');
+    const hwObj = place?.entry?.homework || tempStu.homework || { status: 'uncollected' };
+    const hwText = hwObj.status === 'submitted' || hwObj.status === 'graded'
+      ? `Đã nộp${hwObj.score !== null && hwObj.score !== undefined ? ` (${formatScoreVN(hwObj.score)}đ)` : ''}`
+      : (hwObj.status === 'not_submitted' ? 'Chưa nộp BTVN' : 'Chưa thu BTVN');
+    const noteText = sessionNoteFor(tempStu.id) || '—';
+
+    dlg.innerHTML = `
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow" style="color:#1d4ed8;">VĂN PHÒNG · KHỚP DỮ LIỆU HỌC SINH VỚI DANH SÁCH TỔNG</p>
+          <h2 style="margin:2px 0;">Khớp học sinh mới / học bù với Danh sách tổng của Trung tâm</h2>
+        </div>
+        <button type="button" class="icon-button" id="close-match-master-dlg" aria-label="Đóng">×</button>
+      </div>
+      <div class="dialog-body" style="display:flex; flex-direction:column; gap:14px;">
+        <div>
+          <label class="field-label" style="font-weight:700; margin-bottom:6px; display:block;">1. Chọn Học sinh mới / Học bù do Trợ giảng nhập trong buổi học (${tempCandidates.length} học sinh):</label>
+          <select id="match-temp-student-select" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #93c5fd; background:#eff6ff; font-weight:700; color:#1e3a8a;">
+            ${tempCandidates.map(item => {
+              const s = item.student;
+              const badge = item.isMakeup ? '🔄 [Học bù]' : '🆕 [Học sinh mới]';
+              const extra = item.isMakeup ? (s.sourceClassName || s.school || 'Chưa rõ lớp gốc') : (s.school || 'Chưa rõ trường');
+              return `<option value="${escapeHtml(s.id)}" ${s.id === tempStu.id ? 'selected' : ''}>${badge} ${escapeHtml(s.name)} — ${escapeHtml(extra)}</option>`;
+            }).join('')}
+          </select>
+
+          <div style="margin-top:8px; padding:10px 14px; border-radius:10px; background:${isMakeup ? '#faf5ff' : '#f0fdf4'}; border:1px solid ${isMakeup ? '#d8b4fe' : '#bbf7d0'}; display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:6px 14px; font-size:13px;">
+            <div><strong>Phân loại:</strong> <span style="font-weight:800; color:${isMakeup ? '#6d28d9' : '#15803d'};">${isMakeup ? '🔄 Học sinh học bù' : '🆕 Học sinh mới'}</span></div>
+            <div><strong>Trường / Lớp gốc:</strong> ${escapeHtml(tempStu.school || tempStu.sourceClassName || '—')}</div>
+            <div><strong>SĐT Phụ huynh:</strong> ${escapeHtml(tempStu.parentContact?.phone || '—')}</div>
+            <div><strong>Chỗ ngồi &amp; BTVN:</strong> ${escapeHtml(seatText)} · ${escapeHtml(hwText)}</div>
+            <div style="grid-column: 1 / -1;"><strong>Ghi chú buổi học sẽ đính kèm:</strong> <span style="color:#0f766e; font-weight:700;">${escapeHtml(noteText)}</span></div>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+            <label class="field-label" style="font-weight:700; margin:0;">2. Tìm &amp; chọn học sinh tương ứng trong Danh sách tổng của Trung tâm:</label>
+            <span style="font-size:12px; color:#475569;">Hệ thống tự động đẩy các học sinh trùng tên / SĐT lên đầu</span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 200px; gap:8px;">
+            <input type="search" id="match-master-search-input" placeholder="Tìm theo tên, mã HS (VD: HS001), SĐT PH, trường..." autocomplete="off" style="padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;" />
+            <select id="match-master-class-filter" style="padding:9px 10px; border:1px solid #cbd5e1; border-radius:8px;">
+              <option value="all">Tất cả lớp trong trung tâm</option>
+              ${(classCatalog || []).map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.code || c.id)} · ${escapeHtml(c.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div id="match-master-candidates-list" style="max-height:310px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:10px; padding:6px; background:#f8fafc; display:flex; flex-direction:column; gap:6px;"></div>
+        </div>
+      </div>
+    `;
+
+    dlg.querySelector('#close-match-master-dlg')?.addEventListener('click', () => dlg.close());
+    const tempSelect = dlg.querySelector('#match-temp-student-select');
+    tempSelect?.addEventListener('change', () => {
+      activeTempId = tempSelect.value;
+      renderModalContent();
+    });
+
+    const searchInp = dlg.querySelector('#match-master-search-input');
+    const classFilterSel = dlg.querySelector('#match-master-class-filter');
+    const listHost = dlg.querySelector('#match-master-candidates-list');
+
+    const renderMasterCandidates = () => {
+      if (!listHost) return;
+      const q = (searchInp?.value || '').trim();
+      const clsFilter = classFilterSel?.value || 'all';
+
+      // Lấy toàn bộ học sinh trong danh sách tổng (trừ chính bản ghi tạm đang chọn)
+      let pool = students.filter(s => s && s.id !== tempStu.id);
+      if (clsFilter !== 'all') {
+        pool = pool.filter(s => (s.classIds || []).includes(clsFilter));
+      }
+      if (q) {
+        pool = searchStudents(pool, q);
+      } else {
+        pool = [...pool].sort((a, b) => {
+          const scA = computeSimilarityScore(tempStu, a);
+          const scB = computeSimilarityScore(tempStu, b);
+          if (scB !== scA) return scB - scA;
+          return (a.givenName || a.name || '').localeCompare(b.givenName || b.name || '', 'vi');
+        });
+      }
+
+      if (!pool.length) {
+        listHost.innerHTML = `<div class="empty-list" style="padding:18px; text-align:center;">Không tìm thấy học sinh phù hợp trong danh sách tổng.</div>`;
+        return;
+      }
+
+      listHost.innerHTML = pool.slice(0, 60).map(masterStu => {
+        const simScore = computeSimilarityScore(tempStu, masterStu);
+        const isSuggested = simScore >= 40;
+        const clsLabels = getClassLabelsForStudent(masterStu);
+        const phoneStr = masterStu.parentContact?.phone || 'Chưa có SĐT';
+        return `
+          <div class="match-candidate-row" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 12px; border-radius:8px; background:${isSuggested ? '#eff6ff' : '#ffffff'}; border:1px solid ${isSuggested ? '#93c5fd' : '#e2e8f0'};">
+            <div style="min-width:0; flex:1;">
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <strong style="font-size:14px; color:#0f172a;">${escapeHtml(masterStu.name)}</strong>
+                ${masterStu.studentCode ? `<span class="code-badge" style="font-size:11.5px; padding:1px 6px; background:#e0f2fe; color:#0369a1; border-radius:4px; font-weight:700;">${escapeHtml(masterStu.studentCode)}</span>` : '<span style="font-size:11.5px; color:#64748b;">(Chưa có mã HS)</span>'}
+                ${isSuggested ? `<span style="font-size:11px; padding:1px 7px; border-radius:999px; background:#dbeafe; color:#1d4ed8; font-weight:800;">★ Gợi ý khớp tên</span>` : ''}
+              </div>
+              <div style="font-size:12.5px; color:#475569; margin-top:2px;">
+                <span>Lớp: <strong style="color:#334155;">${escapeHtml(clsLabels)}</strong></span>
+                · <span>Trường: ${escapeHtml(masterStu.school || '—')}</span>
+                · <span>SĐT PH: ${escapeHtml(phoneStr)}</span>
+              </div>
+            </div>
+            <button type="button" class="primary-button" data-pick-master-to-match="${escapeHtml(masterStu.id)}" style="white-space:nowrap; padding:7px 12px; font-size:12.5px;">
+              🔗 Khớp &amp; Lưu dữ liệu
+            </button>
+          </div>
+        `;
+      }).join('');
+
+      listHost.querySelectorAll('[data-pick-master-to-match]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const targetMasterId = btn.dataset.pickMasterToMatch;
+          const targetMasterStu = students.find(s => s.id === targetMasterId);
+          if (!targetMasterStu) return;
+
+          if (!isMakeup) {
+            // Nếu là Học sinh mới -> Mở hộp thoại hỏi có chuyển lớp cho học sinh đó không
+            openConfirmNewStudentClassTransferDialog(tempStu, targetMasterStu, CURRENT_CLASS_ID, (chosenClassAction) => {
+              const ok = mergeAssistantStudentIntoMasterStudent(tempStu.id, targetMasterStu.id, chosenClassAction);
+              if (ok) dlg.close();
+            });
+          } else {
+            // Nếu là Học sinh học bù -> Xác nhận khớp & lưu ca học bù vào hồ sơ học sinh đó
+            const confirmMsg = `Xác nhận khớp học sinh học bù "${tempStu.name}" với học sinh "${targetMasterStu.name}" (${targetMasterStu.studentCode || 'Chưa có mã'}) trong Danh sách tổng?\n\nToàn bộ điểm danh, điểm BTVN/Test và ghi chú buổi học bù sẽ được đính vào hồ sơ của "${targetMasterStu.name}".`;
+            if (!window.confirm(confirmMsg)) return;
+            const ok = mergeAssistantStudentIntoMasterStudent(tempStu.id, targetMasterStu.id, 'keep');
+            if (ok) dlg.close();
+          }
+        });
+      });
+    };
+
+    searchInp?.addEventListener('input', renderMasterCandidates);
+    classFilterSel?.addEventListener('change', renderMasterCandidates);
+    renderMasterCandidates();
+  };
+
+  renderModalContent();
+  dlg.showModal();
+}
 
 function openCrossClassMakeupPickerDialog(onPickedCallback = null) {
   let dlg = document.getElementById('cross-class-makeup-picker-dialog');
@@ -7374,7 +8074,10 @@ function showIdentityForm(kind='new'){
       tags: makeup ? [] : ['Mới']
     });
     if (makeup) makeupStudents.push(student);
-    else students.push(student);
+    else {
+      students.push(student);
+      applyAutoNewStudentSessionNote(student, '#seat-general-note');
+    }
     save();
     assignStudent(student.id);
   };
@@ -7517,6 +8220,8 @@ function assignStudent(id){
     noteField.disabled = false;
     if (resolvedNote) {
       saveSessionNote(id, resolvedNote);
+      if (entry.homework && !entry.homework.note) entry.homework.note = resolvedNote;
+      if (entry.attendance && !entry.attendance.note) entry.attendance.note = resolvedNote;
     }
   }
 
@@ -7643,7 +8348,10 @@ $('#save-homework').onclick=()=>{
       isNew: !isMakeup
     });
     if (isMakeup) makeupStudents.push(student);
-    else students.push(student);
+    else {
+      students.push(student);
+      applyAutoNewStudentSessionNote(student, '#seat-general-note');
+    }
     save();
     assignStudent(student.id);
     toast(`Đã tự động lưu ${student.name} vào hệ thống.`);
@@ -8419,7 +9127,10 @@ function showLateIdentityForm(kind='new'){
       tags: makeup ? [] : ['Mới']
     });
     if (makeup) makeupStudents.push(student);
-    else students.push(student);
+    else {
+      students.push(student);
+      applyAutoNewStudentSessionNote(student, '#late-general-note');
+    }
     save();
     selectLateStudent(student.id);
   };
@@ -8605,7 +9316,10 @@ $('#save-late').onclick=()=>{
     };
     const student = createStudentProfile({ name: lateNameInp, school: lateSchoolInp, kind: isMakeup ? 'makeup' : 'regular', parentContact, isNew: !isMakeup, tags: isMakeup ? [] : ['Mới'] });
     if (isMakeup) makeupStudents.push(student);
-    else students.push(student);
+    else {
+      students.push(student);
+      applyAutoNewStudentSessionNote(student, '#late-general-note');
+    }
     save();
     selectedLateId = student.id;
   }
