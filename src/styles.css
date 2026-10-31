@@ -8745,8 +8745,22 @@ footer.attendance-export-actions.report-sticky-bottom-bar {
    - Late Pill on Seat Token & Selected Student Option Highlight
    ========================================================================== */
 
-html, body, button, input, select, textarea, .seat, .student-option {
+html, body, button, input, select, textarea, .student-option {
   touch-action: manipulation;
+}
+
+.seat.seat-named {
+  touch-action: manipulation;
+}
+
+.seat.seat-anonymous,
+.classroom-wrap.seating-edit-mode-on .seat,
+.pool-token,
+.late-token {
+  touch-action: none !important;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* Prevent iOS Safari & Android Chrome from zooming in when focusing search/inputs */
@@ -9287,4 +9301,217 @@ textarea.auto-expand-note:focus {
 .new-student-row-tr {
   background: #f0fdf4;
 }
+
+/* ==========================================================================
+   v4.5 WORKFLOW, MULTI-DEVICE SYNC & OLDER-DEVICE PERFORMANCE OPTIMIZATIONS
+   ========================================================================== */
+
+/* 1. Always-available subtle '+' add icon on every desk */
+.desk-add-compact-btn {
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  flex: 0 0 24px !important;
+  opacity: 0.78;
+}
+.desk-add-compact-btn.edit-active,
+.desk-add-compact-btn:hover,
+.desk-add-compact-btn:focus-visible {
+  opacity: 1;
+}
+
+/* 2. Seat Dialog: Inline Attendance Timing Controls (Đúng giờ / Đi muộn Xp) */
+.seat-attendance-timing-box {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f8faf8;
+  border: 1px solid #d5e3d7;
+  border-radius: 9px;
+}
+.seat-attendance-timing-box[hidden] {
+  display: none !important;
+}
+.seat-timing-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: #233d31;
+}
+.seat-timing-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eef4ef;
+  padding: 3px;
+  border-radius: 8px;
+}
+.seat-timing-pill {
+  padding: 5px 10px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: #4b6150 !important;
+  cursor: pointer;
+}
+.seat-timing-pill.active[data-seat-att-mode="present"] {
+  background: #16a34a !important;
+  color: #ffffff !important;
+}
+.seat-timing-pill.active[data-seat-att-mode="late"] {
+  background: #ea580c !important;
+  color: #ffffff !important;
+}
+.seat-late-mins-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #9a3412;
+}
+.seat-late-mins-inline[hidden] {
+  display: none !important;
+}
+.seat-late-mins-inline input {
+  width: 68px !important;
+  padding: 4px 8px !important;
+  border: 1.5px solid #fdba74 !important;
+  border-radius: 7px !important;
+  background: #fff7ed !important;
+  color: #9a3412 !important;
+  font-weight: 800 !important;
+  text-align: center;
+}
+
+/* 3. Late Dialog: Independent Arrival Time & Late Minutes Grid */
+.late-time-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.late-time-grid [hidden] {
+  display: none !important;
+}
+
+/* 4. Late Queue Token (Cuối lớp) with BTVN Pill & Inline ✎ Edit Button */
+.late-token {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  cursor: grab;
+  border: 1.5px solid #f0cba1;
+  background: #fff8ef;
+  color: #7c3a0d;
+}
+.late-token-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+.late-token .late-name {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-weight: 800;
+}
+.late-hw-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.late-hw-pill.hw-done {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+.late-hw-pill.hw-miss {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+.late-edit-mini-btn {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border-radius: 7px !important;
+  border: 1px solid rgba(35, 61, 49, 0.2) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  color: #233d31 !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  cursor: pointer !important;
+  flex-shrink: 0;
+  touch-action: manipulation !important;
+}
+.late-edit-mini-btn:hover {
+  background: #233d31 !important;
+  color: #ffffff !important;
+}
+
+/* 5. Late Queue Indicator inside Seat Dialog Student Picker */
+.option-late-queue-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  margin-left: 4px;
+  border-radius: 6px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #3730a3;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+/* 6. Compact Warning Pill on Seat Card */
+.seat-mini-warn-pill {
+  font-size: 10px !important;
+  padding: 0 4px !important;
+  margin-left: 2px !important;
+}
+
+/* 7. Older iOS/iPadOS Dialog Polyfill & 60fps Drag / Low-Memory Rendering */
+dialog.dialog-fallback-open {
+  display: block !important;
+  position: fixed !important;
+  inset: 0 !important;
+  margin: auto !important;
+  z-index: 9999 !important;
+  max-height: 92vh !important;
+  overflow-y: auto !important;
+  box-shadow: 0 0 0 100vmax rgba(15, 23, 42, 0.48), 0 16px 40px rgba(15, 23, 42, 0.28) !important;
+}
+
+body.is-dragging * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.dragging {
+  opacity: 0.5 !important;
+}
+.desk-row,
+.attendance-report-table tbody tr {
+  contain: layout style;
+}
+
 

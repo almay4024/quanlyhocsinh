@@ -83,6 +83,17 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
       });
     }
 
+    const hasExplicitTags = Array.isArray(student.tags);
+    const isRemovedNew = Boolean(student._newTagRemoved || student.isNew === false);
+    const rawResolvedTags = hasExplicitTags
+      ? [...student.tags]
+      : (seedMatch?.tags?.length
+          ? [...seedMatch.tags]
+          : (student.isNew && !isRemovedNew && Date.now() - (student.createdAt || 0) < 21 * 86400000 ? ['Mới'] : []));
+    const cleanResolvedTags = rawResolvedTags
+      .filter(Boolean)
+      .filter(t => !(isRemovedNew && String(t).trim().toLowerCase() === 'mới'));
+
     return {
       ...student,
       ...splitName(student),
@@ -99,7 +110,8 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
       sessionNotes: sessNotes,
       scores: scoreList,
       notes: student.notes || [],
-      tags: (Array.isArray(student.tags) && student.tags.length) ? student.tags : (seedMatch?.tags?.length ? [...seedMatch.tags] : (student.isNew && Date.now() - (student.createdAt || 0) < 21 * 86400000 ? ['Mới'] : [])),
+      tags: cleanResolvedTags,
+      isNew: isRemovedNew ? false : Boolean(student.isNew),
       learningNotes: student.learningNotes || seedMatch?.learningNotes || ''
     };
   });

@@ -1,14 +1,14 @@
-const APP_VERSION = "4.4.1";
+const APP_VERSION = "4.5.0";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.4.1';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.4.1';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.5.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.5.0';
 const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=4.4.1';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.4.1';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.4.1';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.4.1';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.4.1';
+import { setupFeatures } from './features.js?v=4.5.0';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.5.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.5.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.5.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.5.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -269,21 +269,112 @@ function decryptVaultPayload(rawStr, contextKey = 'default') {
   }
 }
 
-function _readDecryptedLocal(key) {
+// ============================================================================
+// HYBRID RAM + INDEXEDDB + COMPACT LOCALSTORAGE ENGINE (iOS/iPadOS Safari 5MB Safe)
+// Đảm bảo iPad/iPhone không bao giờ bị khóa cập nhật hoặc mất chỉnh sửa khi
+// dữ liệu vượt ngưỡng 2.5M ký tự UTF-16 (~5MB) của WebKit LocalStorage.
+// ============================================================================
+const _memStorageMap = new Map();
+let _keyTimestampsMem = null;
+let _idbPromise = null;
+
+function _openVaultIdb() {
+  if (_idbPromise) return _idbPromise;
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  _idbPromise = new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('lopvui_vault_idb_v1', 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('kv')) {
+          db.createObjectStore('kv', { keyPath: 'k' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return _idbPromise;
+}
+
+function _idbPutKey(key, value, updatedAt = Date.now()) {
+  if (!key || !String(key).startsWith(RT_PREFIX)) return;
+  _openVaultIdb().then((db) => {
+    if (!db) return;
+    try {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put({ k: String(key), v: String(value), t: Number(updatedAt) || Date.now() });
+    } catch {}
+  });
+}
+
+function _idbDeleteKey(key) {
+  if (!key || !String(key).startsWith(RT_PREFIX)) return;
+  _openVaultIdb().then((db) => {
+    if (!db) return;
+    try {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').delete(String(key));
+    } catch {}
+  });
+}
+
+function _bootstrapMemStorageFromLocal() {
   try {
-    const raw = _nativeGetItem.call(window.localStorage, key);
+    const keys = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (k) keys.push(k);
+    }
+    for (const k of keys) {
+      const raw = _nativeGetItem.call(window.localStorage, k);
+      if (raw === null || raw === undefined) continue;
+      const plain = String(raw).startsWith('lvenc_v38$') ? decryptVaultPayload(raw, k) : String(raw);
+      _memStorageMap.set(k, plain);
+      // Tách kho ảnh Base64 khỏi LocalStorage sang IndexedDB để giải phóng dung lượng trên iPad/iPhone
+      if (k === 'lopvui.student-photos.v1' && plain.length > 4096) {
+        _idbPutKey(k, plain, Date.now());
+        try { _nativeRemoveItem.call(window.localStorage, k); } catch {}
+      }
+    }
+  } catch {}
+}
+_bootstrapMemStorageFromLocal();
+
+function _readDecryptedLocal(key) {
+  const kStr = String(key);
+  if (_memStorageMap.has(kStr)) {
+    return _memStorageMap.get(kStr);
+  }
+  try {
+    const raw = _nativeGetItem.call(window.localStorage, kStr);
     if (raw === null || raw === undefined) return null;
-    return decryptVaultPayload(raw, String(key));
+    const plain = decryptVaultPayload(raw, kStr);
+    _memStorageMap.set(kStr, plain);
+    return plain;
   } catch {
     return null;
   }
 }
 
 const _DAILY_SCRATCH_KEY_RE = /^lopvui\.(layout\.v5|desk-items\.v7|late-queue\.v6|checklist\.v1|attendance-notes\.v1|session-record\.v1|admin-audit-log\.v1)\.([^.]+)\.(\d{4}-\d{2}-\d{2})$/;
+const _OBSOLETE_LEGACY_KEYS = [
+  'lopvui.layout.v5',
+  'lopvui.desk-items.v7',
+  'lopvui.late-queue.v6',
+  'lopvui.session-seats.v6',
+  'lopvui.students.v8',
+  'lopvui.students.v7',
+  'lopvui.students.v6',
+  'lopvui.session-history.v1'
+];
 
 function cleanupStaleDailyScratchKeys(retentionDays = 45, aggressive = false) {
   try {
-    const days = Math.max(7, Number(retentionDays) || 45);
+    const days = Math.max(2, Number(retentionDays) || 45);
     const cutoffMs = Date.now() - days * 86400000;
     const auditCutoffMs = aggressive ? cutoffMs : (Date.now() - Math.max(days, 90) * 86400000);
 
@@ -334,13 +425,17 @@ function cleanupStaleDailyScratchKeys(retentionDays = 45, aggressive = false) {
       let tsChanged = false;
       for (const k of keysToRemove) {
         try { _nativeRemoveItem.call(window.localStorage, k); } catch {}
+        _memStorageMap.delete(k);
+        _idbDeleteKey(k);
         if (k in tsMap) {
           delete tsMap[k];
           tsChanged = true;
         }
       }
       if (tsChanged) {
-        try { _nativeSetItem.call(window.localStorage, 'lopvui.key-timestamps.v1', JSON.stringify(tsMap)); } catch {}
+        const tsJson = JSON.stringify(tsMap);
+        _memStorageMap.set('lopvui.key-timestamps.v1', tsJson);
+        try { _nativeSetItem.call(window.localStorage, 'lopvui.key-timestamps.v1', tsJson); } catch {}
       }
     }
     return keysToRemove.length;
@@ -349,19 +444,56 @@ function cleanupStaleDailyScratchKeys(retentionDays = 45, aggressive = false) {
   }
 }
 
-function _safeNativeSetLocalItem(storage, key, value) {
+function _freeUpLocalStorageQuota(targetKey = '') {
   try {
-    _nativeSetItem.call(storage, key, value);
+    // 1. Chuyển toàn bộ ảnh Base64 sang IndexedDB + RAM
+    const photoRaw = _nativeGetItem.call(window.localStorage, 'lopvui.student-photos.v1');
+    if (photoRaw) {
+      _memStorageMap.set('lopvui.student-photos.v1', photoRaw);
+      _idbPutKey('lopvui.student-photos.v1', photoRaw, Date.now());
+      try { _nativeRemoveItem.call(window.localStorage, 'lopvui.student-photos.v1'); } catch {}
+    }
+    // 2. Xoá các key phiên bản cũ không còn dùng
+    for (const oldK of _OBSOLETE_LEGACY_KEYS) {
+      if (oldK !== targetKey) {
+        try { _nativeRemoveItem.call(window.localStorage, oldK); } catch {}
+      }
+    }
+    // 3. Giải mã compact và dọn key nháp ca cũ (> 3 ngày)
+    _migrateLocalStorageToCompactPlain();
+    cleanupStaleDailyScratchKeys(3, true);
+  } catch {}
+}
+
+function _safeNativeSetLocalItem(storage, key, value) {
+  const kStr = String(key);
+  const vStr = String(value);
+  if (storage === window.localStorage) {
+    _memStorageMap.set(kStr, vStr);
+    if (kStr.startsWith(RT_PREFIX)) {
+      _idbPutKey(kStr, vStr, Date.now());
+    }
+    // Không ghi kho ảnh Base64 nặng vào LocalStorage để dành trọn 5MB WebKit cho dữ liệu lớp & điểm danh
+    if (kStr === 'lopvui.student-photos.v1' && vStr.length > 4096) {
+      try { _nativeRemoveItem.call(window.localStorage, kStr); } catch {}
+      return true;
+    }
+  }
+  try {
+    _nativeSetItem.call(storage, kStr, vStr);
     return true;
   } catch (err) {
     if (storage === window.localStorage) {
       try {
-        _migrateLocalStorageToCompactPlain();
-        cleanupStaleDailyScratchKeys(14, true);
-        _nativeSetItem.call(storage, key, value);
+        _freeUpLocalStorageQuota(kStr);
+        _nativeSetItem.call(storage, kStr, vStr);
         return true;
       } catch (retryErr) {
-        console.warn('[Storage] QuotaExceededError on key:', key, retryErr);
+        // Nếu 1 key lưu trữ lớn (VD: students.v9 / session-history.v2) vượt trần 2.5M ký tự của Safari WebKit:
+        // Xoá bản cũ bị kẹt trong LocalStorage để không bao giờ ghi đè ngược dữ liệu cũ lên bản mới trong IndexedDB/Cloud!
+        try { _nativeRemoveItem.call(window.localStorage, kStr); } catch {}
+        console.warn('[Storage] LocalStorage quota full; persisted safely in RAM + IndexedDB:', kStr, retryErr);
+        return true;
       }
     }
     return false;
@@ -370,10 +502,9 @@ function _safeNativeSetLocalItem(storage, key, value) {
 
 function _writeEncryptedLocal(key, plainValue) {
   try {
-    // Lưu trực tiếp JSON thuần vào LocalStorage để tiết kiệm ~38% dung lượng 5MB của trình duyệt
-    // (dữ liệu đẩy lên Firebase Cloud vẫn tiếp tục được mã hoá lvenc_v38$ 100%)
-    const strPlain = decryptVaultPayload(String(plainValue), String(key));
-    _safeNativeSetLocalItem(window.localStorage, key, strPlain);
+    const kStr = String(key);
+    const strPlain = decryptVaultPayload(String(plainValue), kStr);
+    _safeNativeSetLocalItem(window.localStorage, kStr, strPlain);
     return strPlain;
   } catch {
     return String(plainValue);
@@ -389,10 +520,16 @@ function setConfiguredFirebaseDbUrl() {
 }
 
 function _getKeyTimestamps() {
+  if (_keyTimestampsMem && typeof _keyTimestampsMem === 'object') {
+    return _keyTimestampsMem;
+  }
   try {
-    return JSON.parse(_nativeGetItem.call(window.localStorage, 'lopvui.key-timestamps.v1') || '{}') || {};
+    const raw = _memStorageMap.get('lopvui.key-timestamps.v1') ?? _nativeGetItem.call(window.localStorage, 'lopvui.key-timestamps.v1');
+    _keyTimestampsMem = JSON.parse(raw || '{}') || {};
+    return _keyTimestampsMem;
   } catch {
-    return {};
+    _keyTimestampsMem = {};
+    return _keyTimestampsMem;
   }
 }
 
@@ -400,7 +537,8 @@ function _setKeyTimestamp(key, ts = Date.now()) {
   try {
     const map = _getKeyTimestamps();
     map[key] = ts;
-    _safeNativeSetLocalItem(window.localStorage, 'lopvui.key-timestamps.v1', JSON.stringify(map));
+    const json = JSON.stringify(map);
+    _safeNativeSetLocalItem(window.localStorage, 'lopvui.key-timestamps.v1', json);
   } catch {}
 }
 
@@ -969,6 +1107,19 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
             }
             combined.makeupSessions = Array.from(mMap.values());
           }
+          // 6. Đồng bộ cờ gỡ tag "Mới" (_newTagRemoved) giữa các thiết bị để tag "Mới" không bị hồi sinh
+          const oldRemNew = Number(olderStu._newTagRemoved || 0);
+          const newRemNew = Number(newerStu._newTagRemoved || 0);
+          const newerHasExplicitMoi = Array.isArray(newerStu.tags) && newerStu.tags.some(t => String(t).trim().toLowerCase() === 'mới') && !newerStu._newTagRemoved;
+          if (!newerHasExplicitMoi && (oldRemNew > 0 || newRemNew > 0 || newerStu.isNew === false)) {
+            combined.isNew = false;
+            if (oldRemNew > 0 || newRemNew > 0) {
+              combined._newTagRemoved = Math.max(oldRemNew, newRemNew);
+            }
+            if (Array.isArray(combined.tags)) {
+              combined.tags = combined.tags.filter(t => String(t).trim().toLowerCase() !== 'mới');
+            }
+          }
           return combined;
         };
 
@@ -1262,7 +1413,9 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
 
       if (v === null || v === undefined) {
         if (curPlain !== null && remoteTs > localTs) {
-          _nativeRemoveItem.call(window.localStorage, k);
+          _memStorageMap.delete(k);
+          _idbDeleteKey(k);
+          try { _nativeRemoveItem.call(window.localStorage, k); } catch {}
           _setKeyTimestamp(k, remoteTs);
           changed.push(k);
         } else if (source === 'broadcast-tab') {
@@ -1483,15 +1636,28 @@ async function _flushFirebaseCloudPush(isUnloading = false, includeHeavy = false
   _rtIsPushingCloud = true;
   try {
     // Gộp cả kv, deletedIds, meta/keyTimestamps và meta vào 1 request multi-path PATCH duy nhất!
-    const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: bodyStr,
-      keepalive: useKeepalive
-    });
+    let res = null;
+    try {
+      res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: bodyStr,
+        keepalive: useKeepalive
+      });
+    } catch (firstErr) {
+      if (useKeepalive) {
+        res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: bodyStr
+        });
+      } else {
+        throw firstErr;
+      }
+    }
 
     _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, metaNow);
-    if (res.ok) {
+    if (res && res.ok) {
       _notifyRtStatus('realtime-cloud', metaNow, 'cloud-pushed');
     }
   } catch {} finally {
@@ -1618,14 +1784,6 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull', sseMetaSnapshot =
         return await _pullFullCloudSnapshotOnce(source);
       }
 
-      // Đánh dấu _seenSafeKeyTimestamps ngay lập tức trước khi tải để các lần gọi kế tiếp không bao giờ tải trùng lại cùng 1 safeK
-      changedSafeKeys.forEach(safeK => {
-        const rTs = Number(remoteKeyTsMap[safeK]) || 0;
-        if (rTs > 0) {
-          _seenSafeKeyTimestamps[safeK] = Math.max(Number(_seenSafeKeyTimestamps[safeK]) || 0, rTs);
-        }
-      });
-
       const entries = {};
       const metaMap = {};
       await Promise.all(changedSafeKeys.map(async (safeK) => {
@@ -1634,6 +1792,10 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull', sseMetaSnapshot =
           if (!kRes.ok) return;
           const item = await kRes.json();
           const rTs = Number(remoteKeyTsMap[safeK]) || Date.now();
+          // Chỉ đánh dấu đã nhận safeK SAU KHI tải thành công gói tin từ Cloud
+          if (rTs > 0) {
+            _seenSafeKeyTimestamps[safeK] = Math.max(Number(_seenSafeKeyTimestamps[safeK]) || 0, rTs);
+          }
           if (!item) return;
           const resolvedKey = item.encKey
             ? decryptVaultPayload(item.encKey, 'firebase_key_meta')
@@ -1682,8 +1844,12 @@ async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
   const now = Date.now();
   let count = 0;
   try {
+    const allLocalKeys = new Set([..._memStorageMap.keys()]);
     for (let i = 0; i < window.localStorage.length; i++) {
       const k = window.localStorage.key(i);
+      if (k) allLocalKeys.add(k);
+    }
+    for (const k of allLocalKeys) {
       if (k && _shouldSyncKey(k)) {
         const plainVal = _readDecryptedLocal(k);
         if (plainVal !== null) {
@@ -1761,10 +1927,16 @@ function _installStorageVaultInterceptor() {
   window.__lopvuiVaultStorageInstalled = true;
   try {
     Storage.prototype.getItem = function(key) {
-      const raw = _nativeGetItem.call(this, key);
+      const kStr = String(key);
+      if (this === window.localStorage && _memStorageMap.has(kStr)) {
+        return _memStorageMap.get(kStr);
+      }
+      const raw = _nativeGetItem.call(this, kStr);
       if (raw === null || raw === undefined) return null;
-      if (this === window.localStorage && String(raw).startsWith('lvenc_v38$')) {
-        return decryptVaultPayload(raw, String(key));
+      if (this === window.localStorage) {
+        const plain = String(raw).startsWith('lvenc_v38$') ? decryptVaultPayload(raw, kStr) : String(raw);
+        _memStorageMap.set(kStr, plain);
+        return plain;
       }
       return raw;
     };
@@ -1774,7 +1946,7 @@ function _installStorageVaultInterceptor() {
       if (this === window.localStorage) {
         try { prevPlain = _readDecryptedLocal(kStr); } catch {}
       }
-      let plainStr = decryptVaultPayload(String(value), kStr);
+      let plainStr = this === window.localStorage ? decryptVaultPayload(String(value), kStr) : String(value);
       const now = Date.now();
 
       if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote) {
@@ -1799,7 +1971,8 @@ function _installStorageVaultInterceptor() {
       }
 
       const toStoreLocal = this === window.localStorage ? plainStr : String(value);
-      if (!_safeNativeSetLocalItem(this, key, toStoreLocal)) return;
+      const storedOk = _safeNativeSetLocalItem(this, kStr, toStoreLocal);
+      if (this !== window.localStorage && !storedOk) return;
 
       if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote) {
         if (prevPlain !== plainStr && !_isJsonSemanticallyEqual(prevPlain, plainStr)) {
@@ -1817,8 +1990,13 @@ function _installStorageVaultInterceptor() {
     Storage.prototype.removeItem = function(key) {
       const kStr = String(key);
       let had = false;
-      try { had = _nativeGetItem.call(this, key) !== null; } catch {}
-      try { _nativeRemoveItem.call(this, key); } catch { return; }
+      if (this === window.localStorage) {
+        had = _memStorageMap.has(kStr);
+        _memStorageMap.delete(kStr);
+        _idbDeleteKey(kStr);
+      }
+      try { if (!had) had = _nativeGetItem.call(this, kStr) !== null; } catch {}
+      try { _nativeRemoveItem.call(this, kStr); } catch {}
       if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote && had) {
         const now = Date.now();
         _rtLastLocalWriteAt = now;
@@ -1834,6 +2012,56 @@ function _installStorageVaultInterceptor() {
   } catch {}
 }
 _installStorageVaultInterceptor();
+
+async function _hydrateFromIndexedDBIfNewer() {
+  try {
+    const db = await _openVaultIdb();
+    if (!db) return false;
+    const rows = await new Promise((resolve) => {
+      try {
+        const tx = db.transaction('kv', 'readonly');
+        const req = tx.objectStore('kv').getAll();
+        req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+        req.onerror = () => resolve([]);
+      } catch {
+        resolve([]);
+      }
+    });
+    if (!rows.length) return false;
+    const tsMap = _getKeyTimestamps();
+    const changed = [];
+    for (const row of rows) {
+      if (!row || !row.k || typeof row.v !== 'string') continue;
+      const k = String(row.k);
+      const idbTs = Number(row.t) || 0;
+      const curMem = _memStorageMap.get(k);
+      const curTs = Number(tsMap[k]) || 0;
+      if (curMem === undefined || curMem === null) {
+        _memStorageMap.set(k, row.v);
+        if (k !== 'lopvui.student-photos.v1') {
+          try { _nativeSetItem.call(window.localStorage, k, row.v); } catch {}
+        }
+        if (idbTs > curTs && _shouldSyncKey(k)) _setKeyTimestamp(k, idbTs);
+        changed.push(k);
+      } else if (idbTs > curTs && row.v !== curMem && _shouldSyncKey(k)) {
+        const merged = _mergeGranularJsonValue(k, curMem, row.v, idbTs, curTs, _getDeletedIdsMap()) || row.v;
+        if (!_isJsonSemanticallyEqual(curMem, merged)) {
+          _memStorageMap.set(k, merged);
+          try { _nativeSetItem.call(window.localStorage, k, merged); } catch {}
+          _setKeyTimestamp(k, idbTs);
+          changed.push(k);
+        }
+      }
+    }
+    if (changed.length > 0) {
+      _scheduleRtUIRefresh(changed, 'idb-hydrate');
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 function initRealtimeSync(onSyncCallback) {
   if (typeof onSyncCallback === 'function') _rtSyncListeners.add(onSyncCallback);
@@ -1867,6 +2095,13 @@ function initRealtimeSync(onSyncCallback) {
       _scheduleRtUIRefresh([event.key], 'storage-event');
     });
 
+    let _lastSseEventAt = 0;
+    const _isSseHealthy = (now = Date.now()) => Boolean(
+      _rtCloudEventSource &&
+      _rtCloudEventSource.readyState === 1 &&
+      (now - _lastSseEventAt) < 40000
+    );
+
     const _connectFirebaseMetaSSE = () => {
       const dbUrl = getConfiguredFirebaseDbUrl();
       if (!dbUrl || typeof EventSource === 'undefined') return;
@@ -1877,7 +2112,11 @@ function initRealtimeSync(onSyncCallback) {
         }
         const es = new EventSource(`${dbUrl}/lopvui_cloud_v3/meta.json`);
         _rtCloudEventSource = es;
+        es.onopen = () => {
+          _lastSseEventAt = Date.now();
+        };
         const handleMetaStream = (ev) => {
+          _lastSseEventAt = Date.now();
           try {
             if (!ev || !ev.data) return;
             const parsed = JSON.parse(ev.data);
@@ -1897,6 +2136,7 @@ function initRealtimeSync(onSyncCallback) {
         };
         es.addEventListener('put', handleMetaStream);
         es.addEventListener('patch', handleMetaStream);
+        es.addEventListener('keep-alive', () => { _lastSseEventAt = Date.now(); });
         es.onerror = () => {
           try { es.close(); } catch {}
           _rtCloudEventSource = null;
@@ -1907,23 +2147,27 @@ function initRealtimeSync(onSyncCallback) {
     if (getConfiguredFirebaseDbUrl()) {
       _notifyRtStatus('realtime-cloud', Date.now(), 'init');
       (async () => {
+        await _hydrateFromIndexedDBIfNewer();
         const res = await pullFromFirebaseCloudNow('cloud-init');
         if (res.ok && res.emptyCloud) {
           await pushAllLocalSnapshotToFirebaseCloud(true);
         }
         _connectFirebaseMetaSSE();
       })();
+    } else {
+      _hydrateFromIndexedDBIfNewer();
     }
 
     let _lastUserActivityAt = Date.now();
     let _lastCloudPollAt = Date.now();
     const _markUserActive = () => {
       const now = Date.now();
-      const wasIdle = (now - _lastUserActivityAt) > 15000;
+      const wasIdle = (now - _lastUserActivityAt) > 12000;
       _lastUserActivityAt = now;
-      const sseHealthy = Boolean(_rtCloudEventSource && _rtCloudEventSource.readyState === 1);
-      if (wasIdle && !sseHealthy && (now - _lastCloudPollAt > 3000) && getConfiguredFirebaseDbUrl() && !document.hidden) {
+      const sseHealthy = _isSseHealthy(now);
+      if ((wasIdle || !sseHealthy) && (now - _lastCloudPollAt > 3000) && getConfiguredFirebaseDbUrl() && !document.hidden) {
         _lastCloudPollAt = now;
+        if (!sseHealthy) _connectFirebaseMetaSSE();
         pullFromFirebaseCloudNow('cloud-poll');
       }
     };
@@ -1931,28 +2175,35 @@ function initRealtimeSync(onSyncCallback) {
       window.addEventListener(evt, _markUserActive, { passive: true });
     });
 
-    // Khi Refresh (beforeunload), đóng trang (pagehide) hoặc ẩn tab: đẩy ngay lập tức cả key nhanh và key nặng với cờ keepalive=true
+    const _handleWakeupSync = () => {
+      if (!getConfiguredFirebaseDbUrl() || document.hidden) return;
+      const now = Date.now();
+      _lastUserActivityAt = now;
+      _lastCloudPollAt = now;
+      if (!_isSseHealthy(now) || (now - _lastSseEventAt) > 15000) {
+        _connectFirebaseMetaSSE();
+      }
+      pullFromFirebaseCloudNow('cloud-wakeup');
+    };
+
+    // Khi Refresh (beforeunload), đóng trang (pagehide) hoặc ẩn tab: đẩy ngay lập tức cả key nhanh và key nặng
     window.addEventListener('beforeunload', () => {
       if (_rtPendingCloudEntries.size > 0 || _rtPendingHeavyCloudEntries.size > 0) _flushFirebaseCloudPush(true, true);
     });
     window.addEventListener('pagehide', () => {
       if (_rtPendingCloudEntries.size > 0 || _rtPendingHeavyCloudEntries.size > 0) _flushFirebaseCloudPush(true, true);
     });
+    window.addEventListener('pageshow', _handleWakeupSync);
+    window.addEventListener('online', _handleWakeupSync);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         if (_rtPendingCloudEntries.size > 0 || _rtPendingHeavyCloudEntries.size > 0) _flushFirebaseCloudPush(true, true);
-      } else if (getConfiguredFirebaseDbUrl()) {
-        _lastUserActivityAt = Date.now();
-        _lastCloudPollAt = Date.now();
-        if (!_rtCloudEventSource || _rtCloudEventSource.readyState === 2) {
-          _connectFirebaseMetaSSE();
-          pullFromFirebaseCloudNow('cloud-poll');
-        }
+      } else {
+        _handleWakeupSync();
       }
     });
 
-    // Adaptive Cloud Polling: khi SSE đang kết nối ổn định (readyState === 1), chỉ kiểm tra dự phòng mỗi 60s–180s;
-    // chỉ khi mất kết nối SSE mới fallback về 3s để tiết kiệm >90% băng thông tải xuống của gói Firebase Spark!
+    // Adaptive Cloud Polling (tối ưu cho cả iPad/iPhone Safari khi TCP EventSource bị treo ngầm sau khi khoá màn hình)
     setInterval(() => {
       if (getConfiguredFirebaseDbUrl()) {
         if (typeof document !== 'undefined' && document.hidden) return;
@@ -1961,22 +2212,22 @@ function initRealtimeSync(onSyncCallback) {
         if (_rtPendingCloudEntries.size > 0) {
           _flushFirebaseCloudPush(false);
         }
-        const sseHealthy = Boolean(_rtCloudEventSource && _rtCloudEventSource.readyState === 1);
-        if (!_rtCloudEventSource || _rtCloudEventSource.readyState === 2) {
+        const sseHealthy = _isSseHealthy(now);
+        if (!_rtCloudEventSource || _rtCloudEventSource.readyState === 2 || (now - _lastSseEventAt > 45000)) {
           _connectFirebaseMetaSSE();
         }
         const idleMs = now - _lastUserActivityAt;
-        const activeInterval = sseHealthy ? 60000 : 3000;
-        const minInterval = idleMs < 180000 ? activeInterval : (sseHealthy ? 180000 : 20000);
+        const activeInterval = sseHealthy ? 10000 : 3000;
+        const minInterval = idleMs < 120000 ? activeInterval : (sseHealthy ? 60000 : 15000);
         if (now - _lastCloudPollAt < minInterval - 150) return;
         _lastCloudPollAt = now;
         pullFromFirebaseCloudNow('cloud-poll');
       }
     }, 2500);
 
-    // Tự động dọn dẹp các key nháp theo ngày của những ca đã đóng quá 45 ngày (đã lưu trong session-history.v2)
+    // Tự động dọn dẹp các key nháp theo ngày của những ca đã đóng quá 30 ngày
     setTimeout(() => {
-      try { cleanupStaleDailyScratchKeys(45, false); } catch {}
+      try { cleanupStaleDailyScratchKeys(30, false); } catch {}
     }, 3500);
   }
   return {
@@ -2962,22 +3213,22 @@ function resolveLateDetails(student, entry = null, clsObj = null, dateStr = null
     arrivalTime = tm ? tm[1] : '';
   }
 
-  let rawMins = attObj?.lateMinutes ?? attObj?.minutesLate ?? student?.lateMinutes ?? attHist?.lateMinutes ?? attHist?.minutesLate ?? null;
-  let mins = (rawMins !== null && rawMins !== undefined && rawMins !== '') ? Number(rawMins) : null;
+  const rawMins = attObj?.lateMinutes ?? attObj?.minutesLate ?? student?.lateMinutes ?? attHist?.lateMinutes ?? attHist?.minutesLate ?? null;
+  const parsedRawMins = (rawMins !== null && rawMins !== undefined && rawMins !== '') ? Number(rawMins) : null;
+  let mins = (parsedRawMins !== null && !Number.isNaN(parsedRawMins) && parsedRawMins >= 0) ? Math.round(parsedRawMins) : null;
 
-  // Luôn tự động tính số phút muộn dựa trên Giờ đến lớp (arrivalTime) và Giờ vào học (startTime)
-  if (arrivalTime) {
+  // Ưu tiên số phút đi muộn đã lưu trực tiếp (cho phép chỉnh sửa số phút muộn bất kỳ lúc nào không bị ghi đè ngược bởi giờ đến)
+  if (attObj?.status === 'present' || (!attObj && attHist?.status === 'present')) {
+    mins = 0;
+  } else if (mins !== null) {
+    if (mins > 0 && (!arrivalTime || attObj?._manualLateMinutes)) {
+      arrivalTime = _addLateMinutesToTimeStr(startTime, mins);
+    }
+  } else if (arrivalTime) {
     const [arH, arM] = arrivalTime.split(':').map(Number);
     const diff = ((arH || 0) * 60 + (arM || 0)) - startTotal;
-    if (diff <= 0) {
-      // Đến trước hoặc đúng giờ vào học -> 0 phút muộn (không gắn tag muộn)
-      mins = 0;
-    } else {
-      mins = diff;
-    }
-  } else if (attObj?.status === 'present' || (!attObj && attHist?.status === 'present')) {
-    mins = 0;
-  } else if (mins === null || Number.isNaN(mins) || mins < 0) {
+    mins = diff > 0 ? diff : 0;
+  } else {
     mins = attObj?.status === 'late' ? 10 : 0;
   }
 
@@ -2992,9 +3243,9 @@ function resolveLateDetails(student, entry = null, clsObj = null, dateStr = null
     lateMinutes: isLate ? mins : 0,
     minutesLate: isLate ? mins : 0,
     isLate,
-    badgeText: isLate ? `Đi muộn ${mins}p (${arrivalTime})` : `Đúng giờ${arrivalTime ? ` (${arrivalTime})` : ''}`,
-    shortBadgeText: isLate ? `Muộn ${mins}p (${arrivalTime})` : `Đúng giờ${arrivalTime ? ` (${arrivalTime})` : ''}`,
-    reportText: isLate ? `muộn ${mins}’ - ${arrivalTime}` : 'Có mặt'
+    badgeText: isLate ? `Đi muộn ${mins}p${arrivalTime ? ` (${arrivalTime})` : ''}` : `Đúng giờ${arrivalTime ? ` (${arrivalTime})` : ''}`,
+    shortBadgeText: isLate ? `Muộn ${mins}p${arrivalTime ? ` (${arrivalTime})` : ''}` : `Đúng giờ${arrivalTime ? ` (${arrivalTime})` : ''}`,
+    reportText: isLate ? (arrivalTime ? `muộn ${mins}’ - ${arrivalTime}` : `muộn ${mins}’`) : 'Có mặt'
   };
 }
 
@@ -3220,10 +3471,36 @@ function scheduleDefaultNotifications(){const sessionDate=new Date(`${checklistD
 scheduleDefaultNotifications();
 function studentTagList(student){
   const list = (Array.isArray(student?.tags) ? [...student.tags].filter(Boolean) : []).filter(t => String(t || '').trim().toLowerCase() !== 'học bù');
-  if (student?.isNew && student?.studentType !== 'makeup' && !list.some(t => String(t).toLowerCase() === 'mới')) {
+  if (student?.isNew && !student?._newTagRemoved && student?.studentType !== 'makeup' && !list.some(t => String(t).trim().toLowerCase() === 'mới')) {
     list.unshift('Mới');
   }
   return list;
+}
+
+function applyStudentTagsMutation(student, rawNextTags) {
+  if (!student) return [];
+  const now = Date.now();
+  const seenLower = new Set();
+  const cleanTags = [];
+  for (const raw of (Array.isArray(rawNextTags) ? rawNextTags : [])) {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed) continue;
+    const lower = trimmed.toLowerCase();
+    if (lower === 'học bù' || seenLower.has(lower)) continue;
+    seenLower.add(lower);
+    cleanTags.push(trimmed);
+  }
+  student.tags = cleanTags;
+  const hasMoi = cleanTags.some(t => String(t).trim().toLowerCase() === 'mới');
+  student.isNew = hasMoi;
+  if (!hasMoi) {
+    student._newTagRemoved = now;
+  } else {
+    delete student._newTagRemoved;
+  }
+  student.updatedAt = now;
+  student.revision = (Number(student.revision) || 0) + 1;
+  return cleanTags;
 }
 
 function renderStudentWarningTag(student, classId = CURRENT_CLASS_ID, showAddIfEmpty = false) {
@@ -3379,8 +3656,8 @@ function autoResizeNoteTextareas(root = document) {
 }
 window.autoResizeNoteTextareas = autoResizeNoteTextareas;
 
-function studentSearchMeta(student){const isMk = student.studentType === 'makeup' || !(student.classIds || []).includes(CURRENT_CLASS_ID);const tags=studentTagList(student);return `<small>${escapeHtml(isMk?`Học bù · ${getMakeupSourceClassDisplay(student)}`:student.school||'Hồ sơ đã lưu')}</small>${tags.length?`<span class="student-tag-row">${tags.map(tag=>`<span class="student-tag ${tag==='Mới'?'new-tag':''}">${escapeHtml(tag)}</span>`).join('')}${renderStudentWarningTag(student, CURRENT_CLASS_ID, false)}</span>`:renderStudentWarningTag(student, CURRENT_CLASS_ID, false)}`;}
-function renderInlineTags(student){return studentTagList(student).map(tag=>`<span class="student-tag-inline ${tag==='Mới'?'new-tag':''}">${escapeHtml(tag)}</span>`).join('');}
+function studentSearchMeta(student){const isMk = student.studentType === 'makeup' || !(student.classIds || []).includes(CURRENT_CLASS_ID);const tags=studentTagList(student);return `<small>${escapeHtml(isMk?`Học bù · ${getMakeupSourceClassDisplay(student)}`:student.school||'Hồ sơ đã lưu')}</small>${tags.length?`<span class="student-tag-row">${tags.map(tag=>`<span class="student-tag ${String(tag).trim().toLowerCase()==='mới'?'new-tag':''}">${escapeHtml(tag)}</span>`).join('')}${renderStudentWarningTag(student, CURRENT_CLASS_ID, false)}</span>`:renderStudentWarningTag(student, CURRENT_CLASS_ID, false)}`;}
+function renderInlineTags(student){return studentTagList(student).map(tag=>`<span class="student-tag-inline ${String(tag).trim().toLowerCase()==='mới'?'new-tag':''}">${escapeHtml(tag)}</span>`).join('');}
 function renderStudentInfo(selector,student){
   const host=$(selector);
   if(!host)return;
@@ -3390,7 +3667,7 @@ function renderStudentInfo(selector,student){
     host.innerHTML='';
     return;
   }
-  const storedTags=student.tags||[],allTags=studentTagList(student);
+  const allTags=studentTagList(student);
   const isMakeup = student.studentType === 'makeup' || makeupStudents.some(m => m.id === student.id) || !(student.classIds || []).includes(CURRENT_CLASS_ID);
   const metaText = isMakeup
     ? `Học bù · Lớp gốc: ${getMakeupSourceClassDisplay(student)}`
@@ -3405,12 +3682,24 @@ function renderStudentInfo(selector,student){
     </div>
     <small>${escapeHtml(metaText)}</small>
   </div>
-  <div class="student-tag-row">${isMakeup ? '<span class="student-tag" style="background:#f3e8ff; color:#6b21a8; border:1px solid #d8b4fe;">Học bù</span>' : ''}${renderStudentWarningTag(student, CURRENT_CLASS_ID, true)}${allTags.map(tag=>{const storedIndex=storedTags.indexOf(tag),removable=storedIndex>=0;return `<span class="student-tag ${tag==='Mới'?'new-tag':''}">${escapeHtml(tag)}${removable?`<button type="button" aria-label="Xóa tag ${escapeHtml(tag)}" data-remove-tag="${storedIndex}" data-student-id="${escapeHtml(student.id)}">×</button>`:''}</span>`;}).join('')}</div>
+  <div class="student-tag-row">${isMakeup ? '<span class="student-tag" style="background:#f3e8ff; color:#6b21a8; border:1px solid #d8b4fe;">Học bù</span>' : ''}${renderStudentWarningTag(student, CURRENT_CLASS_ID, true)}${allTags.map(tag=>{const isMoi=String(tag).trim().toLowerCase()==='mới';return `<span class="student-tag ${isMoi?'new-tag':''}">${escapeHtml(tag)}<button type="button" aria-label="Xóa tag ${escapeHtml(tag)}" data-remove-tag-name="${escapeHtml(tag)}" data-student-id="${escapeHtml(student.id)}">×</button></span>`;}).join('')}</div>
   <div class="student-tag-editor"><input type="text" data-tag-input="${escapeHtml(student.id)}" placeholder="Thêm tag, ví dụ: Cần chú ý" /><button type="button" data-add-tag="${escapeHtml(student.id)}">Thêm tag</button></div>`;
   host.querySelector('[data-profile-name]')?.addEventListener('click',()=>{ openStudentSessionProfile(student.id, CURRENT_CLASS_ID, checklistDate); });
 }
 function refreshStudentInfo(){renderStudentInfo('#selected-student-info',selectedStudentId?studentById(selectedStudentId):null);renderStudentInfo('#late-history',selectedLateId?studentById(selectedLateId):null);}
-function addStudentTag(id,input){const student=studentById(id),tag=input.value.trim();if(!student||!tag)return;student.tags=student.tags||[];if(student.tags.some(item=>normalizeSearchText(item)===normalizeSearchText(tag))){toast('Tag này đã có trong hồ sơ.');return;}student.tags.push(tag);save();render();refreshStudentInfo();logAdminSessionAction(`Gắn tag cho HS ${student.name}`, `Tag: "${tag}"`, 'student');}
+function addStudentTag(id,input){
+  const student=studentById(id),tag=(input?.value||'').trim();
+  if(!student||!tag)return;
+  const cur=studentTagList(student);
+  if(cur.some(item=>normalizeSearchText(item)===normalizeSearchText(tag))){toast('Tag này đã có trong hồ sơ.');return;}
+  applyStudentTagsMutation(student,[...cur,tag]);
+  if(input)input.value='';
+  saveStudentRecords(students,makeupStudents);
+  save();
+  render();
+  refreshStudentInfo();
+  logAdminSessionAction(`Gắn tag cho HS ${student.name}`, `Tag: "${tag}"`, 'student');
+}
 document.addEventListener('click',e=>{
   const warnEditBtn = e.target.closest('[data-edit-warning-student]');
   if (warnEditBtn) {
@@ -3419,7 +3708,36 @@ document.addEventListener('click',e=>{
     openEditStudentWarningDialog(warnEditBtn.dataset.editWarningStudent, warnEditBtn.dataset.editWarningClass || CURRENT_CLASS_ID);
     return;
   }
-  const add=e.target.closest('[data-add-tag]');if(add){const host=add.closest('.selected-student-info'),input=host?.querySelector('[data-tag-input]');addStudentTag(add.dataset.addTag,input);return;}const remove=e.target.closest('[data-remove-tag]');if(remove){const student=studentById(remove.dataset.studentId);if(!student)return;const removedTag=student.tags?.[Number(remove.dataset.removeTag)]||'';student.tags.splice(Number(remove.dataset.removeTag),1);save();render();refreshStudentInfo();logAdminSessionAction(`Gỡ tag khỏi HS ${student.name}`, `Tag đã gỡ: "${removedTag}"`, 'student');}
+  const add=e.target.closest('[data-add-tag]');
+  if(add){
+    const host=add.closest('.selected-student-info'),input=host?.querySelector('[data-tag-input]');
+    addStudentTag(add.dataset.addTag,input);
+    return;
+  }
+  const remove=e.target.closest('[data-remove-tag-name], [data-remove-tag]');
+  if(remove){
+    e.preventDefault();
+    e.stopPropagation();
+    const student=studentById(remove.dataset.studentId);
+    if(!student)return;
+    const cur=studentTagList(student);
+    const targetName = remove.dataset.removeTagName !== undefined
+      ? String(remove.dataset.removeTagName).trim().toLowerCase()
+      : String(cur[Number(remove.dataset.removeTag)] || '').trim().toLowerCase();
+    if(!targetName)return;
+    const removedDisplay = cur.find(t => String(t).trim().toLowerCase() === targetName) || remove.dataset.removeTagName || '';
+    const nextTags = cur.filter(t => String(t).trim().toLowerCase() !== targetName);
+    applyStudentTagsMutation(student, nextTags);
+    saveStudentRecords(students, makeupStudents);
+    save();
+    render();
+    refreshStudentInfo();
+    if ($('#scores-view') && !$('#scores-view').hidden && typeof renderScoresView === 'function') renderScoresView();
+    if ($('#class-general-view') && !$('#class-general-view').hidden && typeof renderClassGeneralView === 'function') renderClassGeneralView(CURRENT_CLASS_ID);
+    window.__featuresApp?.refreshManagementViews?.();
+    toast(`✓ Đã gỡ tag "${removedDisplay}" khỏi ${student.name}.`);
+    logAdminSessionAction(`Gỡ tag khỏi HS ${student.name}`, `Tag đã gỡ: "${removedDisplay}"`, 'student');
+  }
 });
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('[data-tag-input]')){e.preventDefault();addStudentTag(e.target.dataset.tagInput,e.target);}});
 function sessionStudentIds(){return [...new Set([...allEntries().map(({entry})=>entry.studentId).filter(Boolean),...lateQueue])].filter(id=>studentById(id));}
@@ -4714,7 +5032,7 @@ if($('#manage-employees-button'))$('#manage-employees-button').onclick=()=>{
   if (window.__featuresApp?.renderStaffManagement) {
     window.__featuresApp.renderStaffManagement();
   }
-};$('#close-employee-admin').onclick=()=>$('#employee-admin-dialog').close();$('#employee-admin-form').addEventListener('submit',event=>{event.preventDefault();const edits=[...document.querySelectorAll('[data-employee-id]')].map(row=>({id:row.dataset.employeeId,code:row.querySelector('[data-employee-code]').value.trim(),name:row.querySelector('[data-employee-name]').value.trim(),role:row.querySelector('[data-employee-role]').value})),code=$('#employee-code-input').value.trim(),name=$('#employee-name-input').value.trim(),role=$('#employee-role-input').value;if(!code||!name)return;const combinedCodes=[...edits.map(item=>item.code),...(code?[code]:[])];if(new Set(combinedCodes.map(item=>item.toLocaleUpperCase())).size!==combinedCodes.length){toast('Mã nhân viên phải là duy nhất.');return;}for(const update of edits){const old=masterData.employees.find(item=>item.id===update.id);if(!old)continue;Object.assign(old,update);Object.assign(old,normalizeEmployeeAccount(old));if(old.role!==update.role){for(const item of classCatalog){for(const field of ['teacherIds','assistantIds','officeIds'])item[field]=(item[field]||[]).filter(id=>id!==old.id);if(update.role==='teacher')(item.teacherIds||=[]).push(old.id);if(update.role==='assistant')(item.assistantIds||=[]).push(old.id);if(update.role==='office')(item.officeIds||=[]).push(old.id);item.teacherId=item.teacherIds?.[0]||'';item.teacherName=employeeNames(item.teacherIds||[]);item.assistantName=employeeNames(item.assistantIds||[]);}}}if(code){masterData.employees.push(normalizeEmployeeAccount({id:'employee-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,5),code,name,role,password:role==='admin'?'admin123':'123456',isActive:true,authVersion:1}));}saveMasterData(masterData);saveClassCatalog(classCatalog);$('#employee-code-input').value='';$('#employee-name-input').value='';renderEmployeeAdminList();renderMainMenu();toast('Đã lưu danh sách nhân viên.');});
+};$('#close-employee-admin').onclick=()=>$('#employee-admin-dialog').close();$('#employee-admin-form').addEventListener('submit',event=>{event.preventDefault();const edits=[...document.querySelectorAll('[data-employee-id]')].map(row=>({id:row.dataset.employeeId,code:row.querySelector('[data-employee-code]').value.trim(),name:row.querySelector('[data-employee-name]').value.trim(),role:row.querySelector('[data-employee-role]').value})),code=$('#employee-code-input').value.trim(),name=$('#employee-name-input').value.trim(),role=$('#employee-role-input').value;if(!code||!name)return;const combinedCodes=[...edits.map(item=>item.code),...(code?[code]:[])];if(new Set(combinedCodes.map(item=>item.toLocaleUpperCase())).size!==combinedCodes.length){toast('Mã nhân viên phải là duy nhất.');return;}for(const update of edits){const old=masterData.employees.find(item=>item.id===update.id);if(!old)continue;Object.assign(old,update);Object.assign(old,normalizeEmployeeAccount(old));if(old.role!==update.role){for(const item of classCatalog){for(const field of ['teacherIds','assistantIds','officeIds'])item[field]=(item[field]||[]).filter(id=>id!==old.id);if(update.role==='teacher'){if(!item.teacherIds)item.teacherIds=[];item.teacherIds.push(old.id);}if(update.role==='assistant'){if(!item.assistantIds)item.assistantIds=[];item.assistantIds.push(old.id);}if(update.role==='office'){if(!item.officeIds)item.officeIds=[];item.officeIds.push(old.id);}item.teacherId=item.teacherIds?.[0]||'';item.teacherName=employeeNames(item.teacherIds||[]);item.assistantName=employeeNames(item.assistantIds||[]);}}}if(code){masterData.employees.push(normalizeEmployeeAccount({id:'employee-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,5),code,name,role,password:role==='admin'?'admin123':'123456',isActive:true,authVersion:1}));}saveMasterData(masterData);saveClassCatalog(classCatalog);$('#employee-code-input').value='';$('#employee-name-input').value='';renderEmployeeAdminList();renderMainMenu();toast('Đã lưu danh sách nhân viên.');});
 function fillSessionStaffSelect(select,role,selectedIds=[]){const names=masterData.employees.filter(employee=>employee.role===role).map(employee=>'<option value="'+escapeHtml(employee.id)+'" '+(selectedIds.includes(employee.id)?'selected':'')+'>'+escapeHtml(employee.name)+' · '+escapeHtml(employee.code)+'</option>').join('');select.innerHTML='<option value="@none">Không phân công '+(role==='assistant'?'trợ giảng':'giáo viên')+'</option>'+names;for(const option of select.options)if(option.value==='@none')option.selected=false;}
 function openSessionChange(classId){const item=classCatalog.find(row=>row.id===classId);if(!item)return;$('#session-change-class-id').value=classId;const date=occurrenceDate(item).toLocaleDateString('sv-SE');$('#session-change-date').value=date;const existing=getSessionChange(classId,date);$('#session-change-type').value=existing?.status==='cancelled'?'cancel':existing?.status==='makeup'?'makeup':existing?.note?'staff_change':'staff_change';$('#session-makeup-date').value='';$('#makeup-date-field').hidden=!['makeup','holiday_makeup'].includes($('#session-change-type').value);$('#session-change-note').value=existing?.note||'';fillSessionStaffSelect($('#session-change-teachers'),'teacher',existing?.teacherIds||[]);fillSessionStaffSelect($('#session-change-assistants'),'assistant',existing?.assistantIds||[]);$('#session-change-dialog').showModal();}
 $('#close-session-change').onclick=()=>$('#session-change-dialog').close();$('#cancel-session-change').onclick=()=>$('#session-change-dialog').close();$('#session-change-type').onchange=event=>{$('#makeup-date-field').hidden=!['makeup','holiday_makeup'].includes(event.target.value);};$('#session-change-form').addEventListener('submit',event=>{event.preventDefault();const classId=$('#session-change-class-id').value,item=classCatalog.find(row=>row.id===classId),date=$('#session-change-date').value,type=$('#session-change-type').value;if(!item||!date)return;const readIds=select=>{const ids=[...select.selectedOptions].map(option=>option.value);if(ids.includes('@none'))return [];return ids.length?ids:undefined;},teacherIds=readIds($('#session-change-teachers')),assistantIds=readIds($('#session-change-assistants')),note=$('#session-change-note').value.trim(),makeRecord=(sessionDate,status)=>({classId,date:sessionDate,status,teacherIds,assistantIds,note,updatedAt:Date.now(),updatedBy:currentEmployeeId});if(type==='holiday_makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Nghỉ lễ'};const makeupDate=$('#session-makeup-date').value;if(makeupDate)sessionChanges[sessionChangeKey(classId,makeupDate)]={...makeRecord(makeupDate,'makeup'),sourceDate:date,note:note||'Buổi học bù'};}else if(type==='cancel'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'cancelled'),note:note||'Lớp nghỉ'};}else if(type==='makeup'){sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'makeup'),note:note||'Buổi học bù'};}else{sessionChanges[sessionChangeKey(classId,date)]={...makeRecord(date,'scheduled')};}saveClassSessionChanges(sessionChanges);logAdminSessionAction(`Điều chỉnh lịch buổi học (${formatDateDDMMYYYY(date)})`, `Lớp: ${item.name} (${item.code || item.id}) · Loại: ${type} · Ghi chú: "${note || '—'}"`, 'class', '', classId, date);$('#session-change-dialog').close();renderMainMenu();toast('Đã lưu điều chỉnh cho buổi học.');});
@@ -5067,7 +5385,7 @@ $('#class-config-form').addEventListener('submit',event=>{
   if (id === CURRENT_CLASS_ID) {
     configClass = classInfo;
     layout = structuredClone(autoLayout);
-    for (const { desk } of desks()) deskItems[desk.id] ??= [];
+    for (const { desk } of desks()) { if (!deskItems[desk.id]) deskItems[desk.id] = []; }
     localStorage.setItem(`lopvui.layout.v5.${CURRENT_CLASS_ID}.${checklistDate}`, JSON.stringify(layout));
   }
 
@@ -6931,7 +7249,7 @@ $('#save-student-profile').onclick=async ()=>{
     student.classIds = [...activeProfileEnrolledClassIds];
   }
 
-  student.tags = [...new Set($('#profile-tags').value.split(',').map(tag=>tag.trim()).filter(Boolean))].filter(t => t.toLowerCase() !== 'học bù');
+  applyStudentTagsMutation(student, $('#profile-tags').value.split(',').map(tag => tag.trim()).filter(Boolean));
   student.photoURL = photo || null;
   if ($('#profile-office-notes')) {
     student.officeNotes = $('#profile-office-notes').value.trim();
@@ -7104,7 +7422,7 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
         </label>
 
         <label class="field-label" id="sess-prof-late-mins-wrap" ${curAttStatus === 'late' ? '' : 'hidden'}>Số phút đi muộn
-          <input type="number" id="sess-prof-late-mins" min="0" max="180" step="5" value="${Number(curLateMins) || 10}" />
+          <input type="number" id="sess-prof-late-mins" min="0" max="720" step="1" inputmode="numeric" value="${Number(curLateMins) || 10}" />
         </label>
 
         <label class="field-label">Vị trí chỗ ngồi trong buổi
@@ -7203,12 +7521,18 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
       _scoreCleared: numHwScore === null,
       _updatedAt: now
     };
+    const cleanLateMins = Math.max(0, Math.min(720, Math.round(Number(newLateMins) || 0)));
+    const computedSessArrival = newAttStatus === 'late'
+      ? _addLateMinutesToTimeStr(extractClassStartTimeStr(cls), cleanLateMins || 1)
+      : null;
     const attObj = newAttStatus === 'unmarked'
       ? null
       : {
           status: newAttStatus,
-          lateMinutes: newAttStatus === 'late' ? newLateMins : 0,
-          minutesLate: newAttStatus === 'late' ? newLateMins : 0,
+          arrivalTime: computedSessArrival,
+          lateMinutes: newAttStatus === 'late' ? cleanLateMins : 0,
+          minutesLate: newAttStatus === 'late' ? cleanLateMins : 0,
+          _manualLateMinutes: newAttStatus === 'late',
           _updatedAt: now
         };
 
@@ -7252,6 +7576,8 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
       }
 
       student.attendance = attObj;
+      student.arrivalTime = attObj?.arrivalTime || null;
+      student.lateMinutes = attObj?.lateMinutes || 0;
       student.homework = hwObj;
       student.testScore = numTestScore;
       if (checklist) {
@@ -7272,8 +7598,11 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
         classId: targetClassId,
         date: targetDate,
         status: attObj.status,
+        time: attObj.arrivalTime || null,
+        arrivalTime: attObj.arrivalTime || null,
         lateMinutes: attObj.lateMinutes || 0,
         minutesLate: attObj.lateMinutes || 0,
+        _manualLateMinutes: Boolean(attObj._manualLateMinutes),
         homework: hwObj,
         timestamp: now,
         updatedAt: now
@@ -7392,7 +7721,7 @@ function render(){
   const isNoHwActive = Boolean(window.__featuresApp?.isNoHomeworkSession?.());
   const seenSeatedIds = new Set();
   for(const {desk} of desks()){
-    deskItems[desk.id]??=[];
+    if (!deskItems[desk.id]) deskItems[desk.id] = [];
     deskItems[desk.id] = deskItems[desk.id].filter(item => {
       if (!item || !item.studentId) return true;
       const stu = studentById(item.studentId);
@@ -7433,24 +7762,23 @@ function render(){
   const mapSearchQuery = normalizeSearchText($('#seating-map-search-input')?.value || '');
 
   classroom.innerHTML=displayLayout.map((aisle,ci)=>{
-    const FIXED_SEAT_WIDTH = 116;
+    const FIXED_SEAT_WIDTH = 118;
     const SEAT_GAP = 6;
-    const DESK_EXTRA = isSeatingEditMode ? 38 : 14;
+    const DESK_EXTRA = 38;
     const maxOccupants=Math.max(1,...aisle.desks.map(d=>(deskItems[d.id]||[]).length)),
           studentWidth = FIXED_SEAT_WIDTH,
-          aisleWidth = Math.max(156, DESK_EXTRA + maxOccupants * FIXED_SEAT_WIDTH + Math.max(0, maxOccupants - 1) * SEAT_GAP);
+          aisleWidth = Math.max(162, DESK_EXTRA + maxOccupants * FIXED_SEAT_WIDTH + Math.max(0, maxOccupants - 1) * SEAT_GAP);
     const origAisleIdx = isTeacherView ? (layout.length - 1 - ci) : ci;
-    const sideLabel = isTeacherView ? (ci < displayLayout.length / 2 ? ' (Tay phải GV)' : ' (Tay trái GV)') : '';
 
     return `<div class="desk-row" style="--aisle-width:${aisleWidth}px;--max-occupants:${maxOccupants};--student-width:${studentWidth}px">
       <div class="row-label">
-        <span>DÃY ${origAisleIdx+1}${sideLabel}</span>
+        <span>DÃY ${origAisleIdx+1}</span>
         <button type="button" class="row-collect-hw-btn" data-collect-aisle="${origAisleIdx}" title="Thu BTVN cả dãy ${origAisleIdx+1}">Thu BTVN</button>
       </div>
       <div class="desks">${aisle.desks.map((desk, di)=>{
         const list=deskItems[desk.id]||[];
         const displayList = isTeacherView ? [...list].reverse() : list;
-        const addBtnHtml = isSeatingEditMode ? `<button type="button" class="desk-add-compact-btn edit-active" data-add-to-desk="${desk.id}" title="Thêm vị trí ngồi vào bàn này">+</button>` : '';
+        const addBtnHtml = `<button type="button" class="desk-add-compact-btn ${isSeatingEditMode ? 'edit-active' : ''}" data-add-to-desk="${desk.id}" title="Thêm biểu tượng học sinh vào bàn này">+</button>`;
 
         const seatsHtml = displayList.length ? displayList.map((entry,idx)=>{
           const origIndex = isTeacherView ? (list.length - 1 - idx) : idx;
@@ -7472,8 +7800,10 @@ function render(){
           const lateSeatDet = (student && att?.status === 'late') ? resolveLateDetails(student, entry) : null;
           const isSeatActuallyLate = Boolean(lateSeatDet && lateSeatDet.isLate && lateSeatDet.lateMinutes > 0);
           const lateSeatPillHtml = isSeatActuallyLate ? `<span class="seat-late-pill" title="Đi muộn ${lateSeatDet.lateMinutes} phút (${escapeHtml(lateSeatDet.arrivalTime)})">Muộn ${lateSeatDet.lateMinutes}p</span>` : '';
+          const seatEw = student ? evaluateStudentEarlyWarning(student, CURRENT_CLASS_ID) : null;
+          const seatWarnBadgeHtml = seatEw?.hasWarning ? `<span class="early-warning-pill warn-level-${seatEw.level > 0 ? seatEw.level : 1} seat-mini-warn-pill" title="${escapeHtml(seatEw.tooltip)}">⚠ ${escapeHtml(seatEw.shortTag || `M${seatEw.level || 1}`)}</span>` : '';
           const isSearchMatch = Boolean(mapSearchQuery && student && matchesAcronymOrText(`${student.name} ${student.studentCode || ''} ${(student.tags || []).join(' ')}`, mapSearchQuery));
-          return `<button class="seat occupied seat-token ${student?'seat-named':'seat-anonymous'} ${isMakeupStudent?'seat-makeup':''} ${isSeatActuallyLate?'attendance-late':''} ${warnClass} ${isSearchMatch?'seat-search-match':''}" data-entry-index="${origIndex}" data-desk-id="${desk.id}" data-student-id="${escapeHtml(student?.id||'')}" aria-label="${student?`${student.name}${isMakeupStudent?' (Học bù)':''}; BTVN ${homeworkLabel(hw?.status)}; ${attendanceLabel(att?.status)}`:'Biểu tượng học sinh chưa ghi tên'}">${student?'':`<span class="seat-symbol">${studentIcon}</span>`}${student?`<span class="seat-name">${makeupBadgeHtml}${escapeHtml(student.name)}${lateSeatPillHtml}${renderInlineTags(student)}${warnTag}<span class="homework-mark ${homeworkClass(hw?.status)}" title="${homeworkLabel(hw?.status)}">${homeworkSymbol(hw)}</span></span>`:hw?.status&&hw.status!=='uncollected'?`<span class="homework-mark ${homeworkClass(hw.status)}" title="${homeworkLabel(hw.status)}">${homeworkSymbol(hw)}</span>`:''}</button>`;
+          return `<button class="seat occupied seat-token ${student?'seat-named':'seat-anonymous'} ${isMakeupStudent?'seat-makeup':''} ${isSeatActuallyLate?'attendance-late':''} ${warnClass} ${isSearchMatch?'seat-search-match':''}" data-entry-index="${origIndex}" data-desk-id="${desk.id}" data-student-id="${escapeHtml(student?.id||'')}" aria-label="${student?`${student.name}${isMakeupStudent?' (Học bù)':''}; BTVN ${homeworkLabel(hw?.status)}; ${attendanceLabel(att?.status)}`:'Biểu tượng học sinh chưa ghi tên'}">${student?'':`<span class="seat-symbol">${studentIcon}</span>`}${student?`<span class="seat-name">${makeupBadgeHtml}${escapeHtml(student.name)}${lateSeatPillHtml}${renderInlineTags(student)}${seatWarnBadgeHtml}${warnTag}<span class="homework-mark ${homeworkClass(hw?.status)}" title="${homeworkLabel(hw?.status)}">${homeworkSymbol(hw)}</span></span>`:hw?.status&&hw.status!=='uncollected'?`<span class="homework-mark ${homeworkClass(hw.status)}" title="${homeworkLabel(hw.status)}">${homeworkSymbol(hw)}</span>`:''}</button>`;
         }).join('') : '<span class="seat-empty-text">Bàn trống</span>';
 
         // Render desk divider right on the exact border between upper desk and lower desk
@@ -7542,7 +7872,7 @@ function render(){
   $('#seat-count').textContent=`${desks().length} bàn`;
   $('#roster-count').textContent=`${classStudents().length} học sinh trong danh sách lớp`;
   $('#finalize-button').disabled=!occupants.length;
-  $('#pool-count').textContent='Kéo biểu tượng ở giữa vào bàn bất kỳ (hoặc chạm để thêm nhanh)';
+  $('#pool-count').textContent='Bấm nút + trên bàn hoặc kéo biểu tượng học sinh vào bàn bất kỳ';
   const quickCarryBtn = $('#quick-carryover-seating-btn');
   if (quickCarryBtn) {
     const prevSess = (!isClassHistoryViewMode && named.length === 0)
@@ -7563,10 +7893,16 @@ function render(){
     const lateDet = resolveLateDetails(s, null);
     const isActuallyLate = Boolean(lateDet.isLate && lateDet.lateMinutes > 0 && s.attendance?.status !== 'present');
     const subText = isActuallyLate
-      ? `Muộn ${lateDet.lateMinutes}p · ${escapeHtml(lateDet.arrivalTime)}`
+      ? `Muộn ${lateDet.lateMinutes}p${lateDet.arrivalTime ? ` · ${escapeHtml(lateDet.arrivalTime)}` : ''}`
       : `${lateDet.arrivalTime ? `Đến ${escapeHtml(lateDet.arrivalTime)}` : 'Đúng giờ'} · Chờ xếp chỗ`;
-    return `<button type="button" class="late-token ${isActuallyLate ? '' : 'late-token-ontime'} ${isMakeup ? 'late-makeup' : ''}" data-late-key="${id}" aria-label="${s.name}; kéo vào bàn"><span></span><span class="late-name">${isMakeup ? '<span class="makeup-seat-badge">BÙ</span>' : ''}${escapeHtml(s.name)}</span><small>${subText}</small></button>`;
-  }).join('')||'<span class="late-empty">Học sinh đến lớp (chờ xếp chỗ) hoặc đi muộn sẽ chờ tại đây. Kéo vào bàn khi sẵn sàng.</span>';
+    const hwObj = s.homework;
+    const hwSt = hwObj?.status || 'uncollected';
+    const hasScore = hwObj?.score !== null && hwObj?.score !== undefined && hwObj?.score !== '';
+    const hwMiniHtml = (!isNoHwActive && hwSt !== 'uncollected')
+      ? `<span class="late-hw-pill ${hwSt === 'not_submitted' ? 'hw-miss' : 'hw-done'}">${hasScore ? `${escapeHtml(formatScoreVN(hwObj.score))}đ` : (hwSt === 'not_submitted' ? '× K.Nộp' : '✓ BTVN')}</span>`
+      : '';
+    return `<div role="button" tabindex="0" class="late-token ${isActuallyLate ? '' : 'late-token-ontime'} ${isMakeup ? 'late-makeup' : ''}" data-late-key="${escapeHtml(id)}" aria-label="${escapeHtml(s.name)}; chạm rồi bấm bàn hoặc kéo vào bàn"><div class="late-token-main"><span class="late-name">${isMakeup ? '<span class="makeup-seat-badge">BÙ</span>' : ''}${escapeHtml(s.name)}${renderInlineTags(s)}${hwMiniHtml}</span><small>${subText}</small></div><button type="button" class="late-edit-mini-btn" data-edit-late-student="${escapeHtml(id)}" title="Sửa số phút muộn & trạng thái BTVN của ${escapeHtml(s.name)}" aria-label="Sửa ${escapeHtml(s.name)}">✎</button></div>`;
+  }).join('')||'<span class="late-empty">Học sinh mới đến (đúng giờ hoặc đi muộn) sẽ chờ tại đây. Chạm vào học sinh rồi bấm vào bàn bất kỳ (hoặc kéo thả vào bàn).</span>';
   const placements = new Map(occupants.filter(({ entry }) => entry.studentId).map(place => [place.entry.studentId, place]));
   const lateSet = new Set(lateQueue);
   const allRosterAndMakeup = [...classStudents(), ...sessionMakeupStudents(placements, lateSet)];
@@ -7601,14 +7937,17 @@ function collectAisleHomework(aisleIndex) {
       // Chỉ đánh dấu Đã thu (submitted) cho học sinh đang ở trạng thái Chưa thu trong dãy (dù đã điểm danh hay chưa)
       // Tuyệt đối không đánh dấu đã thu cho học sinh đang có trạng thái Không nộp (not_submitted)
       if (curStatus === 'uncollected' && curStatus !== 'not_submitted' && !hasScore) {
+        const nowTs = Date.now();
         const nextHw = {
           ...(curHw || {}),
           status: 'submitted',
           reason: null,
           score: null,
-          note: curHw?.note || (entry.studentId ? sessionNoteFor(entry.studentId) : '') || ''
+          note: curHw?.note || (entry.studentId ? sessionNoteFor(entry.studentId) : '') || '',
+          _updatedAt: nowTs
         };
         entry.homework = nextHw;
+        entry._updatedAt = nowTs;
         if (s) {
           s.homework = nextHw;
           if (entry.attendance || s.attendance) {
@@ -7626,12 +7965,13 @@ function collectAisleHomework(aisleIndex) {
               homeworkStatus: 'submitted',
               homeworkReason: '',
               homeworkScore: null,
-              updatedAt: Date.now()
+              _hwUpdatedAt: nowTs,
+              updatedAt: nowTs
             };
             if (noteIdx >= 0) s.sessionNotes[noteIdx] = noteEntry;
             else s.sessionNotes.unshift(noteEntry);
           }
-          s.updatedAt = Date.now();
+          s.updatedAt = nowTs;
           s.revision = (Number(s.revision) || 0) + 1;
         }
         count++;
@@ -7657,8 +7997,8 @@ if (toggleSeatingEditBtn) {
     updateSeatingEditBtn();
     render();
     toast(isSeatingEditMode 
-      ? 'Chế độ sửa sơ đồ: ĐANG BẬT (Cho phép kéo thả và nút + thêm học sinh).' 
-      : 'Chế độ sửa sơ đồ: ĐÃ KHÓA (Khóa sửa sơ đồ; vẫn kéo được học sinh đi muộn vào bàn và bấm điểm danh).');
+      ? 'Chế độ sửa sơ đồ: ĐANG BẬT (Cho phép kéo đổi chỗ cả học sinh đã điểm danh).' 
+      : 'Chế độ sửa sơ đồ: ĐÃ KHÓA (Khóa kéo nhầm HS đã điểm danh; vẫn kéo được ghế chưa có tên, thêm + và xếp chỗ cuối lớp).');
   };
 }
 
@@ -7775,13 +8115,13 @@ function formatHomeworkDateDM(dateStr) {
 }
 
 function buildPreviousHomeworkHistoryLines(student) {
-  if (!student || isStudentNewOrMakeup(student)) return [];
+  if (!student) return [];
   const byDate = new Map();
 
   const ensureEntry = (date) => {
     if (!date || date === checklistDate) return null;
     if (!byDate.has(date)) {
-      byDate.set(date, { date, attStatus: null, hwStatus: null, score: null, note: '' });
+      byDate.set(date, { date, attStatus: null, hwStatus: null, score: null, reason: '', note: '' });
     }
     return byDate.get(date);
   };
@@ -7793,6 +8133,7 @@ function buildPreviousHomeworkHistoryLines(student) {
     if (!item) continue;
     if (att.status) item.attStatus = att.status;
     if (att.homework?.status) item.hwStatus = att.homework.status;
+    if (att.homework?.reason && !item.reason) item.reason = att.homework.reason;
     if (att.homework?.score !== undefined && att.homework?.score !== null && att.homework?.score !== '') {
       item.score = att.homework.score;
     }
@@ -7818,6 +8159,7 @@ function buildPreviousHomeworkHistoryLines(student) {
     if (!item) continue;
     if (sn.attendanceStatusOverride) item.attOverride = sn.attendanceStatusOverride;
     if (sn.homeworkStatus) item.hwStatus = sn.homeworkStatus;
+    if (sn.homeworkReason && !item.reason) item.reason = sn.homeworkReason;
     if (sn.homeworkScore !== undefined && sn.homeworkScore !== null && sn.homeworkScore !== '') {
       item.score = sn.homeworkScore;
     }
@@ -7827,6 +8169,7 @@ function buildPreviousHomeworkHistoryLines(student) {
 
   // 4. Sort descending by date
   const sorted = [...byDate.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const reasonMap = { not_done: 'chưa làm', forgot: 'quên vở/bài', missed_previous: 'nghỉ buổi trước' };
 
   return sorted.slice(0, 8).map(row => {
     const dm = formatHomeworkDateDM(row.date);
@@ -7839,9 +8182,10 @@ function buildPreviousHomeworkHistoryLines(student) {
 
     const hasScore = row.score !== null && row.score !== undefined && row.score !== '';
     const isSubmitted = hasScore || row.hwStatus === 'submitted' || row.hwStatus === 'graded' || row.hwStatus === 'completed';
+    const reasonText = (!isSubmitted && row.reason) ? ` (${reasonMap[row.reason] || row.reason})` : '';
     const hwLabel = isSubmitted
       ? (hasScore ? `đã nộp (${formatScoreVN(row.score)})` : 'đã nộp')
-      : 'chưa nộp';
+      : `chưa nộp${reasonText}`;
 
     const cleanNote = String(row.note || '').trim();
     const notePart = cleanNote ? ` - (ghi chú: ${cleanNote})` : '';
@@ -7866,18 +8210,17 @@ function renderHomeworkHistoryPanel(prefix) {
 
   if (!student) {
     wrap.hidden = false;
-    listEl.innerHTML = '<div class="hw-history-empty">Chọn tên học sinh ở mục Điểm danh để xem lịch sử BTVN.</div>';
+    listEl.innerHTML = '<div class="hw-history-empty">Chọn tên học sinh ở mục Điểm danh để xem lịch sử BTVN các buổi trước.</div>';
     return;
   }
 
-  // Do NOT show homework history for new or makeup students
-  if (isStudentNewOrMakeup(student)) {
+  const lines = buildPreviousHomeworkHistoryLines(student);
+  if (!lines.length && isStudentNewOrMakeup(student)) {
     wrap.hidden = true;
     listEl.innerHTML = '';
     return;
   }
 
-  const lines = buildPreviousHomeworkHistoryLines(student);
   wrap.hidden = false;
   if (!lines.length) {
     listEl.innerHTML = '<div class="hw-history-empty">Chưa có dữ liệu BTVN các buổi trước.</div>';
@@ -7978,9 +8321,25 @@ function identityPicker(query=''){
   const isSameAsCurrent = Boolean(currentSeatStuId && normQ && studentById(currentSeatStuId)?.name?.trim().toLowerCase() === normQ.toLowerCase());
   const effQuery = isSameAsCurrent ? '' : normQ;
   const matches=effQuery?searchStudents(pool,effQuery,{excludeIds:used}):pool.filter(s=>!used.has(s.id));
+  // Ưu tiên hiển thị học sinh đang chờ ở Cuối lớp (đã check-in cửa lớp) lên đầu khi chưa gõ từ khóa
+  const lateSet = new Set(lateQueue);
+  if (!effQuery && lateSet.size > 0) {
+    matches.sort((a, b) => (lateSet.has(b.id) ? 1 : 0) - (lateSet.has(a.id) ? 1 : 0));
+  }
   const optionsEl = $('#student-options');
   if (!optionsEl) return;
-  optionsEl.innerHTML=matches.map(s=>`<button type="button" class="student-option ${s.id === currentSeatStuId ? 'selected-option' : ''}" data-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${studentSearchMeta(s)}</span><span class="student-check">${s.id === currentSeatStuId ? '✓ Đang chọn' : 'Chọn'}</span></button>`).join('')||`<div class="empty-list">${effQuery?'Chưa có hồ sơ phù hợp.':'Nhập tên để tìm học sinh trong danh sách.'}</div>`;
+  optionsEl.innerHTML=matches.map(s=>{
+    const inLateQueue = lateSet.has(s.id);
+    let lateMetaHtml = '';
+    if (inLateQueue) {
+      const lDet = resolveLateDetails(s, null);
+      const isActLate = Boolean(lDet.isLate && lDet.lateMinutes > 0 && s.attendance?.status !== 'present');
+      const hwSt = s.homework?.status || 'uncollected';
+      const hwTxt = hwSt === 'not_submitted' ? ' · K.Nộp BTVN' : (hwSt !== 'uncollected' ? ' · Đã nộp BTVN' : '');
+      lateMetaHtml = ` <span class="option-late-queue-badge">${isActLate ? `Cuối lớp · Muộn ${lDet.lateMinutes}p` : 'Cuối lớp · Đúng giờ'}${hwTxt}</span>`;
+    }
+    return `<button type="button" class="student-option ${s.id === currentSeatStuId ? 'selected-option' : ''}" data-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${lateMetaHtml}${studentSearchMeta(s)}</span><span class="student-check">${s.id === currentSeatStuId ? '✓ Đang chọn' : (inLateQueue ? 'Đưa vào ghế' : 'Chọn')}</span></button>`;
+  }).join('')||`<div class="empty-list">${effQuery?'Chưa có hồ sơ phù hợp.':'Nhập tên để tìm học sinh trong danh sách.'}</div>`;
   optionsEl.querySelectorAll('[data-student]').forEach(b=>{
     b.addEventListener('mousedown', (ev) => {
       ev.preventDefault();
@@ -8115,6 +8474,151 @@ if ($('#new-or-makeup-choice')) {
   };
 }
 
+function setSeatAttendanceTimingUI(person, entry = null) {
+  const box = $('#seat-attendance-timing-box');
+  if (!box) return;
+  if (!person) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const lateDet = resolveLateDetails(person, entry);
+  const isLate = Boolean(
+    (entry?.attendance?.status === 'late' || person.attendance?.status === 'late') &&
+    lateDet.isLate &&
+    lateDet.lateMinutes > 0
+  );
+  const mode = isLate ? 'late' : 'present';
+  box.dataset.attMode = mode;
+  box.querySelectorAll('[data-seat-att-mode]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.seatAttMode === mode);
+  });
+  const minsWrap = $('#seat-late-mins-wrap');
+  const minsInp = $('#seat-late-minutes-input');
+  if (minsWrap) minsWrap.hidden = !isLate;
+  if (minsInp) minsInp.value = String(isLate ? Math.max(1, lateDet.lateMinutes) : 10);
+}
+
+function readSeatAttendanceTimingUI(person, entry = null) {
+  const box = $('#seat-attendance-timing-box');
+  if (!box || box.hidden) {
+    const lateDet = resolveLateDetails(person, entry);
+    const isLate = Boolean((entry?.attendance?.status === 'late' || person?.attendance?.status === 'late') && lateDet.isLate && lateDet.lateMinutes > 0);
+    return {
+      isLate,
+      lateMinutes: isLate ? lateDet.lateMinutes : 0,
+      arrivalTime: lateDet.arrivalTime || person?.arrivalTime || null,
+      manualLate: Boolean(entry?.attendance?._manualLateMinutes || person?.attendance?._manualLateMinutes)
+    };
+  }
+  const activeMode = box.dataset.attMode || (box.querySelector('[data-seat-att-mode].active')?.dataset.seatAttMode) || 'present';
+  if (activeMode !== 'late') {
+    return {
+      isLate: false,
+      lateMinutes: 0,
+      arrivalTime: (entry?.attendance?.status === 'present' ? entry.attendance.arrivalTime : null) || null,
+      manualLate: false
+    };
+  }
+  const rawMins = Number($('#seat-late-minutes-input')?.value);
+  const cleanMins = (!Number.isNaN(rawMins) && rawMins > 0) ? Math.min(720, Math.round(rawMins)) : 0;
+  if (cleanMins <= 0) {
+    return { isLate: false, lateMinutes: 0, arrivalTime: null, manualLate: false };
+  }
+  const startTimeStr = extractClassStartTimeStr(activeClassConfig());
+  return {
+    isLate: true,
+    lateMinutes: cleanMins,
+    arrivalTime: _addLateMinutesToTimeStr(startTimeStr, cleanMins),
+    manualLate: true
+  };
+}
+
+document.querySelectorAll('[data-seat-att-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const box = $('#seat-attendance-timing-box');
+    if (!box) return;
+    const mode = btn.dataset.seatAttMode === 'late' ? 'late' : 'present';
+    box.dataset.attMode = mode;
+    box.querySelectorAll('[data-seat-att-mode]').forEach(b => b.classList.toggle('active', b === btn));
+    const minsWrap = $('#seat-late-mins-wrap');
+    const minsInp = $('#seat-late-minutes-input');
+    if (minsWrap) minsWrap.hidden = mode !== 'late';
+    if (mode === 'late' && minsInp) {
+      if (!Number(minsInp.value) || Number(minsInp.value) <= 0) minsInp.value = '10';
+      minsInp.focus();
+      minsInp.select?.();
+    }
+  });
+});
+
+function unassignStudentFromCurrentSeatKeepState() {
+  const entry = currentEntry();
+  const oldStuId = entry?.studentId || selectedStudentId;
+  if (!oldStuId) return false;
+  const oldPerson = studentById(oldStuId);
+  const oldName = oldPerson?.name || 'học sinh';
+
+  // Giữ nguyên trạng thái BTVN, điểm, lý do và ghi chú hiện tại trên ghế để điểm danh học sinh khác ngay lập tức
+  let uiStatus = $('#homework-status')?.value || entry?.homework?.status || 'uncollected';
+  if (uiStatus === 'graded') uiStatus = 'submitted';
+  const rawScore = $('#homework-score')?.value?.trim() || '';
+  const parsedScore = parseScoreVN(rawScore);
+  const preservedScore = (parsedScore !== null && !Number.isNaN(parsedScore))
+    ? parsedScore
+    : (entry?.homework?.score ?? null);
+  if (uiStatus === 'uncollected' && preservedScore !== null) uiStatus = 'submitted';
+  const preservedReason = uiStatus === 'not_submitted'
+    ? ($('#homework-reason')?.value || entry?.homework?.reason || 'not_done')
+    : null;
+  const noteField = $('#seat-general-note');
+  const preservedNote = (noteField ? noteField.value.trim() : '') || entry?.homework?.note || '';
+
+  pushSeatingUndo();
+  resetStudentSessionRecord(oldStuId);
+  selectedStudentId = null;
+
+  if (entry) {
+    const now = Date.now();
+    entry.studentId = null;
+    entry.attendance = null;
+    entry.homework = {
+      status: uiStatus,
+      score: preservedScore,
+      reason: preservedReason,
+      note: preservedNote,
+      _updatedAt: now
+    };
+    entry._updatedAt = now;
+  }
+
+  if (noteField) {
+    delete noteField.dataset.sessionNote;
+    noteField.value = preservedNote;
+    noteField.disabled = false;
+  }
+
+  const deskInfo = activeSpot?.deskId ? desks().find(x => x.desk.id === activeSpot.deskId) : null;
+  if ($('#seat-dialog-title')) {
+    $('#seat-dialog-title').textContent = `Dãy ${(deskInfo?.ci ?? 0) + 1} · Bàn ${(deskInfo?.di ?? 0) + 1} · Vị trí ${(activeSpot?.index ?? 0) + 1}`;
+  }
+  if ($('#seat-dialog-hint')) {
+    $('#seat-dialog-hint').textContent = `Đã bỏ tên ${oldName} (giữ nguyên trạng thái BTVN & ghi chú). Chọn học sinh khác bên dưới.`;
+  }
+  renderStudentInfo('#selected-student-info', null);
+  setSeatAttendanceTimingUI(null, entry);
+  if (entry?.homework) setHomeworkFields(entry.homework);
+  renderHomeworkHistoryPanel('homework');
+  identityPicker('');
+  if ($('#student-options')) $('#student-options').hidden = false;
+
+  logAdminSessionAction(`Bỏ tên HS ${oldName} khỏi ghế (giữ nguyên BTVN & ghi chú ghế)`, `BTVN giữ lại: ${homeworkLabel(uiStatus)}${preservedNote ? ` · Ghi chú: "${preservedNote}"` : ''}`, 'attendance');
+  save();
+  render();
+  toast(`✓ Đã bỏ tên ${oldName} và giữ nguyên BTVN & ghi chú trên ghế.`);
+  return true;
+}
+
 function assignStudent(id){
   if (!id) return;
   const person = studentById(id);
@@ -8123,18 +8627,26 @@ function assignStudent(id){
   const entry = ensureCurrentSeatEntry();
   if (!entry) return;
 
+  const prevStuId = entry.studentId;
+  const noteField = $('#seat-general-note');
+  const seatPreNote = (!prevStuId && noteField && !noteField.dataset.sessionNote && noteField.value)
+    ? noteField.value.trim()
+    : (!prevStuId && entry.homework?.note ? String(entry.homework.note).trim() : '');
+
   // Giữ nguyên trạng thái BTVN đã đánh dấu trên ghế (VD: đã bấm Thu BTVN cả dãy hoặc chọn trạng thái BTVN trước khi chọn tên)
   const preservedSeatHw = (entry.homework && entry.homework.status && entry.homework.status !== 'uncollected')
     ? { ...entry.homework }
     : null;
+  const wasInLateQueue = lateQueue.includes(id);
+  const personCheckedInHw = (person.homework && person.homework.status && person.homework.status !== 'uncollected')
+    ? { ...person.homework }
+    : null;
 
-  const prevStuId = entry.studentId;
   if (prevStuId && prevStuId !== id) {
     resetStudentSessionRecord(prevStuId);
     entry.attendance = null;
   }
 
-  const wasInLateQueue = lateQueue.includes(id);
   for (const { desk } of desks()) {
     const list = deskItems[desk.id] || [];
     for (let i = list.length - 1; i >= 0; i--) {
@@ -8154,17 +8666,45 @@ function assignStudent(id){
   const uiHwStatus = $('#homework-status')?.value || 'uncollected';
   const uiHwReason = $('#homework-reason')?.value || null;
   const uiHwScore = parseScoreVN($('#homework-score')?.value?.trim() || '');
-  const resolvedHw = preservedSeatHw
-    || (uiHwStatus !== 'uncollected' ? {
-         status: uiHwStatus === 'graded' ? 'submitted' : uiHwStatus,
-         score: (uiHwScore !== null && !Number.isNaN(uiHwScore)) ? uiHwScore : null,
-         reason: uiHwStatus === 'not_submitted' ? uiHwReason : null,
-         note: entry.homework?.note || ''
-       } : null)
-    || (person.homework && person.homework.status && person.homework.status !== 'uncollected' ? { ...person.homework } : { status: 'uncollected' });
+  const uiDraftHw = uiHwStatus !== 'uncollected' ? {
+    status: uiHwStatus === 'graded' ? 'submitted' : uiHwStatus,
+    score: (uiHwScore !== null && !Number.isNaN(uiHwScore)) ? uiHwScore : null,
+    reason: uiHwStatus === 'not_submitted' ? (uiHwReason || 'not_done') : null,
+    note: entry.homework?.note || ''
+  } : null;
+
+  // Hợp nhất thông minh BTVN giữa chỗ ngồi (đã thu theo dãy) và trạng thái đã điểm danh ở Cuối lớp (Điểm danh muộn):
+  // - Nếu HS đã điểm danh ở Cuối lớp kèm BTVN cụ thể (Không nộp / có điểm) thì ưu tiên kéo trạng thái BTVN đó theo tên HS
+  // - Nếu chỗ ngồi đã thu BTVN trước đó (chưa điểm danh tên) thì tự lưu trạng thái BTVN của ghế vào HS
+  let resolvedHw;
+  if (wasInLateQueue && personCheckedInHw) {
+    const seatOnlyGenericSubmitted = preservedSeatHw
+      && preservedSeatHw.status === 'submitted'
+      && (preservedSeatHw.score === null || preservedSeatHw.score === undefined || preservedSeatHw.score === '');
+    if (!preservedSeatHw || (seatOnlyGenericSubmitted && (personCheckedInHw.status === 'not_submitted' || (personCheckedInHw.score !== null && personCheckedInHw.score !== undefined)))) {
+      resolvedHw = { ...personCheckedInHw, _updatedAt: Date.now() };
+    } else {
+      resolvedHw = { ...preservedSeatHw, _updatedAt: Date.now() };
+    }
+  } else {
+    resolvedHw = preservedSeatHw
+      ? { ...preservedSeatHw, _updatedAt: Date.now() }
+      : (uiDraftHw || (personCheckedInHw ? { ...personCheckedInHw, _updatedAt: Date.now() } : { status: 'uncollected', _updatedAt: Date.now() }));
+  }
+
+  // Hợp nhất ghi chú của HS (từ ô Điểm danh muộn) và ghi chú sẵn có trên ghế (nếu có)
+  const existingStuNote = sessionNoteFor(id) || personCheckedInHw?.note || '';
+  let resolvedNote = existingStuNote || seatPreNote || '';
+  if (existingStuNote && seatPreNote && existingStuNote !== seatPreNote && !existingStuNote.includes(seatPreNote)) {
+    resolvedNote = `${existingStuNote}; ${seatPreNote}`;
+  }
+  resolvedHw.note = resolvedNote;
 
   entry.homework = resolvedHw;
   person.homework = resolvedHw;
+  if (resolvedHw.score !== null && resolvedHw.score !== undefined && !Number.isNaN(Number(resolvedHw.score))) {
+    recordStudentScore(person, Number(resolvedHw.score), 'BTVN');
+  }
 
   const lateDetCandidate = resolveLateDetails(person, entry);
   const isLateStudent = Boolean(
@@ -8178,8 +8718,9 @@ function assignStudent(id){
       arrivalTime: lateDetCandidate.arrivalTime,
       lateMinutes: lateDetCandidate.lateMinutes,
       minutesLate: lateDetCandidate.lateMinutes,
+      _manualLateMinutes: Boolean(person.attendance?._manualLateMinutes || entry.attendance?._manualLateMinutes),
       reason: entry.homework?.reason || null,
-      note: entry.homework?.note || ''
+      note: resolvedNote
     };
     person.arrivalTime = lateDetCandidate.arrivalTime;
     person.lateMinutes = lateDetCandidate.lateMinutes;
@@ -8190,7 +8731,7 @@ function assignStudent(id){
       lateMinutes: 0,
       minutesLate: 0,
       reason: entry.homework?.reason || null,
-      note: entry.homework?.note || ''
+      note: resolvedNote
     };
     person.lateMinutes = 0;
   }
@@ -8199,6 +8740,15 @@ function assignStudent(id){
   person.updatedAt = Date.now();
   person.revision = (Number(person.revision) || 0) + 1;
 
+  if (noteField) {
+    noteField.value = resolvedNote;
+    noteField.dataset.sessionNote = id;
+    noteField.disabled = false;
+  }
+  if (resolvedNote) {
+    saveSessionNote(id, resolvedNote);
+  }
+
   recordHistory(person, entry.attendance, entry.homework);
   if (activeSpot?.deskId) {
     recordSeatHistory(person, activeSpot.deskId, activeSpot.index);
@@ -8206,24 +8756,9 @@ function assignStudent(id){
   const deskLabel = activeSpot?.deskId ? (desks().find(d => d.desk.id === activeSpot.deskId)?.label || activeSpot.deskId) : 'Bàn học';
   logAdminSessionAction(
     `Xếp chỗ & điểm danh HS ${person.name}`,
-    `Vị trí: ${deskLabel} (Ghế ${(Number(activeSpot?.index) || 0) + 1}) · Trạng thái: ${isLateStudent ? `Đi muộn (${person.lateMinutes || 0}p)` : 'Có mặt đúng giờ'}`,
+    `Vị trí: ${deskLabel} (Ghế ${(Number(activeSpot?.index) || 0) + 1}) · Trạng thái: ${isLateStudent ? `Đi muộn (${person.lateMinutes || 0}p)` : 'Có mặt đúng giờ'} · BTVN: ${homeworkLabel(entry.homework?.status)}`,
     'attendance'
   );
-
-  const noteField = $('#seat-general-note');
-  if (noteField) {
-    const preTypedNote = (!noteField.dataset.sessionNote && noteField.value) ? noteField.value.trim() : '';
-    const existingNote = sessionNoteFor(id);
-    const resolvedNote = existingNote || preTypedNote;
-    noteField.value = resolvedNote;
-    noteField.dataset.sessionNote = id;
-    noteField.disabled = false;
-    if (resolvedNote) {
-      saveSessionNote(id, resolvedNote);
-      if (entry.homework && !entry.homework.note) entry.homework.note = resolvedNote;
-      if (entry.attendance && !entry.attendance.note) entry.attendance.note = resolvedNote;
-    }
-  }
 
   // Cập nhật ngay lập tức Card Học Sinh & giao diện trong #seat-dialog trước khi render nền
   $('#seat-dialog-title').textContent = person.name;
@@ -8239,10 +8774,13 @@ function assignStudent(id){
     $('#new-or-makeup-choice').textContent = '+ Học sinh mới / Học bù';
   }
   renderStudentInfo('#selected-student-info', person);
+  setSeatAttendanceTimingUI(person, entry);
   setHomeworkFields(entry.homework || person.homework || { status: 'uncollected' });
   renderHomeworkHistoryPanel('homework');
   if ($('#seat-dialog-hint')) {
-    $('#seat-dialog-hint').textContent = `✓ Đã chọn ${person.name}. Kiểm tra trạng thái BTVN rồi bấm Lưu.`;
+    $('#seat-dialog-hint').textContent = wasInLateQueue
+      ? `✓ Đã đưa ${person.name} từ Cuối lớp vào bàn (kèm BTVN & ghi chú).`
+      : `✓ Đã chọn ${person.name}. Kiểm tra trạng thái BTVN rồi bấm Lưu.`;
   }
 
   try {
@@ -8252,7 +8790,7 @@ function assignStudent(id){
     console.warn('assignStudent render warning:', err);
   }
 
-  toast(`✓ Đã chọn & điểm danh: ${person.name}`);
+  toast(wasInLateQueue ? `✓ Đã xếp ${person.name} vào ghế & đồng bộ trạng thái BTVN/ghi chú.` : `✓ Đã chọn & điểm danh: ${person.name}`);
 }
 
 function openStudent(deskId,index){
@@ -8268,7 +8806,7 @@ function openStudent(deskId,index){
   $('#homework-section').hidden=false;
   $('#student-search').value=person?.name||'';
   $('#student-search').dispatchEvent(new Event('change'));
-  noteField.value=selectedStudentId?sessionNoteFor(selectedStudentId):(entry.homework?.note||'');
+  noteField.value=selectedStudentId?(sessionNoteFor(selectedStudentId)||entry.homework?.note||''):(entry.homework?.note||'');
   noteField.disabled=false;
   if(selectedStudentId)noteField.dataset.sessionNote=selectedStudentId;
   else delete noteField.dataset.sessionNote;
@@ -8278,6 +8816,7 @@ function openStudent(deskId,index){
   $('#identity-form-host').innerHTML='';
   if ($('#new-or-makeup-choice')) { $('#new-or-makeup-choice').classList.remove('active'); $('#new-or-makeup-choice').textContent = '+ Học sinh mới / Học bù'; }
   renderStudentInfo('#selected-student-info',person);
+  setSeatAttendanceTimingUI(person, entry);
   setHomeworkFields(entry.homework||person?.homework||{status:'uncollected'});
   renderHomeworkHistoryPanel('homework');
   $('#seat-dialog').showModal();
@@ -8285,8 +8824,9 @@ function openStudent(deskId,index){
 
 function insertIntoDesk(entry,destDeskId,destIndex,source){
   pushSeatingUndo();const now=Date.now();_ensureSeatEntryMeta(entry,now);entry._updatedAt=now;if(entry.studentId)clearDeskTombstoneForStudent(deskItems,entry.studentId,entry.entryId);const target=deskItems[destDeskId]||(deskItems[destDeskId]=[]);if(source?.type==='seat'){const from=deskItems[source.deskId];from.splice(source.index,1);if(source.deskId===destDeskId&&source.index<destIndex)destIndex--;}else if(source?.type==='late')lateQueue=lateQueue.filter(id=>id!==source.studentId);destIndex=Math.max(0,Math.min(destIndex,target.length));target.splice(destIndex,0,entry);const stu=studentById(entry.studentId);recordSeatHistory(stu,destDeskId,destIndex);const destLabel=desks().find(d=>d.desk.id===destDeskId)?.label||destDeskId;logAdminSessionAction(`Di chuyển chỗ ngồi ${stu?`HS ${stu.name}`:'ghế trống'}`, `Chuyển tới ${destLabel} (Ghế ${destIndex+1})`, 'attendance');save();render();}
-function dropIndexAt(deskEl,x){const tokens=[...deskEl.querySelectorAll('.desk-seats [data-entry-index]')].sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left);if(!tokens.length)return 0;const centers=tokens.map(token=>{const r=token.getBoundingClientRect();return r.left+r.width/2;});if(x<centers[0])return 0;for(let i=1;i<centers.length;i++)if(x<centers[i])return i;return tokens.length;}
-function showDropMarker(deskEl,index){const area=deskEl.querySelector('.desk-seats');if(!area)return;const marker=area.querySelector('.drop-marker')||document.createElement('span'),tokens=[...area.querySelectorAll('[data-entry-index]')].sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left),rect=area.getBoundingClientRect();marker.className='drop-marker';marker.setAttribute('aria-hidden','true');let x=rect.width/2;if(tokens.length){if(index<=0){x=tokens[0].getBoundingClientRect().left-rect.left;}else if(index>=tokens.length){x=tokens.at(-1).getBoundingClientRect().right-rect.left;}else{x=(tokens[index-1].getBoundingClientRect().right+tokens[index].getBoundingClientRect().left)/2-rect.left;}}marker.style.left=`${Math.max(1,Math.min(rect.width-4,x-2))}px`;marker.style.top='2px';marker.style.height=`${Math.max(20,rect.height-4)}px`;if(!marker.isConnected)area.append(marker);}
+function visualDropSlotAt(deskEl,x){const tokens=[...deskEl.querySelectorAll('.desk-seats [data-entry-index]')].sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left);if(!tokens.length)return 0;const centers=tokens.map(token=>{const r=token.getBoundingClientRect();return r.left+r.width/2;});if(x<centers[0])return 0;for(let i=1;i<centers.length;i++)if(x<centers[i])return i;return tokens.length;}
+function dropIndexAt(deskEl,x){const tokens=deskEl.querySelectorAll('.desk-seats [data-entry-index]');const slot=visualDropSlotAt(deskEl,x);return isTeacherView?(tokens.length-slot):slot;}
+function showDropMarker(deskEl,visualSlot){const area=deskEl.querySelector('.desk-seats');if(!area)return;const marker=area.querySelector('.drop-marker')||document.createElement('span'),tokens=[...area.querySelectorAll('[data-entry-index]')].sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left),rect=area.getBoundingClientRect();marker.className='drop-marker';marker.setAttribute('aria-hidden','true');let x=rect.width/2;if(tokens.length){if(visualSlot<=0){x=tokens[0].getBoundingClientRect().left-rect.left;}else if(visualSlot>=tokens.length){x=tokens[tokens.length-1].getBoundingClientRect().right-rect.left;}else{x=(tokens[visualSlot-1].getBoundingClientRect().right+tokens[visualSlot].getBoundingClientRect().left)/2-rect.left;}}marker.style.left=`${Math.max(1,Math.min(rect.width-4,x-2))}px`;marker.style.top='2px';marker.style.height=`${Math.max(20,rect.height-4)}px`;if(!marker.isConnected)area.append(marker);}
 function addAnonymousToDesk(deskId,index,openMenu=false){
   pushSeatingUndo();const now=Date.now(),list=deskItems[deskId]||(deskItems[deskId]=[]),entry={entryId:_newSeatEntryId(),studentId:null,homework:{status:'uncollected',_updatedAt:now},attendance:null,_updatedAt:now};list.splice(index,0,entry);save();render();if(openMenu)openStudent(deskId,index);}
 
@@ -8387,15 +8927,16 @@ $('#save-homework').onclick=()=>{
     return;
   }
   const sharedNote=$('#seat-general-note').value.trim();
-  entry.homework={status,score:parsedScore!==null&&!Number.isNaN(parsedScore)?parsedScore:null,reason:status==='not_submitted'?($('#homework-reason').value||'not_done'):null,note:sharedNote};
+  entry.homework={status,score:parsedScore!==null&&!Number.isNaN(parsedScore)?parsedScore:null,reason:status==='not_submitted'?($('#homework-reason').value||'not_done'):null,note:sharedNote,_updatedAt:Date.now()};
   entry.homeworkSaved=true;
+  entry._updatedAt = Date.now();
 
   if (!entry.studentId) {
-    // Cho phép lưu trạng thái BTVN (VD: Không nộp / Đã nộp) trước khi điểm danh tên học sinh trên ghế
+    // Cho phép lưu trạng thái BTVN (VD: Không nộp / Đã nộp) và ghi chú trước khi điểm danh tên học sinh trên ghế
     save();
     closeDialogSafely('#seat-dialog');
     refreshAllActiveViews();
-    toast('✓ Đã lưu trạng thái BTVN cho chỗ ngồi (chưa điểm danh tên).');
+    toast('✓ Đã lưu trạng thái BTVN & ghi chú cho chỗ ngồi (chưa điểm danh tên).');
     return;
   }
 
@@ -8404,23 +8945,23 @@ $('#save-homework').onclick=()=>{
     saveSessionNote(person.id,sharedNote);
     person.homework=entry.homework;
     recordStudentScore(person,entry.homework.score,'BTVN');
-    const lateDet = resolveLateDetails(person, entry);
-    const isLateAtt = Boolean((entry.attendance?.status === 'late' || person.attendance?.status === 'late') && lateDet.isLate && lateDet.lateMinutes > 0);
-    if (isLateAtt) {
+    const timing = readSeatAttendanceTimingUI(person, entry);
+    if (timing.isLate && timing.lateMinutes > 0) {
       entry.attendance = {
         status: 'late',
-        arrivalTime: lateDet.arrivalTime,
-        lateMinutes: lateDet.lateMinutes,
-        minutesLate: lateDet.lateMinutes,
+        arrivalTime: timing.arrivalTime,
+        lateMinutes: timing.lateMinutes,
+        minutesLate: timing.lateMinutes,
+        _manualLateMinutes: Boolean(timing.manualLate),
         reason: entry.homework.reason,
         note: sharedNote
       };
-      person.arrivalTime = lateDet.arrivalTime;
-      person.lateMinutes = lateDet.lateMinutes;
+      person.arrivalTime = timing.arrivalTime;
+      person.lateMinutes = timing.lateMinutes;
     } else {
       entry.attendance = {
         status: 'present',
-        arrivalTime: lateDet.arrivalTime || person.arrivalTime || null,
+        arrivalTime: timing.arrivalTime || null,
         lateMinutes: 0,
         minutesLate: 0,
         reason: entry.homework.reason,
@@ -8547,7 +9088,7 @@ classroom.addEventListener('click',e=>{
   const token=e.target.closest('[data-entry-index]');
   if(token){openStudent(token.dataset.deskId,Number(token.dataset.entryIndex));return;}
   const add=e.target.closest('[data-add-to-desk]');
-  if(add){if(!isSeatingEditMode)return;addAnonymousToDesk(add.dataset.addToDesk,(deskItems[add.dataset.addToDesk]||[]).length,false);return;}
+  if(add){addAnonymousToDesk(add.dataset.addToDesk,(deskItems[add.dataset.addToDesk]||[]).length,false);return;}
 });
 
 // Track divider state inside #layout-dialog before saving
@@ -8786,7 +9327,7 @@ $('#layout-form').addEventListener('submit',e=>{
     }
   }
   layout=next;
-  for(const {desk}of desks())deskItems[desk.id]??=[];
+  for(const {desk}of desks()){if(!deskItems[desk.id])deskItems[desk.id]=[];}
   save();
   logAdminSessionAction('Cập nhật cấu trúc sơ đồ bàn ghế', `Số dãy: ${count} · Bàn mỗi dãy: ${counts.join(', ')}`, 'layout');
   render();
@@ -8815,6 +9356,7 @@ function recordHistory(student,attendance,homework){
       status: effStatus,
       minutesLate: minsLate,
       lateMinutes: minsLate,
+      _manualLateMinutes: Boolean(attendance?._manualLateMinutes),
       time: arrTime,
       arrivalTime: arrTime,
       reason: attendance?.reason || null,
@@ -9026,15 +9568,30 @@ function syncLiveSessionData() {
 }
 function drawLatePicker(query=''){
   const normalized=query.trim();
-  const excludeIds=[...assignedIds(),...lateQueue].filter(id => id !== selectedLateId);
-  const exclSet=new Set(excludeIds);
+  const seatedIds = assignedIds();
+  const lateSet = new Set(lateQueue);
   const pool=[...classStudents(),...sessionMakeupStudents(null, lateQueue)];
   const isSameSelected = Boolean(selectedLateId && normalized && studentById(selectedLateId)?.name?.trim().toLowerCase() === normalized.toLowerCase());
   const effQuery = isSameSelected ? '' : normalized;
-  const candidates=effQuery?searchStudents(pool,effQuery,{excludeIds}):pool.filter(s=>!exclSet.has(s.id));
+  // Khi gõ tìm kiếm: cho phép tìm cả HS đang ở Cuối lớp hoặc đã ngồi để sửa nhanh số phút đi muộn; khi để trống: hiện HS chưa điểm danh trước, sau đó đến HS đang ở Cuối lớp
+  const excludeWhenEmpty = new Set([...seatedIds].filter(id => id !== selectedLateId));
+  const candidates = effQuery
+    ? searchStudents(pool, effQuery)
+    : pool.filter(s => !excludeWhenEmpty.has(s.id)).sort((a, b) => (lateSet.has(a.id) ? 1 : 0) - (lateSet.has(b.id) ? 1 : 0));
   const lateOptionsEl = $('#late-options');
   if (!lateOptionsEl) return;
-  lateOptionsEl.innerHTML=candidates.map(s=>`<button type="button" class="student-option ${s.id === selectedLateId ? 'selected-option' : ''}" data-late-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${studentSearchMeta(s)}</span><span class="student-check">${s.id === selectedLateId ? '✓ Đang chọn' : 'Chọn'}</span></button>`).join('')||`<div class="empty-list">${effQuery?'Không tìm thấy hồ sơ.':'Nhập tên để tìm học sinh.'}</div>`;
+  lateOptionsEl.innerHTML=candidates.map(s=>{
+    const inQueue = lateSet.has(s.id);
+    const inSeat = seatedIds.has(s.id);
+    const checkLabel = s.id === selectedLateId
+      ? '✓ Đang chọn'
+      : inQueue
+        ? '✎ Sửa (Cuối lớp)'
+        : inSeat
+          ? '✎ Sửa (Đã ngồi)'
+          : 'Chọn';
+    return `<button type="button" class="student-option ${s.id === selectedLateId ? 'selected-option' : ''}" data-late-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${studentSearchMeta(s)}</span><span class="student-check">${checkLabel}</span></button>`;
+  }).join('')||`<div class="empty-list">${effQuery?'Không tìm thấy hồ sơ.':'Nhập tên để tìm học sinh.'}</div>`;
   lateOptionsEl.querySelectorAll('[data-late-student]').forEach(b=>{
     b.addEventListener('mousedown', (ev) => {
       ev.preventDefault();
@@ -9180,8 +9737,9 @@ function selectLateStudent(id){
   lateHomeworkSelected=true;
   const student=studentById(id),noteField=$('#late-general-note');
   if (!student) return;
+  const existingSeat = allEntries().find(e => e.entry.studentId === id);
   const preTypedNote = (!noteField.dataset.sessionNote && noteField.value) ? noteField.value.trim() : '';
-  const existingNote = sessionNoteFor(id);
+  const existingNote = sessionNoteFor(id) || existingSeat?.entry?.homework?.note || student.homework?.note || '';
   const resolvedNote = existingNote || preTypedNote;
   $('#late-search').value=student.name;
   $('#late-search').dispatchEvent(new Event('change'));
@@ -9198,14 +9756,44 @@ function selectLateStudent(id){
     detailSec.style.display = 'block';
   }
   renderStudentInfo('#late-history', student);
-  const isAlreadyInCurrentSession = lateQueue.includes(id) || allEntries().some(e => e.entry.studentId === id);
+  const isAlreadyInCurrentSession = lateQueue.includes(id) || Boolean(existingSeat);
   const nowHHMM = new Date().toTimeString().slice(0,5);
-  const sessionArrTime = isAlreadyInCurrentSession ? (student.attendance?.arrivalTime || student.arrivalTime || '') : '';
-  $('#arrival-time').value = sessionArrTime || $('#arrival-time').value || nowHHMM;
-  setLateHomeworkFields(student.homework||{status:'uncollected'});
-  renderHomeworkHistoryPanel('late');
-  window.__featuresApp?.updateLateMinutesCalculation?.('arrival');
+  if (isAlreadyInCurrentSession) {
+    const lateDet = resolveLateDetails(student, existingSeat?.entry || null);
+    if ($('#arrival-time')) $('#arrival-time').value = lateDet.arrivalTime || nowHHMM;
+    if ($('#late-minutes-input')) $('#late-minutes-input').value = String(lateDet.isLate ? lateDet.lateMinutes : 0);
+    window._lateLastInputSource = 'minutes';
+    setLateHomeworkFields(existingSeat?.entry?.homework || student.homework || { status: 'uncollected' });
+    renderHomeworkHistoryPanel('late');
+    window.__featuresApp?.updateLateMinutesCalculation?.('preserve');
+  } else {
+    if ($('#arrival-time') && !$('#arrival-time').value) $('#arrival-time').value = nowHHMM;
+    window._lateLastInputSource = 'arrival';
+    setLateHomeworkFields(student.homework || { status: 'uncollected' });
+    renderHomeworkHistoryPanel('late');
+    window.__featuresApp?.updateLateMinutesCalculation?.('arrival');
+  }
   toast(`✓ Đã chọn học sinh: ${student.name}`);
+}
+
+function openLateDialogForStudent(id) {
+  const student = studentById(id);
+  if (!student) return;
+  $('#late-pick-section').hidden = false;
+  $('#late-identity-host').innerHTML = '';
+  if ($('#late-new-or-makeup')) {
+    $('#late-new-or-makeup').classList.remove('active');
+    $('#late-new-or-makeup').textContent = '+ Học sinh mới / Học bù';
+  }
+  $('#save-arrival-time').checked = true;
+  if ($('#arrival-time-field')) $('#arrival-time-field').hidden = false;
+  if ($('#late-minutes-field')) $('#late-minutes-field').hidden = false;
+  selectLateStudent(id);
+  $('#late-dialog').showModal();
+  setTimeout(() => {
+    $('#late-minutes-input')?.focus();
+    $('#late-minutes-input')?.select?.();
+  }, 40);
 }
 
 $('#arrival-time')?.addEventListener('change', () => {
@@ -9230,9 +9818,11 @@ $('#late-button').onclick=()=>{
   $('#late-identity-host').innerHTML='';
   if ($('#late-new-or-makeup')) { $('#late-new-or-makeup').classList.remove('active'); $('#late-new-or-makeup').textContent = '+ Học sinh mới / Học bù'; }
   $('#save-arrival-time').checked=true;
-  $('#arrival-time-field').hidden=false;
+  if ($('#arrival-time-field')) $('#arrival-time-field').hidden=false;
+  if ($('#late-minutes-field')) $('#late-minutes-field').hidden=false;
   if ($('#arrival-time')) $('#arrival-time').value = new Date().toTimeString().slice(0, 5);
   if ($('#late-minutes-input')) $('#late-minutes-input').value = '';
+  window._lateLastInputSource = 'arrival';
   window.__featuresApp?.updateLateMinutesCalculation?.('arrival');
   selectedLateId=null;
   lateHomeworkSelected=false;
@@ -9256,7 +9846,7 @@ $('#close-late').onclick=()=>$('#late-dialog').close();
 $('#save-arrival-time').onchange=e=>$('#arrival-time-field').hidden=!e.target.checked;
 document.querySelectorAll('[data-late-homework-choice]').forEach(button=>button.onclick=()=>{const status=button.dataset.lateHomeworkChoice;lateHomeworkSelected=true;$('#late-homework-status').value=status;toggleHomeworkFields(status,'late');document.querySelectorAll('[data-late-homework-choice]').forEach(choice=>choice.classList.toggle('selected',choice===button));});
 $('#late-homework-status').addEventListener('change',e=>{lateHomeworkSelected=true;toggleHomeworkFields(e.target.value,'late');});
-$('#late-search').addEventListener('input',()=>{if(!selectedLateId){const noteField=$('#late-general-note');noteField.value='';delete noteField.dataset.sessionNote;}});
+$('#late-search').addEventListener('input',()=>{if(!selectedLateId){const noteField=$('#late-general-note');if(noteField&&noteField.dataset.sessionNote)delete noteField.dataset.sessionNote;}});
 $('#late-button').addEventListener('click',()=>{const noteField=$('#late-general-note');noteField.value='';delete noteField.dataset.sessionNote;});
 
 if ($('#clear-late-student')) {
@@ -9325,15 +9915,14 @@ $('#save-late').onclick=()=>{
   }
   const lateTyped = $('#late-search')?.value?.trim() || '';
   if (!selectedLateId && lateTyped) {
-    const excludeIds = [...assignedIds(), ...lateQueue];
     const pool = [...classStudents(), ...sessionMakeupStudents(null, lateQueue)];
-    const matched = searchStudents(pool, lateTyped, { excludeIds });
+    const matched = searchStudents(pool, lateTyped);
     if (matched.length > 0) {
       selectLateStudent(matched[0].id);
     }
   }
   if(!selectedLateId){
-    toast('Vui lòng chọn tên học sinh ở danh sách bên dưới trước khi xác nhận đi muộn.');
+    toast('Vui lòng chọn tên học sinh ở danh sách bên dưới trước khi xác nhận.');
     $('#late-options').hidden = false;
     $('#late-search').focus();
     return;
@@ -9345,27 +9934,41 @@ $('#save-late').onclick=()=>{
   if(status==='uncollected'&&parsedScore!==null&&!Number.isNaN(parsedScore))status='submitted';
   if(status==='not_submitted'&&!$('#late-homework-reason').value){toast('Chọn lý do chưa nộp BTVN.');return;}
   if(scoreValue&&(Number.isNaN(parsedScore)||parsedScore<0||parsedScore>10)){toast('Điểm BTVN cần nằm trong khoảng 0 đến 10 (VD: 7,5).');return;}
-  const student=studentById(selectedLateId),sharedNote=$('#late-general-note').value.trim(),homework={status,score:parsedScore!==null&&!Number.isNaN(parsedScore)?parsedScore:null,reason:status==='not_submitted'?$('#late-homework-reason').value:null,note:sharedNote};
+  const nowTs = Date.now();
+  const student=studentById(selectedLateId),sharedNote=$('#late-general-note').value.trim(),homework={status,score:parsedScore!==null&&!Number.isNaN(parsedScore)?parsedScore:null,reason:status==='not_submitted'?$('#late-homework-reason').value:null,note:sharedNote,_updatedAt:nowTs};
   const startTimeStr = extractClassStartTimeStr(activeClassConfig());
   const rawArrivalVal = ($('#arrival-time')?.value || '').trim();
+  const rawMinsVal = ($('#late-minutes-input')?.value ?? '').trim();
+  const editedMinsManually = window._lateLastInputSource === 'minutes' || !$('#save-arrival-time')?.checked;
+
   let lateMinutes = 0;
-  if (rawArrivalVal && /^\d{1,2}:\d{2}$/.test(rawArrivalVal)) {
+  if (rawMinsVal !== '' && !Number.isNaN(Number(rawMinsVal))) {
+    lateMinutes = Math.max(0, Math.min(720, Math.round(Number(rawMinsVal))));
+  } else if (rawArrivalVal && /^\d{1,2}:\d{2}$/.test(rawArrivalVal)) {
     const [stH, stM] = startTimeStr.split(':').map(Number);
     const [arH, arM] = rawArrivalVal.split(':').map(Number);
     const diff = ((arH || 0) * 60 + (arM || 0)) - ((stH || 0) * 60 + (stM || 0));
     lateMinutes = diff > 0 ? diff : 0;
   } else {
-    const calcMins = window.__featuresApp?.updateLateMinutesCalculation?.('arrival') ?? 0;
+    const calcMins = window.__featuresApp?.updateLateMinutesCalculation?.('preserve') ?? 0;
     lateMinutes = Math.max(0, Number(calcMins) || 0);
   }
+
   const isActuallyLate = lateMinutes > 0;
-  const arrivalVal = $('#save-arrival-time').checked
-    ? (rawArrivalVal || _addLateMinutesToTimeStr(startTimeStr, lateMinutes))
-    : (isActuallyLate ? _addLateMinutesToTimeStr(startTimeStr, lateMinutes) : startTimeStr);
+  let arrivalVal = startTimeStr;
+  if ($('#save-arrival-time')?.checked) {
+    if (editedMinsManually) {
+      arrivalVal = isActuallyLate ? _addLateMinutesToTimeStr(startTimeStr, lateMinutes) : (rawArrivalVal || startTimeStr);
+    } else {
+      arrivalVal = rawArrivalVal || (isActuallyLate ? _addLateMinutesToTimeStr(startTimeStr, lateMinutes) : startTimeStr);
+    }
+  } else {
+    arrivalVal = isActuallyLate ? _addLateMinutesToTimeStr(startTimeStr, lateMinutes) : startTimeStr;
+  }
 
   const attendance = isActuallyLate
-    ? { status: 'late', arrivalTime: arrivalVal, lateMinutes, minutesLate: lateMinutes }
-    : { status: 'present', arrivalTime: arrivalVal, lateMinutes: 0, minutesLate: 0 };
+    ? { status: 'late', arrivalTime: arrivalVal, lateMinutes, minutesLate: lateMinutes, _manualLateMinutes: editedMinsManually, note: sharedNote, _updatedAt: nowTs }
+    : { status: 'present', arrivalTime: arrivalVal, lateMinutes: 0, minutesLate: 0, note: sharedNote, _updatedAt: nowTs };
 
   saveSessionNote(student.id,sharedNote);
   student.homework=homework;
@@ -9374,48 +9977,58 @@ $('#save-late').onclick=()=>{
   student.arrivalTime=attendance.arrivalTime;
   student.lateMinutes=attendance.lateMinutes;
 
-  // Nếu học sinh đến trước/đúng giờ: xếp xuống khu vực Cuối lớp (lateQueue) và không gắn tag muộn
+  clearDeskTombstoneForStudent(deskItems, student.id);
   const existingSeat = allEntries().find(e => e.entry.studentId === student.id);
   if (existingSeat) {
-    if (!isActuallyLate) {
-      for (const { desk } of desks()) {
-        deskItems[desk.id] = (deskItems[desk.id] || []).filter(entry => entry.studentId !== student.id);
-      }
-      if (!lateQueue.includes(student.id)) lateQueue.push(student.id);
-    } else {
-      existingSeat.entry.attendance = attendance;
-      existingSeat.entry.homework = homework;
-      existingSeat.entry._updatedAt = Date.now();
-    }
+    existingSeat.entry.attendance = attendance;
+    existingSeat.entry.homework = homework;
+    existingSeat.entry._updatedAt = nowTs;
   } else if (!lateQueue.includes(student.id)) {
     lateQueue.push(student.id);
   }
 
   recordHistory(student,attendance,homework);
-  student.updatedAt = Date.now();
+  student.updatedAt = nowTs;
   student.revision = (Number(student.revision) || 0) + 1;
   logAdminSessionAction(
-    isActuallyLate ? `Điểm danh đi muộn: HS ${student.name}` : `Xếp xuống cuối lớp (đến đúng/trước giờ): HS ${student.name}`,
-    `${isActuallyLate ? `Muộn ${lateMinutes} phút (đến lúc ${arrivalVal})` : `Đến lúc ${arrivalVal} (Đúng giờ, không gắn tag muộn)`} · BTVN: ${homeworkLabel(homework.status)}${homework.score !== null ? ` (${homework.score}đ)` : ''}${sharedNote ? ` · Ghi chú: "${sharedNote}"` : ''}`,
+    isActuallyLate ? `Điểm danh đi muộn: HS ${student.name}` : `Điểm danh đến lớp đúng giờ: HS ${student.name}`,
+    `${isActuallyLate ? `Muộn ${lateMinutes} phút (đến lúc ${arrivalVal})` : `Đến lúc ${arrivalVal} (Đúng giờ, 0p muộn)`} · BTVN: ${homeworkLabel(homework.status)}${homework.score !== null ? ` (${homework.score}đ)` : ''}${sharedNote ? ` · Ghi chú: "${sharedNote}"` : ''}`,
     'attendance'
   );
   save();
   closeDialogSafely('#late-dialog');
   refreshAllActiveViews();
   toast(isActuallyLate
-    ? `✓ ${student.name} đã điểm danh đi muộn ${lateMinutes}p (${arrivalVal}) & lưu BTVN.`
-    : `✓ ${student.name} đến trước/đúng giờ (${arrivalVal}) — đã xếp xuống cuối lớp (không gắn tag muộn).`);
+    ? `✓ Đã lưu ${student.name}: Đi muộn ${lateMinutes} phút (${arrivalVal}) & BTVN.`
+    : `✓ Đã lưu ${student.name}: Đến đúng giờ (${arrivalVal}) & BTVN.`);
 };
 
+function cleanupActiveDrag() {
+  if (!dragState) return;
+  const drag = dragState;
+  dragState = null;
+  drag.element?.classList.remove('dragging');
+  drag.targetDesk?.classList.remove('desk-drop-target');
+  drag.targetDesk?.querySelector('.drop-marker')?.remove();
+  drag.ghost?.remove();
+  document.body.classList.remove('is-dragging');
+}
+
 function startDrag(source,element,x,y){
-  if (!isSeatingEditMode && source?.type !== 'late') return;
-  dragState={source,element,x,y,started:false,targetDesk:null,dropIndex:0,ghost:null};
+  // Cho phép kéo tự do: biểu tượng mẫu (#student-pool), học sinh ở Cuối lớp (#late-area),
+  // VÀ ghế học sinh chưa điểm danh (chưa có tên) ngay cả khi chưa bật "Sửa sơ đồ"!
+  if (!isSeatingEditMode && source?.type === 'seat') {
+    const seatEntry = deskItems[source.deskId]?.[source.index];
+    if (seatEntry?.studentId) return;
+  }
+  dragState={source,element,x,y,started:false,targetDesk:null,dropIndex:0,visualSlot:0,ghost:null};
 }
 $('#student-pool').addEventListener('pointerdown',e=>{const t=e.target.closest('[data-pool-token]');if(t)startDrag({type:'pool'},t,e.clientX,e.clientY);});
 classroom.addEventListener('pointerdown',e=>{const t=e.target.closest('[data-entry-index]');if(t)startDrag({type:'seat',deskId:t.dataset.deskId,index:Number(t.dataset.entryIndex)},t,e.clientX,e.clientY);});
-$('#late-area').addEventListener('pointerdown',e=>{const t=e.target.closest('[data-late-key]');if(t)startDrag({type:'late',studentId:t.dataset.lateKey},t,e.clientX,e.clientY);});
-document.addEventListener('pointermove',e=>{if(!dragState)return;if(!dragState.started&&Math.hypot(e.clientX-dragState.x,e.clientY-dragState.y)>7){dragState.started=true;dragState.element.classList.add('dragging');document.body.classList.add('is-dragging');dragState.ghost=document.createElement('div');dragState.ghost.className='drag-ghost';dragState.ghost.textContent=dragState.source.type==='pool'?'Học sinh mới':dragState.source.type==='late'?studentById(dragState.source.studentId)?.name:'Di chuyển trong bàn';document.body.append(dragState.ghost);}if(dragState.started){dragState.ghost.style.left=`${e.clientX+12}px`;dragState.ghost.style.top=`${e.clientY+12}px`;const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.desk[data-desk-id]');if(target!==dragState.targetDesk){dragState.targetDesk?.classList.remove('desk-drop-target');dragState.targetDesk?.querySelector('.drop-marker')?.remove();dragState.targetDesk=target;target?.classList.add('desk-drop-target');}if(target){dragState.dropIndex=dropIndexAt(target,e.clientX,e.clientY);showDropMarker(target,dragState.dropIndex);}}});
-document.addEventListener('pointerup',e=>{if(!dragState)return;const drag=dragState;dragState=null;drag.element.classList.remove('dragging');drag.targetDesk?.classList.remove('desk-drop-target');drag.targetDesk?.querySelector('.drop-marker')?.remove();drag.ghost?.remove();document.body.classList.remove('is-dragging');if(!drag.started)return;suppressClick=true;setTimeout(()=>suppressClick=false,120);const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.desk[data-desk-id]');if(!target)return;const deskId=target.dataset.deskId,index=dropIndexAt(target,e.clientX,e.clientY);let entry,source;if(drag.source.type==='pool'){entry={studentId:null,homework:{status:'uncollected'},attendance:null};source={type:'pool'};}else if(drag.source.type==='late'){const person=studentById(drag.source.studentId);const lateDet=resolveLateDetails(person,null);const isLate=Boolean(lateDet.isLate&&lateDet.lateMinutes>0&&person.attendance?.status!=='present');const attObj=isLate?{...(person.attendance||{}),status:'late',arrivalTime:lateDet.arrivalTime,lateMinutes:lateDet.lateMinutes,minutesLate:lateDet.lateMinutes}:{...(person.attendance||{}),status:'present',arrivalTime:lateDet.arrivalTime||person.arrivalTime||null,lateMinutes:0,minutesLate:0};person.attendance=attObj;person.arrivalTime=attObj.arrivalTime;person.lateMinutes=attObj.lateMinutes;entry={studentId:person.id,homework:person.homework||{status:'uncollected'},attendance:attObj,_updatedAt:Date.now()};source={type:'late',studentId:person.id};}else{source=drag.source;entry=deskItems[source.deskId][source.index];}if(entry){insertIntoDesk(entry,deskId,index,source);toast('Đã đặt vào vị trí thả trong bàn; học sinh ở bàn khác không bị chuyển.');}});
+$('#late-area').addEventListener('pointerdown',e=>{if(e.target.closest('[data-edit-late-student]'))return;const t=e.target.closest('[data-late-key]');if(t)startDrag({type:'late',studentId:t.dataset.lateKey},t,e.clientX,e.clientY);});
+document.addEventListener('pointermove',e=>{if(!dragState)return;if(!dragState.started&&Math.hypot(e.clientX-dragState.x,e.clientY-dragState.y)>6){dragState.started=true;dragState.element.classList.add('dragging');document.body.classList.add('is-dragging');dragState.ghost=document.createElement('div');dragState.ghost.className='drag-ghost';dragState.ghost.textContent=dragState.source.type==='pool'?'Học sinh mới':dragState.source.type==='late'?studentById(dragState.source.studentId)?.name:(studentById(deskItems[dragState.source.deskId]?.[dragState.source.index]?.studentId)?.name||'Di chuyển chỗ ngồi');document.body.append(dragState.ghost);}if(dragState.started){e.preventDefault?.();dragState.ghost.style.left=`${e.clientX+12}px`;dragState.ghost.style.top=`${e.clientY+12}px`;const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.desk[data-desk-id]');if(target!==dragState.targetDesk){dragState.targetDesk?.classList.remove('desk-drop-target');dragState.targetDesk?.querySelector('.drop-marker')?.remove();dragState.targetDesk=target;target?.classList.add('desk-drop-target');}if(target){dragState.visualSlot=visualDropSlotAt(target,e.clientX);dragState.dropIndex=dropIndexAt(target,e.clientX);showDropMarker(target,dragState.visualSlot);}}},{passive:false});
+document.addEventListener('pointercancel',()=>{cleanupActiveDrag();});
+document.addEventListener('pointerup',e=>{if(!dragState)return;const drag=dragState;cleanupActiveDrag();if(!drag.started)return;suppressClick=true;setTimeout(()=>suppressClick=false,120);const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.desk[data-desk-id]');if(!target)return;const deskId=target.dataset.deskId,index=dropIndexAt(target,e.clientX);let entry,source;if(drag.source.type==='pool'){entry={entryId:_newSeatEntryId(),studentId:null,homework:{status:'uncollected',_updatedAt:Date.now()},attendance:null,_updatedAt:Date.now()};source={type:'pool'};}else if(drag.source.type==='late'){const person=studentById(drag.source.studentId);if(!person)return;const lateDet=resolveLateDetails(person,null);const isLate=Boolean(lateDet.isLate&&lateDet.lateMinutes>0&&person.attendance?.status!=='present');const attObj=isLate?{...(person.attendance||{}),status:'late',arrivalTime:lateDet.arrivalTime,lateMinutes:lateDet.lateMinutes,minutesLate:lateDet.lateMinutes}:{...(person.attendance||{}),status:'present',arrivalTime:lateDet.arrivalTime||person.arrivalTime||null,lateMinutes:0,minutesLate:0};person.attendance=attObj;person.arrivalTime=attObj.arrivalTime;person.lateMinutes=attObj.lateMinutes;entry={entryId:_newSeatEntryId(),studentId:person.id,homework:person.homework||{status:'uncollected'},attendance:attObj,_updatedAt:Date.now()};source={type:'late',studentId:person.id};}else{source=drag.source;entry=deskItems[source.deskId]?.[source.index];}if(entry){insertIntoDesk(entry,deskId,index,source);toast('✓ Đã chuyển vào vị trí bàn đã chọn.');}});
 $('#student-pool').addEventListener('click',e=>{if(suppressClick){e.preventDefault();return;}const token=e.target.closest('[data-pool-token]');if(!token)return;const first=desks()[0]?.desk;if(!first){growLayoutIfNeeded();}const deskId=desks()[0].desk.id,index=(deskItems[deskId]||[]).length;addAnonymousToDesk(deskId,index,false);});
 $('#finalize-button').onclick=()=>{if(window.__featuresApp?.handleFinalizeAttendance){window.__featuresApp.handleFinalizeAttendance();return;}const pending=allEntries().filter(x=>!x.entry.studentId||!(x.entry.attendance||studentById(x.entry.studentId)?.attendance));if(pending.length){toast(`${pending.length} biểu tượng/học sinh chưa ghi tên hoặc chưa điểm danh.`);return;}addClassActivity(`${currentStaffName()} đã chốt danh sách ${allEntries().length} học sinh có mặt`,'attendance');toast(`Đã hoàn tất ghi nhận ${allEntries().length} học sinh có mặt.`);};
 $('#close-students').onclick=()=>$('#students-dialog').close();
@@ -9519,7 +10132,7 @@ const features = setupFeatures({
   setLayout: (newLayout) => {
     if (Array.isArray(newLayout) && newLayout.length) {
       layout = newLayout;
-      for (const { desk } of desks()) deskItems[desk.id] ??= [];
+      for (const { desk } of desks()) { if (!deskItems[desk.id]) deskItems[desk.id] = []; }
       save();
     }
   },
@@ -10539,6 +11152,32 @@ function initSearchClearButtons() {
     clearBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (input.id === 'student-search') {
+        const hadAssigned = Boolean(currentEntry()?.studentId || selectedStudentId);
+        input.value = '';
+        clearBtn.hidden = true;
+        if (hadAssigned) {
+          unassignStudentFromCurrentSeatKeepState();
+          input.focus();
+          return;
+        }
+      } else if (input.id === 'late-search' && selectedLateId) {
+        const noteField = $('#late-general-note');
+        const keptNote = noteField ? noteField.value : '';
+        selectedLateId = null;
+        if (noteField) {
+          delete noteField.dataset.sessionNote;
+          noteField.value = keptNote;
+        }
+        renderStudentInfo('#late-history', null);
+        if ($('#late-detail-section')) $('#late-detail-section').hidden = true;
+        input.value = '';
+        clearBtn.hidden = true;
+        drawLatePicker('');
+        if ($('#late-options')) $('#late-options').hidden = false;
+        input.focus();
+        return;
+      }
       input.value = '';
       clearBtn.hidden = true;
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -10643,6 +11282,16 @@ document.addEventListener('click', (e) => {
     document.querySelectorAll('.card-more-dropdown').forEach(m => { m.hidden = true; });
   }
 
+  // 1b. Quick edit button (✎) on late student token in Cuối lớp
+  const editLateBtn = e.target.closest('[data-edit-late-student]');
+  if (editLateBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    setTapAssignSource(null);
+    openLateDialogForStudent(editLateBtn.dataset.editLateStudent);
+    return;
+  }
+
   // 2. Tap-to-assign: Tapping a late student token toggles selection for tap-to-assign
   const lateToken = e.target.closest('[data-late-key]');
   if (lateToken && !suppressClick) {
@@ -10659,7 +11308,7 @@ document.addEventListener('click', (e) => {
 
   // 3. Tap-to-assign: If tapAssignSource is active and user taps a desk, assign immediately!
   const tappedDesk = e.target.closest('.desk[data-desk-id]');
-  if (tappedDesk && tapAssignSource && !e.target.closest('[data-entry-index]')) {
+  if (tappedDesk && tapAssignSource && !e.target.closest('[data-entry-index]') && !e.target.closest('[data-add-to-desk]')) {
     e.preventDefault();
     e.stopPropagation();
     const deskId = tappedDesk.dataset.deskId;
@@ -10841,7 +11490,6 @@ function buildSeatingSnapshotHtml() {
 
   const aislesHtml = data.displayLayout.map((aisle, ci) => {
     const origAisleIdx = isTeacherView ? (layout.length - 1 - ci) : ci;
-    const sideLabel = isTeacherView ? (ci < data.displayLayout.length / 2 ? ' (Tay phải GV)' : ' (Tay trái GV)') : '';
     const maxOcc = Math.max(1, ...aisle.desks.map(d => (deskItems[d.id] || []).length));
     const aisleMinW = Math.max(148, maxOcc * 116 + Math.max(0, maxOcc - 1) * 6 + 16);
 
@@ -10924,7 +11572,7 @@ function buildSeatingSnapshotHtml() {
 
     return `
       <div class="snap-aisle" style="width:${aisleMinW}px; min-width:${aisleMinW}px;">
-        <div class="snap-aisle-header">DÃY ${origAisleIdx + 1}${escapeHtml(sideLabel)}</div>
+        <div class="snap-aisle-header">DÃY ${origAisleIdx + 1}</div>
         <div class="snap-aisle-desks">${desksHtml}</div>
       </div>
     `;

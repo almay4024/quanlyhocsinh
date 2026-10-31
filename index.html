@@ -5,12 +5,69 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm</title>
-  <link rel="stylesheet" href="/src/styles.css?v=4.4.1" />
+  <script>
+    (function () {
+      if (!Array.prototype.at) {
+        Object.defineProperty(Array.prototype, 'at', {
+          value: function (n) {
+            n = Math.trunc(n) || 0;
+            if (n < 0) n += this.length;
+            return (n < 0 || n >= this.length) ? undefined : this[n];
+          },
+          writable: true,
+          configurable: true
+        });
+      }
+      if (!String.prototype.at) {
+        Object.defineProperty(String.prototype, 'at', {
+          value: function (n) {
+            n = Math.trunc(n) || 0;
+            if (n < 0) n += this.length;
+            return (n < 0 || n >= this.length) ? undefined : this.charAt(n);
+          },
+          writable: true,
+          configurable: true
+        });
+      }
+      if (!Object.hasOwn) {
+        Object.hasOwn = function (obj, prop) {
+          return Object.prototype.hasOwnProperty.call(Object(obj), prop);
+        };
+      }
+      if (typeof window.structuredClone !== 'function') {
+        window.structuredClone = function cloneDeep(val) {
+          if (val === null || typeof val !== 'object') return val;
+          if (val instanceof Date) return new Date(val.getTime());
+          if (val instanceof Set) { var s = new Set(); val.forEach(function (v) { s.add(cloneDeep(v)); }); return s; }
+          if (val instanceof Map) { var m = new Map(); val.forEach(function (v, k) { m.set(cloneDeep(k), cloneDeep(v)); }); return m; }
+          if (Array.isArray(val)) return val.map(cloneDeep);
+          var out = {};
+          for (var k in val) {
+            if (Object.prototype.hasOwnProperty.call(val, k)) out[k] = cloneDeep(val[k]);
+          }
+          return out;
+        };
+      }
+      if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.showModal) {
+        HTMLDialogElement.prototype.showModal = function () {
+          this.setAttribute('open', '');
+          this.classList.add('dialog-fallback-open');
+        };
+        HTMLDialogElement.prototype.close = function (retVal) {
+          if (retVal !== undefined) this.returnValue = retVal;
+          this.removeAttribute('open');
+          this.classList.remove('dialog-fallback-open');
+          this.dispatchEvent(new Event('close'));
+        };
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/src/styles.css?v=4.5.0" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.3</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.5</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -1903,6 +1960,17 @@ function jsonOut_(obj) {
           </label>
           <div id="student-options" class="student-options" hidden></div>
           <div id="selected-student-info" class="selected-student-info" hidden></div>
+          <div id="seat-attendance-timing-box" class="seat-attendance-timing-box" hidden>
+            <span class="seat-timing-label">Đến lớp:</span>
+            <div class="seat-timing-pills" role="group" aria-label="Trạng thái đến lớp">
+              <button type="button" class="seat-timing-pill active" data-seat-att-mode="present">✓ Đúng giờ</button>
+              <button type="button" class="seat-timing-pill" data-seat-att-mode="late">Đi muộn</button>
+            </div>
+            <label class="seat-late-mins-inline" id="seat-late-mins-wrap" hidden>
+              <input type="number" id="seat-late-minutes-input" min="0" max="720" step="1" inputmode="numeric" value="10" aria-label="Số phút đi muộn" />
+              <span>phút</span>
+            </label>
+          </div>
 
           <div class="new-or-makeup-persistent-wrap">
             <button type="button" class="student-option new-or-makeup" id="new-or-makeup-choice">+ Học sinh mới / Học bù</button>
@@ -2025,12 +2093,12 @@ function jsonOut_(obj) {
               <input type="checkbox" id="save-arrival-time" checked /> Lưu giờ học sinh đến lớp
             </label>
 
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; align-items:end;" id="arrival-time-field">
-              <label class="field-label" style="margin:0;">Giờ đến lớp
+            <div class="late-time-grid" id="late-time-inputs-grid">
+              <label class="field-label" style="margin:0;" id="arrival-time-field">Giờ đến lớp
                 <input type="time" id="arrival-time" step="60" />
               </label>
-              <label class="field-label" style="margin:0;">Số phút đi muộn (tự tính theo giờ đến)
-                <input type="number" id="late-minutes-input" min="0" max="720" step="1" inputmode="numeric" placeholder="Tự tính (0 = đúng giờ)" />
+              <label class="field-label" style="margin:0;" id="late-minutes-field">Số phút đi muộn (0 = đúng giờ)
+                <input type="number" id="late-minutes-input" min="0" max="720" step="1" inputmode="numeric" placeholder="Nhập số phút muộn..." />
               </label>
             </div>
 
@@ -2483,7 +2551,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.3</span></strong>
+            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.5</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -2662,8 +2730,6 @@ function jsonOut_(obj) {
     </div>
   </dialog>
 
-  <script type="module" src="/src/app.js?v=4.4.1"></script>
-
   <!-- Hộp thoại Thêm / Sửa Ca Học Trong Quá Khứ -->
   <dialog id="past-session-manage-dialog" class="class-config-dialog">
     <form id="past-session-manage-form" class="dialog-form">
@@ -2733,5 +2799,6 @@ function jsonOut_(obj) {
     </form>
   </dialog>
 
+  <script type="module" src="/src/app.js?v=4.5.0"></script>
 </body>
 </html>

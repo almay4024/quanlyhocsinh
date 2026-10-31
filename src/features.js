@@ -1,17 +1,17 @@
-import { matchesAcronymOrText } from './student-search.js?v=4.4.1';
+import { matchesAcronymOrText } from './student-search.js?v=4.5.0';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.4.1';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.4.1';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.4.1';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.5.0';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.5.0';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.5.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.4.1';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.5.0';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -37,7 +37,7 @@ import {
   extractSheetGid,
   syncSessionToGoogleSheets,
   pullStudentsFromGoogleSheets
-} from './excel-import-export.js?v=4.4.1';
+} from './excel-import-export.js?v=4.5.0';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -49,7 +49,7 @@ import {
   getStaffShiftData,
   getStudentClassDeepDive,
   evaluateStudentEarlyWarning
-} from './data/session-history-repository.js?v=4.4.1';
+} from './data/session-history-repository.js?v=4.5.0';
 
 export function setupFeatures(ctx) {
   const {
@@ -115,12 +115,12 @@ export function setupFeatures(ctx) {
 
   function renderStudentTagsBadges(student) {
     const rawTags = (Array.isArray(student?.tags) ? [...student.tags].filter(Boolean) : []).filter(t => String(t || '').trim().toLowerCase() !== 'học bù');
-    if (student?.isNew && student?.studentType !== 'makeup' && !rawTags.some(t => String(t).toLowerCase() === 'mới')) {
+    if (student?.isNew && !student?._newTagRemoved && student?.studentType !== 'makeup' && !rawTags.some(t => String(t).trim().toLowerCase() === 'mới')) {
       rawTags.unshift('Mới');
     }
     if (!rawTags.length) return '';
     return rawTags.map(tag => {
-      const isNewTag = String(tag).toLowerCase() === 'mới';
+      const isNewTag = String(tag).trim().toLowerCase() === 'mới';
       return `<span class="student-tag-inline ${isNewTag ? 'new-tag' : ''}">${escapeHtml(tag)}</span>`;
     }).join(' ');
   }
@@ -1671,16 +1671,20 @@ export function setupFeatures(ctx) {
     let arrTotal = (arrH || 0) * 60 + (arrM || 0);
     let lateMins = 0;
 
-    if (source === 'minutes' && minsInput) {
+    if ((source === 'minutes' || source === 'preserve') && minsInput) {
+      window._lateLastInputSource = 'minutes';
       const rawVal = String(minsInput.value ?? '').trim();
-      const typedMins = rawVal === '' ? 0 : Math.max(0, Math.min(720, Number(rawVal) || 0));
+      const typedMins = rawVal === '' ? 0 : Math.max(0, Math.min(720, Math.round(Number(rawVal) || 0)));
       lateMins = typedMins;
-      const computedTotal = ((startTotal + typedMins) % 1440 + 1440) % 1440;
-      const hh = String(Math.floor(computedTotal / 60)).padStart(2, '0');
-      const mm = String(computedTotal % 60).padStart(2, '0');
-      arrivalTimeStr = `${hh}:${mm}`;
-      if (arrInput) arrInput.value = arrivalTimeStr;
+      if (source === 'minutes') {
+        const computedTotal = ((startTotal + typedMins) % 1440 + 1440) % 1440;
+        const hh = String(Math.floor(computedTotal / 60)).padStart(2, '0');
+        const mm = String(computedTotal % 60).padStart(2, '0');
+        arrivalTimeStr = `${hh}:${mm}`;
+        if (arrInput) arrInput.value = arrivalTimeStr;
+      }
     } else {
+      window._lateLastInputSource = 'arrival';
       // Tự động tính số phút đi muộn = Giờ đến lớp - Giờ vào học
       const rawDiff = arrTotal - startTotal;
       lateMins = rawDiff > 0 ? rawDiff : 0;
@@ -1702,7 +1706,7 @@ export function setupFeatures(ctx) {
         badge.style.background = '#ffecd4';
         badge.style.color = '#ab5d18';
       } else {
-        badge.textContent = `Đến trước/đúng giờ (${arrivalTimeStr}) · Chỉ xếp xuống cuối lớp, không gắn tag muộn`;
+        badge.textContent = `Đến trước/đúng giờ (${arrivalTimeStr}) · Xếp cuối lớp, không ghi muộn`;
         badge.style.background = '#dcfce7';
         badge.style.color = '#166534';
       }
@@ -5378,17 +5382,32 @@ export function setupFeatures(ctx) {
       } else {
         const rawTag = (dlg.querySelector('#bulk-action-tag-input')?.value || '').trim();
         if (mode === 'add-tag' && !rawTag) return;
+        const nowTs = Date.now();
         [...allStudents, ...makeups].forEach(s => {
           if (!idSet.has(s.id)) return;
-          s.tags = Array.isArray(s.tags) ? s.tags : [];
+          const curTags = Array.isArray(s.tags) ? [...s.tags] : [];
+          if (s.isNew && !s._newTagRemoved && s.studentType !== 'makeup' && !curTags.some(t => String(t).trim().toLowerCase() === 'mới')) {
+            curTags.unshift('Mới');
+          }
           if (mode === 'add-tag') {
-            if (!s.tags.some(t => t.toLowerCase() === rawTag.toLowerCase())) {
-              s.tags.push(rawTag);
+            if (!curTags.some(t => String(t).trim().toLowerCase() === rawTag.toLowerCase())) {
+              curTags.push(rawTag);
             }
           } else {
-            if (!rawTag) s.tags = [];
-            else s.tags = s.tags.filter(t => t.toLowerCase() !== rawTag.toLowerCase());
+            if (!rawTag) curTags.length = 0;
+            else {
+              const filtered = curTags.filter(t => String(t).trim().toLowerCase() !== rawTag.toLowerCase());
+              curTags.length = 0;
+              curTags.push(...filtered);
+            }
           }
+          s.tags = curTags.filter(t => String(t || '').trim().toLowerCase() !== 'học bù');
+          const hasMoi = s.tags.some(t => String(t).trim().toLowerCase() === 'mới');
+          s.isNew = hasMoi;
+          if (!hasMoi) s._newTagRemoved = nowTs;
+          else delete s._newTagRemoved;
+          s.updatedAt = nowTs;
+          s.revision = (Number(s.revision) || 0) + 1;
         });
         saveStudentRecords(allStudents, makeups);
         window.__logAdminSessionAction?.(
