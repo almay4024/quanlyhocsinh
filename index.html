@@ -672,6 +672,7 @@
           <button type="button" class="class-view-tab" id="scores-view-tab">Nhập điểm</button>
           <button type="button" class="class-view-tab" id="checklist-view-tab">Checklist</button>
           <button type="button" class="class-view-tab" id="students-view-tab">Danh sách học sinh</button>
+          <button type="button" class="class-view-tab" id="report-view-tab">Báo cáo buổi học</button>
         </nav>
 
         <!-- Tab 1: Chat & Nhật ký -->
@@ -1076,6 +1077,37 @@
             <h3>Học bù trong buổi này</h3>
             <div id="makeup-list-items" class="student-list-items"></div>
           </section>
+        </section>
+
+        <!-- Tab 6: Báo cáo buổi học -->
+        <section id="report-view" class="students-view report-inline-view" hidden>
+          <div class="students-page-heading report-inline-heading">
+            <div>
+              <div class="eyebrow" id="report-view-class-label">TRUNG TÂM BÁO CÁO BUỔI HỌC</div>
+              <div class="report-inline-title-row">
+                <h2 id="report-view-title">Báo cáo tổng kết buổi học</h2>
+                <span id="report-view-status-pill" class="report-status-pill">● Ca đang diễn ra</span>
+              </div>
+              <p>Xem tổng kết sĩ số, điểm danh, BTVN, điểm kiểm tra và sao chép nhanh báo cáo gửi Giáo viên.</p>
+            </div>
+            <div class="students-page-actions report-inline-toolbar">
+              <button type="button" class="outline-button" id="inline-customize-report-columns-btn">⚙ Đổi thứ tự cột</button>
+              <button type="button" class="outline-button" id="inline-copy-teacher-report-btn" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">📋 Copy gửi GV (Zalo)</button>
+              <button type="button" class="outline-button" id="inline-export-xlsx-btn">📥 Xuất Excel (.xlsx)</button>
+              <button type="button" class="primary-button" id="inline-print-report-btn">🖨 In / Lưu PDF</button>
+            </div>
+          </div>
+
+          <div class="report-nav-tabs report-inline-tabs" role="tablist">
+            <button type="button" class="report-tab active" data-report-tab="teacher-summary">Báo cáo gửi GV</button>
+            <button type="button" class="report-tab" data-report-tab="a4-roster">Bảng điểm danh</button>
+            <button type="button" class="report-tab" data-report-tab="missing-hw">Chưa nộp BTVN</button>
+            <button type="button" class="report-tab" data-report-tab="late-students">Đi muộn</button>
+            <button type="button" class="report-tab" data-report-tab="absent-students">Vắng mặt</button>
+            <button type="button" class="report-tab" data-report-tab="tests-handover">Bài kiểm tra</button>
+          </div>
+
+          <div id="report-view-content" class="report-inline-content report-fullscreen-content"></div>
         </section>
       </section>
     </main>
@@ -2664,6 +2696,7 @@ function jsonOut_(obj) {
       <button type="button" id="class-chat-nav"></button>
       <button type="button" id="checklist-sidebar-tab"></button>
       <button type="button" id="students-tab"></button>
+      <button type="button" id="report-sidebar-tab"></button>
     </div>
     <button type="button" id="logout-button"></button>
     <button type="button" id="sidebar-logout-btn"></button>

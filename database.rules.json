@@ -15,7 +15,7 @@
       },
       "kv": {
         "$safeKey": {
-          ".validate": "$safeKey.beginsWith('k_') && $safeKey.length === 18 && (!newData.exists() || (newData.hasChildren(['updatedAt']) && newData.child('updatedAt').isNumber() && (!newData.child('value').exists() || (newData.child('value').isString() && newData.child('value').val().length <= 4500000))))"
+          ".validate": "$safeKey.beginsWith('k_') && $safeKey.length === 18 && (!newData.exists() || (newData.hasChildren(['updatedAt', 'clientId', 'encKey']) && newData.child('updatedAt').isNumber() && newData.child('clientId').isString() && newData.child('encKey').isString() && newData.child('encKey').val().beginsWith('lvenc_v38$') && (!newData.child('value').exists() || (newData.child('value').isString() && newData.child('value').val().beginsWith('lvenc_v38$') && newData.child('value').val().length <= 4500000))))"
         }
       },
       "deletedIds": {
