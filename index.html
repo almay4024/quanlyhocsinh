@@ -62,6 +62,9 @@
       }
     })();
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/src/styles.css?v=4.5.0" />
 </head>
 <body>
@@ -1379,11 +1382,27 @@
         </label>
         <div class="class-config-time-fields">
           <label class="field-label">Bắt đầu
-            <input type="time" id="tutoring-start-time" required />
+            <input type="time" id="tutoring-start-time" step="300" required />
+          </label>
+          <label class="field-label">Thời lượng ca
+            <select id="tutoring-duration-select">
+              <option value="45">0:45 [45p]</option>
+              <option value="60">1:00 [1g]</option>
+              <option value="75" selected>1:15 [1g15p]</option>
+              <option value="90">1:30 [1g30p]</option>
+              <option value="120">2:00 [2g]</option>
+              <option value="150">2:30 [2g30p]</option>
+              <option value="180">3:00 [3g]</option>
+              <option value="custom">Tùy chỉnh...</option>
+            </select>
+          </label>
+          <label class="field-label" id="tutoring-duration-custom-wrap" hidden>Tùy chỉnh
+            <input id="tutoring-duration-custom" type="text" placeholder="VD: 1:20 hoặc 80p" />
           </label>
           <label class="field-label">Kết thúc
-            <input type="time" id="tutoring-end-time" required />
+            <input type="time" id="tutoring-end-time" step="300" required />
           </label>
+          <small id="tutoring-time-preview" class="time-range-preview">Ca học: 15:30 – 16:45 (1g15p)</small>
         </div>
         <label class="field-label">Trợ giảng / Giáo viên phụ trách
           <select id="tutoring-assistant-select" required></select>

@@ -1154,7 +1154,8 @@ export function setupFeatures(ctx) {
           endSel: '#tutoring-end-time',
           durationSel: '#tutoring-duration-select',
           customWrapSel: '#tutoring-duration-custom-wrap',
-          customInputSel: '#tutoring-duration-custom'
+          customInputSel: '#tutoring-duration-custom',
+          previewSel: '#tutoring-time-preview'
         });
       } else {
         $('#tutoring-start-time').value = item.startTime;
@@ -1192,7 +1193,8 @@ export function setupFeatures(ctx) {
           endSel: '#tutoring-end-time',
           durationSel: '#tutoring-duration-select',
           customWrapSel: '#tutoring-duration-custom-wrap',
-          customInputSel: '#tutoring-duration-custom'
+          customInputSel: '#tutoring-duration-custom',
+          previewSel: '#tutoring-time-preview'
         });
       } else {
         $('#tutoring-start-time').value = now5;
@@ -2884,6 +2886,7 @@ export function setupFeatures(ctx) {
 
       const current = loadTutoringSessions();
       const idx = current.findIndex(s => s.id === id);
+      const oldSession = idx >= 0 ? current[idx] : null;
       if (idx >= 0) current[idx] = newSession;
       else current.unshift(newSession);
 
@@ -2897,6 +2900,15 @@ export function setupFeatures(ctx) {
       }
       if (!matchedStudent && studentName) {
         matchedStudent = allStudents.find(s => s.name.trim().toLowerCase() === studentName.toLowerCase());
+      }
+
+      if (oldSession && oldSession.studentId && oldSession.studentId !== matchedStudent?.id) {
+        const oldStu = allStudents.find(s => s.id === oldSession.studentId);
+        if (oldStu) {
+          if (Array.isArray(oldStu.attendanceHistory)) oldStu.attendanceHistory = oldStu.attendanceHistory.filter(h => h.tutoringId !== id);
+          if (Array.isArray(oldStu.sessionNotes)) oldStu.sessionNotes = oldStu.sessionNotes.filter(n => n.tutoringId !== id);
+          if (Array.isArray(oldStu.scores)) oldStu.scores = oldStu.scores.filter(sc => sc.tutoringId !== id);
+        }
       }
 
       if (matchedStudent) {
@@ -4330,6 +4342,9 @@ export function setupFeatures(ctx) {
                               <strong>Nhận xét & Tiến bộ:</strong> "${escapeHtml(s.evaluation)}"
                             </div>
                           ` : '<small style="color:#94a397; font-style:italic;">Không có nhận xét thêm.</small>'}
+                          <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+                            <button type="button" class="outline-button btn-edit-tutoring-from-profile" data-edit-tutoring-from-profile="${escapeHtml(s.id)}" style="padding:4px 10px; font-size:12.5px; font-weight:700; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;">✏️ Sửa thời gian &amp; thông tin ca này</button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -4627,6 +4642,15 @@ export function setupFeatures(ctx) {
           if (window.openStudentSessionProfile) {
             window.openStudentSessionProfile(btn.dataset.sessionProfStudent, btn.dataset.sessionProfClass, btn.dataset.sessionProfDate);
           }
+        };
+      });
+
+      // Wire button to edit tutoring session from profile
+      $('#student-class-profile-content').querySelectorAll('[data-edit-tutoring-from-profile]').forEach(btn => {
+        btn.onclick = (ev) => {
+          ev.stopPropagation();
+          dialog.close();
+          openTutoringDialog(btn.dataset.editTutoringFromProfile);
         };
       });
 
@@ -7439,13 +7463,46 @@ export function setupFeatures(ctx) {
     $(params.durationSel)?.addEventListener('change', () => window.__timeHelpers?.syncDurationUI?.(params));
     $(params.customInputSel)?.addEventListener('input', () => window.__timeHelpers?.syncDurationUI?.(params));
     $(params.customInputSel)?.addEventListener('change', () => window.__timeHelpers?.syncDurationUI?.(params));
+
+    const onEndChange = () => {
+      const startVal = $(params.startSel)?.value;
+      const endVal = $(params.endSel)?.value;
+      if (startVal && endVal && window.__timeHelpers?.diffTimeDurationMinutes) {
+        const mins = window.__timeHelpers.diffTimeDurationMinutes(startVal, endVal, 90);
+        const durSelect = $(params.durationSel);
+        const customWrap = params.customWrapSel ? $(params.customWrapSel) : null;
+        const customInput = params.customInputSel ? $(params.customInputSel) : null;
+        if (durSelect) {
+          const presets = ['45', '60', '75', '90', '120', '150', '180'];
+          if (presets.includes(String(mins))) {
+            durSelect.value = String(mins);
+            if (customWrap) customWrap.hidden = true;
+          } else {
+            durSelect.value = 'custom';
+            if (customWrap) customWrap.hidden = false;
+            if (customInput) {
+              const h = Math.floor(mins / 60);
+              const rem = mins % 60;
+              customInput.value = `${h}:${String(rem).padStart(2, '0')}`;
+            }
+          }
+        }
+        const previewEl = params.previewSel ? $(params.previewSel) : null;
+        if (previewEl && window.__timeHelpers?.formatDurationBadge) {
+          previewEl.textContent = `Ca học: ${startVal} – ${endVal} (${window.__timeHelpers.formatDurationBadge(mins)})`;
+        }
+      }
+    };
+    $(params.endSel)?.addEventListener('change', onEndChange);
+    $(params.endSel)?.addEventListener('blur', onEndChange);
   };
   bindTimeSync({
     startSel: '#tutoring-start-time',
     endSel: '#tutoring-end-time',
     durationSel: '#tutoring-duration-select',
     customWrapSel: '#tutoring-duration-custom-wrap',
-    customInputSel: '#tutoring-duration-custom'
+    customInputSel: '#tutoring-duration-custom',
+    previewSel: '#tutoring-time-preview'
   });
   bindTimeSync({
     startSel: '#sched-makeup-start',

@@ -3223,7 +3223,45 @@ function saveImmediateSeatState(options = {}) {
   _captureKnownDeskSnapshot();
 }
 
+const _pendingNoteSaveTimers = new Map();
+const _pendingScoreSaveTimers = new Map();
+const _pendingLearnNoteTimers = new Map();
+
+function flushAllPendingInputSavesNow() {
+  if (_pendingNoteSaveTimers.size > 0) {
+    _pendingNoteSaveTimers.forEach(item => {
+      try {
+        if (item.timer) clearTimeout(item.timer);
+        if (typeof item.fn === 'function') item.fn();
+      } catch {}
+    });
+    _pendingNoteSaveTimers.clear();
+  }
+  if (_pendingScoreSaveTimers.size > 0) {
+    _pendingScoreSaveTimers.forEach(item => {
+      try {
+        if (item.timer) clearTimeout(item.timer);
+        if (typeof item.fn === 'function') item.fn();
+      } catch {}
+    });
+    _pendingScoreSaveTimers.clear();
+  }
+  if (_pendingLearnNoteTimers.size > 0) {
+    _pendingLearnNoteTimers.forEach(item => {
+      try {
+        if (item.timer) clearTimeout(item.timer);
+        if (typeof item.fn === 'function') item.fn();
+      } catch {}
+    });
+    _pendingLearnNoteTimers.clear();
+  }
+}
+window.flushAllPendingInputSavesNow = flushAllPendingInputSavesNow;
+window.addEventListener('beforeunload', flushAllPendingInputSavesNow);
+window.addEventListener('blur', flushAllPendingInputSavesNow);
+
 function flushDeferredSaveNow() {
+  flushAllPendingInputSavesNow();
   if (_deferredSaveTimer) {
     clearTimeout(_deferredSaveTimer);
     _deferredSaveTimer = null;
@@ -3362,32 +3400,56 @@ function isStudentLateInSession(student, seatedEntry = null, clsObj = null, date
 }
 const studentById=id=>students.find(s=>s.id===id)||makeupStudents.find(s=>s.id===id);
 const sessionNoteFor=id=>(id&&id!=='__updatedAt'?attendanceNotes[id]:undefined)??studentById(id)?.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate)?.note??'';
-function saveSessionNote(id,value){
+function saveSessionNote(id, value, opts = {}) {
   if (!id || id === '__updatedAt') return;
   const now = Date.now();
-  attendanceNotes[id]=value;
+  attendanceNotes[id] = value;
   attendanceNotes.__updatedAt = attendanceNotes.__updatedAt || {};
   attendanceNotes.__updatedAt[id] = now;
-  localStorage.setItem(getAttendanceNotesKey(),JSON.stringify(attendanceNotes));
-  const student=studentById(id);
-  if(student){
-    student.sessionNotes=student.sessionNotes||[];
-    let note=student.sessionNotes.find(item=>item.classId===CURRENT_CLASS_ID&&item.date===checklistDate);
-    if(!note&&!value){
-      save();
+  const student = studentById(id);
+  if (student) {
+    student.sessionNotes = student.sessionNotes || [];
+    let note = student.sessionNotes.find(item => item.classId === CURRENT_CLASS_ID && item.date === checklistDate);
+    if (!note && !value) {
+      if (opts.immediate) save();
       return;
     }
-    if(!note){
-      note={classId:CURRENT_CLASS_ID,date:checklistDate,note:'',updatedAt:now,_noteUpdatedAt:now};
+    if (!note) {
+      note = { classId: CURRENT_CLASS_ID, date: checklistDate, note: '', updatedAt: now, _noteUpdatedAt: now };
       student.sessionNotes.push(note);
     }
-    note.note=value;
-    note._noteUpdatedAt=now;
-    note.updatedAt=now;
-    student.updatedAt=now;
-    student.revision=(Number(student.revision)||0)+1;
-    save();
-    logAdminSessionAction(`Cập nhật ghi chú buổi học của HS ${student.name}`, value ? `Nội dung: "${value}"` : 'Đã xoá ghi chú buổi học', 'student', `sess-note-${student.id}`);
+    note.note = value;
+    note._noteUpdatedAt = now;
+    note.updatedAt = now;
+    student.updatedAt = now;
+    student.revision = (Number(student.revision) || 0) + 1;
+  }
+
+  const persistAction = () => {
+    _pendingNoteSaveTimers.delete(id);
+    try {
+      localStorage.setItem(getAttendanceNotesKey(), JSON.stringify(attendanceNotes));
+      if (student) saveStudentRecords(students, makeupStudents);
+      save();
+      if (student) {
+        logAdminSessionAction(`Cập nhật ghi chú buổi học của HS ${student.name}`, value ? `Nội dung: "${value}"` : 'Đã xoá ghi chú buổi học', 'student', `sess-note-${student.id}`);
+      }
+    } catch (e) {
+      console.warn('Note save error:', e);
+    }
+  };
+
+  if (opts.immediate) {
+    const existing = _pendingNoteSaveTimers.get(id);
+    if (existing?.timer) clearTimeout(existing.timer);
+    persistAction();
+  } else {
+    const existing = _pendingNoteSaveTimers.get(id);
+    if (existing?.timer) clearTimeout(existing.timer);
+    _pendingNoteSaveTimers.set(id, {
+      fn: persistAction,
+      timer: setTimeout(persistAction, 220)
+    });
   }
 }
 for(const student of [...students,...makeupStudents])if(!(student.id in attendanceNotes)){const saved=student.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate);if(saved)attendanceNotes[student.id]=saved.note;}
@@ -3836,11 +3898,10 @@ function autoResizeNoteTextareas(root = document) {
   if (!root || !root.querySelectorAll) return;
   root.querySelectorAll('textarea.auto-expand-note').forEach(ta => {
     const syncSize = () => {
-      ta.style.height = 'auto';
-      const valLen = (ta.value || '').length;
-      const targetMinW = valLen > 70 ? 310 : valLen > 35 ? 250 : valLen > 15 ? 200 : 155;
-      ta.style.minWidth = `${targetMinW}px`;
-      ta.style.height = `${Math.max(36, ta.scrollHeight)}px`;
+      window.requestAnimationFrame(() => {
+        ta.style.height = 'auto';
+        ta.style.height = `${Math.min(180, Math.max(34, ta.scrollHeight))}px`;
+      });
     };
     syncSize();
     if (ta.dataset.autoExpandBound !== '1') {
@@ -6273,7 +6334,12 @@ function renderStudentList(){
     });
   });
 }
-$('#student-list-search').addEventListener('input',renderStudentList);$('#student-list-filter').addEventListener('change',renderStudentList);
+let _studentListSearchDebounce = null;
+$('#student-list-search').addEventListener('input', () => {
+  clearTimeout(_studentListSearchDebounce);
+  _studentListSearchDebounce = setTimeout(renderStudentList, 120);
+});
+$('#student-list-filter').addEventListener('change', renderStudentList);
 
 document.querySelectorAll('[data-office-student-filter]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -7170,6 +7236,19 @@ document.addEventListener('input',event=>{
       event.target.dataset.sessionNote = selectedLateId;
       saveSessionNote(selectedLateId, event.target.value);
     }
+  }
+});
+document.addEventListener('focusout', event => {
+  const el = event.target;
+  if (!el) return;
+  if (el.dataset?.sessionNote) {
+    saveSessionNote(el.dataset.sessionNote, el.value, { immediate: true });
+  } else if (el.dataset?.learningNote) {
+    saveStudentLearningNote(el.dataset.learningNote, el.value, { immediate: true });
+  } else if (el.dataset?.scoreTabHw) {
+    applyStudentManualScore(el.dataset.scoreTabHw, 'hw', el.value, { immediate: true });
+  } else if (el.dataset?.scoreTabTest) {
+    applyStudentManualScore(el.dataset.scoreTabTest, 'test', el.value, { immediate: true });
   }
 });
 $('#close-attendance-export').onclick=()=>$('#attendance-export-dialog').close();$('#close-attendance-export-back-btn')?.addEventListener('click',()=>$('#attendance-export-dialog').close());$('#close-attendance-export-bottom-btn')?.addEventListener('click',()=>$('#attendance-export-dialog').close());if($('#close-attendance-export-secondary'))$('#close-attendance-export-secondary').onclick=()=>$('#attendance-export-dialog').close();$('#print-attendance-export').onclick=()=>window.print();
@@ -11236,7 +11315,7 @@ function openStudentScoreHistoryDialog(studentId, targetClassId = CURRENT_CLASS_
 $('#close-score-history-dialog')?.addEventListener('click', () => $('#student-score-history-dialog')?.close());
 $('#close-score-history-btn')?.addEventListener('click', () => $('#student-score-history-dialog')?.close());
 
-function applyStudentManualScore(studentId, field, rawValue) {
+function applyStudentManualScore(studentId, field, rawValue, opts = {}) {
   const student = studentById(studentId);
   if (!student) return;
   const cleanVal = String(rawValue ?? '').trim().replace(',', '.');
@@ -11268,7 +11347,6 @@ function applyStudentManualScore(studentId, field, rawValue) {
     }
     checklist.hwScores = checklist.hwScores || {};
     checklist.hwScores[studentId] = { status: nextStatus, score: numVal, _scoreCleared: numVal === null, _updatedAt: now };
-    saveChecklist();
     student.homework = nextHw;
     recordStudentScore(student, numVal, 'BTVN');
     const effAtt = isOnMap
@@ -11301,20 +11379,43 @@ function applyStudentManualScore(studentId, field, rawValue) {
     if (snIdx >= 0) student.sessionNotes[snIdx] = snEntry;
     else student.sessionNotes.unshift(snEntry);
     recordStudentScore(student, numVal, 'Test');
-    saveChecklist();
   }
   student.updatedAt = now;
   student.revision = (Number(student.revision) || 0) + 1;
-  save();
-  logAdminSessionAction(
-    `Nhập điểm ${field === 'test' ? 'bài Test' : 'BTVN'} cho HS ${student.name}`,
-    `Điểm ${field === 'test' ? 'Test' : 'BTVN'}: ${numVal !== null ? numVal : 'Xoá điểm'}`,
-    'score',
-    `score-${field}-${student.id}`
-  );
-  const statusEl = $('#scores-tab-save-status');
-  if (statusEl) {
-    statusEl.textContent = `✓ Đã lưu điểm của ${student.name} lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+
+  const persistScoreAction = () => {
+    _pendingScoreSaveTimers.delete(`${studentId}_${field}`);
+    try {
+      saveChecklist();
+      saveStudentRecords(students, makeupStudents);
+      save();
+      logAdminSessionAction(
+        `Nhập điểm ${field === 'test' ? 'bài Test' : 'BTVN'} cho HS ${student.name}`,
+        `Điểm ${field === 'test' ? 'Test' : 'BTVN'}: ${numVal !== null ? numVal : 'Xoá điểm'}`,
+        'score',
+        `score-${field}-${student.id}`
+      );
+      const statusEl = $('#scores-tab-save-status');
+      if (statusEl) {
+        statusEl.textContent = `✓ Đã lưu điểm của ${student.name} lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+      }
+    } catch (e) {
+      console.warn('Score persist error:', e);
+    }
+  };
+
+  const key = `${studentId}_${field}`;
+  if (opts.immediate) {
+    const existing = _pendingScoreSaveTimers.get(key);
+    if (existing?.timer) clearTimeout(existing.timer);
+    persistScoreAction();
+  } else {
+    const existing = _pendingScoreSaveTimers.get(key);
+    if (existing?.timer) clearTimeout(existing.timer);
+    _pendingScoreSaveTimers.set(key, {
+      fn: persistScoreAction,
+      timer: setTimeout(persistScoreAction, 220)
+    });
   }
 }
 
@@ -11363,16 +11464,36 @@ function applyBatchImportedScores(scoreRows = [], options = {}) {
   return { updatedCount, btvnCount, testCount };
 }
 
-function saveStudentLearningNote(studentId, value) {
+function saveStudentLearningNote(studentId, value, opts = {}) {
   const student = studentById(studentId);
   if (!student) return;
   student.learningNotes = value;
-  saveStudentRecords(students, makeupStudents);
-  save();
-  logAdminSessionAction(`Cập nhật ghi chú học lực của HS ${student.name}`, value ? `Nội dung: "${value}"` : 'Đã xoá trống', 'student', `learn-note-${student.id}`);
-  const statusEl = $('#scores-tab-save-status');
-  if (statusEl) {
-    statusEl.textContent = `✓ Đã lưu ghi chú học lực của ${student.name}`;
+  const persistAction = () => {
+    _pendingLearnNoteTimers.delete(studentId);
+    try {
+      saveStudentRecords(students, makeupStudents);
+      save();
+      logAdminSessionAction(`Cập nhật ghi chú học lực của HS ${student.name}`, value ? `Nội dung: "${value}"` : 'Đã xoá trống', 'student', `learn-note-${student.id}`);
+      const statusEl = $('#scores-tab-save-status');
+      if (statusEl) {
+        statusEl.textContent = `✓ Đã lưu ghi chú học lực của ${student.name}`;
+      }
+    } catch (e) {
+      console.warn('Learning note save error:', e);
+    }
+  };
+
+  if (opts.immediate) {
+    const existing = _pendingLearnNoteTimers.get(studentId);
+    if (existing?.timer) clearTimeout(existing.timer);
+    persistAction();
+  } else {
+    const existing = _pendingLearnNoteTimers.get(studentId);
+    if (existing?.timer) clearTimeout(existing.timer);
+    _pendingLearnNoteTimers.set(studentId, {
+      fn: persistAction,
+      timer: setTimeout(persistAction, 220)
+    });
   }
 }
 
@@ -11526,15 +11647,15 @@ function renderScoresView() {
 
   const activeScoreCols = getScoresTableColumnOrder();
   const scoreThMap = {
-    family: '<th>Họ đệm</th>',
-    name: '<th>Tên</th>',
-    school: '<th>Trường</th>',
-    status: '<th>Trạng thái</th>',
-    recentScores: '<th style="text-align:center;">Điểm 4 bài gần nhất <small style="display:block; font-weight:500; font-size:12.5px; color:#5b21b6;">(Click xem chi tiết)</small></th>',
-    hwScore: '<th style="width:95px; text-align:center;">Điểm BTVN</th>',
-    testScore: '<th id="scores-tab-test-th" style="width:95px; text-align:center;">Điểm Test</th>',
-    note: '<th style="min-width:150px;">Ghi chú buổi học</th>',
-    learningNote: '<th style="min-width:170px;">Ghi chú chung của học sinh (Ghi chú học lực)</th>'
+    family: '<th style="white-space:nowrap; padding:6px 8px;">Họ đệm</th>',
+    name: '<th style="white-space:nowrap; padding:6px 8px;">Tên</th>',
+    school: '<th style="white-space:nowrap; padding:6px 8px;">Trường</th>',
+    status: '<th style="text-align:center; white-space:nowrap; padding:6px 8px;">Trạng thái</th>',
+    recentScores: '<th style="text-align:center; white-space:nowrap; padding:6px 8px;">4 bài gần nhất</th>',
+    hwScore: '<th style="width:75px; text-align:center; white-space:nowrap; padding:6px 6px;">Điểm BTVN</th>',
+    testScore: '<th id="scores-tab-test-th" style="width:75px; text-align:center; white-space:nowrap; padding:6px 6px;">Điểm Test</th>',
+    note: '<th style="min-width:120px; max-width:220px; padding:6px 8px;">Ghi chú buổi</th>',
+    learningNote: '<th style="min-width:130px; max-width:240px; padding:6px 8px;">Ghi chú học lực</th>'
   };
   const scoresThead = $('#scores-tab-table thead');
   if (scoresThead) {
@@ -11585,13 +11706,13 @@ function renderScoresView() {
 
     const scoreTdMap = {
       family: `
-        <td>
+        <td style="white-space:nowrap;">
           <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${item.isMakeup ? '#6d28d9' : '#395140'}; font-weight:${item.isMakeup ? '700' : '600'};" title="Bấm mở Hồ sơ học sinh trong buổi học">
             ${escapeHtml(item.familyName || '—')}
           </button>
         </td>`,
       name: `
-        <td>
+        <td style="white-space:nowrap;">
           <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;" title="Bấm mở Hồ sơ học sinh trong buổi học">
             <strong style="color:${item.isMakeup ? '#6d28d9' : '#214e2d'}; text-decoration:underline; text-underline-offset:2px;">${escapeHtml(item.givenName || s.name)}</strong>
             ${renderInlineTags(s)}
@@ -11599,37 +11720,37 @@ function renderScoresView() {
           ${renderStudentWarningTag(s, CURRENT_CLASS_ID)}
         </td>`,
       school: `
-        <td>
+        <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(item.schoolDisplay)}">
           ${item.isMakeup
             ? `<span class="makeup-school-tag">${escapeHtml(item.schoolDisplay)}</span>`
             : escapeHtml(item.schoolDisplay)}
         </td>`,
       status: `
-        <td>
-          <div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
+        <td style="text-align:center; white-space:nowrap;">
+          <div class="score-tab-status-wrap">
             ${attText}
             ${item.priorityGroup !== 3 ? hwText : ''}
           </div>
         </td>`,
       recentScores: `
-        <td style="text-align:center;">
-          <button type="button" class="recent-scores-btn" data-open-score-history="${escapeHtml(s.id)}" title="Click để xem chi tiết điểm các buổi trước của ${escapeHtml(s.name)}"><span>${escapeHtml(item.recentFour)}</span></button>
+        <td style="text-align:center; white-space:nowrap;">
+          <button type="button" class="recent-scores-btn compact-recent-scores" data-open-score-history="${escapeHtml(s.id)}" title="Click để xem chi tiết điểm các buổi trước của ${escapeHtml(s.name)}"><span>${escapeHtml(item.recentFour)}</span></button>
         </td>`,
       hwScore: `
-        <td style="text-align:center;">
-          <input type="text" inputmode="decimal" class="manual-score-input" data-score-tab-hw="${escapeHtml(s.id)}" value="${item.hwScore !== null && item.hwScore !== undefined ? escapeHtml(formatScoreVN(item.hwScore)) : ''}" placeholder="VD: 7,5" aria-label="Điểm BTVN ${escapeHtml(s.name)}" />
+        <td style="text-align:center; padding:3px 4px;">
+          <input type="text" inputmode="decimal" class="manual-score-input compact-score-input" data-score-tab-hw="${escapeHtml(s.id)}" value="${item.hwScore !== null && item.hwScore !== undefined ? escapeHtml(formatScoreVN(item.hwScore)) : ''}" placeholder="—" aria-label="Điểm BTVN ${escapeHtml(s.name)}" />
         </td>`,
       testScore: `
-        <td style="text-align:center;">
-          <input type="text" inputmode="decimal" class="manual-score-input" data-score-tab-test="${escapeHtml(s.id)}" value="${item.testScore !== null && item.testScore !== undefined ? escapeHtml(formatScoreVN(item.testScore)) : ''}" placeholder="VD: 8,5" aria-label="Điểm Test ${escapeHtml(s.name)}" />
+        <td style="text-align:center; padding:3px 4px;">
+          <input type="text" inputmode="decimal" class="manual-score-input compact-score-input" data-score-tab-test="${escapeHtml(s.id)}" value="${item.testScore !== null && item.testScore !== undefined ? escapeHtml(formatScoreVN(item.testScore)) : ''}" placeholder="—" aria-label="Điểm Test ${escapeHtml(s.name)}" />
         </td>`,
       note: `
-        <td class="col-allow-wrap">
-          <textarea rows="1" class="attendance-note-input auto-expand-note" data-session-note="${escapeHtml(s.id)}" placeholder="Ghi chú buổi học..." style="width:100%; min-width:160px;">${escapeHtml(item.note)}</textarea>
+        <td class="compact-score-note-td">
+          <input type="text" class="attendance-note-input compact-score-note-input" data-session-note="${escapeHtml(s.id)}" value="${escapeHtml(item.note)}" placeholder="Ghi chú buổi..." title="${escapeHtml(item.note || 'Ghi chú buổi học')}" />
         </td>`,
       learningNote: `
-        <td class="col-allow-wrap">
-          <textarea rows="1" class="attendance-note-input auto-expand-note" data-learning-note="${escapeHtml(s.id)}" placeholder="Ghi chú học lực chung..." style="width:100%; min-width:170px;">${escapeHtml(item.learningNotes)}</textarea>
+        <td class="compact-score-note-td">
+          <input type="text" class="attendance-note-input compact-score-note-input" data-learning-note="${escapeHtml(s.id)}" value="${escapeHtml(item.learningNotes)}" placeholder="Ghi chú học lực..." title="${escapeHtml(item.learningNotes || 'Ghi chú học lực chung')}" />
         </td>`
     };
 
@@ -11678,9 +11799,31 @@ function renderScoresView() {
       saveStudentLearningNote(inp.dataset.learningNote, inp.value);
     });
   });
+
+  // Wire Enter/Arrow navigation for compact note inputs in scores table
+  const wireNoteNav = (selector) => {
+    const inputs = [...tbody.querySelectorAll(selector)];
+    inputs.forEach((inp, idx) => {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          inputs[idx + 1]?.focus();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          inputs[idx - 1]?.focus();
+        }
+      });
+    });
+  };
+  wireNoteNav('[data-session-note]');
+  wireNoteNav('[data-learning-note]');
 }
 
-$('#scores-tab-search')?.addEventListener('input', renderScoresView);
+let _scoreTabSearchDebounce = null;
+$('#scores-tab-search')?.addEventListener('input', () => {
+  clearTimeout(_scoreTabSearchDebounce);
+  _scoreTabSearchDebounce = setTimeout(renderScoresView, 120);
+});
 $('#scores-tab-filter')?.addEventListener('change', renderScoresView);
 
 // Universal Clear "×" Button on All Search Inputs
