@@ -4343,7 +4343,7 @@ export function setupFeatures(ctx) {
                             </div>
                           ` : '<small style="color:#94a397; font-style:italic;">Không có nhận xét thêm.</small>'}
                           <div style="margin-top:10px; display:flex; justify-content:flex-end;">
-                            <button type="button" class="outline-button btn-edit-tutoring-from-profile" data-edit-tutoring-from-profile="${escapeHtml(s.id)}" style="padding:4px 10px; font-size:12.5px; font-weight:700; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;">✏️ Sửa thời gian &amp; thông tin ca này</button>
+                            <button type="button" class="outline-button btn-edit-tutoring-from-profile" data-edit-tutoring-from-profile="${escapeHtml(s.id)}" style="padding:4px 10px; font-size:12.5px; font-weight:500; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;">✏️ Sửa thời gian &amp; thông tin ca này</button>
                           </div>
                         </div>
                       </div>

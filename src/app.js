@@ -11707,14 +11707,14 @@ function renderScoresView() {
     const scoreTdMap = {
       family: `
         <td style="white-space:nowrap;">
-          <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${item.isMakeup ? '#6d28d9' : '#395140'}; font-weight:${item.isMakeup ? '700' : '600'};" title="Bấm mở Hồ sơ học sinh trong buổi học">
-            ${escapeHtml(item.familyName || '—')}
+          <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${item.isMakeup ? '#6d28d9' : '#334155'}; font-weight:${item.isMakeup ? '500' : '400'};" title="Bấm mở Hồ sơ học sinh trong buổi học">
+            <span>${escapeHtml(item.familyName || '—')}</span>
           </button>
         </td>`,
       name: `
         <td style="white-space:nowrap;">
           <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;" title="Bấm mở Hồ sơ học sinh trong buổi học">
-            <strong style="color:${item.isMakeup ? '#6d28d9' : '#214e2d'}; text-decoration:underline; text-underline-offset:2px;">${escapeHtml(item.givenName || s.name)}</strong>
+            <span class="score-tab-student-name" style="color:${item.isMakeup ? '#6d28d9' : '#0f172a'}; font-weight:${item.isMakeup ? '600' : '500'};">${escapeHtml(item.givenName || s.name)}</span>
             ${renderInlineTags(s)}
           </button>
           ${renderStudentWarningTag(s, CURRENT_CLASS_ID)}
