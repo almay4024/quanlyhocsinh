@@ -6012,7 +6012,7 @@ function renderStudentList(){
                 : (student.school || '—');
 
               const officeCopyTd = showParentCopyCol
-                ? `<td style="text-align:center; white-space:nowrap;"><button type="button" class="btn-copy-parent-zalo office-copy-before-name-btn" data-quick-copy-parent-zalo="${escapeHtml(student.id)}" title="Copy nhanh tin nhắn báo cáo gửi Phụ huynh (Chỉ 1 lần bấm)">📋 Copy PH</button></td>`
+                ? `<td style="text-align:center; white-space:nowrap;"><button type="button" class="btn-copy-parent-zalo office-copy-before-name-btn" data-quick-copy-parent-zalo="${escapeHtml(student.id)}" data-copy-parent-zalo="${escapeHtml(student.id)}" title="Copy nhanh tin nhắn báo cáo gửi Phụ huynh (Chỉ 1 lần bấm)">📋 Copy PH</button></td>`
                 : '';
 
               const cellMap = {
@@ -6061,10 +6061,10 @@ function renderStudentList(){
   });
 
   // Wire Office quick-copy parent report button
-  host.querySelectorAll('[data-quick-copy-parent-zalo]').forEach(btn => {
+  host.querySelectorAll('[data-quick-copy-parent-zalo], [data-copy-parent-zalo]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const stuId = btn.dataset.quickCopyParentZalo;
+      const stuId = btn.dataset.quickCopyParentZalo || btn.dataset.copyParentZalo;
       if (window.__featuresApp?.copyParentZaloReportForStudent) {
         window.__featuresApp.copyParentZaloReportForStudent(stuId, CURRENT_CLASS_ID, checklistDate);
         const origHtml = btn.innerHTML;
@@ -8837,6 +8837,10 @@ function toggleHomeworkFields(status,prefix){
   const isSeat = prefix === 'homework';
   const reasonFields=$(`#${isSeat?'no-homework-fields':'late-no-homework-fields'}`);
   if(reasonFields)reasonFields.hidden=status!=='not_submitted';
+  const reasonSelect = $(`#${isSeat?'homework-reason':'late-homework-reason'}`);
+  if(status==='not_submitted'&&reasonSelect&&!reasonSelect.value){
+    reasonSelect.value='not_done';
+  }
   const gradeField=$(`#${isSeat?'grade-field':'late-grade-field'}`);
   if(gradeField)gradeField.hidden=(status==='uncollected');
   renderHomeworkHistoryPanel(prefix);
@@ -9457,13 +9461,7 @@ $('#save-homework').onclick=()=>{
   const parsedScore=parseScoreVN(scoreValue);
   if(status==='uncollected'&&parsedScore!==null&&!Number.isNaN(parsedScore))status='submitted';
   if(status==='not_submitted'&&!$('#homework-reason').value){
-    if (entry.studentId) {
-      toast('Vui lòng chọn lý do chưa nộp BTVN.');
-      $('#homework-reason')?.focus();
-      return;
-    } else {
-      $('#homework-reason').value = 'not_done';
-    }
+    $('#homework-reason').value = 'not_done';
   }
   if(scoreValue&&(Number.isNaN(parsedScore)||parsedScore<0||parsedScore>10)){
     toast('Điểm BTVN cần nằm trong khoảng 0 đến 10 (VD: 7,5).');
@@ -10506,7 +10504,9 @@ $('#save-late').onclick=()=>{
   const scoreValue=$('#late-homework-score').value.trim();
   const parsedScore=parseScoreVN(scoreValue);
   if(status==='uncollected'&&parsedScore!==null&&!Number.isNaN(parsedScore))status='submitted';
-  if(status==='not_submitted'&&!$('#late-homework-reason').value){toast('Chọn lý do chưa nộp BTVN.');return;}
+  if(status==='not_submitted'&&!$('#late-homework-reason').value){
+    $('#late-homework-reason').value = 'not_done';
+  }
   if(scoreValue&&(Number.isNaN(parsedScore)||parsedScore<0||parsedScore>10)){toast('Điểm BTVN cần nằm trong khoảng 0 đến 10 (VD: 7,5).');return;}
   const nowTs = Date.now();
   const student=studentById(selectedLateId),sharedNote=$('#late-general-note').value.trim(),homework={status,score:parsedScore!==null&&!Number.isNaN(parsedScore)?parsedScore:null,reason:status==='not_submitted'?$('#late-homework-reason').value:null,note:sharedNote,_updatedAt:nowTs};
