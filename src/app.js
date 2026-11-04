@@ -2303,7 +2303,7 @@ function initRealtimeSync(onSyncCallback) {
     const _isSseHealthy = (now = Date.now()) => Boolean(
       _rtCloudEventSource &&
       (typeof _rtCloudEventSource === 'function' || _rtCloudEventSource.readyState === 1) &&
-      (now - _lastSseEventAt) < 60000
+      (typeof _rtCloudEventSource === 'function' || (now - _lastSseEventAt) < 60000)
     );
 
     const _connectFirebaseMetaSSE = () => {
@@ -2408,7 +2408,7 @@ function initRealtimeSync(onSyncCallback) {
         pullFromFirebaseCloudNow('cloud-poll');
       }
     };
-    ['pointerdown', 'keydown', 'touchstart', 'focus'].forEach(evt => {
+    ['pointerdown', 'touchstart'].forEach(evt => {
       window.addEventListener(evt, _markUserActive, { passive: true });
     });
 
@@ -2456,7 +2456,7 @@ function initRealtimeSync(onSyncCallback) {
           _flushFirebaseCloudPush(false);
         }
         const sseHealthy = _isSseHealthy(now);
-        if (!_rtCloudEventSource || (typeof _rtCloudEventSource !== 'function' && _rtCloudEventSource.readyState === 2) || (now - _lastSseEventAt > 45000)) {
+        if (!_rtCloudEventSource || (typeof _rtCloudEventSource !== 'function' && (_rtCloudEventSource.readyState === 2 || (now - _lastSseEventAt > 45000)))) {
           _connectFirebaseMetaSSE();
         }
         const idleMs = now - _lastUserActivityAt;
@@ -3880,9 +3880,9 @@ function notifyUnmatchedStudentCreated(student){
   const isMakeup=student.studentType==='makeup';
   const clsLabel=activeClassConfig()?.code||activeClassConfig()?.name||CURRENT_CLASS_ID;
   const staff=currentStaffName();
-  const title=isMakeup?'Học sinh học bù mới cần khớp DS tổng':'Học sinh mới cần khớp DS tổng';
+  const title=isMakeup?`Học sinh học bù của lớp ${clsLabel}`:`Học sinh mới của lớp ${clsLabel}`;
   const extra=isMakeup?(student.sourceClassName||student.school||'Chưa rõ lớp gốc'):(student.school||'Chưa rõ trường');
-  const body=`${staff} vừa thêm "${student.name}" (${extra}) tại lớp ${clsLabel}.`;
+  const body=`${staff} vừa thêm "${student.name}" (${extra}) tại lớp ${clsLabel}. Cần kiểm tra khớp vào Danh sách tổng.`;
   createClassNotification(title,body,'unmatched-student',`unmatched-stu-${student.id}`,{studentId:student.id});
 }
 $('#notification-list')?.addEventListener('click', event => {
@@ -4078,16 +4078,22 @@ window.openEditStudentWarningDialog = openEditStudentWarningDialog;
 function autoResizeNoteTextareas(root = document) {
   if (!root || !root.querySelectorAll) return;
   root.querySelectorAll('textarea.auto-expand-note').forEach(ta => {
+    let resizeRaf = null;
     const syncSize = () => {
-      window.requestAnimationFrame(() => {
-        ta.style.height = 'auto';
-        ta.style.height = `${Math.min(180, Math.max(34, ta.scrollHeight))}px`;
+      if (resizeRaf) return;
+      resizeRaf = window.requestAnimationFrame(() => {
+        resizeRaf = null;
+        const curH = ta.offsetHeight;
+        const targetH = Math.min(180, Math.max(34, ta.scrollHeight));
+        if (Math.abs(curH - targetH) > 3) {
+          ta.style.height = `${targetH}px`;
+        }
       });
     };
     syncSize();
     if (ta.dataset.autoExpandBound !== '1') {
       ta.dataset.autoExpandBound = '1';
-      ta.addEventListener('input', syncSize);
+      ta.addEventListener('input', syncSize, { passive: true });
     }
   });
 }
@@ -4241,7 +4247,27 @@ function renderChecklistCore(){
 function safeHttpUrl(value){try{const url=new URL(String(value||'').trim());return url.protocol==='http:'||url.protocol==='https:'?url.href:'';}catch{return '';}}
 function renderChecklistDetails(){for(const field of document.querySelectorAll('[data-checklist-field]'))if(document.activeElement!==field)field.value=checklist[field.dataset.checklistField]||'';for(const [key,linkId] of [['notebookLink','notebook-link-open'],['homeworkLink','homework-link-open']]){const link=document.getElementById(linkId),safeUrl=safeHttpUrl(checklist[key]);if(link){link.hidden=!safeUrl;if(safeUrl)link.href=safeUrl;}}}
 function renderChecklist(){renderChecklistCore();renderChecklistDetails();}
-document.querySelectorAll('[data-checklist-field]').forEach(field=>field.addEventListener('input',()=>{const key=field.dataset.checklistField;checklist[key]=field.value;saveChecklist();const status=key==='lessonTitle'?$('#lesson-title-status'):$('#homework-details-status');if(status)status.textContent='Đã lưu';if(key==='notebookLink'||key==='homeworkLink')renderChecklistDetails();logAdminSessionAction(`Cập nhật thông tin bài học (${key})`, `Giá trị: "${field.value.trim()}"`, 'checklist', `chk-field-${key}`);}));
+let _chkFieldDebounceTimer = null;
+document.querySelectorAll('[data-checklist-field]').forEach(field => {
+  field.addEventListener('input', () => {
+    const key = field.dataset.checklistField;
+    checklist[key] = field.value;
+    clearTimeout(_chkFieldDebounceTimer);
+    _chkFieldDebounceTimer = setTimeout(() => {
+      saveChecklist();
+      const status = key === 'lessonTitle' ? $('#lesson-title-status') : $('#homework-details-status');
+      if (status) status.textContent = 'Đã lưu';
+      if (key === 'notebookLink' || key === 'homeworkLink') renderChecklistDetails();
+      logAdminSessionAction(`Cập nhật thông tin bài học (${key})`, `Giá trị: "${field.value.trim()}"`, 'checklist', `chk-field-${key}`);
+    }, 220);
+  });
+  field.addEventListener('blur', () => {
+    clearTimeout(_chkFieldDebounceTimer);
+    const key = field.dataset.checklistField;
+    checklist[key] = field.value;
+    saveChecklist();
+  });
+});
 $('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-item]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistItem);if(!item)return;item.done=input.checked;item.doneBy=input.checked?currentStaffName():null;item.doneAt=input.checked?Date.now():null;if(checklist.items[0]?.id===item.id&&input.checked&&!checklist.workStart)checklist.workStart={name:currentStaffName(),at:Date.now()};addClassActivity(`${currentStaffName()} đã ${input.checked?'hoàn thành':'bỏ đánh dấu'}: ${item.label}`,'checklist');logAdminSessionAction(`${input.checked?'Hoàn thành':'Bỏ tích'} checklist đầu giờ`, `Mục: ${item.label}`, 'checklist');if(checklist.items.length&&checklist.items.every(entry=>entry.done)){createClassNotification('Checklist setup đã xong','Tất cả công việc chuẩn bị đầu giờ đã được hoàn thành.','checklist',`setup-done-${checklistDate}`);addClassActivity(`${currentStaffName()} đã hoàn thành toàn bộ checklist setup đầu giờ`,'checklist');}saveChecklist();renderChecklist();});
 $('#checklist-items').addEventListener('change',e=>{const input=e.target.closest('[data-checklist-label]');if(!input)return;const item=checklist.items.find(entry=>entry.id===input.dataset.checklistLabel);if(!item)return;const label=input.value.trim();if(!label){input.value=item.label;toast('Tên công việc không được để trống.');return;}item.label=label;saveChecklist();logAdminSessionAction('Đổi tên mục checklist đầu giờ', `Nội dung: ${label}`, 'checklist', `chk-lbl-${item.id}`);});
 $('#checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-remove-checklist-item]');if(!button)return;const removed=checklist.items.find(i=>i.id===button.dataset.removeChecklistItem);checklist._removedItemIds=checklist._removedItemIds||{};checklist._removedItemIds[button.dataset.removeChecklistItem]=Date.now();checklist.items=checklist.items.filter(item=>item.id!==button.dataset.removeChecklistItem);saveChecklist();renderChecklist();logAdminSessionAction('Xoá mục checklist đầu giờ', `Mục: ${removed?.label || ''}`, 'checklist');});
@@ -4250,8 +4276,38 @@ $('#end-checklist-items').addEventListener('change',e=>{const input=e.target.clo
 $('#end-checklist-items').addEventListener('click',e=>{const button=e.target.closest('[data-end-checklist-remove]');if(!button)return;const item=checklist.endItems.find(row=>row.id===button.dataset.endChecklistRemove);if(item&&confirm(`Xóa mục “${item.label}” khỏi checklist?`)){checklist._removedItemIds=checklist._removedItemIds||{};checklist._removedItemIds[item.id]=Date.now();checklist.endItems=checklist.endItems.filter(row=>row.id!==item.id);saveChecklist();renderChecklist();logAdminSessionAction('Xoá mục checklist cuối giờ', `Mục: ${item.label}`, 'checklist');}});
 $('#add-end-checklist-item').onclick=()=>{const item={id:`end-task-${Date.now()}`,label:'Việc mới',done:false};checklist.endItems.push(item);saveChecklist();renderChecklist();logAdminSessionAction('Thêm mục checklist cuối giờ mới', '', 'checklist');const input=$(`[data-end-checklist-label="${item.id}"]`);input?.focus();input?.select?.();};
 $('#save-session-note').onclick=()=>{checklist.classNote=$('#session-note').value.trim();if($('#parent-general-note'))checklist.parentGeneralNote=$('#parent-general-note').value.trim();checklist.noteSavedAt=Date.now();saveChecklist();addClassActivity(`${currentStaffName()} đã lưu ghi chú chung của buổi học`,'checklist');logAdminSessionAction('Lưu ghi chú trong ca & ghi chú gửi phụ huynh', `Ghi chú ca: "${checklist.classNote || '—'}" · Ghi chú gửi PH: "${checklist.parentGeneralNote || '—'}"`, 'checklist', 'save-session-note');renderChecklist();toast('Đã lưu ghi chú buổi học & ghi chú chung gửi phụ huynh.');};
-$('#session-note')?.addEventListener('input',()=>{checklist.classNote=$('#session-note').value;checklist.noteSavedAt=Date.now();saveChecklist();logAdminSessionAction('Cập nhật ghi chú chung của buổi học', checklist.classNote ? `Nội dung: "${checklist.classNote.slice(0, 120)}"` : 'Trống', 'checklist', 'auto-session-note');const st=$('#session-note-status');if(st)st.textContent=`Đã tự động lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}.`;});
-$('#handover-person')?.addEventListener('input',()=>{const person=$('#handover-person').value.trim();checklist.handover=person?{person,at:checklist.handover?.at||Date.now()}:null;saveChecklist();});
+let _sessionNoteDebounceTimer = null;
+$('#session-note')?.addEventListener('input', () => {
+  checklist.classNote = $('#session-note').value;
+  clearTimeout(_sessionNoteDebounceTimer);
+  _sessionNoteDebounceTimer = setTimeout(() => {
+    checklist.noteSavedAt = Date.now();
+    saveChecklist();
+    logAdminSessionAction('Cập nhật ghi chú chung của buổi học', checklist.classNote ? `Nội dung: "${checklist.classNote.slice(0, 120)}"` : 'Trống', 'checklist', 'auto-session-note');
+    const st = $('#session-note-status');
+    if (st) st.textContent = `Đã tự động lưu lúc ${new Date(checklist.noteSavedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}.`;
+  }, 250);
+});
+$('#session-note')?.addEventListener('blur', () => {
+  clearTimeout(_sessionNoteDebounceTimer);
+  checklist.classNote = $('#session-note').value;
+  checklist.noteSavedAt = Date.now();
+  saveChecklist();
+});
+
+let _handoverDebounceTimer = null;
+$('#handover-person')?.addEventListener('input', () => {
+  const person = $('#handover-person').value.trim();
+  checklist.handover = person ? { person, at: checklist.handover?.at || Date.now() } : null;
+  clearTimeout(_handoverDebounceTimer);
+  _handoverDebounceTimer = setTimeout(() => {
+    saveChecklist();
+  }, 250);
+});
+$('#handover-person')?.addEventListener('blur', () => {
+  clearTimeout(_handoverDebounceTimer);
+  saveChecklist();
+});
 function handleToggleTestRequired(checked) {
   checklist.testRequired = Boolean(checked);
   if ($('#test-required-toggle')) $('#test-required-toggle').checked = checklist.testRequired;
@@ -7159,6 +7215,9 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
   const roster = classStudents();
   const classMakeups = sessionMakeupStudents(placements, lateIds);
 
+  const currentCls = classCatalog.find(c => c.id === CURRENT_CLASS_ID) || { id: CURRENT_CLASS_ID, name: CURRENT_CLASS_NAME || CURRENT_CLASS_ID, code: CURRENT_CLASS_ID };
+  const currentClsLabel = currentCls.code || currentCls.name || CURRENT_CLASS_ID;
+
   // Tập hợp các học sinh Mới hoặc Học bù trong buổi hiện tại (bỏ qua HS đã được xác nhận trừ khi bấm trực tiếp)
   const tempCandidates = [];
   const seenTempIds = new Set();
@@ -7169,14 +7228,14 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
     const isNew = isNewStudentRecord(s) || Boolean(note && String(note).toLocaleLowerCase('vi').includes('học sinh mới'));
     if (isNew && !seenTempIds.has(s.id)) {
       seenTempIds.add(s.id);
-      tempCandidates.push({ student: s, isMakeup: false, note });
+      tempCandidates.push({ student: s, isMakeup: false, note, classId: CURRENT_CLASS_ID, classCode: currentCls.code || currentCls.id, className: currentCls.name });
     }
   }
   for (const m of classMakeups) {
     if (!m || (m._matchedOrConfirmed && m.id !== preselectedTempStudentId)) continue;
     if (!seenTempIds.has(m.id)) {
       seenTempIds.add(m.id);
-      tempCandidates.push({ student: m, isMakeup: true, note: sessionNoteFor(m.id) || '' });
+      tempCandidates.push({ student: m, isMakeup: true, note: sessionNoteFor(m.id) || '', classId: CURRENT_CLASS_ID, classCode: currentCls.code || currentCls.id, className: currentCls.name });
     }
   }
 
@@ -7185,7 +7244,7 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
     const preStu = studentById(preselectedTempStudentId);
     if (preStu) {
       const isMk = preStu.studentType === 'makeup' || !(preStu.classIds || []).includes(CURRENT_CLASS_ID);
-      tempCandidates.unshift({ student: preStu, isMakeup: isMk, note: sessionNoteFor(preStu.id) || '' });
+      tempCandidates.unshift({ student: preStu, isMakeup: isMk, note: sessionNoteFor(preStu.id) || '', classId: CURRENT_CLASS_ID, classCode: currentCls.code || currentCls.id, className: currentCls.name });
       seenTempIds.add(preStu.id);
     }
   }
@@ -7241,6 +7300,8 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
     const activeItem = tempCandidates.find(c => c.student.id === activeTempId) || tempCandidates[0];
     const tempStu = activeItem.student;
     const isMakeup = activeItem.isMakeup;
+    const originClsName = activeItem.classCode || activeItem.className || currentClsLabel;
+    const originClassBadge = isMakeup ? `Học sinh học bù của lớp ${originClsName}` : `Học sinh mới của lớp ${originClsName}`;
     const place = placements.get(tempStu.id);
     const desk = place && desks().find(item => item.desk.id === place.deskId);
     const seatText = desk ? `Dãy ${desk.ci + 1} · Bàn ${desk.di + 1}` : (lateIds.has(tempStu.id) ? 'Cuối lớp (Đi muộn)' : 'Chưa xếp chỗ');
@@ -7264,21 +7325,29 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
           <select id="match-temp-student-select" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #93c5fd; background:#eff6ff; font-weight:700; color:#1e3a8a;">
             ${tempCandidates.map(item => {
               const s = item.student;
-              const badge = item.isMakeup ? '[Học bù]' : '[Học sinh mới]';
+              const itemClsName = item.classCode || item.className || currentClsLabel;
+              const badge = item.isMakeup ? `[Học bù của lớp ${itemClsName}]` : `[HS mới của lớp ${itemClsName}]`;
               const extra = item.isMakeup ? (s.sourceClassName || s.school || 'Chưa rõ lớp gốc') : (s.school || 'Chưa rõ trường');
               return `<option value="${escapeHtml(s.id)}" ${s.id === tempStu.id ? 'selected' : ''}>${badge} ${escapeHtml(s.name)} — ${escapeHtml(extra)}</option>`;
             }).join('')}
           </select>
 
           <div style="margin-top:8px; padding:10px 14px; border-radius:10px; background:${isMakeup ? '#faf5ff' : '#f0fdf4'}; border:1px solid ${isMakeup ? '#d8b4fe' : '#bbf7d0'}; display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:6px 14px; font-size:13px;">
+            <div style="grid-column: 1 / -1; padding:6px 10px; background:#ffffff; border-radius:6px; border:1px solid ${isMakeup ? '#c4b5fd' : '#86efac'}; font-size:13px; font-weight:800; color:${isMakeup ? '#6d28d9' : '#15803d'}; display:flex; align-items:center; gap:6px;">
+              <span>📌 Khớp từ:</span>
+              <span style="background:${isMakeup ? '#ede9fe' : '#dcfce7'}; padding:2px 8px; border-radius:4px; border:1px solid ${isMakeup ? '#c4b5fd' : '#86efac'}; font-size:13.5px;">
+                ${escapeHtml(originClassBadge)}
+              </span>
+            </div>
             <div><strong>Phân loại:</strong> <span style="font-weight:800; color:${isMakeup ? '#6d28d9' : '#15803d'};">${isMakeup ? 'Học sinh học bù' : 'Học sinh mới'}</span></div>
+            <div><strong>Lớp ghi nhận buổi học:</strong> <strong style="color:#1e3a8a;">${escapeHtml(originClsName)}</strong></div>
             <div><strong>Trường / Lớp gốc:</strong> ${escapeHtml(tempStu.school || tempStu.sourceClassName || '—')}</div>
             <div><strong>SĐT Phụ huynh:</strong> ${escapeHtml(tempStu.parentContact?.phone || '—')}</div>
             <div><strong>Chỗ ngồi &amp; BTVN:</strong> ${escapeHtml(seatText)} · ${escapeHtml(hwText)}</div>
             <div style="grid-column: 1 / -1;"><strong>Ghi chú buổi học sẽ đính kèm:</strong> <span style="color:#0f766e; font-weight:700;">${escapeHtml(noteText)}</span></div>
             ${!isMakeup ? `<div style="grid-column: 1 / -1; margin-top:4px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding-top:6px; border-top:1px dashed #86efac;">
               <span style="font-size:12px; color:#166534;">Nếu đây thực sự là học sinh mới chưa từng có trong Danh sách tổng:</span>
-              <button type="button" class="outline-button" id="confirm-keep-as-official-new-btn" style="padding:5px 11px; font-size:12px; color:#15803d; border-color:#86efac; background:#ffffff; font-weight:700;">✓ Xác nhận giữ làm Học sinh mới chính thức</button>
+              <button type="button" class="outline-button" id="confirm-keep-as-official-new-btn" style="padding:5px 11px; font-size:12px; color:#15803d; border-color:#86efac; background:#ffffff; font-weight:700;">✓ Xác nhận giữ làm Học sinh mới chính thức của lớp ${escapeHtml(originClsName)}</button>
             </div>` : ''}
           </div>
         </div>
@@ -7321,7 +7390,7 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
       save();
       renderNotifications();
       refreshAllActiveViews();
-      toast(`✓ Đã xác nhận giữ "${tempStu.name}" làm học sinh mới chính thức của lớp.`);
+      toast(`✓ Đã xác nhận giữ "${tempStu.name}" làm học sinh mới chính thức của lớp ${originClsName}.`);
       const idx = tempCandidates.findIndex(c => c.student.id === tempStu.id);
       if (idx >= 0) tempCandidates.splice(idx, 1);
       if (!tempCandidates.length) {
@@ -7403,20 +7472,30 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
             // Nếu là Học sinh mới -> Mở hộp thoại hỏi có chuyển lớp cho học sinh đó không
             openConfirmNewStudentClassTransferDialog(tempStu, targetMasterStu, CURRENT_CLASS_ID, (chosenClassAction) => {
               const ok = mergeAssistantStudentIntoMasterStudent(tempStu.id, targetMasterStu.id, chosenClassAction);
-              if (ok) dlg.close();
+              if (ok) {
+                dlg.close();
+                toast(`✓ Đã khớp học sinh mới của lớp ${originClsName} ("${tempStu.name}") vào hồ sơ gốc "${targetMasterStu.name}".`);
+              }
             });
           } else {
             // Nếu là Học sinh học bù -> Xác nhận khớp & lưu ca học bù vào hồ sơ học sinh đó
-            const confirmMsg = `Xác nhận khớp học sinh học bù "${tempStu.name}" với học sinh "${targetMasterStu.name}" (${targetMasterStu.studentCode || 'Chưa có mã'}) trong Danh sách tổng?\n\nToàn bộ điểm danh, điểm BTVN/Test và ghi chú buổi học bù sẽ được đính vào hồ sơ của "${targetMasterStu.name}".`;
+            const confirmMsg = `Xác nhận khớp học sinh học bù của lớp ${originClsName} ("${tempStu.name}") với học sinh "${targetMasterStu.name}" (${targetMasterStu.studentCode || 'Chưa có mã'}) trong Danh sách tổng?\n\nToàn bộ điểm danh, điểm BTVN/Test và ghi chú buổi học bù sẽ được đính vào hồ sơ của "${targetMasterStu.name}".`;
             if (!window.confirm(confirmMsg)) return;
             const ok = mergeAssistantStudentIntoMasterStudent(tempStu.id, targetMasterStu.id, 'keep');
-            if (ok) dlg.close();
+            if (ok) {
+              dlg.close();
+              toast(`✓ Đã khớp học sinh học bù của lớp ${originClsName} ("${tempStu.name}") vào hồ sơ gốc "${targetMasterStu.name}".`);
+            }
           }
         });
       });
     };
 
-    searchInp?.addEventListener('input', renderMasterCandidates);
+    let _masterSearchDebounce = null;
+    searchInp?.addEventListener('input', () => {
+      clearTimeout(_masterSearchDebounce);
+      _masterSearchDebounce = setTimeout(renderMasterCandidates, 90);
+    });
     classFilterSel?.addEventListener('change', renderMasterCandidates);
     renderMasterCandidates();
   };
@@ -8574,13 +8653,21 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
       targetClassId,
       targetDate
     );
-    render();
+    if (!triggerElId || (!triggerElId.includes('note') && !triggerElId.includes('score'))) {
+      render();
+    }
   };
 
+  let _inlineProfDebounceTimer = null;
   $('#student-session-profile-content').querySelectorAll('input, select, textarea').forEach(el => {
     el.addEventListener('change', (ev) => applyInlineSessionChanges(ev.target?.id || ''));
     if (el.tagName === 'TEXTAREA' || el.type === 'number') {
-      el.addEventListener('input', (ev) => applyInlineSessionChanges(ev.target?.id || ''));
+      el.addEventListener('input', (ev) => {
+        clearTimeout(_inlineProfDebounceTimer);
+        _inlineProfDebounceTimer = setTimeout(() => {
+          applyInlineSessionChanges(ev.target?.id || '');
+        }, 220);
+      });
     }
   });
 
@@ -9454,7 +9541,11 @@ function showIdentityForm(kind='new'){
         };
       });
     };
-    if (crossSearch) crossSearch.addEventListener('input', renderCrossInline);
+    let _crossDebounce1 = null;
+    if (crossSearch) crossSearch.addEventListener('input', () => {
+      clearTimeout(_crossDebounce1);
+      _crossDebounce1 = setTimeout(renderCrossInline, 80);
+    });
     renderCrossInline();
     $('#identity-open-cross-makeup-modal')?.addEventListener('click', () => {
       openCrossClassMakeupPickerDialog((pickedStu) => {
@@ -10073,9 +10164,14 @@ $('#student-search').addEventListener('focus', e => {
   $('#student-options').hidden = false;
 });
 
-$('#student-search').addEventListener('input',e=>{
-  identityPicker(e.target.value);
-  $('#student-options').hidden=false;
+let _studentSearchDebounce = null;
+$('#student-search').addEventListener('input', e => {
+  clearTimeout(_studentSearchDebounce);
+  const q = e.target.value;
+  _studentSearchDebounce = setTimeout(() => {
+    identityPicker(q);
+    $('#student-options').hidden = false;
+  }, 75);
 });
 
 $('#close-seat').onclick=()=>$('#seat-dialog').close();
@@ -10737,7 +10833,11 @@ function showLateIdentityForm(kind='new'){
         };
       });
     };
-    if (crossSearch) crossSearch.addEventListener('input', renderCrossInline);
+    let _crossDebounce1 = null;
+    if (crossSearch) crossSearch.addEventListener('input', () => {
+      clearTimeout(_crossDebounce1);
+      _crossDebounce1 = setTimeout(renderCrossInline, 80);
+    });
     renderCrossInline();
     $('#late-open-cross-makeup-modal')?.addEventListener('click', () => {
       openCrossClassMakeupPickerDialog((pickedStu) => {
@@ -10926,16 +11026,23 @@ $('#late-search').addEventListener('focus', e => {
   $('#late-options').hidden = false;
 });
 
-$('#late-search').addEventListener('input',e=>{
-  drawLatePicker(e.target.value);
-  $('#late-options').hidden=false;
+let _lateSearchDebounce = null;
+$('#late-search').addEventListener('input', e => {
+  clearTimeout(_lateSearchDebounce);
+  const q = e.target.value;
+  _lateSearchDebounce = setTimeout(() => {
+    drawLatePicker(q);
+    $('#late-options').hidden = false;
+    if (!selectedLateId) {
+      const noteField = $('#late-general-note');
+      if (noteField && noteField.dataset.sessionNote) delete noteField.dataset.sessionNote;
+    }
+  }, 75);
 });
-
 $('#close-late').onclick=()=>$('#late-dialog').close();
 $('#save-arrival-time').onchange=e=>$('#arrival-time-field').hidden=!e.target.checked;
 document.querySelectorAll('[data-late-homework-choice]').forEach(button=>button.onclick=()=>{const status=button.dataset.lateHomeworkChoice;lateHomeworkSelected=true;$('#late-homework-status').value=status;toggleHomeworkFields(status,'late');document.querySelectorAll('[data-late-homework-choice]').forEach(choice=>choice.classList.toggle('selected',choice===button));});
 $('#late-homework-status').addEventListener('change',e=>{lateHomeworkSelected=true;toggleHomeworkFields(e.target.value,'late');});
-$('#late-search').addEventListener('input',()=>{if(!selectedLateId){const noteField=$('#late-general-note');if(noteField&&noteField.dataset.sessionNote)delete noteField.dataset.sessionNote;}});
 $('#late-button').addEventListener('click',()=>{const noteField=$('#late-general-note');noteField.value='';delete noteField.dataset.sessionNote;});
 
 if ($('#clear-late-student')) {
@@ -11532,7 +11639,11 @@ function renderSeatingMapSearchResults() {
 
 const seatingMapSearchInput = $('#seating-map-search-input');
 if (seatingMapSearchInput) {
-  seatingMapSearchInput.addEventListener('input', renderSeatingMapSearchResults);
+  let _seatingMapSearchDebounce = null;
+  seatingMapSearchInput.addEventListener('input', () => {
+    clearTimeout(_seatingMapSearchDebounce);
+    _seatingMapSearchDebounce = setTimeout(renderSeatingMapSearchResults, 75);
+  });
   seatingMapSearchInput.addEventListener('focus', () => {
     if (seatingMapSearchInput.value.trim()) renderSeatingMapSearchResults();
   });

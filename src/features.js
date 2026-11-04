@@ -40,7 +40,9 @@ import {
   pullStudentsFromGoogleSheets,
   pullStudentsFromGoogleSheetsMultiCohort,
   exportSessionReportToGoogleDocs,
-  DEFAULT_COHORTS
+  DEFAULT_COHORTS,
+  getGoogleAppsScriptTemplate,
+  testGoogleAppsScriptConnection
 } from './excel-import-export.js?v=4.5.0';
 import {
   loadSessionHistory,
@@ -5838,7 +5840,11 @@ export function setupFeatures(ctx) {
   // Gắn sự kiện cho Quản lý Nhân sự (Admin)
   $('#add-staff-member-btn')?.addEventListener('click', () => openStaffDialog(null));
   $('#export-staff-csv-btn')?.addEventListener('click', exportStaffListAsCsv);
-  $('#staff-search-input')?.addEventListener('input', renderStaffManagement);
+  let _staffSearchDebounce = null;
+  $('#staff-search-input')?.addEventListener('input', () => {
+    clearTimeout(_staffSearchDebounce);
+    _staffSearchDebounce = setTimeout(renderStaffManagement, 80);
+  });
   $('#staff-role-filter')?.addEventListener('change', renderStaffManagement);
   $('#close-staff-form')?.addEventListener('click', () => $('#staff-form-dialog')?.close());
   $('#cancel-staff-form-btn')?.addEventListener('click', () => $('#staff-form-dialog')?.close());
@@ -6642,6 +6648,7 @@ export function setupFeatures(ctx) {
     const colPhone = ($('#sheets-col-phone')?.value || '').trim();
     const colStatus = ($('#sheets-col-status')?.value || '').trim();
 
+    const prevCfg = loadGoogleSheetsConfig();
     const cfg = {
       rawSheetUrl,
       spreadsheetId,
@@ -6657,7 +6664,8 @@ export function setupFeatures(ctx) {
       colClass,
       colSchool,
       colPhone,
-      colStatus
+      colStatus,
+      cohortSheets: prevCfg.cohortSheets || DEFAULT_COHORTS
     };
     saveGoogleSheetsConfig(cfg);
     if (scriptUrl) {
@@ -6668,6 +6676,127 @@ export function setupFeatures(ctx) {
     }
     return cfg;
   }
+
+  function renderMultiCohortSheetsTable() {
+    const tbody = $('#sheets-multi-cohort-tbody');
+    if (!tbody) return;
+    const cfg = loadGoogleSheetsConfig();
+    const cohorts = Array.isArray(cfg.cohortSheets) ? cfg.cohortSheets : DEFAULT_COHORTS;
+    tbody.innerHTML = cohorts.map((c, idx) => `
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:6px 10px;"><strong>${escapeHtml(c.cohortName)}</strong></td>
+        <td style="padding:6px 10px;"><code>${escapeHtml(c.sheetName || c.cohortName)}</code></td>
+        <td style="padding:6px 10px;"><code>${escapeHtml(c.gid || '0')}</code></td>
+        <td style="padding:6px 10px; color:#64748b; font-size:11.5px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(c.sheetUrl || c.spreadsheetId || '(Dùng link chung)')}">
+          ${escapeHtml(c.sheetUrl || c.spreadsheetId || '(Dùng link chung)')}
+        </td>
+        <td style="padding:6px 10px; text-align:center;">
+          <div style="display:inline-flex; gap:4px;">
+            <button type="button" class="outline-button" data-scan-single-cohort="${escapeHtml(c.cohortName)}" style="padding:2px 8px; font-size:11px; color:#15803d; border-color:#86efac; background:#f0fdf4;" title="Quét riêng sheet này">
+              Quét
+            </button>
+            <button type="button" class="outline-button" data-delete-single-cohort="${idx}" style="padding:2px 6px; font-size:11px; color:#b91c1c; border-color:#fca5a5;" title="Xóa sheet">
+              ×
+            </button>
+          </div>
+        </td>
+      </tr>
+    `).join('') || `<tr><td colspan="5" style="text-align:center; padding:12px; color:#64748b;">Chưa có sheet nào trong danh sách.</td></tr>`;
+
+    // Wire single scan
+    tbody.querySelectorAll('[data-scan-single-cohort]').forEach(btn => {
+      btn.onclick = async () => {
+        const cohortName = btn.dataset.scanSingleCohort;
+        setSheetsSyncStatus(`Đang quét riêng trang tính "${cohortName}"...`, false);
+        const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg, cohortName);
+        if (!res.success) {
+          setSheetsSyncStatus(escapeHtml(res.message), true);
+          toast(res.message);
+          return;
+        }
+        scanIncomingSheetsRowsForApproval(res.rows, `Google Sheet (${cohortName})`);
+        toast(`✓ Đã quét ${res.rows.length} dòng từ sheet "${cohortName}".`);
+      };
+    });
+
+    // Wire delete
+    tbody.querySelectorAll('[data-delete-single-cohort]').forEach(btn => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.deleteSingleCohort);
+        if (!cohorts[idx]) return;
+        if (!confirm(`Xóa sheet "${cohorts[idx].cohortName}" khỏi danh sách quét?`)) return;
+        cohorts.splice(idx, 1);
+        saveGoogleSheetsConfig({ ...cfg, cohortSheets: cohorts });
+        renderMultiCohortSheetsTable();
+      };
+    });
+  }
+
+  // Wire add new cohort sheet
+  $('#sheets-add-cohort-btn')?.addEventListener('click', () => {
+    const nameInp = $('#sheets-new-cohort-name');
+    const tabInp = $('#sheets-new-cohort-tab');
+    const gidInp = $('#sheets-new-cohort-gid');
+    const urlInp = $('#sheets-new-cohort-url');
+    const name = (nameInp?.value || '').trim();
+    if (!name) {
+      toast('Vui lòng nhập Tên Khóa / Sheet.');
+      nameInp?.focus();
+      return;
+    }
+    const cfg = loadGoogleSheetsConfig();
+    const cohorts = Array.isArray(cfg.cohortSheets) ? [...cfg.cohortSheets] : [...DEFAULT_COHORTS];
+    const tab = (tabInp?.value || '').trim() || name;
+    const gid = (gidInp?.value || '').trim() || '0';
+    const rawUrl = (urlInp?.value || '').trim();
+    const spreadsheetId = extractSpreadsheetId(rawUrl) || rawUrl;
+    cohorts.push({
+      cohortName: name,
+      sheetName: tab,
+      gid,
+      sheetUrl: rawUrl,
+      spreadsheetId
+    });
+    saveGoogleSheetsConfig({ ...cfg, cohortSheets: cohorts });
+    if (nameInp) nameInp.value = '';
+    if (tabInp) tabInp.value = '';
+    if (gidInp) gidInp.value = '';
+    if (urlInp) urlInp.value = '';
+    renderMultiCohortSheetsTable();
+    toast(`✓ Đã thêm trang tính "${name}" vào danh sách.`);
+  });
+
+  // Wire Apps Script template copy button
+  $('#copy-apps-script-template-btn')?.addEventListener('click', () => {
+    const code = getGoogleAppsScriptTemplate();
+    navigator.clipboard?.writeText(code).then(() => {
+      const st = $('#copy-apps-script-status');
+      if (st) {
+        st.hidden = false;
+        setTimeout(() => { st.hidden = true; }, 3000);
+      }
+      toast('✓ Đã sao chép toàn bộ mã Google Apps Script mẫu vào bộ nhớ tạm.');
+    });
+  });
+
+  // Wire test connection button
+  $('#test-apps-script-connection-btn')?.addEventListener('click', async () => {
+    const scriptUrl = ($('#sheets-script-url-input')?.value || $('#drive-script-url-input')?.value || '').trim();
+    const spreadsheetId = extractSpreadsheetId($('#sheets-spreadsheet-id')?.value || '') || '';
+    const resEl = $('#test-apps-script-result');
+    if (!scriptUrl) {
+      if (resEl) { resEl.style.color = '#b91c1c'; resEl.textContent = 'Chưa nhập URL Apps Script'; }
+      toast('Vui lòng nhập Google Apps Script Web App URL trước khi kiểm tra.');
+      return;
+    }
+    if (resEl) { resEl.style.color = '#3b82f6'; resEl.textContent = 'Đang kiểm tra kết nối...'; }
+    const result = await testGoogleAppsScriptConnection(scriptUrl, spreadsheetId);
+    if (resEl) {
+      resEl.style.color = result.ok ? '#15803d' : '#b91c1c';
+      resEl.textContent = result.ok ? '✓ Kết nối thành công!' : `✕ ${result.message}`;
+    }
+    toast(result.ok ? '✓ Kết nối Google Apps Script thành công!' : `✕ Lỗi: ${result.message}`);
+  });
 
   function openGoogleSheetsSyncModal(defaultScope = 'all') {
     if (!canAccessCrossClass()) {
@@ -6692,6 +6821,12 @@ export function setupFeatures(ctx) {
     if ($('#sheets-col-school')) $('#sheets-col-school').value = cfg.colSchool || '';
     if ($('#sheets-col-phone')) $('#sheets-col-phone').value = cfg.colPhone || '';
     if ($('#sheets-col-status')) $('#sheets-col-status').value = cfg.colStatus || '';
+
+    const previewPre = $('#apps-script-preview-code');
+    if (previewPre) {
+      previewPre.textContent = getGoogleAppsScriptTemplate();
+    }
+    renderMultiCohortSheetsTable();
 
     populateSheetsSyncClassFilter(defaultScope);
     $('#google-sheets-sync-dialog')?.showModal();
@@ -7874,9 +8009,12 @@ export function setupFeatures(ctx) {
         <div style="display:flex; flex-direction:column; gap:12px;">
           ${candidates.map(({ student, className, classCode, isMakeup }) => {
             const suggestions = getSuggestedMasterMatches(student);
-            const tagLabel = isMakeup ? 'Học bù' : 'Mới';
+            const originClsName = classCode || className || 'Chưa rõ lớp';
+            const originFullLabel = isMakeup ? `Học sinh học bù của lớp ${originClsName}` : `Học sinh mới của lớp ${originClsName}`;
+            const tagLabel = isMakeup ? `Học bù (${originClsName})` : `Mới (${originClsName})`;
             const tagBg = isMakeup ? '#f3e8ff' : '#eff6ff';
             const tagColor = isMakeup ? '#7e22ce' : '#1d4ed8';
+            const tagBorder = isMakeup ? '#d8b4fe' : '#bfdbfe';
 
             const suggestionsHtml = suggestions.length ? `
               <div style="display:flex; flex-direction:column; gap:6px;">
@@ -7892,7 +8030,7 @@ export function setupFeatures(ctx) {
                         <span style="color:#64748b; margin-left:6px;">(Mã: ${escapeHtml(cand.studentCode || '—')})</span>
                         <div style="color:#64748b; font-size:11.5px;">Trường: ${escapeHtml(cand.school || '—')} · Lớp: ${escapeHtml(candClasses)}</div>
                       </div>
-                      <button type="button" class="primary-button" data-inbox-merge-btn data-temp-id="${escapeHtml(student.id)}" data-master-id="${escapeHtml(cand.id)}" style="padding:4px 10px; font-size:12px; background:#047857;">
+                      <button type="button" class="primary-button" data-inbox-merge-btn data-temp-id="${escapeHtml(student.id)}" data-master-id="${escapeHtml(cand.id)}" data-origin-label="${escapeHtml(originFullLabel)}" style="padding:4px 10px; font-size:12px; background:#047857;">
                         Khớp &amp; Gộp
                       </button>
                     </div>
@@ -7909,19 +8047,23 @@ export function setupFeatures(ctx) {
               <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:12px; padding:12px; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px; align-items:start;">
                 <!-- Cột trái: Trợ giảng ghi nhận -->
                 <div style="background:#ffffff; padding:10px 12px; border-radius:6px; border:1px solid #e2e8f0; font-size:13px;">
+                  <div style="background:${tagBg}; color:${tagColor}; border:1px solid ${tagBorder}; border-radius:6px; padding:4px 8px; font-weight:800; font-size:12px; margin-bottom:8px; display:flex; align-items:center; gap:5px;">
+                    <span>📌</span>
+                    <span>Khớp từ: <strong>${escapeHtml(originFullLabel)}</strong></span>
+                  </div>
                   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-                    <strong style="color:#0f172a; font-size:14px;">${escapeHtml(student.name)}</strong>
-                    <span style="background:${tagBg}; color:${tagColor}; font-weight:700; padding:2px 8px; border-radius:4px; font-size:11.5px;">[${tagLabel}]</span>
+                    <strong style="color:#0f172a; font-size:14.5px;">${escapeHtml(student.name)}</strong>
+                    <span style="background:${tagBg}; color:${tagColor}; border:1px solid ${tagBorder}; font-weight:700; padding:2px 8px; border-radius:4px; font-size:11.5px;">[${tagLabel}]</span>
                   </div>
                   <div style="color:#475569; font-size:12.5px; line-height:1.5;">
-                    <div><strong>Lớp tham gia:</strong> ${escapeHtml(className)} (${escapeHtml(classCode)})</div>
+                    <div><strong>Lớp tham gia:</strong> <span style="font-weight:700; color:#1e293b;">${escapeHtml(className)} (${escapeHtml(classCode)})</span></div>
                     <div><strong>Trường:</strong> ${escapeHtml(student.school || '—')}</div>
                     ${student.parentContact?.phone ? `<div><strong>SĐT PH:</strong> ${escapeHtml(student.parentContact.phone)}</div>` : ''}
                     ${student.notes ? `<div><strong>Ghi chú:</strong> ${escapeHtml(student.notes)}</div>` : ''}
                   </div>
                   <div style="margin-top:8px; padding-top:8px; border-top:1px solid #f1f5f9;">
-                    <button type="button" class="outline-button" data-inbox-confirm-new-btn="${escapeHtml(student.id)}" style="padding:4px 8px; font-size:11.5px; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;">
-                      ✓ Xác nhận là HS mới chính thức
+                    <button type="button" class="outline-button" data-inbox-confirm-new-btn="${escapeHtml(student.id)}" data-origin-class="${escapeHtml(originClsName)}" style="padding:4px 8px; font-size:11.5px; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff; font-weight:700;">
+                      ✓ Xác nhận là HS mới của lớp ${escapeHtml(originClsName)}
                     </button>
                   </div>
                 </div>
@@ -7944,6 +8086,7 @@ export function setupFeatures(ctx) {
         btn.addEventListener('click', () => {
           const tempId = btn.dataset.tempId;
           const masterId = btn.dataset.masterId;
+          const originLabel = btn.dataset.originLabel || 'buổi học';
           const tempStu = getStudents().find(s => s.id === tempId);
           const masterStu = getStudents().find(s => s.id === masterId);
           if (!tempStu || !masterStu) return;
@@ -7952,7 +8095,7 @@ export function setupFeatures(ctx) {
           const tempClassId = (tempStu.classIds || [])[0];
           if (tempClassId && !(masterStu.classIds || []).includes(tempClassId)) {
             const targetClsName = getClassCatalog().find(c => c.id === tempClassId)?.name || tempClassId;
-            const choice = confirm(`Học sinh "${masterStu.name}" hiện chưa có trong lớp ${targetClsName}.\n\nBấm [OK] để: CHUYỂN LỚP (Bảo lưu lịch sử lớp cũ và chuyển sang ${targetClsName})\nBấm [Cancel] để: HỌC SONG SONG cả 2 lớp.`);
+            const choice = confirm(`Khớp ${originLabel} ("${tempStu.name}") vào học sinh "${masterStu.name}".\n\nHọc sinh "${masterStu.name}" hiện chưa có trong lớp ${targetClsName}.\n\nBấm [OK] để: CHUYỂN LỚP (Bảo lưu lịch sử lớp cũ và chuyển sang ${targetClsName})\nBấm [Cancel] để: HỌC SONG SONG cả 2 lớp.`);
             classAction = choice ? 'transfer' : 'dual';
           }
 
@@ -7974,7 +8117,7 @@ export function setupFeatures(ctx) {
             saveStudentRecords(filteredStus, ctx.getMakeupStudents ? ctx.getMakeupStudents() : []);
           }
 
-          toast(`✓ Đã khớp học sinh "${tempStu.name}" vào hồ sơ gốc "${masterStu.name}".`);
+          toast(`✓ Đã khớp ${originLabel} ("${tempStu.name}") vào hồ sơ gốc "${masterStu.name}".`);
           renderOfficeInboxContent();
           ctx.refreshAllActiveViews?.();
         });
@@ -7984,12 +8127,13 @@ export function setupFeatures(ctx) {
       container.querySelectorAll('[data-inbox-confirm-new-btn]').forEach(btn => {
         btn.addEventListener('click', () => {
           const sid = btn.dataset.inboxConfirmNewBtn;
+          const originCls = btn.dataset.originClass || '';
           const stu = getStudents().find(s => s.id === sid);
           if (!stu) return;
           stu._matchedOrConfirmed = true;
           stu.tags = (stu.tags || []).filter(t => t !== 'Mới');
           saveStudentRecords(getStudents(), ctx.getMakeupStudents ? ctx.getMakeupStudents() : []);
-          toast(`✓ Đã xác nhận học sinh "${stu.name}" là học sinh chính thức.`);
+          toast(`✓ Đã xác nhận giữ "${stu.name}" làm học sinh mới chính thức của lớp ${originCls}.`);
           renderOfficeInboxContent();
           ctx.refreshAllActiveViews?.();
         });
@@ -8413,7 +8557,11 @@ export function setupFeatures(ctx) {
   $('#close-student-class-profile-btn')?.addEventListener('click', () => $('#student-class-profile-dialog')?.close());
 
   // Hook master student directory filters
-  $('#master-student-search')?.addEventListener('input', renderMasterStudentDirectory);
+  let _masterStudentSearchDebounce = null;
+  $('#master-student-search')?.addEventListener('input', () => {
+    clearTimeout(_masterStudentSearchDebounce);
+    _masterStudentSearchDebounce = setTimeout(renderMasterStudentDirectory, 90);
+  });
   $('#master-grade-filter')?.addEventListener('change', renderMasterStudentDirectory);
   $('#master-class-filter')?.addEventListener('change', renderMasterStudentDirectory);
   $('#export-all-students-csv-btn')?.addEventListener('click', exportAllStudentsCsv);

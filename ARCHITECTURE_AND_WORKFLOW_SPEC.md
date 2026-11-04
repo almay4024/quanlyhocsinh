@@ -312,6 +312,35 @@ Trên Firebase Realtime Database, dữ liệu được phân tách theo từng p
 3. **Tài khoản Quản trị viên (`admin`):**
    * Toàn quyền trên toàn hệ thống, bao gồm Quản lý Nhân sự & Cấp/Đổi/Xem mật khẩu (`#mgmt-panel-staff`), khóa tài khoản nhân viên (tự động thu hồi phiên đăng nhập trên mọi thiết bị nhờ `authVersion`) và xem/xuất **Nhật ký Admin Log (`#mgmt-panel-admin-log`)**.
 
+### 5.2. Cơ chế Xác thực Nâng cao Firebase Authentication Server-Side & Khóa Database Rules
+
+Để bảo vệ tuyệt đối cơ sở dữ liệu trên Firebase Realtime Database và ngăn chặn hoàn toàn việc rò rỉ dữ liệu hoặc can thiệp trái phép:
+
+1. **Khóa Chặt Quy tắc Bảo mật Realtime Database (`auth != null`):**
+   * Chuyển đổi toàn bộ quy tắc database từ chế độ truy cập mở (`.read: true, .write: true`) sang yêu cầu xác thực nghiêm ngặt:
+     ```json
+     {
+       "rules": {
+         "lopvui_cloud_v3": {
+           ".read": "auth != null",
+           ".write": "auth != null"
+         }
+       }
+     }
+     ```
+   * Mọi yêu cầu REST hoặc WebSocket chưa đăng nhập đều bị máy chủ Firebase từ chối ngay lập tức với mã lỗi `401 Unauthorized / Permission denied`.
+2. **Cơ chế Ánh xạ Email Định danh Nội bộ (`.tct@gmail.com`):**
+   * Người dùng không cần nhớ hay nhập địa chỉ email dài dòng. Trên giao diện Đăng nhập, nhân sự chỉ cần nhập **Mã nhân viên (Username)** (ví dụ: `AD001`, `CONGNT`, `GIANGNH`) và **Mật khẩu**.
+   * Hệ thống tự động chuyển đổi ngầm thông qua hàm chuẩn hóa `codeToAuthEmail(rawCode)` trong `src/data/firebase-auth.js`:
+     $$\text{Email Firebase} = \text{lowercase}(\text{staffCode}) + \text{".tct@gmail.com"}$$
+     *(Ví dụ: mã `CONGNT` $\rightarrow$ email `congnt.tct@gmail.com`, mã `AD001` $\rightarrow$ email `ad001.tct@gmail.com`)*.
+3. **Tự động Cấp Tài khoản Firebase Authentication khi Tạo Nhân sự Mới:**
+   * Trong module Quản lý Nhân sự, khi Quản trị viên (`admin`) thêm một nhân viên mới, hệ thống tự động gọi `createStaffAuthAccount(code, password)` để khởi tạo đồng thời tài khoản trên Firebase Authentication, đảm bảo nhân sự mới có thể đăng nhập ngay mà không cần thao tác thủ công trên Firebase Console.
+4. **Cơ chế Đổi Mật Khẩu Tự Phục Vụ Trực Tiếp Trên Web (`updateSelfPassword`):**
+   * Nhân viên có thể tự đổi mật khẩu cá nhân trực tiếp trên giao diện web. Hệ thống đồng bộ 2 chiều:
+     1. Cập nhật mật khẩu mã hóa trên Firebase Authentication thông qua `updatePassword(auth.currentUser, newPassword)`.
+     2. Băm mật khẩu bằng PBKDF2/SHA-256 (`hashStaffPassword`) và lưu vào danh mục nhân sự `masterData.employees` trên đám mây, đảm bảo tính nhất quán giữa cơ sở dữ liệu và hệ thống xác thực máy chủ.
+
 ---
 
 ## 6. KIẾN TRÚC PHẢN HỒI 0ms (OPTIMISTIC UI), HÀNG ĐỢI OFFLINE/ONLINE & ĐỒNG BỘ FIREBASE
@@ -341,6 +370,35 @@ Trên thanh Topbar của ứng dụng, hiển thị rõ ràng trạng thái kế
   * Viền cam nổi bật `#f59e0b`, nền vàng nhạt `#fffbeb`, chữ cam đậm `#92400e` + Nhãn: **`• Ngoại tuyến · Lưu tạm X thay đổi`**.
   * Mọi thao tác điểm danh, thu BTVN, nhập điểm khi rớt mạng đều được ghi vào `class_mgr.sync.offline_queue.v1` (trong cả `LocalStorage` và `IndexedDB`).
   * Ngay khi có mạng trở lại (sự kiện `window.ononline` hoặc kết nối lại Wi-Fi/4G), hệ thống tự động hợp nhất theo thuật toán **CRDT Timestamp/Revision Merge** (không ghi đè mất dữ liệu của máy khác) và đẩy toàn bộ hàng đợi lên Firebase, sau đó chuyển lại sang trạng thái **`• Đã đồng bộ`**.
+
+### 6.3. Chuyển Đổi Sang Firebase Realtime Database Web SDK Chính Thức (Thay Thế REST EventSource)
+
+Để giải quyết bài toán cốt tử về thời gian sống của token xác thực và sự ổn định của kết nối thời gian thực:
+
+1. **Vấn đề của REST EventSource Cũ (Token Expiration sau 1 giờ):**
+   * Trong phương án REST EventSource truyền thống, Firebase ID Token được đính kèm vào URL (`?auth=<token>`). Token này bắt buộc hết hạn sau đúng 60 phút. Khi đó, kết nối EventSource tự động ngắt và khi kết nối lại sẽ bị từ chối với lỗi `401 Unauthorized` / `403 Forbidden`.
+2. **Giải pháp Realtime Database Web SDK v10 Modular (`src/data/firebase-auth.js`):**
+   * Ứng dụng nạp trực tiếp SDK chính thức từ Google CDN (`https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js`), sử dụng giao thức WebSocket 2 chiều có kiểm soát:
+     * `onValue(ref, callback)`: Lắng nghe thay đổi biến động đám mây qua WebSocket thời gian thực.
+     * `update(ref, data)` & `get(ref)`: Thực hiện các lệnh đẩy hoặc tải dữ liệu an toàn.
+   * **Tự động làm mới Token ngầm (Automatic Token Refresh):** SDK tự động xử lý việc làm mới Firebase ID Token trong nền mà không làm gián đoạn kết nối WebSocket và không yêu cầu ứng dụng phải tự quản lý việc ngắt/mở lại kết nối.
+3. **Ổn Định Hóa Bộ Thăm Dò Ngầm (Adaptive Cloud Polling Fix):**
+   * Độc lập hóa việc đánh giá trạng thái kết nối (`_isSseHealthy`): Khi hàm unsubscribe của SDK đang hoạt động, hệ thống không coi kết nối là lỗi chỉ vì sau 60 giây không có ai sửa dữ liệu trên đám mây, loại bỏ hoàn toàn tình trạng tái kết nối lặp đi lặp lại mỗi 2.5 giây gây gián đoạn giao diện.
+
+### 6.4. Tối Ưu Hóa Khử Giật Lag / Trễ Khi Gõ Phím Trên Toàn Bộ Ô Nhập Liệu (Zero-Latency Typing)
+
+Nhằm loại bỏ hoàn toàn độ trễ (delay nhẹ khi gõ từ bàn phím) trên tất cả các ô nhập liệu, danh sách và ô ghi chú:
+
+1. **Tách Rời Sự Kiện Phím (`keydown`) Khỏi Luồng Thăm Dò Hoạt Động (`_markUserActive`):**
+   * Trước đây, sự kiện `keydown` trên toàn cửa sổ gọi `_markUserActive`, dẫn đến việc mỗi khi người dùng bấm phím hệ thống lại kiểm tra kết nối và có thể kích hoạt kéo dữ liệu từ đám mây (`pullFromFirebaseCloudNow`), gây giật khung hình.
+   * Danh sách lắng nghe được rút gọn chỉ còn `['pointerdown', 'touchstart']` (tương tác chuột/chạm). Việc gõ phím của người dùng hoàn toàn không kích hoạt thăm dò đám mây.
+2. **Cơ chế Debounce Toàn Diện Trên Mọi Trường Dữ Liệu:**
+   * **Các trường Checklist & Ghi chú (`[data-checklist-field]`, `#session-note`, `#handover-person`):** Áp dụng debounce $220\text{–}250\text{ ms}$. Chỉ ghi vào LocalStorage và cập nhật trạng thái khi người dùng ngừng gõ hoặc khi rời khỏi ô (`blur`).
+   * **Các ô Tìm kiếm (`#student-search`, `#late-search`, `#match-master-search-input`, `#cross-makeup-search-input`, `#scores-tab-search`, `#master-student-search`, `#staff-search-input`):** Áp dụng debounce $75\text{–}90\text{ ms}$, ngăn chặn việc duyệt regex và vẽ lại toàn bộ cây DOM sau từng ký tự đơn lẻ.
+   * **Ô Ghi chú Hồ sơ Buổi học (`#student-session-profile-content`):** Áp dụng debounce $220\text{ ms}$ và loại bỏ lệnh gọi `render()` vẽ lại toàn bộ sơ đồ lớp khi đang chỉnh sửa văn bản ghi chú hoặc điểm số.
+3. **Chống Tràn Tính Toán Bố Cục Trong Ô Textarea Co Giãn (`autoResizeNoteTextareas`):**
+   * Trước đây, hàm resize đặt `ta.style.height = 'auto'` rồi mới đọc `ta.scrollHeight`, buộc trình duyệt phải tính toán lại bố cục (forced reflow/layout thrashing) 2 lần trên mỗi ký tự.
+   * Giải pháp mới: Điều chỉnh chiều cao thông qua `window.requestAnimationFrame`, chỉ cập nhật `style.height` khi chiều cao thực tế thay đổi vượt quá $3\text{ px}$, giữ cho thao tác gõ văn bản đạt tốc độ phản hồi $60\text{ fps}$ mượt mà.
 
 ---
 
@@ -432,27 +490,48 @@ Khi Giáo viên đứng trên bục giảng và bấm nút **`Góc nhìn Giáo v
 
 ## 9. ĐẶC TẢ HỘP VIỆC VĂN PHÒNG (OFFICE ACTION INBOX), ĐỒNG BỘ GOOGLE SHEETS ĐA KHÓA & KHỚP HỒ SƠ
 
-### 9.1. Hộp Việc Cần Xử Lý Của Văn Phòng (`Office Action Inbox`)
+### 9.1. Hộp Việc Cần Xử Lý Của Văn Phòng (`Office Action Inbox`) & Quy Chuẩn Ghi Rõ Lớp Gốc
 
 Dành riêng cho tài khoản **Văn phòng (`office`)** và **Admin (`admin`)**, hiển thị ngay tại trang Quản lý và có nút truy cập nhanh kèm Badge số đếm đơn giản trên thanh Topbar:
 
-1. **Tab 1 — Học sinh Mới & Học bù Chờ Khớp Mã HS (`Pending TA Entries`):**
+1. **Quy chuẩn Ghi Rõ Nguồn Lớp Gốc Khi Khớp Học Sinh Mới / Học Bù:**
+   * Khi Trợ giảng ghi nhận học sinh tại bất kỳ ca học nào, hệ thống **bắt buộc ghi nhận và hiển thị rõ ràng thông tin nguồn gốc lớp học**:
+     * Thẻ ứng viên trong Hộp việc Văn phòng hiển thị nhãn nổi bật: **`📌 Khớp từ: Học sinh mới của lớp 2K9.H3.GIANGNH`** hoặc **`📌 Khớp từ: Học sinh học bù của lớp 2K9.H3.GIANGNH`**.
+     * Badge phân loại đi kèm: `[Mới (2K9.H3.GIANGNH)]` hoặc `[Học bù (2K9.H3.GIANGNH)]`.
+     * Trong hộp thoại Khớp dữ liệu (`#match-student-master-dialog`), danh sách lựa chọn học sinh tạm hiển thị rõ tiền tố lớp: `[HS mới của lớp 2K9.H3.GIANGNH] Nguyễn Văn A — THPT Kim Liên`.
+     * Trong hộp thoại xác nhận và thông báo Toast sau khi khớp: hiển thị rõ câu thông báo chuẩn: `✓ Đã khớp học sinh mới của lớp 2K9.H3.GIANGNH ("Nguyễn Văn A") vào hồ sơ gốc "Nguyễn Văn A" (K09.1234)`.
+2. **Tab 1 — Học sinh Mới & Học bù Chờ Khớp Mã HS (`Pending TA Entries`):**
    * Tự động gom toàn bộ các học sinh Mới (nhãn `[Mới]`) và Học bù (nhãn `[Học bù]`) do Trợ giảng nhập tay ở tất cả các ca học mà chưa được gắn với `Mã HS` trong danh sách tổng.
    * Hiển thị đối chiếu trực quan:
-     * **Bên trái:** Thông tin do Trợ giảng ghi nhận tại lớp (Họ tên, Lớp tham gia, Ngày học, Vị trí ghế, Điểm danh/Phút muộn, Trạng thái BTVN, Điểm BTVN/Test, Ghi chú).
+     * **Bên trái:** Thông tin do Trợ giảng ghi nhận tại lớp (Họ tên, Lớp ghi nhận buổi học, Ngày học, Vị trí ghế, Điểm danh/Phút muộn, Trạng thái BTVN, Điểm BTVN/Test, Ghi chú).
      * **Bên phải:** Danh sách gợi ý thông minh các học sinh trong Danh bạ tổng / Google Sheets có tên, trường hoặc SĐT gần giống nhất.
    * Khi Văn phòng bấm **`Khớp & Gộp vào Hồ sơ gốc`**:
      * Nếu là **Học sinh mới** mà hồ sơ gốc trên Google Sheets đang ở lớp khác, hệ thống hỏi Văn phòng: `Chuyển sang lớp mới này (Bảo lưu lịch sử lớp cũ)` hay `Học song song cả 2 lớp`.
      * Toàn bộ dữ liệu buổi học do Trợ giảng nhập được đính chính xác vào hồ sơ gốc có `Mã HS` chuẩn, đồng thời xóa bản ghi tạm để không bao giờ bị trùng tên.
-2. **Tab 2 — Thay đổi Lớp học & Học sinh Mới Phát hiện từ Google Sheets (`Pending Sheet Changes`):**
+3. **Tab 2 — Thay đổi Lớp học & Học sinh Mới Phát hiện từ Google Sheets (`Pending Sheet Changes`):**
    * Gom toàn bộ các học sinh được hệ thống phát hiện có sự thay đổi cột `Mã lớp` trên Google Sheets (ví dụ học sinh xin chuyển từ lớp Thứ 5 sang lớp Thứ 3 trên Sheet) hoặc học sinh mới đăng ký trên Sheet chờ Văn phòng bấm **Duyệt**.
 
-### 9.2. Đồng bộ Google Sheets Đa Khóa (`2K9`, `2K10`, `2K11`, `2K12`...) Bán Tự Động
+### 9.2. Đồng bộ Google Sheets Đa Khóa Bán Tự Động & Giải Pháp Google Apps Script API Bridge
 
-1. **Quản lý Danh sách Nhiều Bảng Tổng Theo Từng Khóa (`Multi-Cohort Sheets Manager`):**
-   * Cho phép cấu hình nhiều bảng Google Sheets tương ứng với từng khóa học sinh (`Khóa 2K9`, `Khóa 2K10`, `Khóa 2K11`, `Khóa 2K12`...). Mỗi khóa có thể là một link Spreadsheet riêng hoặc một `sheetName` / `gid` riêng.
-   * Hỗ trợ nút **`Quét Tất Cả Các Khóa`** (hoặc quét từng khóa / dán nhanh `Ctrl+V` vùng dữ liệu từ Sheet).
-2. **Quy tắc Duyệt Bán Tự Động & Bảo Toàn 100% Lịch Sử Học Sinh:**
+1. **Quản lý Danh Sách Nhiều Trang Tính / Sheet Đồng Bộ (`Multi-Sheet Manager`):**
+   * Cung cấp bảng quản lý danh sách nhiều trang tính trực tiếp trong menu Cấu hình (`#sheets-multi-cohort-details`), cho phép thêm, sửa, xóa, và gán link/GID riêng cho từng khóa:
+     * Khóa `2K9` (Sheet Name / GID: `2K9`, `0`)
+     * Khóa `2K10` (Sheet Name / GID: `2K10`, `0`)
+     * Khóa `2K11` (Sheet Name / GID: `2K11`, `0`)
+     * Khóa `2K12`, `2K13` và các sheet bổ sung (Sheet Tuyển sinh, Sheet Lớp Chuyên đề...).
+   * Hỗ trợ nút **`Quét tất cả các khóa (2K9 - 2K13)`** hoặc nút **`Quét riêng sheet này`** cho từng dòng trong bảng quản lý.
+2. **Giải Pháp Vượt Rào Cản Quyền Riêng Tư Bằng Google Apps Script Web App (API Bridge):**
+   * **Nguyên nhân sự cố quyền truy cập:** Khi Google Sheet thuộc tài khoản cơ quan/tổ chức (như `@hust.edu.vn`) có chế độ bảo mật nội bộ chỉ cho phép một số tài khoản truy cập, các yêu cầu đọc trực tiếp từ trình duyệt của máy khác sẽ bị trả về lỗi `401 Unauthorized` hoặc `403 Forbidden`.
+   * **Giải pháp Google Apps Script Web App:**
+     * Triển khai một script nhỏ (`Code.gs`) chạy dưới dạng Web App với cấu hình:
+       * *Thực thi dưới dạng (Execute as):* **Tôi (Me / email chủ sở hữu có quyền xem sheet)**
+       * *Ai có quyền truy cập (Who has access):* **Bất kỳ ai (Anyone)**
+     * Apps Script hoạt động như một REST API trung gian: nhận yêu cầu từ ứng dụng web, dùng quyền hạn nội bộ của tài khoản để đọc/ghi dữ liệu trên Google Sheets (hỗ trợ `readAllSheets`, `readSheetByCode`, `syncStudentsByCode`) và trả về JSON chuẩn cho ứng dụng mà không yêu cầu máy tính phòng học phải đăng nhập Google.
+   * **Hỗ trợ Trực quan Trong Giao diện Ứng dụng:**
+     * Tích hợp tab **"📖 Hướng dẫn chi tiết: Dùng Google Apps Script khi Sheet bị giới hạn quyền truy cập"** ngay trong hộp thoại cấu hình.
+     * Cung cấp nút **`📋 Sao chép mã Google Apps Script mẫu`** (1-click copy toàn bộ template `Code.gs` chuẩn).
+     * Cung cấp nút **`🔍 Kiểm tra kết nối Apps Script ngay`** để kiểm tra tính khả dụng của Web App URL trong thời gian thực.
+3. **Quy tắc Duyệt Bán Tự Động & Bảo Toàn 100% Lịch Sử Học Sinh:**
    * Khi phát hiện học sinh đổi lớp trên Google Sheets, hệ thống hiển thị rõ trên Bảng Duyệt: **`Lớp gốc hiện tại (VD: TOAN9A) -> Lớp mới trên Sheet (VD: TOAN9B)`** kèm thông báo cho tài khoản Văn phòng / Admin.
    * Mặc định gắn tag **`Mới`** ở lớp chuyển đến (Văn phòng có thể tích/bỏ tích tag `Mới` ngay trên bảng duyệt trước khi bấm xác nhận).
    * Khi bấm **`✓ Duyệt & Cập nhật`**, hệ thống chuyển lớp cho học sinh, lưu lớp cũ vào `previousClassIds` & `classTransferHistory`, **giữ nguyên 100% dữ liệu điểm danh, điểm số, nhận xét ở lớp cũ** và tạo thông báo vào Nhật ký lớp học.
@@ -529,8 +608,11 @@ Tab **`Báo cáo buổi học`** nằm trực tiếp trên thanh điều hướn
   * Thêm công tắc `Chế độ Chép Sổ Giấy` tách cố định Danh sách lớp ở trên (theo `paperOrderIndex` có thể khóa/sửa STT) và Học sinh mới/Học bù ở dưới, hiển thị ký hiệu chuẩn (`✓`, `M15`, `VP`, `KP`).
   * Nâng cấp `#column-order-dialog` cho phép tích ẩn/hiện cột và đổi vị trí cột như Excel.
 * **Phase 4 — Khóa Bảo mật RBAC, Xây dựng Hộp việc Văn phòng & Đồng bộ Google Sheets Đa Khóa:**
-  * Chặn hoàn toàn việc lộ danh sách học sinh lớp khác đối với tài khoản Trợ giảng/Giáo viên khi nhập Học sinh mới/Học bù.
-  * Xây dựng **Hộp việc Cần xử lý của Văn phòng (`Office Action Inbox`)**, luồng khớp học sinh mới/học bù vào hồ sơ gốc và bộ đồng bộ Google Sheets đa khóa (`2K9`, `2K10`, `2K11`...) bán tự động.
+  * [x] Chặn hoàn toàn việc lộ danh sách học sinh lớp khác đối với tài khoản Trợ giảng/Giáo viên khi nhập Học sinh mới/Học bù.
+  * [x] Xây dựng **Hộp việc Cần xử lý của Văn phòng (`Office Action Inbox`)**, luồng khớp học sinh mới/học bù ghi rõ nguồn gốc lớp (`2K9.H3.GIANGNH`...) vào hồ sơ gốc.
+  * [x] Bộ đồng bộ Google Sheets đa khóa / đa trang tính (`Multi-Cohort Sheets`), hỗ trợ Google Apps Script API Bridge vượt rào cản phân quyền tài khoản tổ chức.
+  * [x] Bảo mật Firebase Authentication server-side (`.tct@gmail.com`), Database Rules `auth != null`, Realtime Database Web SDK WebSocket và tự động cấp tài khoản khi thêm nhân sự mới.
+  * [x] Kiến trúc Zero-Latency Typing khử giật lag / layout reflow trên toàn bộ ô nhập liệu, danh sách và textarea.
 * **Phase 5 — Chuyển Báo cáo thành Tab Chính (`#report-view`) & Thanh Trạng thái Offline/Online Queue:**
   * Đưa `Báo cáo buổi học` thành Tab chính trong màn hình ca học với 5 bảng cảnh báo trực quan, khung xem trước Zalo 1 chạm và xuất file `.doc` (Google Docs), `.xlsx`, Google Sheets.
   * Hiển thị thanh trạng thái Offline/Online kèm số thay đổi đang lưu trong hàng đợi trên Topbar.
@@ -553,8 +635,8 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 - [ ] **1.5. Trợ năng & Điều hướng Bàn phím (Accessibility):** Mọi nút tương tác có kích thước chạm tối thiểu $40\text{ px}\times 40\text{ px}$ và đầy đủ `aria-label`; nhấn `Enter` trong ô tìm kiếm chọn ngay học sinh đầu tiên; nhấn `Enter` hoặc `ArrowDown`/`ArrowUp` trong bảng điểm di chuyển mượt giữa các dòng; nhấn `Escape` đóng hộp thoại; nhấn `Ctrl+Z` (hoặc nút `Hoàn tác`) khôi phục thao tác sơ đồ lớp vừa thực hiện.
 
 #### Nhóm 2: Hiệu năng Phản hồi Tức thì ($< 16\text{ ms}$), Lưu trữ & Đồng bộ Thời gian thực / Ngoại tuyến
-- [ ] **2.1. Phản hồi $0\text{ ms}$ trên máy đang thao tác (Optimistic UI):** Khi Trợ giảng bấm liên tiếp vào dấu `+` trên bàn, chọn học sinh trong `#seat-dialog`, bấm `Thu BTVN` cả dãy hoặc nhập điểm BTVN: hộp thoại đóng ngay lập tức và thẻ bàn (`.desk`) cập nhật giao diện trong $< 16\text{ ms}$ mà không phải chờ mã hóa toàn bộ danh sách hay chờ mạng phản hồi.
-- [ ] **2.2. Không mất con trỏ khi đang gõ:** Khi thiết bị A đang gõ ghi chú hoặc nhập điểm trong bảng mà nhận được gói tin đồng bộ từ thiết bị B, giá trị của các học sinh khác tự động cập nhật nhưng ô `input`/`textarea` đang `focus` trên thiết bị A tuyệt đối không bị mất con trỏ hay xóa chữ đang gõ dở.
+- [x] **2.1. Phản hồi $0\text{ ms}$ trên máy đang thao tác (Optimistic UI) & Zero-Latency Typing:** Ngắt hoàn toàn sự kiện gõ phím (`keydown`) khỏi chu kỳ thăm dò đám mây `pullFromFirebaseCloudNow`, debounce tối ưu các ô tìm kiếm ($75\text{–}90\text{ ms}$) và trường checklist ($220\text{–}250\text{ ms}$), loại bỏ triệt để hiện tượng layout thrashing (`ta.style.height = 'auto'`) trong `autoResizeNoteTextareas`, chuyển sang `requestAnimationFrame` và chỉ cập nhật DOM khi chênh lệch $\ge 3\text{ px}$.
+- [x] **2.2. Không mất con trỏ khi đang gõ:** Khi thiết bị A đang gõ ghi chú hoặc nhập điểm trong bảng mà nhận được gói tin đồng bộ từ thiết bị B, giá trị của các học sinh khác tự động cập nhật nhưng ô `input`/`textarea` đang `focus` trên thiết bị A tuyệt đối không bị mất con trỏ hay xóa chữ đang gõ dở.
 - [ ] **2.3. Hợp nhất Đa thiết bị Không Ghi Đè (CRDT & Tombstone Merge):** Khi 2 trợ giảng trên 2 máy cùng điểm danh 2 bàn khác nhau hoặc cùng sửa dữ liệu trong 1 ca học, hệ thống gộp chính xác theo từng `entryId`/`studentId` và `_updatedAt`. Khi một ghế hoặc học sinh bị xóa khỏi sơ đồ trên máy A, cơ chế `tombstones` đảm bảo ghế đó không bao giờ bị hồi sinh ngược từ bản lưu cũ của máy B.
 - [ ] **2.4. Hoạt động Ngoại tuyến (Offline-First) & Vượt trần 5MB Safari:** Khi ngắt mạng Wi-Fi/4G, thanh trạng thái trên Topbar chuyển sang `• Ngoại tuyến · Lưu tạm X thay đổi`; mọi thao tác điểm danh, BTVN, nhập điểm vẫn lưu an toàn vào RAM + IndexedDB + LocalStorage. Ngay khi bật mạng lại, hệ thống tự động đẩy toàn bộ hàng đợi lên Firebase và báo `• Đã đồng bộ`.
 
@@ -580,7 +662,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 - [ ] **3.7. Chế độ Giáo viên (`Góc nhìn Giáo viên`):** Lật ngược 180 độ toàn bộ sơ đồ lớp (Bảng ở dưới, Cuối lớp ở trên, đảo chiều các dãy Trái-Phải và ghế Trái-Phải) kèm thanh lọc làm nổi bật nhanh các học sinh `Chưa nộp BTVN hôm nay`, `Điểm thấp / Nợ bài buổi trước` và `Cảnh báo Mức 1–4`.
 
 #### Nhóm 4: Bảo mật Phân quyền (Strict RBAC) & Luồng Học sinh Mới / Học bù
-- [ ] **4.1. Bảo mật Đăng nhập & Thu hồi Phiên tức thì:** Đăng nhập bằng Mã nhân viên và Mật khẩu; không hiển thị danh sách tài khoản trên màn hình đăng nhập. Khi Admin đổi mật khẩu, đổi vai trò hoặc khóa tài khoản (`Tạm khóa`), mọi thiết bị đang đăng nhập tài khoản đó tự động bị thu hồi phiên và đưa về màn hình đăng nhập.
+- [x] **4.1. Bảo mật Đăng nhập Firebase Authentication & Thu hồi Phiên tức thì:** Đăng nhập an toàn kết nối Firebase Auth server-side (`[username].tct@gmail.com`), Realtime Database Rules khóa truy cập ở mức `"auth != null"`, Realtime Database Web SDK duy trì kết nối WebSocket bền vững, tự động cấp tài khoản Auth khi thêm nhân viên mới và hỗ trợ đổi mật khẩu an toàn ngay trên giao diện web.
 - [ ] **4.2. Cô lập Dữ liệu theo Lớp Phụ Trách:** Tài khoản Trợ giảng (`assistant`) và Giáo viên (`teacher`) chỉ nhìn thấy các lớp mình được phân công và chỉ tìm kiếm được học sinh thuộc đúng lớp đang mở. Không thể xem Danh bạ Học sinh toàn trung tâm hay học sinh của các lớp khác.
 - [ ] **4.3. Form Nhập tay Học sinh Mới / Học bù (Không lộ dữ liệu trung tâm):** Khi Trợ giảng bấm `+ Học sinh mới / Học bù` trong `#seat-dialog` hoặc `#late-dialog`, chỉ hiển thị form nhập tay (`Họ và tên`, `Trường học` / `Lớp gốc`, `Tên/SĐT Phụ huynh`). Tự động gắn tag `Mới` và ghi chú buổi học `Học sinh mới` cho học sinh mới tạo.
 - [ ] **4.4. Xóa học sinh khỏi ghế (`#clear-seat`) & Đồng bộ Bất biến Sơ đồ $\leftrightarrow$ Điểm danh:**
@@ -611,12 +693,14 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 - [ ] **6.3. Quản lý Ca học Quá khứ & Xóa Ca học:** Cho phép thêm bổ sung ca học trong quá khứ, sửa thông tin/ngày học của ca cũ, hoặc xóa ca học (xóa sạch dữ liệu buổi học đó khỏi hồ sơ học sinh nhưng vẫn lưu vết thao tác trong Nhật ký Admin Log).
 
 #### Nhóm 7: Hộp việc Văn phòng (Office Action Inbox), Đồng bộ Google Sheets Đa Khóa & Chuyển Lớp
-- [ ] **7.1. Hộp việc Cần xử lý của Văn phòng (`Office Action Inbox`) & Khớp Hồ sơ:**
+- [x] **7.1. Hộp việc Cần xử lý của Văn phòng (`Office Action Inbox`) & Khớp Hồ sơ Ghi Rõ Nguồn Gốc Lớp:**
   - Tự động gom toàn bộ Học sinh mới & Học bù do Trợ giảng nhập tay trong các ca học để Văn phòng kiểm tra và bấm `Khớp & Lưu dữ liệu` vào đúng học sinh trong Danh sách tổng (tự động đẩy các hồ sơ trùng tên / SĐT phụ huynh / trường lên đầu danh sách gợi ý).
+  - Ghi nhận và hiển thị minh bạch nguồn gốc lớp khi khớp: ví dụ `Học sinh mới của lớp 2K9.H3.GIANGNH` hoặc `Học sinh học bù của lớp 2K9.H3.GIANGNH` trên danh sách, thanh công cụ, badge, dropdown và thông báo toast.
   - Sau khi bấm khớp: toàn bộ vị trí ngồi, trạng thái điểm danh, phút muộn, BTVN, điểm BTVN/Test và ghi chú của buổi học đó được gộp nguyên vẹn vào hồ sơ gốc có `Mã HS` chuẩn, đồng thời xóa bản ghi tạm do Trợ giảng tạo.
   - Nếu là Học sinh mới mà hồ sơ gốc đang ở lớp khác, hiển thị hộp thoại hỏi Văn phòng: `Chuyển lớp sang lớp mới này (Bảo lưu dữ liệu lớp cũ)`, `Thêm học song song cả 2 lớp`, hoặc `Chỉ đính dữ liệu buổi học`.
-- [ ] **7.2. Đồng bộ Google Sheets Đa Khóa (`2K9`, `2K10`, `2K11`, `2K12`...) Bán Tự Động:**
-  - Hỗ trợ cấu hình và quét dữ liệu từ nhiều bảng Google Sheets theo từng khóa (qua Link Google Sheets công khai, qua Google Apps Script Web App URL, qua tải file `.xlsx`/`.csv`, hoặc dán trực tiếp `Ctrl+V`).
+- [x] **7.2. Đồng bộ Google Sheets Đa Khóa (`2K9`, `2K10`, `2K11`, `2K12`...) & Cầu Nối Google Apps Script API Bridge:**
+  - Hỗ trợ cấu hình và quét dữ liệu từ nhiều trang tính (`Multi-Cohort Sheets`) theo từng khóa trong bảng tính.
+  - Cung cấp mã nguồn Google Apps Script Web App và hướng dẫn 6 bước tích hợp trực quan trong menu để vượt qua 100% rào cản phân quyền cho tài khoản tổ chức/trường học.
   - Tự động đối chiếu theo `Mã HS` (và tên + SĐT) để phát hiện 3 nhóm cần duyệt: `Học sinh mới`, `Khác lớp gốc (Chuyển lớp)` và `Cập nhật Mã HS / Thông tin`.
   - Trên bảng duyệt của Văn phòng: mặc định gắn tag `Mới` cho học sinh mới và học sinh chuyển lớp, nhưng có nút tích chọn/bỏ chọn tag `Mới` cho từng em hoặc tất cả trước khi bấm `✓ Duyệt & Cập nhật`.
 - [ ] **7.3. Bảo toàn 100% Dữ liệu Học sinh khi Chuyển lớp:** Khi học sinh chuyển từ lớp A sang lớp B (qua duyệt Google Sheets hoặc qua nút `Chuyển lớp`), mã lớp A được chuyển vào `previousClassIds` & `classTransferHistory`. Khi mở Hồ sơ học sinh theo lớp (`#student-class-profile-dialog`), vẫn hiển thị tab `Lớp cũ` để xem lại đầy đủ 100% lịch sử điểm danh, điểm BTVN/Test và nhận xét tại lớp A.

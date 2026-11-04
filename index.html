@@ -1612,6 +1612,89 @@
             </label>
           </div>
         </details>
+
+        <!-- 1.1. QUẢN LÝ NHIỀU SHEET / TRANG TÍNH (MULTI-SHEET CONFIGURATION) -->
+        <details id="sheets-multi-cohort-details" style="margin-top:10px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:10px 14px;">
+          <summary style="cursor:pointer; font-weight:800; color:#166534; font-size:13.5px; display:flex; justify-content:space-between; align-items:center;">
+            <span>Quản lý Nhiều Trang Tính / Sheet (Hỗ trợ quét đa khóa: 2K9, 2K10, 2K11, 2K12, 2K13 hoặc thêm sheet riêng)</span>
+            <span style="font-size:12px; font-weight:700; background:#dcfce7; color:#15803d; padding:2px 8px; border-radius:999px;">Tùy chỉnh danh sách sheet</span>
+          </summary>
+          <div style="margin-top:10px;">
+            <p style="font-size:12.5px; color:#334155; margin:0 0 8px;">Mỗi dòng tương ứng 1 trang tính (Sheet Tab) hoặc 1 file Google Sheet riêng biệt. Bạn có thể thêm bất kỳ khóa hoặc sheet lớp nào:</p>
+            <div class="attendance-table-wrap" style="max-height:220px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff;">
+              <table style="width:100%; font-size:12.5px; border-collapse:collapse;">
+                <thead>
+                  <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0; text-align:left;">
+                    <th style="padding:6px 10px;">Tên Khóa / Sheet</th>
+                    <th style="padding:6px 10px;">Tên Tab (Sheet Name)</th>
+                    <th style="padding:6px 10px;">GID</th>
+                    <th style="padding:6px 10px;">Link / Spreadsheet ID (Để trống = dùng Link chung)</th>
+                    <th style="padding:6px 10px; text-align:center; width:140px;">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="sheets-multi-cohort-tbody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+            <!-- Form thêm sheet mới -->
+            <div style="display:grid; grid-template-columns:120px 140px 90px 1fr auto; gap:8px; margin-top:8px; align-items:center;">
+              <input id="sheets-new-cohort-name" placeholder="Tên (VD: 2K14)" style="padding:6px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px;" />
+              <input id="sheets-new-cohort-tab" placeholder="Tab (VD: 2K14)" style="padding:6px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px;" />
+              <input id="sheets-new-cohort-gid" placeholder="GID (0)" style="padding:6px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px;" />
+              <input id="sheets-new-cohort-url" placeholder="Link/ID riêng (Tùy chọn, để trống = link chung)" style="padding:6px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px;" />
+              <button type="button" class="outline-button" id="sheets-add-cohort-btn" style="padding:6px 12px; font-size:12px; font-weight:700; background:#ffffff; color:#15803d; border-color:#86efac;">+ Thêm Sheet</button>
+            </div>
+          </div>
+        </details>
+
+        <!-- 1.2. HƯỚNG DẪN CHI TIẾT APPS SCRIPT / API KHI BỊ GIỚI HẠN QUYỀN -->
+        <details id="sheets-apps-script-guide-details" style="margin-top:10px; background:#fffbeb; border:1.5px solid #fde68a; border-radius:10px; padding:10px 14px;">
+          <summary style="cursor:pointer; font-weight:800; color:#92400e; font-size:13.5px; display:flex; justify-content:space-between; align-items:center;">
+            <span>📖 Hướng dẫn chi tiết: Dùng Google Apps Script / API khi Sheet bị giới hạn quyền truy cập</span>
+            <span style="font-size:12px; font-weight:700; background:#fef3c7; color:#b45309; padding:2px 8px; border-radius:999px;">Bypass 403 / Tài khoản nội bộ</span>
+          </summary>
+          <div style="margin-top:10px; font-size:13px; color:#451a03; line-height:1.55;">
+            <div style="background:#ffffff; border:1px solid #fef08a; border-radius:8px; padding:10px 12px; margin-bottom:10px;">
+              <strong>Tại sao cần dùng Google Apps Script Web App?</strong>
+              <p style="margin:4px 0 0; color:#78350f; font-size:12.5px;">Nếu Google Sheet của trung tâm thuộc tài khoản tổ chức (như @hust.edu.vn hoặc tài khoản cơ quan) chỉ cấp quyền cho một số nhân viên, việc tải trực tiếp từ trình duyệt của máy khác sẽ bị báo lỗi <em>401 / 403 Forbidden</em>. Google Apps Script Web App đóng vai trò một cầu nối (API bridge) an toàn: script chạy dưới quyền tài khoản của bạn, tự động trích xuất hoặc ghi dữ liệu và trả về JSON cho phần mềm mà không yêu cầu máy tính tại phòng học phải đăng nhập Google.</p>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div><strong>Bước 1:</strong> Mở Google Sheet cần đồng bộ &gt; Trên thanh công cụ, chọn <strong>Tiện ích mở rộng (Extensions)</strong> &gt; <strong>Apps Script</strong>.</div>
+              <div><strong>Bước 2:</strong> Xóa toàn bộ mã mặc định trong tệp <code>Code.gs</code>, sau đó bấm nút bên dưới để copy và dán đoạn mã chuẩn vào:
+                <div style="margin-top:6px; display:flex; gap:8px; align-items:center;">
+                  <button type="button" class="primary-button" id="copy-apps-script-template-btn" style="padding:6px 14px; font-size:12px; background:#b45309;">
+                    📋 Sao chép mã Google Apps Script mẫu
+                  </button>
+                  <span id="copy-apps-script-status" style="font-size:12px; color:#15803d; font-weight:700;" hidden>✓ Đã copy vào bộ nhớ tạm!</span>
+                </div>
+              </div>
+              <div><strong>Bước 3:</strong> Nhấp nút <strong>Triển khai (Deploy)</strong> ở góc trên bên phải &gt; Chọn <strong>Tùy chọn triển khai mới (New deployment)</strong>.</div>
+              <div><strong>Bước 4:</strong> Bấm biểu tượng bánh răng ⚙ cạnh "Chọn loại" &gt; Chọn <strong>Ứng dụng web (Web app)</strong>:
+                <ul style="margin:4px 0 6px 20px; font-size:12.5px;">
+                  <li><em>Mô tả:</em> Dong bo Quan ly hoc sinh</li>
+                  <li><em>Thực thi dưới dạng (Execute as):</em> <strong>Tôi (Me / email của bạn)</strong></li>
+                  <li><em>Ai có quyền truy cập (Who has access):</em> <strong>Bất kỳ ai (Anyone)</strong> <em>(Rất quan trọng để phần mềm gọi được API không bị chặn)</em></li>
+                </ul>
+              </div>
+              <div><strong>Bước 5:</strong> Nhấp <strong>Triển khai (Deploy)</strong> &gt; Bấm <strong>Ủy quyền truy cập (Authorize access)</strong> chọn tài khoản Google của bạn &gt; Sao chép <strong>URL ứng dụng web (Web app URL)</strong> (đuôi kết thúc bằng <code>/exec</code>).</div>
+              <div><strong>Bước 6:</strong> Dán URL vừa sao chép vào ô <strong>"Google Apps Script Web App URL"</strong> ở mục 1 bên trên.
+                <div style="margin-top:6px; display:flex; gap:8px; align-items:center;">
+                  <button type="button" class="outline-button" id="test-apps-script-connection-btn" style="padding:5px 12px; font-size:12px; font-weight:700; background:#ffffff; border-color:#d97706; color:#b45309;">
+                    🔍 Kiểm tra kết nối Apps Script ngay
+                  </button>
+                  <span id="test-apps-script-result" style="font-size:12px; font-weight:700;"></span>
+                </div>
+              </div>
+            </div>
+
+            <details style="margin-top:10px; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px;">
+              <summary style="cursor:pointer; font-weight:700; font-size:12px; color:#334155;">Xem trước mã nguồn Google Apps Script (Code.gs)</summary>
+              <pre id="apps-script-preview-code" style="margin:8px 0 0; padding:8px; background:#0f172a; color:#f8fafc; border-radius:6px; font-size:11.5px; font-family:monospace; max-height:200px; overflow-y:auto; white-space:pre;"></pre>
+            </details>
+          </div>
+        </details>
       </div>
 
       <!-- 2. CÁC NÚT THAO TÁC QUÉT & ĐỒNG BỘ -->

@@ -1167,6 +1167,133 @@ export const DEFAULT_COHORTS = [
   { cohortName: '2K13', birthYear: 2013, sheetUrl: '', spreadsheetId: '', sheetName: '2K13', gid: '0' }
 ];
 
+export const GOOGLE_APPS_SCRIPT_BRIDGE_CODE = `/**
+ * GOOGLE APPS SCRIPT CHO HỆ THỐNG QUẢN LÝ HỌC SINH
+ * Hỗ trợ Đọc/Ghi dữ liệu 2 chiều theo Mã HS qua nhiều Sheet/Trang tính
+ * Vượt qua rào cản tài khoản bị giới hạn quyền truy cập hoặc hạn chế miền tổ chức
+ *
+ * HƯỚNG DẪN TRIỂN KHAI (5 BƯỚC):
+ * 1. Trên Google Sheet, vào: Tiện ích mở rộng (Extensions) > Apps Script
+ * 2. Xóa code cũ và dán toàn bộ đoạn mã này vào.
+ * 3. Bấm "Triển khai" (Deploy) > "Tùy chọn triển khai mới" (New deployment).
+ * 4. Chọn loại: "Ứng dụng web" (Web app).
+ *    - Thực thi dưới dạng (Execute as): "Tôi" (Me / email của bạn)
+ *    - Ai có quyền truy cập (Who has access): "Bất kỳ ai" (Anyone)
+ * 5. Bấm "Triển khai" > Cấp quyền (Authorize) > Copy "URL ứng dụng web" dán vào phần mềm.
+ */
+
+function doPost(e) {
+  return handleRequest(e);
+}
+
+function doGet(e) {
+  return handleRequest(e);
+}
+
+function handleRequest(e) {
+  try {
+    var raw = e && e.postData ? e.postData.contents : '';
+    var params = raw ? JSON.parse(raw) : (e && e.parameter ? e.parameter : {});
+    var action = params.action || 'readSheetByCode';
+    var spreadsheetId = params.spreadsheetId;
+    var ss = spreadsheetId ? SpreadsheetApp.openById(spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet();
+
+    // 1. Kiểm tra kết nối nhanh (Ping)
+    if (action === 'ping') {
+      return respondJson({ ok: true, success: true, message: 'Kết nối Google Apps Script thành công!' });
+    }
+
+    // 2. Đọc tất cả các sheet / trang tính (Multi-sheet)
+    if (action === 'readAllSheets') {
+      var allSheets = ss.getSheets();
+      var sheetsData = [];
+      for (var s = 0; s < allSheets.length; s++) {
+        var sh = allSheets[s];
+        var data = sh.getDataRange().getValues();
+        sheetsData.push({
+          sheetName: sh.getName(),
+          gid: String(sh.getSheetId()),
+          rowCount: data.length,
+          rows: data
+        });
+      }
+      return respondJson({ ok: true, success: true, totalSheets: sheetsData.length, sheets: sheetsData });
+    }
+
+    // 3. Đọc dữ liệu theo tên Sheet hoặc GID
+    if (action === 'readSheetByCode' || action === 'readSheet') {
+      var targetSheet = null;
+      if (params.sheetName) {
+        targetSheet = ss.getSheetByName(params.sheetName);
+      }
+      if (!targetSheet && params.gid !== undefined && params.gid !== '') {
+        var sheets = ss.getSheets();
+        for (var i = 0; i < sheets.length; i++) {
+          if (String(sheets[i].getSheetId()) === String(params.gid)) {
+            targetSheet = sheets[i];
+            break;
+          }
+        }
+      }
+      if (!targetSheet) targetSheet = ss.getSheets()[0];
+      var rows = targetSheet.getDataRange().getValues();
+      return respondJson({
+        ok: true,
+        success: true,
+        sheetName: targetSheet.getName(),
+        gid: String(targetSheet.getSheetId()),
+        rowCount: rows.length,
+        rows: rows
+      });
+    }
+
+    // 4. Đồng bộ / Đẩy danh sách học sinh lên Sheet theo Mã HS
+    if (action === 'syncStudentsByCode') {
+      var syncSheet = params.sheetName ? ss.getSheetByName(params.sheetName) : ss.getSheets()[0];
+      if (!syncSheet) syncSheet = ss.insertSheet(params.sheetName || 'DiemDanh');
+      var newRows = params.rows || [];
+      if (newRows.length > 0) {
+        syncSheet.clearContents();
+        if (params.headers && params.headers.length) {
+          syncSheet.appendRow(params.headers);
+        }
+        syncSheet.getRange(syncSheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
+      }
+      return respondJson({ ok: true, success: true, updatedCount: newRows.length });
+    }
+
+    return respondJson({ ok: false, error: 'Hành động không hợp lệ: ' + action });
+  } catch (err) {
+    return respondJson({ ok: false, error: err.toString() });
+  }
+}
+
+function respondJson(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+`;
+
+export function getGoogleAppsScriptTemplate() {
+  return GOOGLE_APPS_SCRIPT_BRIDGE_CODE;
+}
+
+export async function testGoogleAppsScriptConnection(scriptUrl, spreadsheetId = '') {
+  if (!scriptUrl) return { ok: false, message: 'Chưa nhập URL Google Apps Script.' };
+  try {
+    const resp = await fetch(scriptUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'ping', spreadsheetId })
+    });
+    if (!resp.ok) return { ok: false, message: `Lỗi máy chủ Google Apps Script: HTTP ${resp.status}` };
+    const data = await resp.json();
+    return { ok: Boolean(data?.ok || data?.success), message: data?.message || 'Kết nối thành công!' };
+  } catch (err) {
+    return { ok: false, message: `Không thể kết nối đến Apps Script: ${err?.message || err}` };
+  }
+}
+
 export function loadGoogleSheetsConfig(storage = localStorage) {
   const defaults = {
     spreadsheetId: '',
@@ -1420,15 +1547,61 @@ export async function pullStudentsFromGoogleSheetsMultiCohort(config, specificCo
   const cohorts = Array.isArray(config?.cohortSheets) ? config.cohortSheets : DEFAULT_COHORTS;
   const targetCohorts = specificCohort
     ? cohorts.filter(c => c.cohortName === specificCohort)
-    : cohorts.filter(c => c.spreadsheetId || c.sheetUrl || c.sheetName);
+    : cohorts.filter(c => c.spreadsheetId || c.sheetUrl || c.sheetName || c.gid);
 
   if (!targetCohorts.length) {
-    return pullStudentsFromGoogleSheets(config);
+    const singleRes = await pullStudentsFromGoogleSheets(config);
+    return {
+      ...singleRes,
+      totalRows: singleRes.rows ? singleRes.rows.length : 0,
+      cohortResults: [config.sheetName || 'Chính']
+    };
+  }
+
+  // Nếu có Apps Script URL và đang quét tất cả các sheet, thử gọi action: 'readAllSheets'
+  const scriptUrl = String(config?.scriptUrl || '').trim();
+  const spreadsheetId = extractSpreadsheetId(config?.spreadsheetId || config?.rawSheetUrl);
+  if (scriptUrl && !specificCohort && spreadsheetId) {
+    try {
+      const resp = await fetch(scriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'readAllSheets',
+          spreadsheetId
+        })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.ok && Array.isArray(data.sheets) && data.sheets.length) {
+          const allRows = [];
+          const cohortNames = [];
+          for (const sh of data.sheets) {
+            if (Array.isArray(sh.rows) && sh.rows.length) {
+              cohortNames.push(sh.sheetName);
+              const tagged = sh.rows.map(r => Array.isArray(r) ? [...r, sh.sheetName] : { ...r, cohort: sh.sheetName });
+              allRows.push(...tagged);
+            }
+          }
+          if (allRows.length) {
+            return {
+              success: true,
+              ok: true,
+              rows: allRows,
+              totalRows: allRows.length,
+              cohortResults: cohortNames,
+              source: 'apps-script-all-sheets',
+              message: `Đã đọc thành công ${allRows.length} học sinh từ ${cohortNames.length} trang tính qua Google Apps Script.`
+            };
+          }
+        }
+      }
+    } catch {}
   }
 
   const allRows = [];
   const errors = [];
-  let successCount = 0;
+  const successfulCohorts = [];
 
   for (const cohort of targetCohorts) {
     const subCfg = {
@@ -1440,7 +1613,7 @@ export async function pullStudentsFromGoogleSheetsMultiCohort(config, specificCo
     };
     const res = await pullStudentsFromGoogleSheets(subCfg);
     if (res.success && Array.isArray(res.rows) && res.rows.length) {
-      successCount++;
+      successfulCohorts.push(cohort.cohortName);
       const rowsWithCohort = res.rows.map(r => {
         if (Array.isArray(r)) {
           return [...r, cohort.cohortName];
@@ -1458,8 +1631,10 @@ export async function pullStudentsFromGoogleSheetsMultiCohort(config, specificCo
       success: true,
       ok: true,
       rows: allRows,
+      totalRows: allRows.length,
+      cohortResults: successfulCohorts,
       source: 'multi-cohort',
-      message: `Đã đọc thành công ${allRows.length} học sinh từ ${successCount}/${targetCohorts.length} khóa Google Sheets.`
+      message: `Đã đọc thành công ${allRows.length} học sinh từ ${successfulCohorts.length}/${targetCohorts.length} trang tính Google Sheets.`
     };
   }
 
@@ -1467,7 +1642,9 @@ export async function pullStudentsFromGoogleSheetsMultiCohort(config, specificCo
     success: false,
     ok: false,
     rows: [],
-    message: errors.length ? errors.join('; ') : 'Không tìm thấy dữ liệu từ các bảng khóa Google Sheets.'
+    totalRows: 0,
+    cohortResults: [],
+    message: errors.length ? errors.join('; ') : 'Không tìm thấy dữ liệu từ các trang tính Google Sheets.'
   };
 }
 
