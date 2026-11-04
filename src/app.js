@@ -467,12 +467,12 @@ function _freeUpLocalStorageQuota(targetKey = '') {
   } catch {}
 }
 
-function _safeNativeSetLocalItem(storage, key, value) {
+function _safeNativeSetLocalItem(storage, key, value, persistToIdb = true) {
   const kStr = String(key);
   const vStr = String(value);
   if (storage === window.localStorage) {
     _memStorageMap.set(kStr, vStr);
-    if (kStr.startsWith(RT_PREFIX)) {
+    if (persistToIdb && kStr.startsWith(RT_PREFIX)) {
       _idbPutKey(kStr, vStr, Date.now());
     }
     // Không ghi kho ảnh Base64 nặng vào LocalStorage để dành trọn 5MB WebKit cho dữ liệu lớp & điểm danh
@@ -1989,9 +1989,29 @@ const _CLASS_MGR_STORAGE_MAP = {
   'class_mgr.students.master.v1': 'lopvui.students.v9',
   'class_mgr.students.makeup.v1': 'lopvui.makeup-students.v1',
   'class_mgr.sessions.history.v1': 'lopvui.session-history.v2',
+  'class_mgr.session.notes.{classId}.{date}': 'lopvui.attendance-notes.v1.{classId}.{date}',
   'class_mgr.sheets.cohorts.v1': 'lopvui.google-sheets-config.v1',
   'class_mgr.sync.offline_queue.v1': 'lopvui.sync-offline-queue.v1'
 };
+
+// Lazy read alias for modules using architecture-spec keys. Legacy keys remain
+// the sole persisted/synchronized source until a complete migration is available.
+function _ensureClassMgrStorageAlias(classMgrKey, legacyKey) {
+  if (!classMgrKey || !legacyKey || _memStorageMap.has(classMgrKey)) return;
+  try {
+    const canonicalRaw = _nativeGetItem.call(window.localStorage, classMgrKey);
+    let raw = canonicalRaw;
+    let sourceKey = classMgrKey;
+    if (raw === null) { raw = _nativeGetItem.call(window.localStorage, legacyKey); sourceKey = legacyKey; }
+    if (raw === null) return;
+    const plain = String(raw).startsWith('lvenc_v38$')
+      ? decryptVaultPayload(raw, sourceKey)
+      : String(raw);
+    _memStorageMap.set(classMgrKey, plain);
+    _memStorageMap.set(legacyKey, plain);
+    if (canonicalRaw === null) _idbPutKey(legacyKey, plain, Date.now());
+  } catch {}
+}
 
 function _resolveDualStorageKey(key) {
   if (typeof key !== 'string') return null;
@@ -2033,6 +2053,10 @@ function _installStorageVaultInterceptor() {
   try {
     Storage.prototype.getItem = function(key) {
       const kStr = String(key);
+      if (this === window.localStorage && kStr.startsWith('class_mgr.')) {
+        const legacy = _resolveDualStorageKey(kStr);
+        if (legacy) _ensureClassMgrStorageAlias(kStr, legacy);
+      }
       if (this === window.localStorage && _memStorageMap.has(kStr)) {
         return _memStorageMap.get(kStr);
       }
@@ -2046,7 +2070,8 @@ function _installStorageVaultInterceptor() {
       }
       if (raw === null || raw === undefined) return null;
       if (this === window.localStorage) {
-        const plain = String(raw).startsWith('lvenc_v38$') ? decryptVaultPayload(raw, kStr) : String(raw);
+        const rawExistsAtRequestedKey = _nativeGetItem.call(window.localStorage, kStr) !== null;
+        const plain = String(raw).startsWith('lvenc_v38$') ? decryptVaultPayload(raw, !rawExistsAtRequestedKey ? (_resolveDualStorageKey(kStr) || kStr) : kStr) : String(raw);
         _memStorageMap.set(kStr, plain);
         const equiv = _resolveDualStorageKey(kStr);
         if (equiv && equiv !== kStr) _memStorageMap.set(equiv, plain);
@@ -2119,8 +2144,10 @@ function _installStorageVaultInterceptor() {
         const equiv = _resolveDualStorageKey(kStr);
         if (equiv && equiv !== kStr) {
           _memStorageMap.delete(equiv);
-          _idbDeleteKey(equiv);
-          try { _nativeRemoveItem.call(this, equiv); } catch {}
+          if (!kStr.startsWith('lopvui.')) {
+            _idbDeleteKey(equiv);
+            try { _nativeRemoveItem.call(this, equiv); } catch {}
+          }
         }
       }
       try { if (!had) had = _nativeGetItem.call(this, kStr) !== null; } catch {}
@@ -4207,7 +4234,7 @@ function setClassView(view, opts = {}) {
   }
 
   if (seatingVisible && !opts?.preserveEditMode && prevView !== 'seating') {
-    if (isClassHistoryViewMode || allEntries().length > 0) {
+    if (allEntries().length > 0) {
       isSeatingEditMode = false;
     }
     updateSeatingEditBtn();
@@ -4692,6 +4719,7 @@ function reloadClassSessionData(classId, date) {
 
 
 let isClassHistoryViewMode = false;
+let isHistoricalSessionContext = false;
 
 function resolveClass(ref) {
   if (!ref) return null;
@@ -5201,7 +5229,9 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
   flushDeferredSaveNow();
   CURRENT_CLASS_ID = cls.id;
   checklistDate = date || new Date().toLocaleDateString('sv-SE');
+  // Closed sessions remain editable; this flag now describes historical context only.
   isClassHistoryViewMode = Boolean(isHistoryMode);
+  isHistoricalSessionContext = Boolean(isHistoryMode);
 
   reloadClassSessionData(CURRENT_CLASS_ID, checklistDate);
   showClassWorkspace({ skipInitialRender: true });
@@ -5210,8 +5240,7 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
   const histRecord = window.__featuresApp?.getSessionRecord ? window.__featuresApp.getSessionRecord(CURRENT_CLASS_ID, checklistDate) : null;
 
   const isActuallyClosed = Boolean(histRecord && histRecord.status === 'closed');
-  if (isClassHistoryViewMode && isActuallyClosed) {
-    isClassHistoryViewMode = true;
+  if (isHistoryMode && isActuallyClosed) {
     if (histBanner) {
       histBanner.hidden = false;
       $('#history-banner-date').textContent = new Date(`${checklistDate}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -5221,11 +5250,10 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
     const badge = $('#session-status-badge');
     if (badge) {
       badge.className = 'session-badge-state closed';
-      badge.innerHTML = '● Đã đóng ca (Lịch sử)';
+      badge.innerHTML = '✓ Đã đóng ca';
     }
     if ($('#checklist-close-session-panel')) $('#checklist-close-session-panel').hidden = true;
   } else {
-    isClassHistoryViewMode = false;
     if (histBanner) histBanner.hidden = true;
     if ($('#checklist-close-session-panel')) $('#checklist-close-session-panel').hidden = false;
     window.__featuresApp?.updateSessionStateUI?.();
@@ -5241,7 +5269,7 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
     $('#history-switch-live-btn').onclick = () => navigateTo(`class/${cls.code || cls.id}/live/map`);
   }
   if ($('#header-class-general-btn')) {
-    $('#header-class-general-btn').hidden = Boolean(isClassHistoryViewMode);
+    $('#header-class-general-btn').hidden = false;
     $('#header-class-general-btn').onclick = () => navigateTo(`class/${cls.code || cls.id}/general`);
   }
   if ($('#header-edit-class-btn')) {
@@ -5254,7 +5282,7 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
   }
 
   // Tự động BẬT "Sửa sơ đồ" khi vào ca học mới hoàn toàn (chưa có học sinh nào trên sơ đồ), ngược lại TẮT để khóa kéo nhầm
-  isSeatingEditMode = Boolean(!isClassHistoryViewMode && allEntries().length === 0);
+  isSeatingEditMode = Boolean(allEntries().length === 0);
   updateSeatingEditBtn();
   markAllClassViewsDirty();
 
@@ -8617,7 +8645,7 @@ function updateSeatingBannerCountersOnly(occupantsArg = null, isNoHwActive = Boo
   if ($('#finalize-button')) $('#finalize-button').disabled = !occupants.length;
   const quickCarryBtn = $('#quick-carryover-seating-btn');
   if (quickCarryBtn) {
-    const prevSess = (!isClassHistoryViewMode && named.length === 0)
+    const prevSess = (!isHistoricalSessionContext && named.length === 0)
       ? getPreviousSessionSeatingRecord(CURRENT_CLASS_ID, checklistDate)
       : null;
     if (prevSess) {
@@ -8731,6 +8759,25 @@ function renderSeatingViewOnly() {
       }))
     : layout;
 
+  const callOnBar = $('#teacher-call-on-bar');
+  if (callOnBar) {
+    callOnBar.hidden = !isTeacherView;
+    const entries = allEntries();
+    const homeworkCount = entries.filter(({ entry }) => ['not_submitted', 'uncollected'].includes(entry.homework?.status)).length;
+    const lowScoreCount = entries.filter(({ entry }) => {
+      const student = studentById(entry.studentId);
+      const score = parseScoreVN(entry.homework?.score ?? student?.homework?.score);
+      return (Number.isFinite(score) && score < 6) || Boolean(student?.previousHomeworkDebt);
+    }).length;
+    const warningCount = entries.filter(({ entry }) => {
+      const student = studentById(entry.studentId);
+      return Number(student?.warningLevel || student?.warningConfig?.manualLevel || 0) > 0;
+    }).length;
+    callOnBar.querySelector('[data-teacher-filter="homework"]')?.replaceChildren(`Chưa nộp BTVN hôm nay (${homeworkCount})`);
+    callOnBar.querySelector('[data-teacher-filter="low-score"]')?.replaceChildren(`Điểm thấp / Nợ bài buổi trước (${lowScoreCount})`);
+    callOnBar.querySelector('[data-teacher-filter="warning"]')?.replaceChildren(`Cảnh báo Mức 1–4 (${warningCount})`);
+  }
+
   const teacherNotice = $('#teacher-view-notice');
   if (teacherNotice) teacherNotice.hidden = !isTeacherView;
 
@@ -8748,10 +8795,10 @@ function renderSeatingViewOnly() {
     return `<div class="desk-row" style="--aisle-width:${aisleWidth}px;--max-occupants:${maxOccupants};--student-width:${studentWidth}px">
       <div class="row-label">
         <span>DÃY ${origAisleIdx+1}</span>
-        <button type="button" class="row-collect-hw-btn" data-collect-aisle="${origAisleIdx}" title="Thu BTVN cả dãy ${origAisleIdx+1}">Thu BTVN</button>
+        ${isSeatingEditMode ? `<button type="button" class="row-collect-hw-btn" data-collect-aisle="${origAisleIdx}" title="Thu BTVN cả dãy ${origAisleIdx+1}">Thu BTVN</button>` : ''}
       </div>
       <div class="desks">${aisle.desks.map((desk, di)=>{
-        const addBtnHtml = `<button type="button" class="desk-add-compact-btn ${isSeatingEditMode ? 'edit-active' : ''}" data-add-to-desk="${desk.id}" title="Thêm biểu tượng học sinh vào bàn này">+</button>`;
+        const addBtnHtml = isSeatingEditMode ? `<button type="button" class="desk-add-compact-btn edit-active" data-add-to-desk="${desk.id}" aria-label="Thêm vị trí học sinh vào bàn ${di + 1}" title="Thêm biểu tượng học sinh vào bàn này">+</button>` : '';
         const seatsHtml = buildDeskSeatsHtml(desk.id, isNoHwActive, mapSearchQuery);
 
         let hasDivider = false;
@@ -8787,10 +8834,6 @@ function renderSeatingViewOnly() {
   });
 
   updateSeatingBannerCountersOnly(occupants, isNoHwActive);
-  if ($('#pool-count')) $('#pool-count').textContent = 'Bấm nút + trên bàn (khi bật Sửa sơ đồ) để thêm chỗ ngồi';
-  if ($('#student-pool') && !$('#student-pool').innerHTML) {
-    $('#student-pool').innerHTML = `<button type="button" class="pool-token pool-token-rect" data-pool-token="0" aria-label="Kéo biểu tượng học sinh vào bàn"><span class="pool-token-icon">${studentIcon}</span><span class="pool-token-label">+ Kéo học sinh mới vào bàn</span></button>`;
-  }
   renderLateAreaOnly(isNoHwActive);
 
   if ($('#students-dialog')?.open && $('#roster-list')) {
@@ -8916,6 +8959,26 @@ if (teacherViewBtn) {
     toast(isTeacherView ? 'Đã bật góc nhìn Giáo viên (bục giảng nhìn xuống).' : 'Đã quay lại góc nhìn Trợ giảng.');
   };
 }
+
+$('#teacher-call-on-bar')?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-teacher-filter]');
+  if (!button) return;
+  const filter = button.dataset.teacherFilter;
+  $('#teacher-call-on-bar').querySelectorAll('[data-teacher-filter]').forEach(item => {
+    item.setAttribute('aria-pressed', String(item === button));
+  });
+  classroom.querySelectorAll('[data-entry-index]').forEach(seat => {
+    const entry = deskItems[seat.dataset.deskId]?.[Number(seat.dataset.entryIndex)];
+    const student = studentById(entry?.studentId);
+    const score = parseScoreVN(entry?.homework?.score ?? student?.homework?.score);
+    const highlight = filter === 'all'
+      || (filter === 'homework' && ['not_submitted', 'uncollected'].includes(entry?.homework?.status))
+      || (filter === 'low-score' && ((Number.isFinite(score) && score < 6) || Boolean(student?.previousHomeworkDebt)))
+      || (filter === 'warning' && Number(student?.warningLevel || student?.warningConfig?.manualLevel || 0) > 0);
+    seat.classList.toggle('teacher-filter-dim', !highlight);
+    seat.classList.toggle('teacher-filter-highlight', filter !== 'all' && highlight);
+  });
+});
 
 // Global Ctrl+Z shortcut for seating undo
 document.addEventListener('keydown', (e) => {
@@ -9197,6 +9260,7 @@ function setHomeworkFields(home={status:'uncollected'}){
   const normStatus = home.status === 'graded' ? 'submitted' : (home.status || 'uncollected');
   $('#homework-status').value=normStatus;
   $('#homework-score').value=formatScoreVN(home.score ?? '');
+  $('#homework-score').disabled = false;
   $('#homework-reason').value=home.reason||'';
   toggleHomeworkFields(normStatus,'homework');
   document.querySelectorAll('[data-homework-choice]').forEach(button=>button.classList.toggle('selected',button.dataset.homeworkChoice===normStatus));
@@ -9211,7 +9275,9 @@ function toggleHomeworkFields(status,prefix){
     reasonSelect.value='not_done';
   }
   const gradeField=$(`#${isSeat?'grade-field':'late-grade-field'}`);
-  if(gradeField)gradeField.hidden=(status==='uncollected');
+  // Keep scoring available for make-up work while preserving the original
+  // not-submitted status selected earlier in the session.
+  if(gradeField)gradeField.hidden=false;
   renderHomeworkHistoryPanel(prefix);
 }
 
@@ -9761,7 +9827,7 @@ document.querySelectorAll('[data-homework-choice]').forEach(button=>button.oncli
       note: sharedNote,
       _updatedAt: Date.now()
     };
-    if (person && status !== 'not_submitted') {
+    if (person) {
       person.homework = entry.homework;
       recordHistory(person, entry.attendance || person.attendance || { status: 'present' }, entry.homework);
     }
@@ -10667,6 +10733,7 @@ function setLateHomeworkFields(home={status:'uncollected'}){
   const normStatus = home.status === 'graded' ? 'submitted' : (home.status || 'uncollected');
   $('#late-homework-status').value=normStatus;
   $('#late-homework-score').value=formatScoreVN(home.score ?? '');
+  $('#late-homework-score').disabled = false;
   $('#late-homework-reason').value=home.reason||'';
   toggleHomeworkFields(normStatus,'late');
   document.querySelectorAll('[data-late-homework-choice]').forEach(button=>button.classList.toggle('selected',button.dataset.lateHomeworkChoice===normStatus));
@@ -10965,13 +11032,11 @@ function startDrag(source,element,x,y){
   }
   dragState={source,element,x,y,started:false,targetDesk:null,dropIndex:0,visualSlot:0,ghost:null};
 }
-$('#student-pool').addEventListener('pointerdown',e=>{const t=e.target.closest('[data-pool-token]');if(t)startDrag({type:'pool'},t,e.clientX,e.clientY);});
 classroom.addEventListener('pointerdown',e=>{const t=e.target.closest('[data-entry-index]');if(t)startDrag({type:'seat',deskId:t.dataset.deskId,index:Number(t.dataset.entryIndex)},t,e.clientX,e.clientY);});
 $('#late-area').addEventListener('pointerdown',e=>{if(e.target.closest('[data-edit-late-student]'))return;const t=e.target.closest('[data-late-key]');if(t)startDrag({type:'late',studentId:t.dataset.lateKey},t,e.clientX,e.clientY);});
 document.addEventListener('pointermove',e=>{if(!dragState)return;if(!dragState.started&&Math.hypot(e.clientX-dragState.x,e.clientY-dragState.y)>6){dragState.started=true;dragState.element.classList.add('dragging');document.body.classList.add('is-dragging');dragState.ghost=document.createElement('div');dragState.ghost.className='drag-ghost';dragState.ghost.textContent=dragState.source.type==='pool'?'Học sinh mới':dragState.source.type==='late'?studentById(dragState.source.studentId)?.name:(studentById(deskItems[dragState.source.deskId]?.[dragState.source.index]?.studentId)?.name||'Di chuyển chỗ ngồi');document.body.append(dragState.ghost);}if(dragState.started){e.preventDefault?.();dragState.ghost.style.left=`${e.clientX+12}px`;dragState.ghost.style.top=`${e.clientY+12}px`;const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.desk[data-desk-id]');if(target!==dragState.targetDesk){dragState.targetDesk?.classList.remove('desk-drop-target');dragState.targetDesk?.querySelector('.drop-marker')?.remove();dragState.targetDesk=target;target?.classList.add('desk-drop-target');}if(target){dragState.visualSlot=visualDropSlotAt(target,e.clientX);dragState.dropIndex=dropIndexAt(target,e.clientX);showDropMarker(target,dragState.visualSlot);}}},{passive:false});
 document.addEventListener('pointercancel',()=>{cleanupActiveDrag();});
 document.addEventListener('pointerup',e=>{if(!dragState)return;const drag=dragState;cleanupActiveDrag();if(!drag.started)return;suppressClick=true;setTimeout(()=>suppressClick=false,120);const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.desk[data-desk-id]');if(!target)return;const deskId=target.dataset.deskId,index=dropIndexAt(target,e.clientX);let entry,source;if(drag.source.type==='pool'){entry={entryId:_newSeatEntryId(),studentId:null,homework:{status:'uncollected',_updatedAt:Date.now()},attendance:null,_updatedAt:Date.now()};source={type:'pool'};}else if(drag.source.type==='late'){const person=studentById(drag.source.studentId);if(!person)return;const lateDet=resolveLateDetails(person,null);const isLate=Boolean(lateDet.isLate&&lateDet.lateMinutes>0&&person.attendance?.status!=='present');const attObj=isLate?{...(person.attendance||{}),status:'late',arrivalTime:lateDet.arrivalTime,lateMinutes:lateDet.lateMinutes,minutesLate:lateDet.lateMinutes}:{...(person.attendance||{}),status:'present',arrivalTime:lateDet.arrivalTime||person.arrivalTime||null,lateMinutes:0,minutesLate:0};person.attendance=attObj;person.arrivalTime=attObj.arrivalTime;person.lateMinutes=attObj.lateMinutes;entry={entryId:_newSeatEntryId(),studentId:person.id,homework:person.homework||{status:'uncollected'},attendance:attObj,_updatedAt:Date.now()};source={type:'late',studentId:person.id};}else{source=drag.source;entry=deskItems[source.deskId]?.[source.index];}if(entry){insertIntoDesk(entry,deskId,index,source);toast('✓ Đã chuyển vào vị trí bàn đã chọn.');}});
-$('#student-pool').addEventListener('click',e=>{if(suppressClick){e.preventDefault();return;}const token=e.target.closest('[data-pool-token]');if(!token)return;const first=desks()[0]?.desk;if(!first){growLayoutIfNeeded();}const deskId=desks()[0].desk.id,index=(deskItems[deskId]||[]).length;addAnonymousToDesk(deskId,index,false);});
 $('#finalize-button').onclick=()=>{if(window.__featuresApp?.handleFinalizeAttendance){window.__featuresApp.handleFinalizeAttendance();return;}const pending=allEntries().filter(x=>!x.entry.studentId||!(x.entry.attendance||studentById(x.entry.studentId)?.attendance));if(pending.length){toast(`${pending.length} biểu tượng/học sinh chưa ghi tên hoặc chưa điểm danh.`);return;}addClassActivity(`${currentStaffName()} đã chốt danh sách ${allEntries().length} học sinh có mặt`,'attendance');toast(`Đã hoàn tất ghi nhận ${allEntries().length} học sinh có mặt.`);};
 $('#close-students').onclick=()=>$('#students-dialog').close();
 function refreshAllActiveViews() {
@@ -12259,25 +12324,7 @@ document.addEventListener('pointerdown', (e) => {
 }, { passive: true });
 
 
-// v2.1: Tap-to-assign ("Chạm để xếp chỗ") on Seating Map & Managed Class Card '⋯' More Menu
-let tapAssignSource = null;
-
-function setTapAssignSource(source = null) {
-  tapAssignSource = source;
-  document.querySelectorAll('.pool-token, .late-token').forEach(el => el.classList.remove('tap-assign-active'));
-  document.querySelectorAll('.desk[data-desk-id]').forEach(el => el.classList.toggle('desk-tap-target', Boolean(source)));
-  const poolCountEl = $('#pool-count');
-  if (poolCountEl) {
-    if (source?.type === 'late') {
-      const stu = studentById(source.studentId);
-      poolCountEl.innerHTML = `<strong style="color:#4f46e5;">Đang chọn xếp chỗ cho ${escapeHtml(stu?.name || 'học sinh')} — Chạm vào bàn bất kỳ bên dưới để đặt vào bàn</strong>`;
-    } else if (source?.type === 'pool') {
-      poolCountEl.innerHTML = `<strong style="color:#4f46e5;">Đang chọn thêm học sinh — Chạm vào bàn bất kỳ bên dưới để xếp chỗ & chọn tên</strong>`;
-    } else {
-      poolCountEl.textContent = 'Chạm vào nút + trên bàn để chọn học sinh, hoặc chạm vào đây rồi chạm vào bàn bất kỳ';
-    }
-  }
-}
+// Managed Class Card '⋯' More Menu; seat taps are reserved for attendance dialogs.
 
 document.addEventListener('click', (e) => {
   // 0. Open Session-level Student Profile (Kiểu 3) when clicking student name in #students-view or #scores-view
@@ -12312,67 +12359,14 @@ document.addEventListener('click', (e) => {
   if (editLateBtn) {
     e.preventDefault();
     e.stopPropagation();
-    setTapAssignSource(null);
     openLateDialogForStudent(editLateBtn.dataset.editLateStudent);
     return;
   }
 
-  // 2. Tap-to-assign: Tapping a late student token toggles selection for tap-to-assign
+  // Late-area tokens can be dragged into a desk; tapping them opens their edit dialog.
   const lateToken = e.target.closest('[data-late-key]');
   if (lateToken && !suppressClick) {
-    const stuId = lateToken.dataset.lateKey;
-    if (tapAssignSource?.type === 'late' && tapAssignSource.studentId === stuId) {
-      setTapAssignSource(null);
-    } else {
-      setTapAssignSource({ type: 'late', studentId: stuId });
-      lateToken.classList.add('tap-assign-active');
-      toast('Hãy chạm vào bàn bất kỳ trên sơ đồ để xếp chỗ cho học sinh.');
-    }
-    return;
-  }
-
-  // 3. Tap-to-assign: If tapAssignSource is active and user taps a desk, assign immediately!
-  const tappedDesk = e.target.closest('.desk[data-desk-id]');
-  if (tappedDesk && tapAssignSource && !e.target.closest('[data-entry-index]') && !e.target.closest('[data-add-to-desk]')) {
-    e.preventDefault();
-    e.stopPropagation();
-    const deskId = tappedDesk.dataset.deskId;
-    const list = deskItems[deskId] || (deskItems[deskId] = []);
-    if (tapAssignSource.type === 'late') {
-      const person = studentById(tapAssignSource.studentId);
-      if (person) {
-        const lateDet = resolveLateDetails(person, null);
-        const isLate = Boolean(lateDet.isLate && lateDet.lateMinutes > 0 && person.attendance?.status !== 'present');
-        const attObj = isLate ? {
-          ...(person.attendance || {}),
-          status: 'late',
-          arrivalTime: lateDet.arrivalTime,
-          lateMinutes: lateDet.lateMinutes,
-          minutesLate: lateDet.lateMinutes
-        } : {
-          ...(person.attendance || {}),
-          status: 'present',
-          arrivalTime: lateDet.arrivalTime || person.arrivalTime || null,
-          lateMinutes: 0,
-          minutesLate: 0
-        };
-        person.attendance = attObj;
-        person.arrivalTime = attObj.arrivalTime;
-        person.lateMinutes = attObj.lateMinutes;
-        const entry = {
-          studentId: person.id,
-          homework: person.homework || { status: 'uncollected' },
-          attendance: attObj,
-          _updatedAt: Date.now()
-        };
-        insertIntoDesk(entry, deskId, list.length, { type: 'late', studentId: person.id });
-        toast(isLate ? `✓ Đã xếp ${person.name} (Muộn ${lateDet.lateMinutes}p) vào bàn.` : `✓ Đã xếp ${person.name} vào bàn.`);
-      }
-      setTapAssignSource(null);
-    } else if (tapAssignSource.type === 'pool') {
-      setTapAssignSource(null);
-      addAnonymousToDesk(deskId, list.length, true);
-    }
+    openLateDialogForStudent(lateToken.dataset.lateKey);
     return;
   }
 });

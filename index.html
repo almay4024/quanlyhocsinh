@@ -91,7 +91,7 @@
         </div>
         <div class="topbar-right">
           <button type="button" id="realtime-sync-badge" class="realtime-sync-badge" title="Trạng thái đồng bộ dữ liệu thời gian thực (Bấm để đồng bộ ngay)">
-            <span class="rt-dot"></span><span>● Đồng bộ Real-time</span>
+            <span class="rt-dot"></span><span>• Đồng bộ Real-time</span>
           </button>
           <button type="button" class="outline-button office-inbox-topbar-btn" id="office-inbox-btn" hidden style="margin-right:8px; padding:4px 10px; font-size:12.5px; font-weight:700; background:#fef2f2; color:#b91c1c; border-color:#fecaca;" title="Hộp việc Cần xử lý của Văn phòng (Khớp học sinh mới / Học bù &amp; Duyệt Google Sheets)">Hộp việc <span id="office-inbox-badge" class="office-inbox-badge" hidden>0</span></button>
           <div class="notification-anchor">
@@ -637,7 +637,7 @@
             <span id="history-banner-lesson">Bài học: —</span>
             <span class="heading-dot">·</span>
             <span id="history-banner-staff">Trợ giảng: —</span>
-            <span class="history-readonly-chip">Chế độ xem lại (Chỉ đọc)</span>
+            <span class="history-readonly-chip">Ca học đã đóng · vẫn chỉnh sửa được</span>
           </div>
           <div class="history-banner-actions">
             <button type="button" class="outline-button btn-banner-nav" id="history-back-general-btn">Quản lý chung lớp</button>
@@ -663,7 +663,7 @@
             </p>
           </div>
           <div class="session-badge-wrap">
-            <span id="session-status-badge" class="session-badge-state live">● Đang diễn ra</span>
+            <span id="session-status-badge" class="session-badge-state live">• Đang diễn ra</span>
             <span id="finalized-indicator-badge" class="finalized-badge" hidden style="display:none!important;">✓ Đã chốt sĩ số</span>
             <div class="session-control-actions">
               <button type="button" class="outline-button btn-session-action" id="header-class-general-btn" title="Về trang quản lý chung của lớp">Quản lý chung</button>
@@ -774,23 +774,19 @@
             <span></span> <strong>Thao tác:</strong> Kéo biểu tượng học sinh ở giữa vào bàn, dùng ô tìm kiếm để định vị nhanh chỗ ngồi (vạch phân cách bàn được chỉnh trong nút <strong>Điều chỉnh layout</strong> hoặc <strong>Mẫu phòng học</strong>).
           </div>
 
-          <section class="student-pool-wrap">
-            <div class="pool-heading">
-              <strong>Kéo biểu tượng học sinh mới vào bàn · thao tác kéo không mở menu</strong>
-              <div class="pool-heading-right">
-                <button type="button" class="outline-button pool-carryover-btn" id="quick-carryover-seating-btn" hidden title="Đặt học sinh vào đúng bàn của buổi học liền trước (Trạng thái: Có mặt · Chưa thu BTVN)">↺ Xếp chỗ theo buổi trước</button>
-                <span id="pool-count">Thêm khi học sinh đến lớp</span>
-              </div>
-            </div>
-            <div id="student-pool" class="student-pool"></div>
-          </section>
-
           <div id="teacher-view-notice" class="teacher-view-banner" style="margin-bottom:12px;" hidden>Góc nhìn Giáo viên: Đứng từ bục giảng nhìn xuống (Cuối lớp ở trên, Bảng ở dưới, lật ngược trái - phải)</div>
           <section class="classroom-wrap">
             <div class="classroom-corner-tools">
               <button type="button" class="outline-button compact-edit-map-btn" id="toggle-seating-edit-btn" title="Bật/Tắt chế độ chỉnh sửa sơ đồ" style="background:#f9fafb; color:#6b7280; border-color:#d1d5db;">Sửa sơ đồ: TẮT</button>
+              <button type="button" class="outline-button pool-carryover-btn" id="quick-carryover-seating-btn" hidden title="Đặt học sinh vào đúng bàn của buổi học liền trước (Trạng thái: Có mặt · Chưa thu BTVN)">Xếp chỗ theo buổi trước</button>
             </div>
             <div class="board-label"><span></span>BẢNG · ĐẦU LỚP</div>
+            <div class="teacher-call-on-bar" id="teacher-call-on-bar" hidden aria-label="Bộ lọc học sinh cần chú ý">
+              <button type="button" data-teacher-filter="all" aria-pressed="true">Tất cả học sinh</button>
+              <button type="button" data-teacher-filter="homework" aria-pressed="false">Chưa nộp BTVN hôm nay (0)</button>
+              <button type="button" data-teacher-filter="low-score" aria-pressed="false">Điểm thấp / Nợ bài buổi trước (0)</button>
+              <button type="button" data-teacher-filter="warning" aria-pressed="false">Cảnh báo Mức 1–4 (0)</button>
+            </div>
             <div id="classroom" class="classroom"></div>
             <div class="back-of-room">
               <span>CUỐI LỚP</span>
@@ -1097,7 +1093,7 @@
               <div class="eyebrow" id="report-view-class-label">TRUNG TÂM BÁO CÁO BUỔI HỌC</div>
               <div class="report-inline-title-row">
                 <h2 id="report-view-title">Báo cáo tổng kết buổi học</h2>
-                <span id="report-view-status-pill" class="report-status-pill">● Ca đang diễn ra</span>
+                <span id="report-view-status-pill" class="report-status-pill">• Ca đang diễn ra</span>
               </div>
               <p>Xem tổng kết sĩ số, điểm danh, BTVN, điểm kiểm tra và sao chép nhanh báo cáo gửi Giáo viên.</p>
             </div>
@@ -2101,10 +2097,10 @@ function jsonOut_(obj) {
       
       <div class="carryover-layout-box" id="layout-dialog-carryover-box">
         <div>
-          <strong>↺ Kế thừa vị trí ngồi từ buổi học liền trước</strong>
+          <strong>Kế thừa vị trí ngồi từ buổi học liền trước</strong>
           <small id="layout-dialog-carryover-hint">Đặt nhanh học sinh vào đúng bàn buổi trước (Có mặt · Chưa thu BTVN)</small>
         </div>
-        <button type="button" class="outline-button pool-carryover-btn" id="layout-dialog-carryover-btn">↺ Xếp chỗ theo buổi trước</button>
+        <button type="button" class="outline-button pool-carryover-btn" id="layout-dialog-carryover-btn">Xếp chỗ theo buổi trước</button>
       </div>
 
       <label class="field-label">Áp dụng từ Mẫu phòng học có sẵn:

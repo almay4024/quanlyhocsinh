@@ -516,16 +516,16 @@ Tab **`Báo cáo buổi học`** nằm trực tiếp trên thanh điều hướn
 ### 12.1. Thứ tự Thực thi Chuẩn cho AI Coding Agent
 
 * **Phase 1 — Chuẩn hóa Core Storage, Naming Convention (`class_mgr.*`), Xóa Toàn Bộ Emoji & CSS Chống Đè Nút:**
-  * Thiết lập bộ lưu trữ Hybrid RAM + IndexedDB + LocalStorage với tiền tố `class_mgr.*` (tự động migrate dữ liệu từ `lopvui.*`).
-  * Xóa toàn bộ ký tự Emoji trong `index.html`, `src/app.js`, `src/features.js`; chỉ giữ văn bản thuần túy hoặc icon SVG nét mảnh đơn sắc (`currentColor`) ở những nút thực sự cần thiết.
-  * Cập nhật CSS biến chuẩn, `tabular-nums`, `font-size: 16px` cho toàn bộ input, loại bỏ mọi `position: absolute` gây đè nút trên bàn học và hộp thoại.
+  * [ ] Cần hoàn thiện migrate đầy đủ các khóa và kiểm thử dữ liệu hiện có; hiện tại app tiếp tục dùng legacy keys làm nguồn ghi chính.
+  * [ ] Xóa toàn bộ ký tự Emoji trong `index.html`, `src/app.js`, `src/features.js`; vẫn còn các ký hiệu trang trí `✎` và icon khác cần xử lý trong lượt sau.
+  * [ ] Cập nhật font fallback, `tabular-nums`, `font-size: 16px` cho input; bố cục sơ đồ bằng Grid và đưa nút sửa ra hàng riêng. Chưa audit mọi dialog ở 320–1440px.
 * **Phase 2 — Tối ưu Sơ đồ Lớp Optimistic UI ($0\text{ ms}$), Bỏ `#student-pool`, Giữ Chạm Mở Điểm Danh & Kéo-Thả Đổi Chỗ:**
-  * Xóa khay kéo `#student-pool`; cài đặt chế độ `Sửa sơ đồ: BẬT/TẮT` (khi BẬT: hiện nút `+`, hiện nút `Thu BTVN` cả dãy, cho phép Kéo-Thả đổi chỗ; khi TẮT: ẩn nút `+` và `Thu BTVN` dãy).
-  * Đảm bảo **bấm chạm (Tap $< 6\text{ px}$) vào ghế luôn mở ngay `#seat-dialog`** ở cả 2 chế độ BẬT và TẮT `Sửa sơ đồ`.
-  * Áp dụng `patchDeskDOMImmediate()` để mọi thao tác trên sơ đồ phản hồi tức thì $< 16\text{ ms}$.
-  * Hoàn thiện `Chế độ Giáo viên` lật ngược 180 độ kèm thanh lọc nhanh học sinh nợ BTVN / điểm thấp / cảnh báo.
+  * [x] Xóa khay kéo `#student-pool`; chế độ `Sửa sơ đồ: BẬT/TẮT` bật/tắt nút `+`, nút `Thu BTVN` dãy và kéo-thả đổi chỗ.
+  * [x] Đảm bảo **bấm chạm (Tap $< 6\text{ px}$) vào ghế luôn mở ngay `#seat-dialog`** ở cả 2 chế độ BẬT và TẮT `Sửa sơ đồ`; bỏ tap-to-move.
+  * [ ] Áp dụng `patchDeskDOMImmediate()`/đo đạc đảm bảo mọi thao tác trên sơ đồ phản hồi tức thì $< 16\text{ ms}$; hiện còn nhánh render/update cần tối ưu và đo riêng.
+  * [x] Thêm thanh lọc nhanh học sinh nợ BTVN / điểm thấp / cảnh báo trong Chế độ Giáo viên; lật sơ đồ sẵn có được giữ nguyên.
 * **Phase 3 — Cho Phép Chỉnh Sửa 100% Khi Ca Đã Đóng, Xây dựng Chế độ "Chép Sổ Giấy" & Quản lý Cột Ẩn/Hiện:**
-  * Gỡ bỏ mọi khóa "Chỉ đọc (Read-only)" trên các ca học đã đóng (`status: 'closed'`), cho phép sửa điểm, checklist, bài học, điểm danh bất kỳ lúc nào.
+  * [ ] Gỡ khóa giao diện lịch sử đã đóng để cho phép sửa qua cùng luồng ca học; chưa hoàn tất chuyển đổi URL/tab history sang edit mode an toàn.
   * Thêm công tắc `Chế độ Chép Sổ Giấy` tách cố định Danh sách lớp ở trên (theo `paperOrderIndex` có thể khóa/sửa STT) và Học sinh mới/Học bù ở dưới, hiển thị ký hiệu chuẩn (`✓`, `M15`, `VP`, `KP`).
   * Nâng cấp `#column-order-dialog` cho phép tích ẩn/hiện cột và đổi vị trí cột như Excel.
 * **Phase 4 — Khóa Bảo mật RBAC, Xây dựng Hộp việc Văn phòng & Đồng bộ Google Sheets Đa Khóa:**
