@@ -3969,7 +3969,7 @@ export function setupFeatures(ctx) {
     given: '',
     school: '',
     parent: '',
-    status: 'all',
+    status: 'Học',
     classes: 'all',
     tags: ''
   };
@@ -4140,12 +4140,13 @@ export function setupFeatures(ctx) {
         school: `<th><input type="text" class="master-inline-filter ${colFilters.school ? 'is-filtered' : ''}" data-col-filter="school" placeholder="Lọc trường..." value="${escapeHtml(colFilters.school || '')}" /></th>`,
         parent: `<th><input type="text" class="master-inline-filter ${colFilters.parent ? 'is-filtered' : ''}" data-col-filter="parent" placeholder="Lọc PH/SĐT..." value="${escapeHtml(colFilters.parent || '')}" /></th>`,
         status: `<th>
-          <select class="master-inline-filter ${colFilters.status !== 'all' ? 'is-filtered' : ''}" data-col-filter="status">
-            <option value="all">Tất cả</option>
-            <option value="Học" ${colFilters.status === 'Học' ? 'selected' : ''}>Học</option>
-            <option value="Tạm nghỉ" ${colFilters.status === 'Tạm nghỉ' ? 'selected' : ''}>Tạm nghỉ</option>
+          <select class="master-inline-filter ${colFilters.status !== 'Học' ? 'is-filtered' : ''}" data-col-filter="status">
+            <option value="Học" ${colFilters.status === 'Học' ? 'selected' : ''}>Học (Mặc định)</option>
+            <option value="all" ${colFilters.status === 'all' ? 'selected' : ''}>-- Tất cả trạng thái --</option>
             <option value="Nghỉ" ${colFilters.status === 'Nghỉ' ? 'selected' : ''}>Nghỉ</option>
+            <option value="Tạm nghỉ" ${colFilters.status === 'Tạm nghỉ' ? 'selected' : ''}>Tạm nghỉ</option>
             <option value="Chưa nhập học" ${colFilters.status === 'Chưa nhập học' ? 'selected' : ''}>Chưa nhập học</option>
+            <option value="Trùng" ${colFilters.status === 'Trùng' ? 'selected' : ''}>Trùng</option>
           </select>
         </th>`,
         classes: `<th>
@@ -4189,7 +4190,7 @@ export function setupFeatures(ctx) {
 
       document.querySelectorAll('#master-clear-inline-filters-btn, #master-clear-all-filters-btn').forEach(btn => {
         btn.onclick = () => {
-          window._masterColFilters = { code: '', family: '', given: '', school: '', parent: '', status: 'all', classes: 'all', tags: '' };
+          window._masterColFilters = { code: '', family: '', given: '', school: '', parent: '', status: 'Học', classes: 'all', tags: '' };
           if ($('#master-student-search')) $('#master-student-search').value = '';
           if ($('#master-grade-filter')) $('#master-grade-filter').value = 'all';
           if ($('#master-class-filter')) $('#master-class-filter').value = 'all';
@@ -5367,6 +5368,18 @@ export function setupFeatures(ctx) {
       }
     }
 
+    const headerCloseBtn = $('#close-session-btn');
+    if (headerCloseBtn) {
+      headerCloseBtn.hidden = isClosed;
+      headerCloseBtn.style.display = isClosed ? 'none' : 'inline-flex';
+    }
+    const headerOpenBtn = $('#open-session-btn');
+    if (headerOpenBtn) {
+      headerOpenBtn.hidden = !isClosed;
+      headerOpenBtn.style.display = isClosed ? 'inline-flex' : 'none';
+      headerOpenBtn.textContent = 'Mở lại ca';
+    }
+
     const closeStatus = $('#checklist-close-session-status');
     if (closeStatus) {
       if (isClosed && rec.closedAt) {
@@ -5392,6 +5405,7 @@ export function setupFeatures(ctx) {
     const cls = getActiveClassConfig();
     openClassSession(classId, date, { id: emp?.id || user?.employeeId, name: emp?.name || 'Trợ giảng', role: user?.role || 'assistant' }, cls);
     updateSessionStateUI();
+    window.__forceSyncSessionHistoryNow?.();
     addClassActivity(`${emp?.name || 'Trợ giảng'} đã mở ca học ${cls?.name || classId}`, 'system');
     window.__logAdminSessionAction?.('Mở lại ca học', `Lớp ${cls?.name || classId} · Ngày ${date}`, 'session');
     toast('Đã mở ca học.');
@@ -5498,7 +5512,12 @@ export function setupFeatures(ctx) {
       finalNoteInp.value = $('#session-note')?.value?.trim() || rec?.finalNote || '';
     }
 
-    dlg.showModal();
+    try {
+      if (dlg.open) dlg.close();
+      dlg.showModal();
+    } catch {
+      dlg.setAttribute('open', '');
+    }
   }
 
   function confirmCloseSession() {
@@ -5523,6 +5542,16 @@ export function setupFeatures(ctx) {
     };
 
     const existingRec = getSessionRecord(currentClass.id, date) || {};
+    const roster = ctx.classStudents ? ctx.classStudents() : [];
+    const entries = ctx.allEntries ? ctx.allEntries() : [];
+    const seatedNamed = entries.filter(e => e.entry?.studentId);
+    const presentCount = seatedNamed.filter(e => !(ctx.isStudentLateInSession ? ctx.isStudentLateInSession(studentById(e.entry.studentId), e.entry) : e.entry.attendance?.status === 'late')).length;
+    const lateCount = seatedNamed.filter(e => (ctx.isStudentLateInSession ? ctx.isStudentLateInSession(studentById(e.entry.studentId), e.entry) : e.entry.attendance?.status === 'late')).length;
+    const hwCount = seatedNamed.filter(e => {
+      const st = (e.entry?.homework || studentById(e.entry?.studentId)?.homework)?.status;
+      return st === 'submitted' || st === 'graded';
+    }).length;
+
     const closedRec = closeClassSession(currentClass.id, date, operator, {
       ...existingRec,
       classCode: currentClass.code || currentClass.id,
@@ -5537,11 +5566,20 @@ export function setupFeatures(ctx) {
       sessionNote: finalNote,
       layout: ctx.getLayout ? ctx.getLayout() : existingRec.layout,
       deskItems: ctx.getDeskItems ? ctx.getDeskItems() : existingRec.deskItems,
-      students: existingRec.studentsSnapshot || []
+      students: existingRec.studentsSnapshot?.length ? existingRec.studentsSnapshot : (ctx.classStudents ? ctx.classStudents() : []),
+      stats: {
+        total: roster.length || existingRec.stats?.total || 0,
+        present: presentCount + lateCount || existingRec.stats?.present || 0,
+        late: lateCount || existingRec.stats?.late || 0,
+        absent: Math.max(0, (roster.length || 0) - presentCount - lateCount) || existingRec.stats?.absent || 0,
+        homeworkDone: hwCount || existingRec.stats?.homeworkDone || 0,
+        testsCollected: existingRec.stats?.testsCollected || 0
+      }
     }, finalNote);
 
-    $('#close-session-dialog')?.close();
+    try { $('#close-session-dialog')?.close(); } catch {}
     updateSessionStateUI();
+    window.__forceSyncSessionHistoryNow?.();
     addClassActivity(`${operator.name} đã kết thúc và đóng ca học ${currentClass.name} (Có mặt: ${closedRec.stats?.present || 0}/${closedRec.stats?.total || 0})`, 'attendance');
     window.__logAdminSessionAction?.('Kết thúc & Đóng ca học', `Có mặt: ${closedRec.stats?.present || 0}/${closedRec.stats?.total || 0} · Đi muộn: ${closedRec.stats?.late || 0} · BTVN: ${closedRec.stats?.homeworkDone || 0}${finalNote ? ` · Ghi chú chốt ca: "${finalNote}"` : ''}`, 'session');
     toast(`✓ Đã đóng ca học ${currentClass.name} và chuyển sang Báo cáo buổi học.`);
@@ -6849,6 +6887,7 @@ export function setupFeatures(ctx) {
     const sheetName = ($('#sheets-tab-name')?.value || '').trim();
     const scriptUrl = ($('#sheets-script-url-input')?.value || $('#drive-script-url-input')?.value || '').trim();
     const autoSync = Boolean($('#sheets-autosync-toggle')?.checked);
+    const twoWayMode = $('#sheets-two-way-mode-toggle') ? Boolean($('#sheets-two-way-mode-toggle').checked) : true;
     const defaultNewTag = $('#sheets-default-new-tag-toggle') ? Boolean($('#sheets-default-new-tag-toggle').checked) : true;
     const classDiffMode = $('#sheets-class-diff-mode')?.value || 'transfer';
     const hasHeader = $('#sheets-has-header-toggle') ? Boolean($('#sheets-has-header-toggle').checked) : true;
@@ -6868,6 +6907,7 @@ export function setupFeatures(ctx) {
       gid,
       scriptUrl,
       autoSync,
+      twoWayMode,
       defaultNewTag,
       classDiffMode,
       hasHeader,
@@ -7025,6 +7065,7 @@ export function setupFeatures(ctx) {
     if ($('#sheets-gid-input')) $('#sheets-gid-input').value = cfg.gid || '';
     if ($('#sheets-script-url-input')) $('#sheets-script-url-input').value = cfg.scriptUrl || driveCfg.scriptUrl || '';
     if ($('#sheets-autosync-toggle')) $('#sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
+    if ($('#sheets-two-way-mode-toggle')) $('#sheets-two-way-mode-toggle').checked = cfg.twoWayMode !== false;
     if ($('#sheets-default-new-tag-toggle')) $('#sheets-default-new-tag-toggle').checked = cfg.defaultNewTag !== false;
     if ($('#sheets-class-diff-mode')) $('#sheets-class-diff-mode').value = cfg.classDiffMode || 'transfer';
     if ($('#sheets-has-header-toggle')) $('#sheets-has-header-toggle').checked = cfg.hasHeader !== false;
@@ -7262,7 +7303,7 @@ export function setupFeatures(ctx) {
       let school = '';
       let parentPhone = '';
       let parentName = '';
-      let enrollmentStatus = 'Học';
+      let enrollmentStatus = 'Nghỉ';
       let rawTag = '';
       const rawClassTexts = [];
       const resolvedClassIds = [];
@@ -8028,7 +8069,7 @@ export function setupFeatures(ctx) {
     const cfg = readAndSaveSheetsConfigFromDialog();
     const targetCls = $('#sheets-sync-class-filter')?.value || 'all';
     const rows = buildStudentSyncRowsForClass(targetCls);
-    setSheetsSyncStatus(`Đang đẩy ${rows.length} học sinh (theo Mã HS) lên Google Sheets...`, false);
+    setSheetsSyncStatus(`Đang đồng bộ 2 chiều (cập nhật ngược lại Sheet) cho ${rows.length} học sinh...`, false);
     const res = await syncSessionToGoogleSheets({
       classId: targetCls,
       date: getChecklistDate(),

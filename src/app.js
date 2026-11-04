@@ -3608,7 +3608,19 @@ function isStudentLateInSession(student, seatedEntry = null, clsObj = null, date
   const det = resolveLateDetails(student, seatedEntry, clsObj, dateStr);
   return Boolean(det.isLate && det.lateMinutes > 0);
 }
-const studentById=id=>students.find(s=>s.id===id)||makeupStudents.find(s=>s.id===id);
+const studentById = id => {
+  if (!id) return null;
+  const inMem = (students || []).find(s => s.id === id) || (makeupStudents || []).find(s => s.id === id);
+  if (inMem) return inMem;
+  const fromFeatures = window.__featuresApp?.getStudents?.()?.find(s => s.id === id);
+  if (fromFeatures) return fromFeatures;
+  try {
+    const fromDisk = typeof loadStudentRecords === 'function' ? loadStudentRecords() : null;
+    const diskStu = (fromDisk?.students || []).find(s => s.id === id) || (fromDisk?.makeupStudents || []).find(s => s.id === id);
+    if (diskStu) return diskStu;
+  } catch {}
+  return null;
+};
 const sessionNoteFor=id=>(id&&id!=='__updatedAt'?attendanceNotes[id]:undefined)??studentById(id)?.sessionNotes?.find(note=>note.classId===CURRENT_CLASS_ID&&note.date===checklistDate)?.note??'';
 function saveSessionNote(id, value, opts = {}) {
   if (!id || id === '__updatedAt') return;
@@ -4569,9 +4581,9 @@ function scheduleCard(classInfo, dateArg, changeArg) {
         ? '<span class="shift-state">Đã điều chỉnh</span>'
         : '';
 
-  const btnAction = isSessionActive ? 'data-enter-live-class' : 'data-enter-class';
-  const btnText = isSessionActive ? '▶ Vào ca trực' : (ongoing ? 'Mở lớp' : 'Xem lớp');
-  const btnStyle = isSessionActive ? 'background:#15803d; font-weight:700;' : '';
+  const btnAction = 'data-enter-class';
+  const btnText = 'Xem lớp';
+  const btnStyle = '';
 
   return '<article class="shift-card ' + (ongoing ? 'ongoing' : '') + '" style="cursor:pointer;" ' + btnAction + '="' + escapeHtml(classInfo.id) + '" data-session-date="' + dateIso + '">'
     + '<div class="shift-card-icon">' + (ongoing ? '◉' : '') + '</div>'
@@ -4632,8 +4644,8 @@ function renderMainMenu(){
     allQuick.innerHTML = editable.map(item => {
       const date = occurrenceDate(item);
       const isAct = activeClassIdSet.has(item.id);
-      const actBtn = isAct ? 'data-enter-live-class' : 'data-enter-class';
-      const actLabel = isAct ? '▶ Vào ca trực' : 'Vào lớp';
+      const actBtn = 'data-enter-class';
+      const actLabel = 'Xem lớp';
       const actChip = isAct ? '<span class="shift-state live" style="background:#dcfce7; color:#15803d; font-weight:700;">● Đang mở ca</span>' : '';
       return `<article class="shift-card ${isAct ? 'ongoing' : ''}" style="cursor:pointer;" ${actBtn}="${escapeHtml(item.id)}" data-session-date="${date.toLocaleDateString('sv-SE')}">
         <div class="shift-card-icon"></div>
@@ -5518,8 +5530,7 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
     if ($('#checklist-close-session-panel')) $('#checklist-close-session-panel').hidden = false;
     window.__featuresApp?.updateSessionStateUI?.();
   }
-  if ($('#close-session-btn')) $('#close-session-btn').hidden = true;
-  if ($('#open-session-btn')) $('#open-session-btn').hidden = true;
+  window.__featuresApp?.updateSessionStateUI?.();
 
   // Setup banner navigation buttons
   if ($('#history-back-general-btn')) {
@@ -6347,6 +6358,13 @@ function renderStudentList(){
       const ranked=searchStudents(items.map(record=>record.student),query),order=new Map(ranked.map((student,index)=>[student.id,index]));
       items=items.filter(record=>order.has(record.student.id)).sort((a,b)=>order.get(a.student.id)-order.get(b.student.id));
     }
+    // Mặc định chỉ hiển thị học sinh có trạng thái 'Học' (ẩn học sinh đã nghỉ/tạm nghỉ/chưa nhập học)
+    // Người dùng có thể chọn 'status_stopped' hoặc 'all_with_stopped' trong bộ lọc để làm hiện lại
+    if (filter === 'status_stopped') {
+      items = items.filter(r => (r.student.enrollmentStatus && r.student.enrollmentStatus !== 'Học'));
+    } else if (filter !== 'all_with_stopped' && !query) {
+      items = items.filter(r => (!r.student.enrollmentStatus || r.student.enrollmentStatus === 'Học'));
+    }
     if(filter==='present')items=items.filter(r=>r.attendance?.status==='present');
     if(filter==='late')items=items.filter(r=>r.attendance?.status==='late');
     if(filter==='absent')items=items.filter(r=>r.attendance?.status==='absent'||r.attendance?.status==='absent_excused'||r.attendance?.status==='absent_unexcused');
@@ -6533,8 +6551,8 @@ function renderStudentList(){
         : '';
 
       const cellMap = {
-        family: `<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${isMakeupRow ? '#6d28d9' : '#395140'}; font-weight:${isMakeupRow ? '700' : '500'};">${escapeHtml(familyName || '—')}</button></td>`,
-        name: `${officeCopyTd}<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;"><strong style="color:${isMakeupRow ? '#6d28d9' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>${renderInlineTags(student)}</button>${renderStudentWarningTag(student, CURRENT_CLASS_ID)}</td>`,
+        family: `<td data-open-student-profile="${escapeHtml(student.id)}" style="cursor:pointer;" title="Bấm để mở hồ sơ buổi học của ${escapeHtml(student.name)}"><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${isMakeupRow ? '#6d28d9' : '#395140'}; font-weight:${isMakeupRow ? '700' : '500'};">${escapeHtml(familyName || '—')}</button></td>`,
+        name: `${officeCopyTd}<td data-open-student-profile="${escapeHtml(student.id)}" style="cursor:pointer;" title="Bấm để mở hồ sơ buổi học của ${escapeHtml(student.name)}"><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;"><strong style="color:${isMakeupRow ? '#6d28d9' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>${renderInlineTags(student)}</button>${renderStudentWarningTag(student, CURRENT_CLASS_ID)}</td>`,
         school: `<td>${isMakeupRow ? `<span class="makeup-school-tag">${escapeHtml(schoolLabel)}</span>` : escapeHtml(schoolLabel)}</td>`,
         seat: `<td><span class="room-chip">${escapeHtml(seat)}</span></td>`,
         attendance: `<td>${statusBadge}</td>`,
@@ -6613,6 +6631,16 @@ function renderStudentList(){
   };
   host.innerHTML = renderUnifiedTable(visible);
   autoResizeNoteTextareas(host);
+
+  // Wire direct click to open student session profile
+  host.querySelectorAll('[data-open-student-profile]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const sid = btn.dataset.openStudentProfile || btn.closest('[data-open-student-profile]')?.dataset.openStudentProfile;
+      if (sid) openStudentSessionProfile(sid, CURRENT_CLASS_ID, checklistDate);
+    };
+  });
 
   // Wire Office Match Student with Master List button on row
   host.querySelectorAll('[data-match-master-student]').forEach(btn => {
@@ -8385,7 +8413,7 @@ $('#save-student-profile').onclick=async ()=>{
 let activeSessionProfileCtx = null;
 
 function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessionDate = checklistDate) {
-  const student = studentById(studentId);
+  const student = resolveStudent(studentId) || studentById(studentId) || (window.__featuresApp?.getStudents?.()?.find(s => s.id === studentId));
   if (!student) return;
   const targetClassId = classId || CURRENT_CLASS_ID;
   const targetDate = sessionDate || checklistDate;
@@ -8440,7 +8468,7 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
     ?? btvnScoreObj?.score
     ?? '';
   const curTestScore = place?.entry.testScore
-    ?? (isCurrentLiveSession ? checklist.testScores?.[student.id] : null)
+    ?? (isCurrentLiveSession ? checklist?.testScores?.[student.id] : null)
     ?? sessNoteObj?.testScore
     ?? testScoreObj?.score
     ?? '';
@@ -8830,7 +8858,12 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
     };
   }
 
-  dlg.showModal();
+  try {
+    if (dlg.open) dlg.close();
+    dlg.showModal();
+  } catch {
+    dlg.setAttribute('open', '');
+  }
 }
 window.openStudentSessionProfile = openStudentSessionProfile;
 
@@ -12239,7 +12272,7 @@ function renderScoresView() {
       : (s.school || '—');
 
     const hwScore = hw?.score ?? null;
-    const testScore = place?.entry.testScore ?? checklist.testScores?.[s.id] ?? s.testScore ?? null;
+    const testScore = place?.entry.testScore ?? checklist?.testScores?.[s.id] ?? s.testScore ?? null;
     const parts = splitStudentName(s.name);
     const recentFour = getRecentFourScoresSummary(s, CURRENT_CLASS_ID);
 
@@ -12377,13 +12410,13 @@ function renderScoresView() {
 
     const scoreTdMap = {
       family: `
-        <td style="white-space:nowrap;">
+        <td data-open-student-profile="${escapeHtml(s.id)}" style="white-space:nowrap; cursor:pointer;" title="Bấm để mở hồ sơ buổi học của ${escapeHtml(s.name)}">
           <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${item.isMakeup ? '#6d28d9' : '#334155'}; font-weight:${item.isMakeup ? '500' : '400'};" title="Bấm mở Hồ sơ học sinh trong buổi học">
             <span>${escapeHtml(item.familyName || '—')}</span>
           </button>
         </td>`,
       name: `
-        <td style="white-space:nowrap;">
+        <td data-open-student-profile="${escapeHtml(s.id)}" style="white-space:nowrap; cursor:pointer;" title="Bấm để mở hồ sơ buổi học của ${escapeHtml(s.name)}">
           <button type="button" data-open-student-profile="${escapeHtml(s.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;" title="Bấm mở Hồ sơ học sinh trong buổi học">
             <span class="score-tab-student-name" style="color:${item.isMakeup ? '#6d28d9' : '#0f172a'}; font-weight:${item.isMakeup ? '600' : '500'};">${escapeHtml(item.givenName || s.name)}</span>
             ${renderInlineTags(s)}
@@ -12434,6 +12467,16 @@ function renderScoresView() {
 
   tbody.innerHTML = htmlRows.join('');
   autoResizeNoteTextareas(tbody);
+
+  // Wire direct click to open student session profile from scores tab
+  tbody.querySelectorAll('[data-open-student-profile]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const sid = btn.dataset.openStudentProfile || btn.closest('[data-open-student-profile]')?.dataset.openStudentProfile;
+      if (sid) openStudentSessionProfile(sid, CURRENT_CLASS_ID, checklistDate);
+    };
+  });
 
   // Wire click on recent-scores-btn to open detailed score history modal
   tbody.querySelectorAll('[data-open-score-history]').forEach(btn => {

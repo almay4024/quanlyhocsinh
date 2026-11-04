@@ -37,7 +37,8 @@ export function isStatusWord(rawVal) {
 
 export function normalizeEnrollmentStatus(rawVal) {
   const trimmed = String(rawVal ?? '').trim();
-  if (!trimmed) return 'Học';
+  // Nếu trong sheet chưa có trạng thái thì vẫn đặt trong web là 'Nghỉ'
+  if (!trimmed) return 'Nghỉ';
   const lower = trimmed.toLowerCase();
   if (lower === 'học' || lower === 'đang học' || lower === 'hoc' || lower === 'dang hoc') return 'Học';
   if (lower === 'chưa nhập học' || lower === 'chua nhap hoc') return 'Chưa nhập học';
@@ -1249,11 +1250,138 @@ function handleRequest(e) {
       });
     }
 
-    // 4. Đồng bộ / Đẩy danh sách học sinh lên Sheet theo Mã HS
-    if (action === 'syncStudentsByCode') {
-      var syncSheet = params.sheetName ? ss.getSheetByName(params.sheetName) : ss.getSheets()[0];
+    // 4. Đồng bộ 2 chiều / Cập nhật ngược lại Google Sheet theo Mã HS (In-place cell update & Append)
+    if (action === 'syncStudentsByCode' || action === 'updateStudentsTwoWay') {
+      var syncSheet = null;
+      if (params.sheetName) {
+        syncSheet = ss.getSheetByName(params.sheetName);
+      }
+      if (!syncSheet && params.gid !== undefined && params.gid !== '') {
+        var allSh = ss.getSheets();
+        for (var si = 0; si < allSh.length; si++) {
+          if (String(allSh[si].getSheetId()) === String(params.gid)) {
+            syncSheet = allSh[si];
+            break;
+          }
+        }
+      }
+      if (!syncSheet) syncSheet = ss.getSheets()[0];
       if (!syncSheet) syncSheet = ss.insertSheet(params.sheetName || 'DiemDanh');
+
+      var studentsList = params.students || [];
       var newRows = params.rows || [];
+      var mode = params.mode || (action === 'updateStudentsTwoWay' ? 'inplace' : 'inplace');
+
+      // Chế độ Cập nhật 2 chiều (In-place edit): Giữ nguyên công thức, định dạng, chỉ sửa đúng ô cần thiết
+      if (mode === 'inplace' && studentsList.length > 0) {
+        var dataRange = syncSheet.getDataRange();
+        var sheetValues = dataRange.getValues();
+        if (sheetValues.length > 0) {
+          var headerRow = sheetValues[0].map(function(h) { return String(h || '').trim().toLowerCase(); });
+
+          function findColIdx(candidates) {
+            for (var c = 0; c < candidates.length; c++) {
+              var idx = headerRow.indexOf(candidates[c].toLowerCase());
+              if (idx >= 0) return idx;
+            }
+            return -1;
+          }
+
+          var codeCol = findColIdx(['mã hs', 'mã học sinh', 'ma hs', 'student code', 'code', 'id']);
+          var nameCol = findColIdx(['họ và tên', 'họ tên', 'tên học sinh', 'tên', 'name', 'full name']);
+          var statusCol = findColIdx(['trạng thái', 'tình trạng', 'status', 'enrollment status']);
+          var tagCol = findColIdx(['tag', 'tags', 'thẻ', 'phân loại', 'nhãn']);
+          var classCol = findColIdx(['lớp', 'mã lớp', 'lớp học', 'class', 'class code']);
+          var schoolCol = findColIdx(['trường', 'trường học', 'school']);
+          var phoneCol = findColIdx(['sđt', 'số điện thoại', 'sđt phụ huynh', 'phụ huynh', 'phone']);
+
+          var codeRowMap = {};
+          var nameRowMap = {};
+          for (var r = 1; r < sheetValues.length; r++) {
+            if (codeCol >= 0) {
+              var cVal = String(sheetValues[r][codeCol] || '').trim().toUpperCase();
+              if (cVal) codeRowMap[cVal] = r + 1; // 1-based row index for SpreadsheetApp
+            }
+            if (nameCol >= 0) {
+              var nVal = String(sheetValues[r][nameCol] || '').trim().toLowerCase();
+              if (nVal) nameRowMap[nVal] = r + 1;
+            }
+          }
+
+          var updatedCount = 0;
+          var insertedCount = 0;
+          var unmappedStudents = [];
+
+          for (var sIdx = 0; sIdx < studentsList.length; sIdx++) {
+            var st = studentsList[sIdx];
+            var targetRow = null;
+            var stCode = String(st.studentCode || '').trim().toUpperCase();
+            var stName = String(st.fullName || st.name || '').trim().toLowerCase();
+
+            if (stCode && codeRowMap[stCode]) {
+              targetRow = codeRowMap[stCode];
+            } else if (stName && nameRowMap[stName]) {
+              targetRow = nameRowMap[stName];
+            }
+
+            if (targetRow) {
+              // Cập nhật ngược lại các ô tương ứng trên Google Sheet (In-place cell update)
+              if (statusCol >= 0 && st.enrollmentStatus) {
+                syncSheet.getRange(targetRow, statusCol + 1).setValue(st.enrollmentStatus);
+              }
+              if (tagCol >= 0 && st.tags !== undefined) {
+                var tagStr = Array.isArray(st.tags) ? st.tags.join(', ') : String(st.tags || '');
+                syncSheet.getRange(targetRow, tagCol + 1).setValue(tagStr);
+              }
+              if (codeCol >= 0 && st.studentCode && !sheetValues[targetRow - 1][codeCol]) {
+                syncSheet.getRange(targetRow, codeCol + 1).setValue(st.studentCode);
+              }
+              if (classCol >= 0 && st.classCodes) {
+                syncSheet.getRange(targetRow, classCol + 1).setValue(st.classCodes);
+              }
+              if (phoneCol >= 0 && st.parentPhone) {
+                syncSheet.getRange(targetRow, phoneCol + 1).setValue(st.parentPhone);
+              }
+              if (schoolCol >= 0 && st.school) {
+                syncSheet.getRange(targetRow, schoolCol + 1).setValue(st.school);
+              }
+              updatedCount++;
+            } else {
+              unmappedStudents.push(st);
+            }
+          }
+
+          // Nếu có học sinh mới trên web chưa có trên Sheet và cho phép thêm dòng mới
+          if (params.appendNew && unmappedStudents.length > 0) {
+            for (var u = 0; u < unmappedStudents.length; u++) {
+              var ust = unmappedStudents[u];
+              var rowData = new Array(headerRow.length);
+              for (var f = 0; f < rowData.length; f++) rowData[f] = '';
+              if (codeCol >= 0) rowData[codeCol] = ust.studentCode || '';
+              if (nameCol >= 0) rowData[nameCol] = ust.fullName || ust.name || '';
+              if (statusCol >= 0) rowData[statusCol] = ust.enrollmentStatus || 'Học';
+              if (tagCol >= 0) rowData[tagCol] = Array.isArray(ust.tags) ? ust.tags.join(', ') : (ust.tags || '');
+              if (classCol >= 0) rowData[classCol] = ust.classCodes || '';
+              if (schoolCol >= 0) rowData[schoolCol] = ust.school || '';
+              if (phoneCol >= 0) rowData[phoneCol] = ust.parentPhone || '';
+              syncSheet.appendRow(rowData);
+              insertedCount++;
+            }
+          }
+
+          return respondJson({
+            ok: true,
+            success: true,
+            mode: 'inplace',
+            updatedCount: updatedCount,
+            insertedCount: insertedCount,
+            totalStudents: studentsList.length,
+            message: 'Đã cập nhật 2 chiều thành công: ' + updatedCount + ' dòng được cập nhật trực tiếp trên Sheet' + (insertedCount > 0 ? ', ' + insertedCount + ' dòng được thêm mới.' : '.')
+          });
+        }
+      }
+
+      // Fallback: Chế độ ghi đè (Overwrite mode khi được yêu cầu tường minh)
       if (newRows.length > 0) {
         syncSheet.clearContents();
         if (params.headers && params.headers.length) {
@@ -1261,7 +1389,7 @@ function handleRequest(e) {
         }
         syncSheet.getRange(syncSheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
       }
-      return respondJson({ ok: true, success: true, updatedCount: newRows.length });
+      return respondJson({ ok: true, success: true, mode: 'overwrite', updatedCount: newRows.length });
     }
 
     return respondJson({ ok: false, error: 'Hành động không hợp lệ: ' + action });
@@ -1315,6 +1443,8 @@ export function loadGoogleSheetsConfig(storage = localStorage) {
     colPhone: '',
     colStatus: '',
     colTag: '',
+    twoWayMode: true,
+    appendNew: true,
     lastSyncedAt: null,
     syncStatus: 'idle',
     cohortSheets: DEFAULT_COHORTS
@@ -1382,8 +1512,11 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
           r.btvnScore ?? '', r.testScore ?? '', r.sessionNote || '', r.learningNotes || ''
         ]);
 
+    const isTwoWay = config?.twoWayMode !== false;
     const payload = {
-      action: 'syncStudentsByCode',
+      action: isTwoWay ? 'updateStudentsTwoWay' : 'syncStudentsByCode',
+      mode: isTwoWay ? 'inplace' : 'overwrite',
+      appendNew: Boolean(config?.appendNew !== false),
       spreadsheetId,
       sheetName,
       gid: config?.gid || '',

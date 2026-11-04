@@ -670,8 +670,8 @@
             <div class="session-control-actions">
               <button type="button" class="outline-button btn-session-action" id="header-class-general-btn" title="Về trang quản lý chung của lớp">Quản lý chung</button>
               <button type="button" class="outline-button btn-session-action" id="header-edit-class-btn" title="Cài đặt thông tin lớp">Cài đặt lớp</button>
-              <button type="button" class="outline-button btn-session-action" id="open-session-btn" hidden style="display:none!important;">Mở lớp</button>
-              <button type="button" class="outline-button btn-session-action btn-danger-soft" id="close-session-btn" hidden style="display:none!important;">Đóng ca học</button>
+              <button type="button" class="outline-button btn-session-action" id="open-session-btn" hidden>Mở lại ca</button>
+              <button type="button" class="outline-button btn-session-action btn-danger-soft" id="close-session-btn">Đóng ca học</button>
             </div>
           </div>
         </section>
@@ -1061,7 +1061,9 @@
               <input id="student-list-search" type="search" autocomplete="off" placeholder="Tìm theo họ đệm, tên hoặc #tag..." />
             </label>
             <select id="student-list-filter" aria-label="Lọc học sinh">
-              <option value="all">Tất cả trạng thái (Gồm cả Học bù)</option>
+              <option value="all">Danh sách học (Mặc định)</option>
+              <option value="all_with_stopped">Tất cả (Gồm cả học sinh nghỉ)</option>
+              <option value="status_stopped">Học sinh đã nghỉ / tạm nghỉ</option>
               <option value="new_or_makeup">Học mới &amp; Học bù</option>
               <option value="new_student">Học sinh mới</option>
               <option value="makeup">Học bù trong buổi</option>
@@ -1571,6 +1573,9 @@
         </div>
 
         <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-top:10px; padding-top:8px; border-top:1px dashed #cbd5e1;">
+          <label class="time-toggle" style="margin:0; font-weight:700; color:#1d4ed8;">
+            <input type="checkbox" id="sheets-two-way-mode-toggle" checked /> Đồng bộ 2 chiều (Cập nhật ngược lại các dòng tương ứng trên Google Sheet)
+          </label>
           <label class="time-toggle" style="margin:0; font-weight:700; color:#15803d;">
             <input type="checkbox" id="sheets-default-new-tag-toggle" checked /> Mặc định gắn tag <strong>"Mới"</strong> cho HS mới &amp; HS chuyển lớp (có thể bỏ chọn ở bảng duyệt)
           </label>
@@ -1710,8 +1715,8 @@
         <button type="button" class="primary-button" id="pull-multi-cohort-sheets-btn" style="background:#047857; font-weight:800;" title="Quét toàn bộ các khóa học sinh (2K9, 2K10, 2K11, 2K12, 2K13)">
           Quét tất cả các khóa (2K9 - 2K13)
         </button>
-        <button type="button" class="outline-button" id="trigger-sheets-sync-btn" style="background:#f0fdf4; color:#15803d; border-color:#86efac; font-weight:700;">
-          Đẩy dữ liệu lên Google Sheet (Export)
+        <button type="button" class="outline-button" id="trigger-sheets-sync-btn" style="background:#f0fdf4; color:#15803d; border-color:#86efac; font-weight:700;" title="Cập nhật ngược lại dữ liệu từ Web lên Google Sheet theo Mã HS (Đồng bộ 2 chiều)">
+          Đồng bộ 2 chiều lên Google Sheet (Cập nhật ngược lại Sheet)
         </button>
         <button type="button" class="outline-button" id="copy-sheets-tsv-btn" title="Copy toàn bộ bảng chuẩn theo Mã HS để Ctrl+V thẳng vào Google Sheets">
           Copy bảng dán vào Sheet

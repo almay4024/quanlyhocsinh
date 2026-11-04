@@ -785,3 +785,94 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 - **Ẩn tên lớp bổ trợ trên Danh bạ tổng:** Tuyệt đối không hiển thị tên lớp bổ trợ/gia sư trong cột "Các lớp theo học" của Bảng danh bạ học sinh toàn trung tâm để tránh gây nhiễu danh sách các lớp học chính thức.
 - **Đếm chính xác KPI số lớp:** Các chỉ số KPI `Học 1 lớp` và `Học nhiều lớp` chỉ tính trên các lớp học chính khóa, không tính lớp bổ trợ.
 - **Truy xuất chi tiết trong Hồ sơ:** Toàn bộ lịch sử các ca bổ trợ và gia sư 1 kèm 1 được lưu vết đầy đủ trong hồ sơ học sinh (mục `Học bù & Bổ trợ`) và trong phân hệ quản lý ca bổ trợ.
+
+#### 5. Mở Hồ Sơ Học Sinh Trong Buổi Học (Session Profile) Từ Danh Sách Học Sinh & Nhập Điểm
+- **Phạm vi áp dụng:** Cả hai tab Danh sách học sinh (`#students-view`) và Danh sách nhập điểm (`#scores-view`).
+- **Tương tác trực quan:** 
+  - Người dùng bấm trực tiếp vào tên học sinh hoặc cột họ đệm (cả nút bấm và toàn bộ ô `<td>` bao quanh đều mang thuộc tính `data-open-student-profile` cùng hiệu ứng `cursor: pointer`).
+  - Hộp thoại Hồ sơ học sinh trong buổi học (`#student-session-profile-dialog`) lập tức mở ra ở chế độ modal an toàn.
+  - Hỗ trợ đầy đủ việc tra cứu học sinh thông qua chuỗi fallback mở rộng: tìm trong bộ nhớ lớp hiện tại, tìm trong danh sách học bù, tìm trong danh sách học sinh toàn trung tâm (`window.__featuresApp.getStudents()`) và tra cứu dữ liệu gốc từ `loadStudentRecords()`.
+  - Bảo vệ điều hướng an toàn trước các trường hợp đối tượng cấu hình checklist chưa khởi tạo hoặc bài test rỗng (`checklist?.testScores?.[student.id]`).
+
+#### 6. Quy Trình Đóng Ca & Mở Lại Ca Học, Nút Header & Đồng Bộ Tức Thì
+- **Nút điều khiển trực tiếp trên thanh Header:**
+  - Nút `Đóng ca học` (`#close-session-btn`) luôn hiển thị ngay trên thanh công cụ header ca làm việc khi ca đang diễn ra (`status !== 'closed'`).
+  - Nút `Mở lại ca` (`#open-session-btn`) tự động xuất hiện thay thế khi ca học đã đóng (`status === 'closed'`).
+  - Đồng thời ở cuối tab Checklist, nút `Kết ca học & Lưu lịch sử` (`#checklist-close-session-btn`) tiếp tục duy trì hoạt động song song.
+- **Hộp thoại tổng kết ca & cảnh báo thông minh (`#close-session-dialog`):**
+  - Rà soát tự động các tiêu chí điểm danh, học sinh vắng chưa phân loại, học sinh chưa thu BTVN, tên bài học và bàn giao bài test.
+  - Khi người dùng bấm `✓ Xác nhận Đóng ca học & Lưu lịch sử`, hệ thống:
+    1. Chuyển trạng thái ca sang `closed` với đầy đủ thống kê sĩ số, BTVN, bài test và nhân sự đóng ca.
+    2. Cập nhật giao diện badge sang `✓ Đã đóng ca` và làm mới trạng thái nút header.
+    3. Tức thì kích hoạt `window.__forceSyncSessionHistoryNow()` để đẩy dữ liệu lên Firebase Realtime Database, đảm bảo tất cả các máy khác cập nhật ngay lập tức mà không bị trễ token hay delay.
+    4. Tự động chuyển màn hình sang tab `Báo cáo buổi học` (`#report-view`).
+
+#### 7. Điều Hướng Thẻ Lớp Tại Tab "Đi Làm": Mở Trang Quản Lý Chung (General View)
+- **Quy tắc điều hướng nhất quán:**
+  - Khi bấm vào nút "Xem lớp" hoặc bấm vào bất kỳ vị trí nào trên thẻ ca làm / thẻ lớp học trong tab chính "Đi làm" (`#ongoing-shift-list`, `#upcoming-shift-list`, `#all-classes-quick-list`), hệ thống **luôn luôn mở trang Quản lý chung của lớp** (`#class-general-view` / `class/[classCode]/general`).
+  - Tuyệt đối không tự động nhảy vào giao diện sơ đồ ca trực (Live session) bất kể ca học của ngày hôm đó đang mở hay không.
+  - Từ trang Quản lý chung, người dùng có thể tự chủ chọn bấm `Vào ca trực (Live)` hoặc `Xem lại ca học` theo nhu cầu thực tế.
+
+#### 8. Quy Ước Đồng Bộ & Lọc Trạng Thái Học Sinh (Trạng Thái Trống = 'Nghỉ', Mặc Định Chỉ Hiện 'Học')
+- **Chuẩn hóa trạng thái từ Google Sheets (`normalizeEnrollmentStatus`):**
+  - Nếu ô trạng thái trên Google Sheet để trống hoặc không có nội dung, hệ thống mặc định ghi nhận và lưu trên web là `Nghỉ`.
+  - Các giá trị trạng thái hợp lệ khác được chuẩn hóa tương ứng (`Học`, `Tạm nghỉ`, `Chưa nhập học`, `Trùng`).
+- **Mặc định ẩn các học sinh không còn theo học:**
+  - Tại Bảng danh bạ học sinh toàn trung tâm (`#master-student-directory`): Bộ lọc cột Trạng thái mặc định được đặt là `Học` (chỉ hiển thị các bạn đang học). Người dùng có thể chọn `-- Tất cả trạng thái --`, `Nghỉ`, hoặc `Tạm nghỉ` từ dropdown của cột Trạng thái để xem lại danh sách bất kỳ lúc nào.
+  - Tại Danh sách học sinh của lớp (`#students-view`): Mặc định chỉ hiển thị danh sách các học sinh có trạng thái `Học`. Các học sinh chuyển sang trạng thái `Nghỉ`, `Tạm nghỉ` sẽ được tự động ẩn khỏi danh sách lớp để tránh chiếm chỗ, nhưng có thể xem lại ngay bằng cách chọn bộ lọc `Học sinh đã nghỉ / tạm nghỉ` (`status_stopped`) hoặc `Tất cả (Gồm cả học sinh nghỉ)` (`all_with_stopped`).
+
+#### 9. Cơ Chế Đồng Bộ & Cập Nhật 2 Chiều với Google Sheets (Two-Way Sync & In-Place Editing)
+- **Tổng quan luồng 2 chiều (Bidirectional Synchronization):**
+  - **Chiều thuận (Google Sheets ➡ Web App):** Hệ thống quét các trang tính trên Google Sheet (hỗ trợ cả quét đơn sheet theo GID/Tên sheet và quét đa khóa học sinh 2K9 – 2K13), tự động đối chiếu theo Mã HS để phát hiện học sinh mới, học sinh đổi lớp gốc, học sinh đổi trạng thái sang "Nghỉ" (hoặc ô trạng thái để trống) và tag mới để đưa vào Bảng duyệt của Văn phòng.
+  - **Chiều ngược (Web App ➡ Google Sheets - Edit ngược lại Sheet):** Mọi thao tác chỉnh sửa thông tin học sinh thực hiện trên Web (cấp Mã HS mới, sửa thông tin phụ huynh/trường học, chuyển lớp, thay đổi trạng thái sang "Nghỉ"/"Học", thêm/bớt Tag phân loại) đều có thể **cập nhật ngược lại trực tiếp vào từng ô/dòng tương ứng trên Google Sheet** mà không làm thay đổi cấu trúc bảng, không làm mất công thức tính toán và không ảnh hưởng đến các cột dữ liệu khác.
+
+- **Thuật toán In-Place Cell Update trên Google Apps Script Bridge:**
+  - **Giao thức gọi API:** Web app gửi yêu cầu POST đến Google Apps Script Web App URL với cấu hình payload:
+    ```json
+    {
+      "action": "updateStudentsTwoWay",
+      "mode": "inplace",
+      "appendNew": true,
+      "spreadsheetId": "<ID>",
+      "sheetName": "<Tên Sheet>",
+      "gid": "<GID>",
+      "students": [
+        {
+          "studentCode": "2K9.001",
+          "fullName": "Nguyễn Văn A",
+          "enrollmentStatus": "Nghỉ",
+          "tags": ["Mới", "VIP"],
+          "classCodes": "2K9.H1.LINH",
+          "school": "THCS Trưng Vương",
+          "parentPhone": "0912345678"
+        }
+      ]
+    }
+    ```
+  - **Nhận diện cột động (Dynamic Column Discovery):** Apps Script phân tích dòng tiêu đề đầu tiên (Row 1) của trang tính để tự động tìm kiếm chỉ mục các cột:
+    * `codeCol`: Cột Mã HS (`Mã HS`, `Mã học sinh`, `Ma HS`, `Code`, `ID`).
+    * `nameCol`: Cột Họ và tên (`Họ và tên`, `Họ tên`, `Tên học sinh`, `Full Name`).
+    * `statusCol`: Cột Trạng thái (`Trạng thái`, `Tình trạng`, `Status`).
+    * `tagCol`: Cột Tag (`Tag`, `Tags`, `Thẻ`, `Phân loại`, `Nhãn`).
+    * `classCol`: Cột Lớp (`Lớp`, `Mã lớp`, `Lớp học`, `Class`).
+    * `phoneCol`: Cột SĐT Phụ huynh (`SĐT`, `Số điện thoại`, `Phụ huynh`, `Phone`).
+    * `schoolCol`: Cột Trường học (`Trường`, `Trường học`, `School`).
+  - **Định vị & Ghi đè chính xác từng ô (In-place cell writing):**
+    * Lập bản đồ chỉ mục dòng theo `Mã HS` (ưu tiên tuyệt đối) và `Họ và tên` (dự phòng khi học sinh chưa có mã).
+    * Với mỗi học sinh: xác định chính xác số thứ tự hàng `targetRow` trên Sheet. Sử dụng phương thức `syncSheet.getRange(targetRow, colIdx + 1).setValue(...)` để cập nhật riêng rẽ từng ô dữ liệu tương ứng:
+      + Ghi trạng thái học sinh mới vào cột Trạng thái.
+      + Ghi chuỗi tag mới (dạng nối dấu phẩy) vào cột Tag.
+      + Ghi mã học sinh mới vào cột Mã HS (nếu trên Sheet đang trống).
+      + Cập nhật mã lớp, SĐT phụ huynh, trường học nếu có thay đổi.
+    * Tuyệt đối không gọi `clearContents()` khi đang ở chế độ 2 chiều `inplace`, bảo toàn 100% định dạng, màu sắc, phông chữ và các công thức tính toán có sẵn trên Sheet.
+  - **Tự động thêm mới (Append Mode):** Nếu học sinh trên Web chưa từng tồn tại trên Sheet và tùy chọn `appendNew` được bật, Apps Script tự động thêm dòng mới vào cuối trang tính với các trường thông tin được xếp đúng vị trí cột.
+
+- **Giải pháp bảo mật & Quyền truy cập (Restricted Google Drive Bypass):**
+  - Khi Google Sheet bị giới hạn quyền truy cập (chỉ cho phép một số tài khoản Google cụ thể), nhân viên trung tâm hoặc trợ giảng dùng tài khoản khác vẫn có thể đọc và chỉnh sửa 2 chiều thông qua Google Apps Script Web App được triển khai ở chế độ:
+    * `Execute as`: **Tôi (Me / email chủ sở hữu Sheet)**
+    * `Who has access`: **Bất kỳ ai (Anyone)**
+  - Nhờ cơ chế này, mọi thao tác đọc/ghi từ Web app đều thực thi dưới quyền của chủ sở hữu Sheet, loại bỏ hoàn toàn lỗi "Permission Denied" (Lỗi 403) trên Google Drive.
+
+- **Các phương thức dự phòng khi không kết nối trực tiếp Apps Script:**
+  - **Copy TSV chuẩn hóa 2 chiều (`#copy-sheets-tsv-btn`):** Sao chép toàn bộ bảng dữ liệu ra clipboard với đúng định dạng cột phân cách bằng tab (`	`) để người dùng có thể dán trực tiếp (Ctrl + V) đè lên vùng dữ liệu tương ứng trên Google Sheets.
+  - **Xuất file Excel chuẩn (`#export-sheets-xlsx-btn`):** Xuất toàn bộ danh sách ra tệp `.xlsx` có sẵn đầy đủ các cột Mã HS, Họ đệm, Tên, Trường, PH, Trạng thái, Tag, Mã lớp để nhập liệu thủ công.
