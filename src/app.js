@@ -9,6 +9,7 @@ import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrTex
 import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.5.0';
 import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.5.0';
 import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.5.0';
+import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=4.5.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -1687,30 +1688,28 @@ async function _flushFirebaseCloudPush(isUnloading = false, includeHeavy = false
 
   _rtIsPushingCloud = true;
   try {
-    // Gộp cả kv, deletedIds, meta/keyTimestamps và meta vào 1 request multi-path PATCH duy nhất!
-    let res = null;
+    // Ưu tiên sử dụng Firebase Realtime Database SDK (tự động đính kèm Token và xác thực ngầm)
+    let pushSuccess = false;
     try {
-      res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: bodyStr,
-        keepalive: useKeepalive
-      });
-    } catch (firstErr) {
-      if (useKeepalive) {
-        res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: bodyStr
-        });
-      } else {
-        throw firstErr;
+      await update(ref(db, 'lopvui_cloud_v3'), multiPathPayload);
+      pushSuccess = true;
+    } catch (sdkErr) {
+      if (useKeepalive && dbUrl) {
+        try {
+          const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: bodyStr,
+            keepalive: true
+          });
+          if (res && res.ok) pushSuccess = true;
+        } catch {}
       }
     }
 
     _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, metaNow);
     _persistSeenCloudKeyTimestamps(isUnloading);
-    if (res && res.ok) {
+    if (pushSuccess) {
       _notifyRtStatus('realtime-cloud', metaNow, 'cloud-pushed');
     }
   } catch {} finally {
@@ -1729,11 +1728,17 @@ async function _flushFirebaseCloudPush(isUnloading = false, includeHeavy = false
  */
 async function _pullFullCloudSnapshotOnce(source = 'cloud-init') {
   const dbUrl = getConfiguredFirebaseDbUrl();
-  if (!dbUrl) return { ok: false, reason: 'no-url' };
   try {
-    const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, { cache: 'no-store' });
-    if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
-    const data = await res.json();
+    let data = null;
+    try {
+      const snap = await get(ref(db, 'lopvui_cloud_v3'));
+      data = snap.val();
+    } catch (sdkErr) {
+      if (!dbUrl) return { ok: false, reason: 'no-url' };
+      const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, { cache: 'no-store' });
+      if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+      data = await res.json();
+    }
     _notifyRtStatus('realtime-cloud', Date.now(), 'connected');
     if (!data || typeof data !== 'object') {
       return { ok: true, emptyCloud: true, changed: false };
@@ -1772,11 +1777,17 @@ async function _pullFullCloudSnapshotOnce(source = 'cloud-init') {
     };
     _cachedCloudMeta = nextMeta;
     if (!data.meta || !data.meta.deltaSyncV392) {
-      fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nextMeta)
-      }).catch(() => {});
+      try {
+        update(ref(db, 'lopvui_cloud_v3/meta'), nextMeta).catch(() => {});
+      } catch {
+        if (dbUrl) {
+          fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(nextMeta)
+          }).catch(() => {});
+        }
+      }
     }
     const changed = _applyRtRemoteEntries(entries, source, metaMap, remoteDeleted);
     return { ok: true, emptyCloud: Object.keys(entries).length === 0, changed, count: Object.keys(entries).length };
@@ -1803,9 +1814,15 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull', sseMetaSnapshot =
         ? sseMetaSnapshot
         : null;
       if (!meta) {
-        const metaRes = await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, { cache: 'no-store' });
-        if (!metaRes.ok) return { ok: false, reason: `HTTP ${metaRes.status}` };
-        meta = await metaRes.json();
+        try {
+          const mSnap = await get(ref(db, 'lopvui_cloud_v3/meta'));
+          meta = mSnap.val();
+        } catch {
+          if (!dbUrl) return { ok: false, reason: 'no-url' };
+          const metaRes = await fetch(`${dbUrl}/lopvui_cloud_v3/meta.json`, { cache: 'no-store' });
+          if (!metaRes.ok) return { ok: false, reason: `HTTP ${metaRes.status}` };
+          meta = await metaRes.json();
+        }
         if (meta && typeof meta === 'object') {
           _cachedCloudMeta = {
             ...meta,
@@ -1846,9 +1863,16 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull', sseMetaSnapshot =
       const metaMap = {};
       await Promise.all(changedSafeKeys.map(async (safeK) => {
         try {
-          const kRes = await fetch(`${dbUrl}/lopvui_cloud_v3/kv/${safeK}.json`, { cache: 'no-store' });
-          if (!kRes.ok) return;
-          const item = await kRes.json();
+          let item = null;
+          try {
+            const kSnap = await get(ref(db, `lopvui_cloud_v3/kv/${safeK}`));
+            item = kSnap.val();
+          } catch {
+            if (dbUrl) {
+              const kRes = await fetch(`${dbUrl}/lopvui_cloud_v3/kv/${safeK}.json`, { cache: 'no-store' });
+              if (kRes.ok) item = await kRes.json();
+            }
+          }
           const rTs = Number(remoteKeyTsMap[safeK]) || Date.now();
           // Chỉ đánh dấu đã nhận safeK SAU KHI tải thành công gói tin từ Cloud
           if (rTs > 0) {
@@ -1868,11 +1892,18 @@ async function pullFromFirebaseCloudNow(source = 'cloud-pull', sseMetaSnapshot =
       let remoteDeleted = {};
       if ((Number(meta.deletedCount) || 0) > _lastSyncedDeletedCount) {
         try {
-          const delRes = await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, { cache: 'no-store' });
-          if (delRes.ok) {
-            remoteDeleted = (await delRes.json()) || {};
-            _lastSyncedDeletedCount = Object.keys(remoteDeleted).length;
+          try {
+            const dSnap = await get(ref(db, 'lopvui_cloud_v3/deletedIds'));
+            remoteDeleted = dSnap.val() || {};
+          } catch {
+            if (dbUrl) {
+              const delRes = await fetch(`${dbUrl}/lopvui_cloud_v3/deletedIds.json`, { cache: 'no-store' });
+              if (delRes.ok) {
+                remoteDeleted = (await delRes.json()) || {};
+              }
+            }
           }
+          _lastSyncedDeletedCount = Object.keys(remoteDeleted).length;
         } catch {}
       }
 
@@ -1938,25 +1969,43 @@ async function pushAllLocalSnapshotToFirebaseCloud(markCleanSlate = true) {
       keyTimestamps
     };
     _cachedCloudMeta = nextMeta;
-    const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    let putSuccess = false;
+    try {
+      await update(ref(db, 'lopvui_cloud_v3'), {
         meta: nextMeta,
         kv: kvPayload,
         deletedIds: delMap,
         cleanSlateV35: true,
         encryptedV38: true,
         lastFullPushAt: now
-      })
-    });
+      });
+      putSuccess = true;
+    } catch {
+      if (dbUrl) {
+        try {
+          const res = await fetch(`${dbUrl}/lopvui_cloud_v3.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              meta: nextMeta,
+              kv: kvPayload,
+              deletedIds: delMap,
+              cleanSlateV35: true,
+              encryptedV38: true,
+              lastFullPushAt: now
+            })
+          });
+          if (res && res.ok) putSuccess = true;
+        } catch {}
+      }
+    }
     _lastSeenCloudMetaTs = now;
     _persistSeenCloudKeyTimestamps(true);
-    if (res.ok) {
+    if (putSuccess) {
       _notifyRtStatus('realtime-cloud', now, 'full-push');
       return { ok: true, count };
     }
-    return { ok: false, reason: `HTTP ${res.status}` };
+    return { ok: false, reason: 'push-failed' };
   } catch (err) {
     return { ok: false, reason: String(err?.message || 'network-error') };
   }
@@ -2253,18 +2302,51 @@ function initRealtimeSync(onSyncCallback) {
     let _lastSseEventAt = 0;
     const _isSseHealthy = (now = Date.now()) => Boolean(
       _rtCloudEventSource &&
-      _rtCloudEventSource.readyState === 1 &&
-      (now - _lastSseEventAt) < 40000
+      (typeof _rtCloudEventSource === 'function' || _rtCloudEventSource.readyState === 1) &&
+      (now - _lastSseEventAt) < 60000
     );
 
     const _connectFirebaseMetaSSE = () => {
-      const dbUrl = getConfiguredFirebaseDbUrl();
-      if (!dbUrl || typeof EventSource === 'undefined') return;
       try {
         if (_rtCloudEventSource) {
-          try { _rtCloudEventSource.close(); } catch {}
+          try {
+            if (typeof _rtCloudEventSource === 'function') _rtCloudEventSource();
+            else if (_rtCloudEventSource.close) _rtCloudEventSource.close();
+          } catch {}
           _rtCloudEventSource = null;
         }
+
+        // Ưu tiên Firebase Realtime Database SDK onValue (WebSocket 2 chiều, tự động gia hạn token ngầm, loại bỏ lỗi 401 khi quá 1 giờ)
+        try {
+          const metaRef = ref(db, 'lopvui_cloud_v3/meta');
+          const unsub = onValue(metaRef, (snapshot) => {
+            _lastSseEventAt = Date.now();
+            try {
+              const payload = snapshot.val();
+              if (!payload || typeof payload !== 'object') return;
+              const updatedMeta = _updateCachedCloudMetaFromSSE({ data: payload }, 'put');
+              const remoteClient = payload.lastClientId || '';
+              const remoteUpdated = Number(payload.lastUpdatedAt) || 0;
+              if (remoteClient === RT_CLIENT_ID) {
+                _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, remoteUpdated);
+                return;
+              }
+              if (remoteUpdated > _lastSeenCloudMetaTs || !remoteUpdated) {
+                pullFromFirebaseCloudNow('cloud-sdk', updatedMeta || payload);
+              }
+            } catch {}
+          }, (err) => {
+            console.warn('Realtime SDK listener error:', err);
+          });
+          _rtCloudEventSource = unsub;
+          _lastSseEventAt = Date.now();
+          return;
+        } catch (sdkListenErr) {
+          console.warn('Fallback to EventSource:', sdkListenErr);
+        }
+
+        const dbUrl = getConfiguredFirebaseDbUrl();
+        if (!dbUrl || typeof EventSource === 'undefined') return;
         const es = new EventSource(`${dbUrl}/lopvui_cloud_v3/meta.json`);
         _rtCloudEventSource = es;
         es.onopen = () => {
@@ -2374,7 +2456,7 @@ function initRealtimeSync(onSyncCallback) {
           _flushFirebaseCloudPush(false);
         }
         const sseHealthy = _isSseHealthy(now);
-        if (!_rtCloudEventSource || _rtCloudEventSource.readyState === 2 || (now - _lastSseEventAt > 45000)) {
+        if (!_rtCloudEventSource || (typeof _rtCloudEventSource !== 'function' && _rtCloudEventSource.readyState === 2) || (now - _lastSseEventAt > 45000)) {
           _connectFirebaseMetaSSE();
         }
         const idleMs = now - _lastUserActivityAt;

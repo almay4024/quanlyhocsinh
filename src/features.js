@@ -5,6 +5,7 @@ import { matchesAcronymOrText } from './student-search.js?v=4.5.0';
 import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.5.0';
 import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.5.0';
 import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.5.0';
+import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth } from './data/firebase-auth.js?v=4.5.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
@@ -248,7 +249,7 @@ export function setupFeatures(ctx) {
     const cleanPass = String(rawPassword ?? '').normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 
     if (!cleanCode) {
-      setLoginError('Vui lòng nhập Mã nhân viên hoặc Tên đăng nhập (VD: AD001, TA001, GV001).');
+      setLoginError('Vui lòng nhập Mã nhân viên hoặc Tên đăng nhập (VD: AD001, TA001, congnt).');
       $('#login-staff-code-input')?.focus();
       return false;
     }
@@ -258,39 +259,90 @@ export function setupFeatures(ctx) {
       return false;
     }
 
+    const submitBtn = $('#login-submit-btn');
+    const origText = submitBtn?.textContent;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Đang xác thực bảo mật...';
+    }
+
+    let firebaseAuthSuccess = false;
+    let authErrorDetail = null;
+
+    try {
+      await loginWithStaffCode(cleanCode, cleanPass);
+      firebaseAuthSuccess = true;
+    } catch (authErr) {
+      authErrorDetail = authErr;
+      console.warn('Firebase Auth failed:', authErr);
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      if (origText) submitBtn.textContent = origText;
+    }
+
+    // Nếu Firebase Auth thất bại
+    if (!firebaseAuthSuccess) {
+      if (navigator.onLine) {
+        const errCode = authErrorDetail?.code;
+        if (errCode === 'auth/invalid-credential' || errCode === 'auth/user-not-found' || errCode === 'auth/wrong-password') {
+          setLoginError('Tên đăng nhập hoặc Mật khẩu không chính xác. Vui lòng kiểm tra lại.');
+        } else if (errCode === 'auth/too-many-requests') {
+          setLoginError('Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau ít phút.');
+        } else {
+          setLoginError(authErrorDetail?.message ? `Lỗi xác thực: ${authErrorDetail.message}` : 'Tên đăng nhập hoặc mật khẩu không chính xác.');
+        }
+        $('#login-password-input')?.focus();
+        return false;
+      }
+      
+      // Fallback khi thiết bị ngoại tuyến (offline)
+      let master = getMasterData();
+      let employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+      let emp = findMatchingEmployeeAccount(employees, rawCode);
+      if (!emp || !verifyStaffPassword(emp, cleanPass)) {
+        setLoginError('Không có kết nối mạng và tài khoản chưa từng lưu trên máy này.');
+        return false;
+      }
+      return completeLoginSession(emp, rememberMe);
+    }
+
+    // Firebase Auth thành công
     let master = getMasterData();
     let employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
     let emp = findMatchingEmployeeAccount(employees, rawCode);
 
-    // Nếu thiết bị chưa kịp tải danh sách tài khoản mới nhất từ Firebase Cloud (hoặc Admin vừa tạo/đổi mật khẩu), tự động đồng bộ nhanh từ Cloud rồi kiểm tra lại!
-    if ((!emp || !verifyStaffPassword(emp, cleanPass)) && typeof ctx.pullFromFirebaseCloudNow === 'function') {
-      try {
-        const submitBtn = $('#login-submit-btn');
-        const origText = submitBtn?.textContent;
-        if (submitBtn) submitBtn.textContent = 'Đang đồng bộ tài khoản...';
-        await ctx.pullFromFirebaseCloudNow('login-verify');
-        if (submitBtn && origText) submitBtn.textContent = origText;
-        master = loadMasterData();
+    if (!emp && (cleanCode === 'AD001' || cleanCode.startsWith('AD'))) {
+      emp = {
+        id: 'employee-admin-001',
+        code: cleanCode,
+        name: 'Quản trị hệ thống',
+        role: 'admin',
+        isActive: true,
+        authVersion: 1
+      };
+      if (!employees.some(e => e.id === emp.id)) {
+        master.employees = [emp, ...(master.employees || [])];
         if (ctx.setMasterData) ctx.setMasterData(master);
-        employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
-        emp = findMatchingEmployeeAccount(employees, rawCode);
-      } catch {}
+      }
     }
 
     if (!emp) {
-      setLoginError(`Tài khoản "${String(rawCode || '').trim()}" không tồn tại trong hệ thống. Vui lòng kiểm tra lại Mã nhân viên hoặc liên hệ Admin.`);
-      $('#login-staff-code-input')?.focus();
-      return false;
+      emp = {
+        id: `employee-${cleanCode.toLowerCase()}`,
+        code: cleanCode,
+        name: cleanCode,
+        role: 'assistant',
+        isActive: true,
+        authVersion: 1
+      };
+      master.employees = [...(master.employees || []), emp];
+      if (ctx.setMasterData) ctx.setMasterData(master);
     }
 
     if (emp.isActive === false) {
       setLoginError(`Tài khoản ${emp.code} (${emp.name}) đã bị Admin tạm khóa. Vui lòng liên hệ Quản trị viên.`);
-      return false;
-    }
-
-    if (!verifyStaffPassword(emp, cleanPass)) {
-      setLoginError(`Mật khẩu không chính xác cho tài khoản ${emp.code} (${emp.name}). Vui lòng thử lại hoặc liên hệ Admin.`);
-      $('#login-password-input')?.focus();
       return false;
     }
 
@@ -319,6 +371,7 @@ export function setupFeatures(ctx) {
   }
 
   function handleLogout(reasonMsg = '') {
+    try { logoutFirebaseAuth(); } catch {}
     localStorage.removeItem('lopvui.signed-in-account.v1');
     localStorage.setItem('lopvui.explicit-logout.v1', '1');
     try { sessionStorage.removeItem('lopvui.signed-in-account.v1'); } catch {}

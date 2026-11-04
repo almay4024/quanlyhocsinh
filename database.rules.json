@@ -3,8 +3,8 @@
     ".read": false,
     ".write": false,
     "lopvui_cloud_v3": {
-      ".read": true,
-      ".write": true,
+      ".read": "auth != null",
+      ".write": "auth != null",
       "meta": {
         ".validate": "newData.hasChildren(['lastUpdatedAt']) && newData.child('lastUpdatedAt').isNumber() && (!newData.child('lastClientId').exists() || (newData.child('lastClientId').isString() && newData.child('lastClientId').val().length <= 80))",
         "keyTimestamps": {
