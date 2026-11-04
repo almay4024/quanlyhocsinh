@@ -86,6 +86,8 @@ export function openClassSession(classId, date, currentUser, classInfo, storage 
   if (record) {
     record.status = 'active';
     record.lastReopenedAt = now;
+    record.updatedAt = now;
+    record.revision = (Number(record.revision) || 0) + 1;
     if (!record.startedAt) record.startedAt = now;
     if (!record.startedBy) record.startedBy = operator;
   } else {
@@ -112,7 +114,9 @@ export function openClassSession(classId, date, currentUser, classInfo, storage 
         late: 0,
         absent: 0,
         homeworkDone: 0
-      }
+      },
+      updatedAt: now,
+      revision: 1
     };
     history.push(record);
   }
@@ -232,6 +236,7 @@ export function closeClassSession(classId, date, currentUser, snapshotData, fina
 
   record.status = 'closed';
   record.closedAt = now;
+  record.updatedAt = now;
   record.closedBy = operator;
   record.finalNote = finalNote || snapshotData.sessionNote || record.finalNote || '';
   record.lessonTitle = snapshotData.lessonTitle || record.lessonTitle || '';

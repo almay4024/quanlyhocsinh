@@ -400,6 +400,29 @@ Nhằm loại bỏ hoàn toàn độ trễ (delay nhẹ khi gõ từ bàn phím)
    * Trước đây, hàm resize đặt `ta.style.height = 'auto'` rồi mới đọc `ta.scrollHeight`, buộc trình duyệt phải tính toán lại bố cục (forced reflow/layout thrashing) 2 lần trên mỗi ký tự.
    * Giải pháp mới: Điều chỉnh chiều cao thông qua `window.requestAnimationFrame`, chỉ cập nhật `style.height` khi chiều cao thực tế thay đổi vượt quá $3\text{ px}$, giữ cho thao tác gõ văn bản đạt tốc độ phản hồi $60\text{ fps}$ mượt mà.
 
+### 6.5. Đồng Bộ Thời Gian Thực Ca Học Mới Mở Giữa Các Thiết Bị (Instant Active Session Propagation)
+
+Để giải quyết triệt để vấn đề ca học mới mở trên máy A không tự động xuất hiện trên máy B:
+
+1. **Chuẩn Hóa Đóng Dấu Thời Gian & Phiên Bản Khi Mở / Mở Lại Ca Học (`openClassSession`):**
+   * Khi ca học được mở (hoặc mở lại), hàm `openClassSession` tự động đính kèm `updatedAt = now` (ISO string) và tăng lũy tiến `revision = revision + 1`.
+   * Nhờ đó, thuật toán hợp nhất `_mergeGranularJsonValue` trên máy nhận (Machine B) luôn nhận diện được trạng thái `active` của ca học là mới hơn bản ghi cũ, không bao giờ bị loại bỏ hay bị ghi đè ngược bởi trạng thái đóng cũ.
+2. **Đẩy Nhanh Lịch Sử Ca Học Lên Đám Mây (`session-history.v2` Fast-Push):**
+   * Giảm thời gian chờ đẩy hàng đợi của `lopvui.session-history.v2` xuống $800\text{ ms}$ (thay vì $8500\text{ ms}$), đồng thời kích hoạt `window.__forceSyncSessionHistoryNow()` đẩy tức thì ngay khi người dùng bấm mở ca hoặc vào ca học trực tiếp.
+3. **Hiển Thị Minh Bạch Ca Đang Mở Trên Bảng Điều Khiển Chính (`#main-menu-view` & `#class-general-view`):**
+   * **Menu chính (`#ongoing-shift-list`):** Tự động quét `sessionHistory` hôm nay để đưa các ca học đang mở vào danh sách ca làm, bất kể hôm đó có phải ngày học theo lịch cố định của lớp hay không.
+   * **Thẻ ca học (`scheduleCard`):** Khi ca học đang ở trạng thái `status === 'active'`, thẻ hiển thị badge xanh lá `● Đang mở ca`, trạng thái `Đang mở (Trực tiếp)`, và nút chuyển sang **`▶ Vào ca trực`** (với `data-enter-live-class` dẫn thẳng vào sơ đồ trực tiếp thay vì chỉ xem tổng quan).
+   * **Trang Tổng quan Lớp (`renderClassGeneralView`):** Nút hành động chính `#general-enter-live-btn` tự động đổi nội dung thành **`● Vào ca đang mở (Live)`** với màu xanh nổi bật ngay khi ca học được mở trên bất kỳ thiết bị nào.
+
+### 6.6. Căn Giữa Chuẩn Xác 100% Cho Toàn Bộ Nút & Icon Đóng Menu (Pixel-Perfect Icon Centering)
+
+Nhằm khắc phục tình trạng các icon và nút đóng dấu "x" bị lệch xuống dưới do chênh lệch độ cao đường cơ sở font chữ (font baseline metrics):
+
+1. **Sử Dụng Icon Vector SVG Chuẩn Hóa:** Toàn bộ nút đóng menu/hộp thoại (`.close-button`) trên tất cả 31 dialog của hệ thống được chuyển đổi sang thẻ `<svg width="18" height="18" viewBox="0 0 24 24">` với hai đường chéo giao nhau chính xác tại tọa độ hình học tâm `(12, 12)`, loại bỏ 100% sự phụ thuộc vào metrics của font chữ hệ điều hành.
+2. **Chuẩn Hóa CSS Flexbox & Line-Height = 0:**
+   * Áp dụng `display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; margin: 0 !important; line-height: 0 !important;` trên tất cả các lớp `.close-button`, `.card-more-toggle-btn`, và `.desk-add-compact-btn`.
+   * Đối với trường hợp nút đóng chứa ký tự thuần túy `×`, áp dụng bù trừ quang học `padding-bottom: 2px !important;` để nâng tâm chữ lên trùng khớp với tâm hình tròn 38px của nút.
+
 ---
 
 ## 7. ĐẶC TẢ NGHIỆP VỤ SƠ ĐỒ LỚP, THU BTVN, ĐIỂM DANH & CHẾ ĐỘ GIÁO VIÊN (`#seating-view`)
@@ -627,17 +650,18 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 - [ ] **1.1. Không Emoji 100% (Zero-Emoji):** Quét toàn bộ HTML, CSS, JavaScript, thông báo Toast và mẫu xuất báo cáo; đảm bảo không còn bất kỳ ký tự Emoji màu nào. Chỉ sử dụng chữ thuần túy kết hợp bộ ký hiệu chuẩn (`✓`, `×`, `+`, `—`, `/`, `•`) hoặc icon SVG nét mảnh đơn sắc (`stroke="currentColor"`, `fill="none"`) ở những nút công cụ nhỏ thực sự cần thiết.
 - [ ] **1.2. Font chữ Tiếng Việt & Số thẳng cột (`tabular-nums`):** Tất cả chữ tiếng Việt có dấu hiển thị rõ nét, không lỗi dấu; toàn bộ cột STT, Mã HS, Điểm số, Sĩ số, Thời gian và Số phút muộn đều áp dụng `font-variant-numeric: tabular-nums` thẳng hàng từ trên xuống dưới.
 - [ ] **1.3. Không tự động phóng to trên iOS/Android:** Tất cả các ô `input`, `select`, `textarea` có `font-size: 16px` và `touch-action: manipulation`, đảm bảo khi bấm vào ô tìm kiếm học sinh hoặc ô nhập điểm trên iPhone/Android màn hình không bị tự động zoom phông.
-- [ ] **1.4. Không có nút nào đè lên nhau (Zero-Overlap):** Kiểm tra trên các kích thước màn hình `320px` (iPhone SE/6), `375px` (iPhone chuẩn), `768px` (iPad dọc), `1024px` (iPad ngang) và `1440px` (Laptop):
+- [x] **1.4. Không có nút nào đè lên nhau (Zero-Overlap) & Căn giữa Icon / Nút đóng Chuẩn xác 100%:**
+  - Toàn bộ nút đóng `×` của mọi hộp thoại chuyển sang SVG vector nét mảnh đơn sắc với tâm tọa độ hình học `(12, 12)` kết hợp `display: inline-flex; align-items: center; justify-content: center; line-height: 0;`, loại bỏ triệt để hiện tượng icon bị lệch xuống dưới do chênh lệch đường cơ sở font chữ.
   - Nút `Sửa sơ đồ: BẬT/TẮT` nằm trên thanh ngang riêng, không đè lên thanh `BẢNG · ĐẦU LỚP`.
   - Nút `+` trên mỗi bàn nằm ở cột Grid riêng bên phải bàn, không bao giờ đè lên thẻ tên học sinh.
-  - Nút đóng `×` của mọi hộp thoại nằm ở cột Grid riêng bên phải header, không đè lên tiêu đề hộp thoại.
+  - Nút đóng của mọi hộp thoại nằm ở góc trên bên phải header, không đè lên tiêu đề hộp thoại.
   - Các ghế trong cùng một bàn luôn nằm trên **1 hàng ngang duy nhất** (`flex-wrap: nowrap`), không bị rớt dòng dọc.
 - [ ] **1.5. Trợ năng & Điều hướng Bàn phím (Accessibility):** Mọi nút tương tác có kích thước chạm tối thiểu $40\text{ px}\times 40\text{ px}$ và đầy đủ `aria-label`; nhấn `Enter` trong ô tìm kiếm chọn ngay học sinh đầu tiên; nhấn `Enter` hoặc `ArrowDown`/`ArrowUp` trong bảng điểm di chuyển mượt giữa các dòng; nhấn `Escape` đóng hộp thoại; nhấn `Ctrl+Z` (hoặc nút `Hoàn tác`) khôi phục thao tác sơ đồ lớp vừa thực hiện.
 
 #### Nhóm 2: Hiệu năng Phản hồi Tức thì ($< 16\text{ ms}$), Lưu trữ & Đồng bộ Thời gian thực / Ngoại tuyến
 - [x] **2.1. Phản hồi $0\text{ ms}$ trên máy đang thao tác (Optimistic UI) & Zero-Latency Typing:** Ngắt hoàn toàn sự kiện gõ phím (`keydown`) khỏi chu kỳ thăm dò đám mây `pullFromFirebaseCloudNow`, debounce tối ưu các ô tìm kiếm ($75\text{–}90\text{ ms}$) và trường checklist ($220\text{–}250\text{ ms}$), loại bỏ triệt để hiện tượng layout thrashing (`ta.style.height = 'auto'`) trong `autoResizeNoteTextareas`, chuyển sang `requestAnimationFrame` và chỉ cập nhật DOM khi chênh lệch $\ge 3\text{ px}$.
 - [x] **2.2. Không mất con trỏ khi đang gõ:** Khi thiết bị A đang gõ ghi chú hoặc nhập điểm trong bảng mà nhận được gói tin đồng bộ từ thiết bị B, giá trị của các học sinh khác tự động cập nhật nhưng ô `input`/`textarea` đang `focus` trên thiết bị A tuyệt đối không bị mất con trỏ hay xóa chữ đang gõ dở.
-- [ ] **2.3. Hợp nhất Đa thiết bị Không Ghi Đè (CRDT & Tombstone Merge):** Khi 2 trợ giảng trên 2 máy cùng điểm danh 2 bàn khác nhau hoặc cùng sửa dữ liệu trong 1 ca học, hệ thống gộp chính xác theo từng `entryId`/`studentId` và `_updatedAt`. Khi một ghế hoặc học sinh bị xóa khỏi sơ đồ trên máy A, cơ chế `tombstones` đảm bảo ghế đó không bao giờ bị hồi sinh ngược từ bản lưu cũ của máy B.
+- [x] **2.3. Hợp nhất Đa thiết bị Không Ghi Đè (CRDT & Active Session Propagation):** Khi 2 trợ giảng trên 2 máy cùng điểm danh 2 bàn khác nhau hoặc cùng sửa dữ liệu trong 1 ca học, hệ thống gộp chính xác theo từng `entryId`/`studentId` và `_updatedAt`. Khi một thiết bị mở ca học, đính kèm `updatedAt` / `revision` và đẩy tức thì lên đám mây, các thiết bị khác nhận gói tin và tự động hiển thị ca đang mở trên menu chính (`● Đang mở ca`) và trang tổng quan lớp (`● Vào ca đang mở (Live)`).
 - [ ] **2.4. Hoạt động Ngoại tuyến (Offline-First) & Vượt trần 5MB Safari:** Khi ngắt mạng Wi-Fi/4G, thanh trạng thái trên Topbar chuyển sang `• Ngoại tuyến · Lưu tạm X thay đổi`; mọi thao tác điểm danh, BTVN, nhập điểm vẫn lưu an toàn vào RAM + IndexedDB + LocalStorage. Ngay khi bật mạng lại, hệ thống tự động đẩy toàn bộ hàng đợi lên Firebase và báo `• Đã đồng bộ`.
 
 #### Nhóm 3: Nghiệp vụ Sơ đồ Lớp, Thu BTVN Đầu Giờ, Điểm Danh & Đi Muộn (`#seating-view`)

@@ -5670,7 +5670,7 @@ export function setupFeatures(ctx) {
 
     dlg.innerHTML = `
       <form id="bulk-student-action-form" class="dialog-form">
-        <button type="button" class="close-button" id="close-bulk-action-dlg" aria-label="Đóng">×</button>
+        <button type="button" class="close-button" id="close-bulk-action-dlg" aria-label="Đóng"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
         <div class="eyebrow">THAO TÁC LỚP & TAG (${studentIds.length} HỌC SINH)</div>
         <h2>${escapeHtml(titleText)}</h2>
         ${isClassMode ? `
@@ -8869,6 +8869,7 @@ export function setupFeatures(ctx) {
       const cls = getClassCatalog().find(c => c.id === classId) || getActiveClassConfig();
       openClassSession(classId, date, user, cls);
       updateSessionStateUI();
+      window.__forceSyncSessionHistoryNow?.();
     },
     updateOfficeInboxBadge,
     openOfficeInboxDialog
