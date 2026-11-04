@@ -36,7 +36,10 @@ import {
   extractSpreadsheetId,
   extractSheetGid,
   syncSessionToGoogleSheets,
-  pullStudentsFromGoogleSheets
+  pullStudentsFromGoogleSheets,
+  pullStudentsFromGoogleSheetsMultiCohort,
+  exportSessionReportToGoogleDocs,
+  DEFAULT_COHORTS
 } from './excel-import-export.js?v=4.5.0';
 import {
   loadSessionHistory,
@@ -570,20 +573,20 @@ export function setupFeatures(ctx) {
             <small style="color:#2e6f40; font-weight:600;">● Đang đăng nhập hợp lệ</small>
           </div>
           <div class="active-account-actions">
-            <button type="button" class="logout-button-inside" id="active-card-logout-btn" title="Đăng xuất khỏi tài khoản ${escapeHtml(currentEmp.code)}">⎋ Đăng xuất</button>
+            <button type="button" class="logout-button-inside" id="active-card-logout-btn" title="Đăng xuất khỏi tài khoản ${escapeHtml(currentEmp.code)}">Đăng xuất</button>
           </div>
         </div>
         ${(currentEmp.role === 'admin' || currentEmp.role === 'office') ? `
           <div class="account-maintenance-card">
-            <h4>📦 Sao lưu dữ liệu & Tối ưu dung lượng</h4>
+            <h4>Sao lưu dữ liệu & Tối ưu dung lượng</h4>
             <p>Tải bản sao lưu toàn bộ dữ liệu (.json) về máy tính hoặc dọn bộ nhớ đệm các ca đã đóng quá 30 ngày.</p>
             <div class="account-maintenance-actions">
-              <button type="button" class="outline-button" id="acc-export-backup-json-btn">📥 Sao lưu (.json)</button>
+              <button type="button" class="outline-button" id="acc-export-backup-json-btn">Sao lưu (.json)</button>
               <label class="outline-button" style="display:inline-flex; align-items:center; margin:0;">
-                📤 Khôi phục (.json)
+                Khôi phục (.json)
                 <input type="file" id="acc-import-backup-json-input" accept=".json" style="display:none;" />
               </label>
-              <button type="button" class="outline-button" id="acc-cleanup-cache-btn" title="Xóa các key nháp hàng ngày của các ca học đã đóng quá 30 ngày (giữ nguyên 100% lịch sử ca học và điểm số)">🧹 Dọn bộ nhớ đệm</button>
+              <button type="button" class="outline-button" id="acc-cleanup-cache-btn" title="Xóa các key nháp hàng ngày của các ca học đã đóng quá 30 ngày (giữ nguyên 100% lịch sử ca học và điểm số)">Dọn bộ nhớ đệm</button>
             </div>
           </div>
         ` : ''}
@@ -774,7 +777,7 @@ export function setupFeatures(ctx) {
       const isActive = emp.isActive !== false;
       const statusBadge = isActive
         ? `<span class="staff-status-pill active">● Hoạt động</span>`
-        : `<span class="staff-status-pill locked">🔒 Đã khóa</span>`;
+        : `<span class="staff-status-pill locked">Đã khóa</span>`;
 
       const contactHtml = (emp.phone || emp.email)
         ? `<div>${escapeHtml(emp.phone || '—')}</div><small style="color:#6d7d70;">${escapeHtml(emp.email || '')}</small>`
@@ -803,7 +806,7 @@ export function setupFeatures(ctx) {
           <td>${contactHtml}</td>
           <td class="col-allow-wrap">${assignedBadges}</td>
           <td style="text-align:center; white-space:nowrap;">
-            <button type="button" class="outline-button" data-reset-pw-staff="${escapeHtml(emp.id)}" style="padding:7px 10px; font-size:13px;" title="Cấp hoặc đổi mật khẩu đăng nhập">🔑 Đổi MK</button>
+            <button type="button" class="outline-button" data-reset-pw-staff="${escapeHtml(emp.id)}" style="padding:7px 10px; font-size:13px;" title="Cấp hoặc đổi mật khẩu đăng nhập">Đổi MK</button>
             <button type="button" class="outline-button" data-edit-staff="${escapeHtml(emp.id)}" style="padding:7px 10px; font-size:13px; margin-left:4px;">Sửa</button>
             <button type="button" class="text-danger" data-delete-staff="${escapeHtml(emp.id)}" style="padding:7px 10px; font-size:13px; margin-left:4px;">Xóa</button>
           </td>
@@ -1828,12 +1831,14 @@ export function setupFeatures(ctx) {
   function getReportColumnOrder() {
     const defKeys = REPORT_DEFAULT_COLUMNS.map(c => c.key);
     try {
+      const hidden = new Set(JSON.parse(localStorage.getItem('lopvui.column-hidden.report.v1') || '[]'));
       const saved = JSON.parse(localStorage.getItem('lopvui.column-order.report.v1') || 'null');
       if (Array.isArray(saved) && saved.length) {
-        const valid = saved.filter(k => defKeys.includes(k));
-        defKeys.forEach(k => { if (!valid.includes(k)) valid.push(k); });
+        const valid = saved.filter(k => defKeys.includes(k) && !hidden.has(k));
+        defKeys.forEach(k => { if (!valid.includes(k) && !hidden.has(k)) valid.push(k); });
         return valid;
       }
+      return defKeys.filter(k => !hidden.has(k));
     } catch {}
     return defKeys;
   }
@@ -2128,7 +2133,80 @@ export function setupFeatures(ctx) {
         return st === 'submitted' || st === 'graded';
       }).length;
 
+      const getZaloNote = (s, seated) => {
+        const n = (ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : '') || seated?.entry?.homework?.note || '';
+        return n ? ` (Ghi chú: ${n})` : '';
+      };
+      const zaloReasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
+
+      const zaloLines = [
+        `BÁO CÁO CA HỌC: ${currentClass.name} (${currentClass.code || currentClass.id})`,
+        `* Ngày: ${date} (${currentClass.startTime}–${currentClass.endTime}) · Phòng: ${currentClass.room}`,
+        `* Giáo viên: ${currentClass.teacherName || '—'} · Trợ giảng: ${currentClass.assistantName || '—'}`,
+        `* Bài dạy: ${lessonTitle}`,
+        `* BTVN giao về nhà: ${homeworkAssignment || 'Chưa ghi / Không có'}`,
+        ...(homeworkLink ? [`* Link phiếu BTVN: ${homeworkLink}`] : []),
+        ...(notebookLink ? [`* Link vở ghi / Bài giảng: ${notebookLink}`] : []),
+        `* Sĩ số: Có mặt ${presentCount + lateList.length}/${regularRoster.length} (Đúng giờ: ${presentCount}, Đi muộn: ${lateList.length}, Vắng: ${absentList.length}${sessionMakeups.length ? `, Học bù: +${sessionMakeups.length}` : ''})`,
+        ``,
+        `1. Chưa nộp BTVN (${missingHW.length} HS):`,
+        ...(missingHW.length
+          ? missingHW.map(s => {
+              const seated = entries.find(p => p.entry.studentId === s.id);
+              const r = zaloReasonMap[seated?.entry.homework?.reason || s.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
+              return `   - ${s.name} (${s.school || '—'}): ${r}${getZaloNote(s, seated)}`;
+            })
+          : ['   - 100% học sinh có mặt đã nộp đủ BTVN.']),
+        `2. Đi muộn (${lateList.length} HS):`,
+        ...(lateList.length
+          ? lateList.map(s => {
+              const seated = entries.find(p => p.entry.studentId === s.id);
+              const lateStr = formatMergedAttendanceAndArrival(s, seated, true, true, false, date, currentClass.id);
+              return `   - ${s.name}: ${lateStr}${getZaloNote(s, seated)}`;
+            })
+          : ['   - Không có học sinh đi muộn.']),
+        `3. Điểm thấp < ${thresholdStr} (${lowScores.length} HS):`,
+        ...(lowScores.length
+          ? lowScores.map(s => {
+              const seated = entries.find(p => p.entry.studentId === s.id);
+              const hwSc = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
+              const testSc = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
+              return `   - ${s.name}: BTVN ${hwSc} · Test ${testSc}${getZaloNote(s, seated)}`;
+            })
+          : [`   - Không có học sinh điểm dưới ${thresholdStr}.`]),
+        `4. Học sinh học bù (${sessionMakeups.length} HS):`,
+        ...(sessionMakeups.length
+          ? sessionMakeups.map(s => {
+              const seated = entries.find(p => p.entry.studentId === s.id);
+              const hwSc = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '');
+              const srcCls = ctx.getMakeupSourceClassDisplay ? ctx.getMakeupSourceClassDisplay(s) : (s.sourceClassName || 'Lớp khác');
+              return `   - ${s.name} (Bù từ: ${srcCls})${hwSc ? ` · BTVN: ${hwSc}` : ''}${getZaloNote(s, seated)}`;
+            })
+          : ['   - Không có học sinh học bù.']),
+        `5. Vắng mặt (${absentList.length} HS):`,
+        ...(absentList.length
+          ? absentList.map(s => `   - ${s.name} (${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}${s.attendance?.reason ? ': ' + s.attendance.reason : ''})${getZaloNote(s, null)}`)
+          : ['   - 100% học sinh có mặt đầy đủ.'])
+      ];
+      if (sessionNote) {
+        zaloLines.push(``, `Ghi chú buổi học: ${sessionNote}`);
+      }
+      const zaloText = zaloLines.join('\n');
+
       reportHtml = `
+        <div class="report-zalo-preview-box" style="margin-bottom:16px; padding:12px 14px; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <strong style="color:#0f172a; font-size:14px;">Khung xem trước tin nhắn Zalo gửi Giáo viên</strong>
+              <span style="color:#64748b; font-size:12px; margin-left:6px;">(Định dạng gạch đầu dòng chuẩn, không emoji - Có thể sửa trực tiếp)</span>
+            </div>
+            <button type="button" class="primary-button" id="copy-zalo-preview-btn" style="background:#047857; font-weight:700; padding:5px 14px; font-size:12.5px;">
+              Sao chép gửi GV (Zalo)
+            </button>
+          </div>
+          <textarea id="zalo-report-preview-textarea" rows="7" style="width:100%; font-family:monospace; font-size:13px; line-height:1.45; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; background:#ffffff; resize:vertical;" placeholder="Nội dung báo cáo gửi Giáo viên...">${escapeHtml(zaloText)}</textarea>
+        </div>
+
         <div class="attendance-report-heading report-compact-heading">
           <div>
             <strong class="report-heading-eyebrow">BÁO CÁO TỔNG HỢP CA HỌC GỬI GIÁO VIÊN</strong>
@@ -2143,7 +2221,7 @@ export function setupFeatures(ctx) {
 
         <div class="report-btvn-summary-box">
           <div class="report-btvn-top">
-            <strong>📚 Bài tập về nhà (BTVN) & Tài liệu:</strong>
+            <strong>Bài tập về nhà (BTVN) &amp; Tài liệu:</strong>
             <span class="room-chip" style="background:#dcfce7; color:#166534; font-weight:700;">
               ${isNoHwSessionFlag ? 'Ca này không thu BTVN' : `Đã nộp: ${submittedHWCount} · Chưa nộp: ${missingHW.length}`}
             </span>
@@ -2153,8 +2231,8 @@ export function setupFeatures(ctx) {
           </div>
           ${(homeworkLink || notebookLink) ? `
             <div class="report-btvn-links">
-              ${homeworkLink ? `<div><strong>🔗 Phiếu BTVN:</strong> <a href="${escapeHtml(homeworkLink)}" target="_blank" rel="noopener noreferrer" style="color:#15803d; font-weight:700; text-decoration:underline; word-break:break-all;">${escapeHtml(homeworkLink)} ↗</a></div>` : ''}
-              ${notebookLink ? `<div><strong>📓 Vở ghi / Bài giảng:</strong> <a href="${escapeHtml(notebookLink)}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8; font-weight:700; text-decoration:underline; word-break:break-all;">${escapeHtml(notebookLink)} ↗</a></div>` : ''}
+              ${homeworkLink ? `<div><strong>Phiếu BTVN:</strong> <a href="${escapeHtml(homeworkLink)}" target="_blank" rel="noopener noreferrer" style="color:#15803d; font-weight:700; text-decoration:underline; word-break:break-all;">${escapeHtml(homeworkLink)} ↗</a></div>` : ''}
+              ${notebookLink ? `<div><strong>Vở ghi / Bài giảng:</strong> <a href="${escapeHtml(notebookLink)}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8; font-weight:700; text-decoration:underline; word-break:break-all;">${escapeHtml(notebookLink)} ↗</a></div>` : ''}
             </div>
           ` : ''}
         </div>
@@ -2426,7 +2504,7 @@ export function setupFeatures(ctx) {
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school || '—'))}</td>
                     <td><strong class="text-danger">${escapeHtml(reason)}</strong></td>
                     <td>${escapeHtml(noteText || '—')}</td>
-                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">📋 Báo PH</button></td>` : ''}
+                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">Báo PH</button></td>` : ''}
                   </tr>
                 `;
               }).join('') : `<tr><td colspan="${colSpanMissing}" style="text-align:center; padding:18px; color:#497955;">Tuyệt vời! Tất cả học sinh có mặt đều đã nộp BTVN.</td></tr>`}
@@ -2461,7 +2539,7 @@ export function setupFeatures(ctx) {
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school || '—'))}</td>
                     <td><strong style="color:#ab5d18;">${escapeHtml(lateLabel)}</strong></td>
                     <td>${escapeHtml(noteText || '—')}</td>
-                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">📋 Báo PH</button></td>` : ''}
+                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">Báo PH</button></td>` : ''}
                   </tr>
                 `;
               }).join('') : `<tr><td colspan="${colSpanLate}" style="text-align:center; padding:18px; color:#497955;">Không có học sinh nào đi muộn trong ca học này.</td></tr>`}
@@ -2497,7 +2575,7 @@ export function setupFeatures(ctx) {
                     <td><span class="student-state ${isExcused ? 'state-late' : 'state-missing'}">${isExcused ? 'Có phép' : 'Không phép'}</span></td>
                     <td>${escapeHtml(s.attendance?.reason || 'Chưa ghi nhận')}</td>
                     <td>${escapeHtml(noteText || '—')}</td>
-                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">📋 Báo PH</button></td>` : ''}
+                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">Báo PH</button></td>` : ''}
                   </tr>
                 `;
               }).join('') : `<tr><td colspan="${colSpanAbsent}" style="text-align:center; padding:18px; color:#497955;">100% học sinh đã có mặt tại lớp!</td></tr>`}
@@ -2577,6 +2655,18 @@ export function setupFeatures(ctx) {
           copyParentZaloReportForStudent(btn.dataset.copyParentZalo, currentClass.id, date);
         };
       });
+      const copyZaloBtn = host.querySelector('#copy-zalo-preview-btn');
+      if (copyZaloBtn) {
+        copyZaloBtn.onclick = () => {
+          const ta = host.querySelector('#zalo-report-preview-textarea');
+          const txt = ta?.value || '';
+          if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(txt).then(() => {
+              toast('✓ Đã sao chép báo cáo gửi Giáo viên vào bộ nhớ tạm (dán ngay vào Zalo).');
+            });
+          }
+        };
+      }
     });
   }
 
@@ -3785,12 +3875,14 @@ export function setupFeatures(ctx) {
   function getMasterColumnOrder() {
     const defKeys = MASTER_DEFAULT_COLUMNS.map(c => c.key);
     try {
+      const hidden = new Set(JSON.parse(localStorage.getItem('lopvui.column-hidden.master.v1') || '[]'));
       const saved = JSON.parse(localStorage.getItem('lopvui.column-order.master.v1') || 'null');
       if (Array.isArray(saved) && saved.length) {
-        const valid = saved.filter(k => defKeys.includes(k));
-        defKeys.forEach(k => { if (!valid.includes(k)) valid.push(k); });
+        const valid = saved.filter(k => defKeys.includes(k) && !hidden.has(k));
+        defKeys.forEach(k => { if (!valid.includes(k) && !hidden.has(k)) valid.push(k); });
         return valid;
       }
+      return defKeys.filter(k => !hidden.has(k));
     } catch {}
     return defKeys;
   }
@@ -3984,7 +4076,7 @@ export function setupFeatures(ctx) {
         : (() => {
             const ew = evaluateStudentEarlyWarning(s, warnClassContext);
             return ew.hasWarning
-              ? ` <span class="early-warning-pill warn-level-${ew.level || 1}" title="Cảnh báo sớm: ${escapeHtml(ew.tooltip)}">⚠ ${escapeHtml(ew.badgeText)}</span>`
+              ? ` <span class="early-warning-pill warn-level-${ew.level || 1}" title="Cảnh báo sớm: ${escapeHtml(ew.tooltip)}">! ${escapeHtml(ew.badgeText)}</span>`
               : '';
           })();
       const parentDisplay = [s.parentContact?.name, s.parentContact?.phone].filter(Boolean).join(' · ') || '—';
@@ -4194,11 +4286,11 @@ export function setupFeatures(ctx) {
         <div class="student-portrait-showcase">
           <button type="button" id="class-profile-photo-expand" class="student-portrait-frame-btn" title="Bấm để phóng to ảnh chân dung ${escapeHtml(student.name)}">
             <img src="${escapeHtml(clsThumbUrl)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" class="profile-portrait profile-portrait-lg" id="class-profile-portrait-img" />
-            <span class="portrait-zoom-hint">🔍 Phóng to</span>
+            <span class="portrait-zoom-hint">Phóng to</span>
           </button>
           <div class="student-portrait-actions has-photo">
             <label class="portrait-action-btn edit" title="Đổi ảnh chân dung khác">
-              📷 Đổi ảnh
+              Đổi ảnh
               <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
             </label>
             <button type="button" id="class-profile-remove-photo-btn" class="portrait-action-btn remove" title="Xóa ảnh chân dung">Xóa</button>
@@ -4212,7 +4304,7 @@ export function setupFeatures(ctx) {
           </div>
           <div class="student-portrait-actions no-photo">
             <label class="portrait-action-btn upload">
-              📷 Tải ảnh lên
+              Tải ảnh lên
               <input type="file" accept="image/*" id="class-profile-upload-input" style="display:none;" />
             </label>
           </div>
@@ -4233,7 +4325,7 @@ export function setupFeatures(ctx) {
 
         bodyHtml = `
           <div style="margin: 12px 0 6px;">
-            <h4 style="margin:0; color:#233d31; font:700 13px Manrope,sans-serif;"> Hồ sơ học tập: <span style="color:#7e22ce; font-weight:800;">Lớp Bổ trợ & Gia sư (BOTRO)</span></h4>
+            <h4 style="margin:0; color:#233d31; font:700 13px var(--font-sans);"> Hồ sơ học tập: <span style="color:#7e22ce; font-weight:800;">Lớp Bổ trợ & Gia sư (BOTRO)</span></h4>
             <small style="color:#728375;">Dạy kèm 1-kèm-1, bổ trợ hổng kiến thức & học bù · Đội ngũ Trợ giảng & Gia sư</small>
           </div>
 
@@ -4271,7 +4363,7 @@ export function setupFeatures(ctx) {
 
           <div style="margin-top:14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <h5 style="margin:0; font:700 12px Manrope,sans-serif; color:#233d31;"> Lịch sử các ca bổ trợ & gia sư (${sessionsForStudent.length} buổi)</h5>
+              <h5 style="margin:0; font:700 12px var(--font-sans); color:#233d31;"> Lịch sử các ca bổ trợ & gia sư (${sessionsForStudent.length} buổi)</h5>
               <small style="color:#6a7b6f; font-size:13.5px;"> Bấm vào từng buổi để xem chi tiết kiểm tra BTVN và đánh giá</small>
             </div>
             ${sessionsForStudent.length ? `
@@ -4343,7 +4435,7 @@ export function setupFeatures(ctx) {
                             </div>
                           ` : '<small style="color:#94a397; font-style:italic;">Không có nhận xét thêm.</small>'}
                           <div style="margin-top:10px; display:flex; justify-content:flex-end;">
-                            <button type="button" class="outline-button btn-edit-tutoring-from-profile" data-edit-tutoring-from-profile="${escapeHtml(s.id)}" style="padding:4px 10px; font-size:12.5px; font-weight:500; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;">✏️ Sửa thời gian &amp; thông tin ca này</button>
+                            <button type="button" class="outline-button btn-edit-tutoring-from-profile" data-edit-tutoring-from-profile="${escapeHtml(s.id)}" style="padding:4px 10px; font-size:12.5px; font-weight:500; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;">Sửa thời gian &amp; thông tin ca này</button>
                           </div>
                         </div>
                       </div>
@@ -4360,7 +4452,7 @@ export function setupFeatures(ctx) {
           <div style="margin: 12px 0 6px;">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
               <div>
-                <h4 style="margin:0; color:#233d31; font:700 13px Manrope,sans-serif;"> Tình hình học tại lớp: <span style="color:#215f33; font-weight:800;">${escapeHtml(targetClass?.code || clsId)}</span>
+                <h4 style="margin:0; color:#233d31; font:700 13px var(--font-sans);"> Tình hình học tại lớp: <span style="color:#215f33; font-weight:800;">${escapeHtml(targetClass?.code || clsId)}</span>
                   ${isOldTransferredClass ? '<span style="font-size:11.5px; padding:2px 8px; border-radius:999px; background:#e2e8f0; color:#334155; margin-left:6px;">Lớp cũ đã chuyển (Bảo lưu dữ liệu)</span>' : ''}
                   ${isMakeupOnlyClass ? '<span style="font-size:11.5px; padding:2px 8px; border-radius:999px; background:#f3e8ff; color:#6b21a8; margin-left:6px;">Lớp học bù</span>' : ''}
                 </h4>
@@ -4405,7 +4497,7 @@ export function setupFeatures(ctx) {
           <!-- Interactive Session Deep Dive -->
           <div style="margin-top:14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <h5 style="margin:0; font:700 12px Manrope,sans-serif; color:#233d31;"> Lịch sử chi tiết từng buổi học (${(metrics.detailedSessions || []).length} buổi)</h5>
+              <h5 style="margin:0; font:700 12px var(--font-sans); color:#233d31;"> Lịch sử chi tiết từng buổi học (${(metrics.detailedSessions || []).length} buổi)</h5>
               <small style="color:#6a7b6f; font-size:13.5px;"> Bấm vào từng buổi để xem chi tiết học tập & vị trí ngồi</small>
             </div>
             ${(metrics.detailedSessions && metrics.detailedSessions.length) ? `
@@ -5271,6 +5363,18 @@ export function setupFeatures(ctx) {
 
   // Sao chép nhanh báo cáo tổng hợp gửi Giáo viên qua Zalo
   function copyTeacherSummaryReportToClipboard() {
+    const previewTa = document.getElementById('zalo-report-preview-textarea');
+    if (previewTa && previewTa.value.trim()) {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(previewTa.value.trim()).then(() => {
+          toast('✓ Đã sao chép báo cáo gửi Giáo viên vào bộ nhớ tạm (dán ngay vào Zalo).');
+        }).catch(() => {
+          toast('Đã chọn nội dung báo cáo.');
+        });
+      }
+      return;
+    }
+
     ctx.flushDeferredSaveNow?.();
     const currentClass = getActiveClassConfig();
     const date = getChecklistDate();
@@ -5329,14 +5433,14 @@ export function setupFeatures(ctx) {
     };
 
     const lines = [
-      `📋 BÁO CÁO CA HỌC: ${currentClass.name} (${currentClass.code || currentClass.id})`,
-      `• Ngày: ${date} (${currentClass.startTime}–${currentClass.endTime}) · Phòng: ${currentClass.room}`,
-      `• Giáo viên: ${currentClass.teacherName} · Trợ giảng: ${currentClass.assistantName}`,
-      `• Bài học: ${lessonTitle}`,
-      `• BTVN giao về nhà: ${homeworkAssignment || 'Chưa ghi / Không có'}`,
-      ...(homeworkLink ? [`• Link phiếu BTVN: ${homeworkLink}`] : []),
-      ...(notebookLink ? [`• Link vở ghi / Bài giảng: ${notebookLink}`] : []),
-      `• Sĩ số: Có mặt ${presentCount + lateList.length}/${regularRoster.length} (Đúng giờ: ${presentCount}, Đi muộn: ${lateList.length}, Vắng: ${absentList.length}${sessionMakeups.length ? `, Học bù: +${sessionMakeups.length}` : ''})`,
+      `BÁO CÁO CA HỌC: ${currentClass.name} (${currentClass.code || currentClass.id})`,
+      `* Ngày: ${date} (${currentClass.startTime}–${currentClass.endTime}) · Phòng: ${currentClass.room}`,
+      `* Giáo viên: ${currentClass.teacherName} · Trợ giảng: ${currentClass.assistantName}`,
+      `* Bài dạy: ${lessonTitle}`,
+      `* BTVN giao về nhà: ${homeworkAssignment || 'Chưa ghi / Không có'}`,
+      ...(homeworkLink ? [`* Link phiếu BTVN: ${homeworkLink}`] : []),
+      ...(notebookLink ? [`* Link vở ghi / Bài giảng: ${notebookLink}`] : []),
+      `* Sĩ số: Có mặt ${presentCount + lateList.length}/${regularRoster.length} (Đúng giờ: ${presentCount}, Đi muộn: ${lateList.length}, Vắng: ${absentList.length}${sessionMakeups.length ? `, Học bù: +${sessionMakeups.length}` : ''})`,
       ``,
       `1. Chưa nộp BTVN (${missingHW.length} HS):`,
       ...(missingHW.length
@@ -5369,7 +5473,7 @@ export function setupFeatures(ctx) {
             const seated = entries.find(p => p.entry.studentId === s.id);
             const hwSc = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '');
             const srcCls = ctx.getMakeupSourceClassDisplay ? ctx.getMakeupSourceClassDisplay(s) : (s.sourceClassName || 'Lớp khác');
-            return `   - ${s.name} (Bù từ: ${srcCls})${hwSc ? ` · BTVN: ${hwSc}đ` : ''}${getNote(s, seated)}`;
+            return `   - ${s.name} (Bù từ: ${srcCls})${hwSc ? ` · BTVN: ${hwSc}` : ''}${getNote(s, seated)}`;
           })
         : ['   - Không có học sinh học bù.']),
       `5. Vắng mặt (${absentList.length} HS):`,
@@ -5378,7 +5482,7 @@ export function setupFeatures(ctx) {
         : ['   - 100% học sinh có mặt đầy đủ.'])
     ];
     if (sessionNote) {
-      lines.push(``, `📝 Ghi chú buổi học: ${sessionNote}`);
+      lines.push(``, `Ghi chú buổi học: ${sessionNote}`);
     }
 
     const text = lines.join('\n');
@@ -5391,6 +5495,91 @@ export function setupFeatures(ctx) {
     } else {
       toast('Đã chuẩn bị báo cáo gửi Giáo viên.');
     }
+  }
+
+  // Xuất file Word (.doc) tương thích 100% với Google Docs & Microsoft Word
+  function exportCurrentSessionReportToDoc() {
+    ctx.flushDeferredSaveNow?.();
+    const currentClass = getActiveClassConfig();
+    const date = getChecklistDate();
+    const entries = allEntries();
+    const lateQueueIds = getLateQueue();
+    const regularRoster = classStudents();
+    const allMakeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
+    const sessionMakeups = ctx.sessionMakeupStudents ? ctx.sessionMakeupStudents() : allMakeups.filter(m =>
+      (m.attendingClassId === currentClass.id && m.attendingSessionDate === date) ||
+      entries.some(e => e.entry.studentId === m.id) ||
+      lateQueueIds.includes(m.id)
+    );
+    const roster = [...regularRoster, ...sessionMakeups];
+    const lowScoreThreshold = getLowScoreThreshold();
+    const thresholdStr = formatScoreVN(lowScoreThreshold, '6');
+
+    const presentCount = entries.filter(e => e.entry.studentId && e.entry.attendance?.status === 'present').length;
+    const lateList = roster.filter(s => {
+      const seated = entries.find(p => p.entry.studentId === s.id);
+      return ctx.isStudentLateInSession ? ctx.isStudentLateInSession(s, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late');
+    });
+    const absentList = regularRoster.filter(s => {
+      const seated = entries.find(p => p.entry.studentId === s.id);
+      return !seated && !lateQueueIds.includes(s.id);
+    });
+    const missingHW = roster.filter(s => {
+      const seated = entries.find(p => p.entry.studentId === s.id);
+      const st = seated?.entry.homework?.status || s.homework?.status;
+      return st === 'not_submitted';
+    });
+    const lowScores = roster.filter(s => {
+      const seated = entries.find(p => p.entry.studentId === s.id);
+      const hwScore = parseScoreVN(seated?.entry.homework?.score ?? s.homework?.score);
+      const testScore = parseScoreVN(s.testScore ?? seated?.entry.testScore);
+      const validScores = [hwScore, testScore].filter(x => x !== null && !Number.isNaN(x));
+      if (!validScores.length) return false;
+      const lowest = Math.min(...validScores);
+      return lowest < lowScoreThreshold && lowest >= 0;
+    });
+
+    let savedChk = {};
+    try {
+      savedChk = JSON.parse(localStorage.getItem(`lopvui.checklist.v1.${currentClass.id}.${date}`) || '{}') || {};
+    } catch {}
+    const histSession = getSessionRecord(currentClass.id, date) || {};
+    const lessonTitle = $('#lesson-title')?.value?.trim() || savedChk.lessonTitle || histSession.lessonTitle || 'Bài học hôm nay';
+    const sessionNote = $('#session-note')?.value?.trim() || savedChk.classNote || histSession.finalNote || '';
+    const homeworkAssignment = $('#homework-assignment')?.value?.trim() || savedChk.homeworkAssignment || histSession.homeworkAssignment || '';
+    const homeworkLink = $('#homework-link')?.value?.trim() || savedChk.homeworkLink || histSession.homeworkLink || '';
+    const notebookLink = $('#notebook-link')?.value?.trim() || savedChk.notebookLink || histSession.notebookLink || '';
+    const submittedHW = roster.filter(s => {
+      const seated = entries.find(p => p.entry.studentId === s.id);
+      const st = seated?.entry.homework?.status || s.homework?.status;
+      return st === 'submitted' || st === 'graded';
+    }).length;
+
+    const fileName = `BaoCao_${currentClass.code || currentClass.id}_${date}.doc`;
+    exportSessionReportToGoogleDocs({
+      currentClass,
+      date,
+      lessonTitle,
+      homeworkAssignment,
+      homeworkLink,
+      notebookLink,
+      sessionNote,
+      stats: {
+        total: regularRoster.length + sessionMakeups.length,
+        present: presentCount,
+        late: lateList.length,
+        absent: absentList.length,
+        submittedHW
+      },
+      missingHW,
+      lateList,
+      lowScores,
+      sessionMakeups,
+      absentList,
+      roster,
+      thresholdStr
+    }, fileName);
+    toast(`✓ Đã xuất file Word/Google Docs: ${fileName}`);
   }
 
   // Hộp thoại thao tác hàng loạt trực quan (Thêm/Chuyển lớp, Thêm/Xóa Tag) không dùng window.prompt
@@ -5432,7 +5621,7 @@ export function setupFeatures(ctx) {
         ${isClassMode ? `
           ${mode === 'move-class' ? `
             <div style="background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3; padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:10px; line-height:1.45;">
-              <strong>🛡 Bảo lưu 100% dữ liệu lớp cũ:</strong> Khi chuyển lớp, học sinh sẽ chuyển sang danh sách lớp mới, nhưng <strong>toàn bộ lịch sử điểm danh, điểm BTVN/Test và ghi chú ở lớp cũ vẫn được giữ nguyên</strong> trong Hồ sơ học sinh (mục <em>Lớp cũ</em>).
+              <strong>Bảo lưu 100% dữ liệu lớp cũ:</strong> Khi chuyển lớp, học sinh sẽ chuyển sang danh sách lớp mới, nhưng <strong>toàn bộ lịch sử điểm danh, điểm BTVN/Test và ghi chú ở lớp cũ vẫn được giữ nguyên</strong> trong Hồ sơ học sinh (mục <em>Lớp cũ</em>).
             </div>
             ${fromClassObj ? `
               <div style="font-size:13.5px; color:#334155; margin-bottom:8px;">
@@ -5768,7 +5957,11 @@ export function setupFeatures(ctx) {
   $('#copy-teacher-report-btn')?.addEventListener('click', copyTeacherSummaryReportToClipboard);
   $('#inline-customize-report-columns-btn')?.addEventListener('click', () => openColumnOrderDialog('report'));
   $('#inline-copy-teacher-report-btn')?.addEventListener('click', copyTeacherSummaryReportToClipboard);
+  $('#inline-export-doc-btn')?.addEventListener('click', exportCurrentSessionReportToDoc);
   $('#inline-export-xlsx-btn')?.addEventListener('click', exportReportAsCsv);
+  $('#inline-sync-sheets-btn')?.addEventListener('click', () => {
+    openGoogleSheetsSyncModal(getCurrentClassId() || 'all');
+  });
   $('#inline-print-report-btn')?.addEventListener('click', () => window.print());
 
   // Gắn sự kiện cho Chấm công TA (In A4 & Xuất CSV)
@@ -5912,9 +6105,11 @@ export function setupFeatures(ctx) {
   const COLUMN_SCHEMAS = {
     live: {
       storageKey: 'lopvui.column-order.live.v1',
-      title: 'Đổi thứ tự cột: Danh sách học sinh của lớp',
+      hiddenKey: 'lopvui.column-hidden.live.v1',
+      title: 'Đổi thứ tự & Ẩn/Hiện cột: Danh sách học sinh của lớp',
       defaults: ['family', 'name', 'school', 'seat', 'attendance', 'homework', 'score', 'note'],
       scoreNextToName: ['family', 'name', 'score', 'homework', 'note', 'attendance', 'seat', 'school'],
+      paperMode: ['family', 'name', 'attendance', 'homework', 'score'],
       labels: {
         family: 'Họ đệm',
         name: 'Tên học sinh',
@@ -5928,9 +6123,11 @@ export function setupFeatures(ctx) {
     },
     scores: {
       storageKey: 'lopvui.column-order.scores.v1',
-      title: 'Đổi thứ tự cột: Bảng Nhập điểm trong ca',
+      hiddenKey: 'lopvui.column-hidden.scores.v1',
+      title: 'Đổi thứ tự & Ẩn/Hiện cột: Bảng Nhập điểm trong ca',
       defaults: ['family', 'name', 'school', 'status', 'recentScores', 'hwScore', 'testScore', 'note', 'learningNote'],
       scoreNextToName: ['family', 'name', 'hwScore', 'testScore', 'recentScores', 'status', 'note', 'learningNote', 'school'],
+      paperMode: ['family', 'name', 'status', 'hwScore', 'testScore', 'recentScores'],
       labels: {
         family: 'Họ đệm',
         name: 'Tên học sinh',
@@ -5945,9 +6142,11 @@ export function setupFeatures(ctx) {
     },
     report: {
       storageKey: 'lopvui.column-order.report.v1',
-      title: 'Đổi thứ tự cột: Bảng điểm danh & Xuất file Excel (.xlsx)',
+      hiddenKey: 'lopvui.column-hidden.report.v1',
+      title: 'Đổi thứ tự & Ẩn/Hiện cột: Bảng điểm danh & Xuất file Excel (.xlsx)',
       defaults: ['family', 'given', 'code', 'school', 'attendance', 'homework', 'hwScore', 'testScore', 'note'],
       scoreNextToName: ['family', 'given', 'hwScore', 'testScore', 'homework', 'note', 'attendance', 'code', 'school'],
+      paperMode: ['family', 'given', 'attendance', 'homework', 'hwScore', 'testScore'],
       labels: {
         family: 'Họ đệm',
         given: 'Tên học sinh',
@@ -5962,9 +6161,11 @@ export function setupFeatures(ctx) {
     },
     master: {
       storageKey: 'lopvui.column-order.master.v1',
-      title: 'Đổi thứ tự cột: Danh bạ học sinh & Xuất Excel (.xlsx) tổng',
+      hiddenKey: 'lopvui.column-hidden.master.v1',
+      title: 'Đổi thứ tự & Ẩn/Hiện cột: Danh bạ học sinh & Xuất Excel (.xlsx) tổng',
       defaults: ['code', 'family', 'given', 'school', 'parent', 'status', 'classes'],
       scoreNextToName: ['family', 'given', 'code', 'classes', 'status', 'school', 'parent'],
+      paperMode: ['code', 'family', 'given', 'school', 'classes'],
       labels: {
         code: 'Mã học sinh',
         family: 'Họ đệm',
@@ -5979,6 +6180,7 @@ export function setupFeatures(ctx) {
 
   let activeColumnOrderScope = 'live';
   let draftColumnOrder = [];
+  let draftHiddenColumns = new Set();
 
   function openColumnOrderDialog(scope = 'live') {
     const schema = COLUMN_SCHEMAS[scope] || COLUMN_SCHEMAS.live;
@@ -5993,6 +6195,12 @@ export function setupFeatures(ctx) {
     } else {
       draftColumnOrder = [...schema.defaults];
     }
+    try {
+      const savedHidden = JSON.parse(localStorage.getItem(schema.hiddenKey) || '[]');
+      draftHiddenColumns = new Set(Array.isArray(savedHidden) ? savedHidden : []);
+    } catch {
+      draftHiddenColumns = new Set();
+    }
 
     const dlg = $('#column-order-dialog');
     if (!dlg) return;
@@ -6001,16 +6209,30 @@ export function setupFeatures(ctx) {
     const renderList = () => {
       const listEl = $('#column-order-list');
       if (!listEl) return;
-      listEl.innerHTML = draftColumnOrder.map((key, idx) => `
-        <div class="column-order-item" data-col-key="${escapeHtml(key)}">
-          <span class="column-order-index">${idx + 1}</span>
-          <strong class="column-order-name">${escapeHtml(schema.labels[key] || key)}</strong>
-          <div class="column-order-btns">
-            <button type="button" class="outline-button" data-move-col-up="${idx}" ${idx === 0 ? 'disabled' : ''} style="padding:4px 10px; font-size:12.5px;" title="Đẩy cột sang trái / lên trên">⬅ Lên</button>
-            <button type="button" class="outline-button" data-move-col-down="${idx}" ${idx === draftColumnOrder.length - 1 ? 'disabled' : ''} style="padding:4px 10px; font-size:12.5px;" title="Đẩy cột sang phải / xuống dưới">➡ Xuống</button>
+      listEl.innerHTML = draftColumnOrder.map((key, idx) => {
+        const isHidden = draftHiddenColumns.has(key);
+        return `
+        <div class="column-order-item" data-col-key="${escapeHtml(key)}" style="display:flex; align-items:center; gap:8px; padding:6px 10px; background:${isHidden ? '#f8fafc' : '#ffffff'}; border:1px solid ${isHidden ? '#e2e8f0' : '#cbd5e1'}; border-radius:6px;">
+          <input type="checkbox" data-col-vis="${escapeHtml(key)}" ${isHidden ? '' : 'checked'} title="Tích để hiện cột, bỏ tích để ẩn cột" style="width:18px; height:18px; cursor:pointer;" />
+          <span class="column-order-index" style="min-width:20px; font-weight:700; color:#64748b;">${idx + 1}</span>
+          <strong class="column-order-name" style="${isHidden ? 'color:#94a3b8; text-decoration:line-through;' : 'color:#1e293b;'}">${escapeHtml(schema.labels[key] || key)}</strong>
+          <span style="font-size:12px; margin-left:auto; margin-right:6px; color:${isHidden ? '#94a3b8' : '#15803d'}; font-weight:600;">${isHidden ? 'Ẩn' : 'Hiện'}</span>
+          <div class="column-order-btns" style="display:inline-flex; gap:4px;">
+            <button type="button" class="outline-button" data-move-col-up="${idx}" ${idx === 0 ? 'disabled' : ''} style="padding:4px 8px; font-size:12px;" title="Đẩy cột sang trái / lên trên">▲ Lên</button>
+            <button type="button" class="outline-button" data-move-col-down="${idx}" ${idx === draftColumnOrder.length - 1 ? 'disabled' : ''} style="padding:4px 8px; font-size:12px;" title="Đẩy cột sang phải / xuống dưới">▼ Xuống</button>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
+
+      listEl.querySelectorAll('[data-col-vis]').forEach(cb => {
+        cb.onchange = (e) => {
+          const k = e.target.dataset.colVis;
+          if (e.target.checked) draftHiddenColumns.delete(k);
+          else draftHiddenColumns.add(k);
+          renderList();
+        };
+      });
 
       listEl.querySelectorAll('[data-move-col-up]').forEach(btn => {
         btn.onclick = () => {
@@ -6040,13 +6262,23 @@ export function setupFeatures(ctx) {
 
     if ($('#col-preset-score-next-name')) {
       $('#col-preset-score-next-name').onclick = () => {
-        draftColumnOrder = [...schema.scoreNextToName];
+        draftColumnOrder = [...(schema.scoreNextToName || schema.defaults)];
+        draftHiddenColumns.clear();
+        renderList();
+      };
+    }
+    if ($('#col-preset-paper-mode')) {
+      $('#col-preset-paper-mode').onclick = () => {
+        draftColumnOrder = [...(schema.paperMode || schema.defaults)];
+        schema.defaults.forEach(k => { if (!draftColumnOrder.includes(k)) draftColumnOrder.push(k); });
+        draftHiddenColumns = new Set(schema.defaults.filter(k => !(schema.paperMode || []).includes(k)));
         renderList();
       };
     }
     if ($('#col-preset-reset-default')) {
       $('#col-preset-reset-default').onclick = () => {
         draftColumnOrder = [...schema.defaults];
+        draftHiddenColumns.clear();
         renderList();
       };
     }
@@ -6063,6 +6295,9 @@ export function setupFeatures(ctx) {
   $('#save-column-order-btn')?.addEventListener('click', () => {
     const schema = COLUMN_SCHEMAS[activeColumnOrderScope] || COLUMN_SCHEMAS.live;
     localStorage.setItem(schema.storageKey, JSON.stringify(draftColumnOrder));
+    if (schema.hiddenKey) {
+      localStorage.setItem(schema.hiddenKey, JSON.stringify([...draftHiddenColumns]));
+    }
     $('#column-order-dialog')?.close();
     if (activeColumnOrderScope === 'live' || activeColumnOrderScope === 'scores') {
       ctx.renderStudentList?.();
@@ -6072,7 +6307,7 @@ export function setupFeatures(ctx) {
     } else if (activeColumnOrderScope === 'report') {
       renderReportCenter(currentReportTab || 'a4-roster');
     }
-    toast('✓ Đã áp dụng thứ tự cột mới cho bảng hiển thị và xuất file.');
+    toast('✓ Đã áp dụng thứ tự và ẩn/hiện cột cho bảng hiển thị và xuất file.');
   });
 
   // ====================================================
@@ -6762,7 +6997,7 @@ export function setupFeatures(ctx) {
 
       const classSelectOptions = [
         `<option value="">-- Giữ theo Sheet (${escapeHtml(sheetClassText)}) --</option>`,
-        ...(hasUnresolvedRawClass ? `<option value="create_new:${escapeHtml(item.rawClassTexts[0])}" ${item.customClassChoice === `create_new:${item.rawClassTexts[0]}` ? 'selected' : ''}>⚡ Tự tạo lớp mới [${escapeHtml(item.rawClassTexts[0])}]</option>` : []),
+        ...(hasUnresolvedRawClass ? `<option value="create_new:${escapeHtml(item.rawClassTexts[0])}" ${item.customClassChoice === `create_new:${item.rawClassTexts[0]}` ? 'selected' : ''}>Tự tạo lớp mới [${escapeHtml(item.rawClassTexts[0])}]</option>` : []),
         ...catalog.map(c => `<option value="${escapeHtml(c.id)}" ${item.targetClassIds.length === 1 && item.targetClassIds[0] === c.id && !item.customClassChoice ? 'selected' : ''}>Lớp [${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)}</option>`)
       ].join('');
 
@@ -6778,13 +7013,13 @@ export function setupFeatures(ctx) {
         classColumnHtml = `
           <div style="font-size:12px; line-height:1.4; margin-bottom:4px;">
             <span style="color:#b45309; font-weight:700;">Gốc: ${escapeHtml(origClassText)}</span>
-            <span style="margin:0 4px;">➔</span>
+            <span style="margin:0 4px;">➡</span>
             <strong style="color:#1d4ed8;">Sheet: ${escapeHtml(sheetClassText)}</strong>
           </div>
           <div style="display:flex; gap:4px;">
             <select data-approve-class-action="${escapeHtml(item.tempId)}" style="flex:1; padding:4px 6px; font-size:11.5px; border:1px solid #93c5fd; border-radius:6px; background:#eff6ff; font-weight:700; color:#1e3a8a;">
               <option value="transfer" ${item.classAction === 'transfer' ? 'selected' : ''}>⇄ Chuyển lớp (Lưu lớp cũ)</option>
-              <option value="add" ${item.classAction === 'add' ? 'selected' : ''}>➕ Thêm lớp song song</option>
+              <option value="add" ${item.classAction === 'add' ? 'selected' : ''}>+ Thêm lớp song song</option>
             </select>
           </div>
         `;
@@ -6812,13 +7047,13 @@ export function setupFeatures(ctx) {
           </td>
           <td style="font-size:12.5px; color:#334155;">
             <div>${escapeHtml(item.school || '—')}</div>
-            ${item.parentPhone ? `<div style="color:#0369a1; font-weight:600;">📞 ${escapeHtml(item.parentPhone)}</div>` : ''}
+            ${item.parentPhone ? `<div style="color:#0369a1; font-weight:600;">ĐT: ${escapeHtml(item.parentPhone)}</div>` : ''}
           </td>
           <td>${classColumnHtml}</td>
           <td style="text-align:center;">
             <label style="display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border-radius:999px; cursor:pointer; font-size:12px; font-weight:800; border:1px solid ${item.addNewTag ? '#16a34a' : '#cbd5e1'}; background:${item.addNewTag ? '#dcfce7' : '#f1f5f9'}; color:${item.addNewTag ? '#166534' : '#64748b'}; user-select:none;" title="Bấm để gắn hoặc gỡ tag 'Mới' trước khi thêm vào danh sách">
               <input type="checkbox" data-approve-new-tag-cb="${escapeHtml(item.tempId)}" ${item.addNewTag ? 'checked' : ''} style="margin:0; cursor:pointer;" />
-              <span>${item.addNewTag ? '🏷 Tag: Mới' : 'Không gắn tag'}</span>
+              <span>${item.addNewTag ? 'Tag: Mới' : 'Không gắn tag'}</span>
             </label>
           </td>
         </tr>
@@ -6875,7 +7110,7 @@ export function setupFeatures(ctx) {
     const cfg = readAndSaveSheetsConfigFromDialog();
     const extractedRows = extractNormalizedSheetStudents(rawRows, cfg);
     if (!extractedRows.length) {
-      setSheetsSyncStatus('⚠ Không tìm thấy dòng dữ liệu học sinh hợp lệ nào trong Sheet. Hãy kiểm tra lại Tên trang tính (Sheet Tab Name) hoặc cấu hình cột.', true);
+      setSheetsSyncStatus('Không tìm thấy dòng dữ liệu học sinh hợp lệ nào trong Sheet. Hãy kiểm tra lại Tên trang tính (Sheet Tab Name) hoặc cấu hình cột.', true);
       toast('Không tìm thấy dữ liệu học sinh hợp lệ trong Sheet.');
       return;
     }
@@ -7044,7 +7279,7 @@ export function setupFeatures(ctx) {
     }
 
     setSheetsSyncStatus(
-      `🔍 Đã quét <strong>${extractedRows.length}</strong> dòng từ ${escapeHtml(sourceLabel)} · Phát hiện: <strong>${newCount} Học sinh mới</strong>, <strong>${diffClassCount} Học sinh khác lớp gốc</strong>${codeUpdateCount ? `, <strong>${codeUpdateCount} Cập nhật Mã HS/Thông tin</strong>` : ''} (và ${unchangedCount} HS đã khớp). Vui lòng kiểm tra và bấm <strong>Duyệt</strong> bên dưới!`,
+      `Đã quét <strong>${extractedRows.length}</strong> dòng từ ${escapeHtml(sourceLabel)} · Phát hiện: <strong>${newCount} Học sinh mới</strong>, <strong>${diffClassCount} Học sinh khác lớp gốc</strong>${codeUpdateCount ? `, <strong>${codeUpdateCount} Cập nhật Mã HS/Thông tin</strong>` : ''} (và ${unchangedCount} HS đã khớp). Vui lòng kiểm tra và bấm <strong>Duyệt</strong> bên dưới!`,
       false
     );
     renderSheetsApprovalTable();
@@ -7325,7 +7560,7 @@ export function setupFeatures(ctx) {
     const cfg = readAndSaveSheetsConfigFromDialog();
     const targetCls = $('#sheets-sync-class-filter')?.value || 'all';
     const rows = buildStudentSyncRowsForClass(targetCls);
-    setSheetsSyncStatus(`⏳ Đang đẩy ${rows.length} học sinh (theo Mã HS) lên Google Sheets...`, false);
+    setSheetsSyncStatus(`Đang đẩy ${rows.length} học sinh (theo Mã HS) lên Google Sheets...`, false);
     const res = await syncSessionToGoogleSheets({
       classId: targetCls,
       date: getChecklistDate(),
@@ -7338,7 +7573,7 @@ export function setupFeatures(ctx) {
   $('#pull-sheets-sync-btn')?.addEventListener('click', async () => {
     if (!canAccessCrossClass()) { toast('Chỉ Văn phòng hoặc Admin mới có quyền đồng bộ Google Sheets.'); return; }
     const cfg = readAndSaveSheetsConfigFromDialog();
-    setSheetsSyncStatus('⏳ Đang kết nối Google Sheets và quét tìm Học sinh mới & Học sinh khác lớp gốc theo Mã HS...', false);
+    setSheetsSyncStatus('Đang kết nối Google Sheets và quét tìm Học sinh mới & Học sinh khác lớp gốc theo Mã HS...', false);
     const res = await pullStudentsFromGoogleSheets(cfg);
     if (!res.success) {
       setSheetsSyncStatus(escapeHtml(res.message), true);
@@ -7434,6 +7669,448 @@ export function setupFeatures(ctx) {
     setSheetsSyncStatus('✓ Đã lưu toàn bộ cấu hình kết nối Google Sheets, quy tắc đồng bộ Mã HS & Google Drive.', false);
     toast('✓ Đã lưu cấu hình kết nối Google Sheets & Google Drive.');
   });
+
+  // ====================================================
+  // HỘP VIỆC CẦN XỬ LÝ CỦA VĂN PHÒNG (OFFICE ACTION INBOX) - TASK 5
+  // ====================================================
+  let activeOfficeInboxTab = 'pending-ta';
+
+  function getGlobalPendingTACandidates() {
+    const catalog = getClassCatalog() || [];
+    const allStudents = getStudents() || [];
+    const candidates = [];
+    const seenIds = new Set();
+
+    catalog.forEach(cls => {
+      const classStus = allStudents.filter(s => Array.isArray(s.classIds) && s.classIds.includes(cls.id));
+      classStus.forEach(s => {
+        if (!s || seenIds.has(s.id) || s._matchedOrConfirmed) return;
+        const isNew = isNewStudentRecord(s) || (s.tags || []).includes('Mới');
+        const isMakeup = s.studentType === 'makeup';
+        if (isNew || isMakeup) {
+          seenIds.add(s.id);
+          candidates.push({
+            student: s,
+            classId: cls.id,
+            className: cls.name,
+            classCode: cls.code || cls.id,
+            isMakeup
+          });
+        }
+      });
+    });
+    return candidates;
+  }
+
+  function getSuggestedMasterMatches(tempStu) {
+    if (!tempStu) return [];
+    const allStudents = getStudents() || [];
+    const tempNameNorm = String(tempStu.name || '').trim().toLocaleLowerCase('vi');
+    const tempParts = splitVietnameseName(tempStu.name || '');
+    const tempSchool = String(tempStu.school || '').trim().toLocaleLowerCase('vi');
+    const tempPhone = String(tempStu.parentContact?.phone || '').replace(/\D/g, '');
+
+    const scored = [];
+    allStudents.forEach(cand => {
+      if (!cand || cand.id === tempStu.id) return;
+      let score = 0;
+      const candNameNorm = String(cand.name || '').trim().toLocaleLowerCase('vi');
+      const candParts = splitVietnameseName(cand.name || '');
+      const candSchool = String(cand.school || '').trim().toLocaleLowerCase('vi');
+      const candPhone = String(cand.parentContact?.phone || '').replace(/\D/g, '');
+
+      if (candNameNorm === tempNameNorm) score += 60;
+      else if (candParts.givenName && candParts.givenName.toLocaleLowerCase('vi') === tempParts.givenName.toLocaleLowerCase('vi')) {
+        score += 30;
+        if (candParts.familyName && candParts.familyName.toLocaleLowerCase('vi') === tempParts.familyName.toLocaleLowerCase('vi')) score += 15;
+      }
+      if (tempPhone && candPhone && tempPhone === candPhone) score += 40;
+      if (tempSchool && candSchool && (candSchool.includes(tempSchool) || tempSchool.includes(candSchool))) score += 15;
+
+      if (score >= 25) {
+        scored.push({ cand, score });
+      }
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 5).map(item => item.cand);
+  }
+
+  function updateOfficeInboxBadge() {
+    const inboxBtn = $('#office-inbox-btn');
+    const badge = $('#office-inbox-badge');
+    const countTaEl = $('#office-inbox-count-ta');
+    const countSheetsEl = $('#office-inbox-count-sheets');
+
+    if (!canAccessCrossClass()) {
+      if (inboxBtn) inboxBtn.hidden = true;
+      return;
+    }
+    if (inboxBtn) inboxBtn.hidden = false;
+
+    const taCandidates = getGlobalPendingTACandidates();
+    const taCount = taCandidates.length;
+    const sheetsCount = pendingSheetsApprovalItems.length;
+    const totalCount = taCount + sheetsCount;
+
+    if (countTaEl) countTaEl.textContent = String(taCount);
+    if (countSheetsEl) countSheetsEl.textContent = String(sheetsCount);
+
+    if (badge) {
+      if (totalCount > 0) {
+        badge.hidden = false;
+        badge.textContent = String(totalCount);
+      } else {
+        badge.hidden = true;
+        badge.textContent = '0';
+      }
+    }
+  }
+
+  function openOfficeInboxDialog(initialTab = 'pending-ta') {
+    if (!canAccessCrossClass()) {
+      toast('Chỉ tài khoản Văn phòng hoặc Admin mới có quyền truy cập Hộp việc.');
+      return;
+    }
+    activeOfficeInboxTab = initialTab;
+    renderOfficeInboxContent();
+    const dlg = $('#office-inbox-dialog');
+    if (!dlg) return;
+    try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); }
+  }
+
+  function renderOfficeInboxContent() {
+    const container = $('#office-inbox-content');
+    if (!container) return;
+
+    // Update tab header buttons
+    $('#office-tab-btn-pending-ta')?.classList.toggle('active', activeOfficeInboxTab === 'pending-ta');
+    $('#office-tab-btn-pending-sheets')?.classList.toggle('active', activeOfficeInboxTab === 'pending-sheets');
+
+    updateOfficeInboxBadge();
+
+    if (activeOfficeInboxTab === 'pending-ta') {
+      const candidates = getGlobalPendingTACandidates();
+      if (!candidates.length) {
+        container.innerHTML = `
+          <div style="text-align:center; padding:40px 16px; background:#f8fafc; border-radius:10px; border:1px dashed #cbd5e1;">
+            <div style="font-size:16px; font-weight:700; color:#15803d; margin-bottom:6px;">✓ Không có học sinh mới hoặc học bù nào đang chờ khớp</div>
+            <p style="color:#64748b; font-size:13px; margin:0;">Mọi học sinh mới và học bù do Trợ giảng ghi nhận đã được khớp hoàn tất vào hồ sơ gốc chuẩn.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          ${candidates.map(({ student, className, classCode, isMakeup }) => {
+            const suggestions = getSuggestedMasterMatches(student);
+            const tagLabel = isMakeup ? 'Học bù' : 'Mới';
+            const tagBg = isMakeup ? '#f3e8ff' : '#eff6ff';
+            const tagColor = isMakeup ? '#7e22ce' : '#1d4ed8';
+
+            const suggestionsHtml = suggestions.length ? `
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                ${suggestions.map(cand => {
+                  const candClasses = (cand.classIds || []).map(cid => {
+                    const c = getClassCatalog().find(x => x.id === cid);
+                    return c?.name || cid;
+                  }).join(', ') || 'Chưa xếp lớp';
+                  return `
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; font-size:12.5px;">
+                      <div>
+                        <strong>${escapeHtml(cand.name)}</strong>
+                        <span style="color:#64748b; margin-left:6px;">(Mã: ${escapeHtml(cand.studentCode || '—')})</span>
+                        <div style="color:#64748b; font-size:11.5px;">Trường: ${escapeHtml(cand.school || '—')} · Lớp: ${escapeHtml(candClasses)}</div>
+                      </div>
+                      <button type="button" class="primary-button" data-inbox-merge-btn data-temp-id="${escapeHtml(student.id)}" data-master-id="${escapeHtml(cand.id)}" style="padding:4px 10px; font-size:12px; background:#047857;">
+                        Khớp &amp; Gộp
+                      </button>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            ` : `
+              <div style="padding:10px; font-size:12.5px; color:#64748b; background:#f8fafc; border-radius:6px; border:1px dashed #cbd5e1;">
+                Không tìm thấy gợi ý trùng tên tự động. Bạn có thể xác nhận đây là học sinh mới hoàn toàn để cấp Mã HS chính thức.
+              </div>
+            `;
+
+            return `
+              <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:12px; padding:12px; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px; align-items:start;">
+                <!-- Cột trái: Trợ giảng ghi nhận -->
+                <div style="background:#ffffff; padding:10px 12px; border-radius:6px; border:1px solid #e2e8f0; font-size:13px;">
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <strong style="color:#0f172a; font-size:14px;">${escapeHtml(student.name)}</strong>
+                    <span style="background:${tagBg}; color:${tagColor}; font-weight:700; padding:2px 8px; border-radius:4px; font-size:11.5px;">[${tagLabel}]</span>
+                  </div>
+                  <div style="color:#475569; font-size:12.5px; line-height:1.5;">
+                    <div><strong>Lớp tham gia:</strong> ${escapeHtml(className)} (${escapeHtml(classCode)})</div>
+                    <div><strong>Trường:</strong> ${escapeHtml(student.school || '—')}</div>
+                    ${student.parentContact?.phone ? `<div><strong>SĐT PH:</strong> ${escapeHtml(student.parentContact.phone)}</div>` : ''}
+                    ${student.notes ? `<div><strong>Ghi chú:</strong> ${escapeHtml(student.notes)}</div>` : ''}
+                  </div>
+                  <div style="margin-top:8px; padding-top:8px; border-top:1px solid #f1f5f9;">
+                    <button type="button" class="outline-button" data-inbox-confirm-new-btn="${escapeHtml(student.id)}" style="padding:4px 8px; font-size:11.5px; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;">
+                      ✓ Xác nhận là HS mới chính thức
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Cột phải: Gợi ý khớp -->
+                <div>
+                  <div style="font-weight:700; font-size:12.5px; color:#334155; margin-bottom:6px;">
+                    Gợi ý hồ sơ gốc trùng tên / SĐT trong Danh bạ:
+                  </div>
+                  ${suggestionsHtml}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+
+      // Wire merge buttons
+      container.querySelectorAll('[data-inbox-merge-btn]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tempId = btn.dataset.tempId;
+          const masterId = btn.dataset.masterId;
+          const tempStu = getStudents().find(s => s.id === tempId);
+          const masterStu = getStudents().find(s => s.id === masterId);
+          if (!tempStu || !masterStu) return;
+
+          let classAction = 'keep';
+          const tempClassId = (tempStu.classIds || [])[0];
+          if (tempClassId && !(masterStu.classIds || []).includes(tempClassId)) {
+            const targetClsName = getClassCatalog().find(c => c.id === tempClassId)?.name || tempClassId;
+            const choice = confirm(`Học sinh "${masterStu.name}" hiện chưa có trong lớp ${targetClsName}.\n\nBấm [OK] để: CHUYỂN LỚP (Bảo lưu lịch sử lớp cũ và chuyển sang ${targetClsName})\nBấm [Cancel] để: HỌC SONG SONG cả 2 lớp.`);
+            classAction = choice ? 'transfer' : 'dual';
+          }
+
+          if (ctx.mergeAssistantStudentIntoMasterStudent) {
+            ctx.mergeAssistantStudentIntoMasterStudent(tempId, masterId, classAction);
+          } else {
+            masterStu._matchedOrConfirmed = true;
+            if (classAction === 'transfer' && tempClassId) {
+              masterStu.previousClassIds = masterStu.previousClassIds || [];
+              (masterStu.classIds || []).forEach(cid => {
+                if (!masterStu.previousClassIds.includes(cid)) masterStu.previousClassIds.push(cid);
+              });
+              masterStu.classIds = [tempClassId];
+            } else if (classAction === 'dual' && tempClassId) {
+              masterStu.classIds = [...new Set([...(masterStu.classIds || []), tempClassId])];
+            }
+            const allStus = getStudents();
+            const filteredStus = allStus.filter(s => s.id !== tempId);
+            saveStudentRecords(filteredStus, ctx.getMakeupStudents ? ctx.getMakeupStudents() : []);
+          }
+
+          toast(`✓ Đã khớp học sinh "${tempStu.name}" vào hồ sơ gốc "${masterStu.name}".`);
+          renderOfficeInboxContent();
+          ctx.refreshAllActiveViews?.();
+        });
+      });
+
+      // Wire confirm new button
+      container.querySelectorAll('[data-inbox-confirm-new-btn]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const sid = btn.dataset.inboxConfirmNewBtn;
+          const stu = getStudents().find(s => s.id === sid);
+          if (!stu) return;
+          stu._matchedOrConfirmed = true;
+          stu.tags = (stu.tags || []).filter(t => t !== 'Mới');
+          saveStudentRecords(getStudents(), ctx.getMakeupStudents ? ctx.getMakeupStudents() : []);
+          toast(`✓ Đã xác nhận học sinh "${stu.name}" là học sinh chính thức.`);
+          renderOfficeInboxContent();
+          ctx.refreshAllActiveViews?.();
+        });
+      });
+
+    } else if (activeOfficeInboxTab === 'pending-sheets') {
+      if (!pendingSheetsApprovalItems.length) {
+        container.innerHTML = `
+          <div style="text-align:center; padding:32px 16px; background:#f8fafc; border-radius:10px; border:1px dashed #cbd5e1;">
+            <div style="font-size:15px; font-weight:700; color:#334155; margin-bottom:6px;">Hiện chưa có biến động nào cần duyệt từ Google Sheets</div>
+            <p style="color:#64748b; font-size:13px; margin:0 0 16px;">Hệ thống sẽ đối chiếu danh sách tổng Google Sheets của các khóa (2K9 - 2K13) để phát hiện học sinh chuyển lớp hoặc học sinh mới.</p>
+            <div style="display:flex; justify-content:center; gap:8px;">
+              <button type="button" class="primary-button" id="inbox-scan-multi-cohort-btn" style="background:#047857; font-weight:700;">
+                Quét tất cả các khóa (2K9 - 2K13) ngay
+              </button>
+              <button type="button" class="outline-button" id="inbox-open-sheets-config-btn">
+                Cấu hình link Google Sheets
+              </button>
+            </div>
+          </div>
+        `;
+
+        $('#inbox-scan-multi-cohort-btn')?.addEventListener('click', async () => {
+          container.innerHTML = `<div style="text-align:center; padding:32px;"><p style="font-size:14px; font-weight:700; color:#047857;">Đang kết nối và quét toàn bộ các khóa học sinh từ Google Sheets...</p></div>`;
+          const cfg = loadGoogleSheetsConfig();
+          const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg);
+          if (!res.success) {
+            toast(res.message);
+            renderOfficeInboxContent();
+            return;
+          }
+          scanIncomingSheetsRowsForApproval(res.rows, 'Google Sheets Đa Khóa');
+          renderOfficeInboxContent();
+          toast(`✓ Quét hoàn tất: ${res.totalRows} dòng từ ${res.cohortResults.length} khóa.`);
+        });
+
+        $('#inbox-open-sheets-config-btn')?.addEventListener('click', () => {
+          $('#office-inbox-dialog')?.close();
+          openGoogleSheetsSyncModal('all');
+        });
+
+        return;
+      }
+
+      // If pendingSheetsApprovalItems has entries, render them
+      const items = pendingSheetsApprovalItems;
+      container.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding:8px 12px; background:#f1f5f9; border-radius:8px;">
+          <div style="font-weight:700; font-size:13px; color:#1e293b;">
+            Phát hiện <strong>${items.length}</strong> học sinh có biến động trên Google Sheets:
+          </div>
+          <div style="display:inline-flex; gap:6px;">
+            <button type="button" class="primary-button" id="inbox-approve-all-sheets-btn" style="padding:4px 12px; font-size:12.5px; background:#047857;">
+              ✓ Duyệt tất cả (${items.length})
+            </button>
+            <button type="button" class="outline-button text-danger" id="inbox-discard-all-sheets-btn" style="padding:4px 10px; font-size:12.5px;">
+              Bỏ qua tất cả
+            </button>
+          </div>
+        </div>
+        <div class="attendance-table-wrap" style="max-height:45vh; overflow-y:auto;">
+          <table class="attendance-report-table" style="font-size:13px;">
+            <thead>
+              <tr>
+                <th style="width:36px; text-align:center;"><input type="checkbox" id="inbox-sheets-select-all" checked /></th>
+                <th>Mã HS</th>
+                <th>Họ và tên</th>
+                <th>Trường</th>
+                <th>Biến động / Lớp</th>
+                <th style="text-align:center; width:120px;">Gắn tag [Mới]</th>
+                <th style="text-align:center; width:110px;">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map((item, idx) => {
+                const catLabel = item.category === 'new_student'
+                  ? '<span style="background:#eff6ff; color:#1d4ed8; padding:2px 6px; border-radius:4px; font-weight:700; font-size:11.5px;">HS Mới</span>'
+                  : item.category === 'class_change'
+                    ? '<span style="background:#fefce8; color:#a16207; padding:2px 6px; border-radius:4px; font-weight:700; font-size:11.5px;">Chuyển lớp</span>'
+                    : '<span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:4px; font-weight:700; font-size:11.5px;">Cập nhật</span>';
+
+                const classChangeHtml = item.category === 'class_change'
+                  ? `<span style="color:#b91c1c; text-decoration:line-through;">${escapeHtml(item.currentClassLabel || '—')}</span> → <strong style="color:#15803d;">${escapeHtml(item.targetClassLabel || '—')}</strong>`
+                  : `<strong style="color:#15803d;">${escapeHtml(item.targetClassLabel || '—')}</strong>`;
+
+                return `
+                  <tr>
+                    <td style="text-align:center;"><input type="checkbox" data-inbox-sheet-cb="${idx}" ${item.approved !== false ? 'checked' : ''} /></td>
+                    <td><code>${escapeHtml(item.studentCode || '—')}</code></td>
+                    <td><strong>${escapeHtml(item.fullName)}</strong> ${catLabel}</td>
+                    <td>${escapeHtml(item.school || '—')}</td>
+                    <td>${classChangeHtml}</td>
+                    <td style="text-align:center;">
+                      <input type="checkbox" data-inbox-sheet-tag="${idx}" ${item.addNewTag ? 'checked' : ''} />
+                    </td>
+                    <td style="text-align:center;">
+                      <button type="button" class="primary-button" data-inbox-approve-single="${idx}" style="padding:3px 8px; font-size:11.5px; background:#047857;">
+                        ✓ Duyệt
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      // Wire select all
+      $('#inbox-sheets-select-all')?.addEventListener('change', (e) => {
+        const checked = Boolean(e.target.checked);
+        items.forEach(it => { it.approved = checked; });
+        container.querySelectorAll('[data-inbox-sheet-cb]').forEach(cb => { cb.checked = checked; });
+      });
+
+      // Wire checkboxes
+      container.querySelectorAll('[data-inbox-sheet-cb]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const idx = Number(cb.dataset.inboxSheetCb);
+          if (items[idx]) items[idx].approved = cb.checked;
+        });
+      });
+      container.querySelectorAll('[data-inbox-sheet-tag]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const idx = Number(cb.dataset.inboxSheetTag);
+          if (items[idx]) items[idx].addNewTag = cb.checked;
+        });
+      });
+
+      // Wire single approve
+      container.querySelectorAll('[data-inbox-approve-single]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = Number(btn.dataset.inboxApproveSingle);
+          const targetItem = items[idx];
+          if (!targetItem) return;
+          targetItem.approved = true;
+          applyApprovedSheetsSyncItems();
+          renderOfficeInboxContent();
+        });
+      });
+
+      // Wire approve all
+      $('#inbox-approve-all-sheets-btn')?.addEventListener('click', () => {
+        applyApprovedSheetsSyncItems();
+        renderOfficeInboxContent();
+      });
+
+      // Wire discard all
+      $('#inbox-discard-all-sheets-btn')?.addEventListener('click', () => {
+        if (!confirm('Xác nhận bỏ qua toàn bộ danh sách biến động này?')) return;
+        pendingSheetsApprovalItems = [];
+        renderOfficeInboxContent();
+        toast('Đã xóa danh sách biến động chờ duyệt.');
+      });
+    }
+  }
+
+  // Hook office inbox buttons
+  $('#office-inbox-btn')?.addEventListener('click', () => openOfficeInboxDialog('pending-ta'));
+  $('#close-office-inbox-dialog')?.addEventListener('click', () => $('#office-inbox-dialog')?.close());
+  $('#close-office-inbox-btn')?.addEventListener('click', () => $('#office-inbox-dialog')?.close());
+  $('#office-inbox-refresh-btn')?.addEventListener('click', () => renderOfficeInboxContent());
+  $('#office-tab-btn-pending-ta')?.addEventListener('click', () => {
+    activeOfficeInboxTab = 'pending-ta';
+    renderOfficeInboxContent();
+  });
+  $('#office-tab-btn-pending-sheets')?.addEventListener('click', () => {
+    activeOfficeInboxTab = 'pending-sheets';
+    renderOfficeInboxContent();
+  });
+
+  // Hook multi-cohort pull in #google-sheets-sync-dialog
+  $('#pull-multi-cohort-sheets-btn')?.addEventListener('click', async () => {
+    if (!canAccessCrossClass()) { toast('Chỉ Văn phòng hoặc Admin mới có quyền đồng bộ Google Sheets.'); return; }
+    const cfg = readAndSaveSheetsConfigFromDialog();
+    setSheetsSyncStatus('Đang kết nối và quét toàn bộ các khóa học sinh (2K9 - 2K13)...', false);
+    const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg);
+    if (!res.success) {
+      setSheetsSyncStatus(escapeHtml(res.message), true);
+      toast(res.message);
+      return;
+    }
+    scanIncomingSheetsRowsForApproval(res.rows, 'Google Sheets Đa Khóa (2K9 - 2K13)');
+    toast(`✓ Đã quét xong đa khóa: ${res.totalRows} dòng từ ${res.cohortResults.length} khóa.`);
+  });
+
+  // Start background office badge updater
+  updateOfficeInboxBadge();
+  setInterval(updateOfficeInboxBadge, 30000);
+
   $('#system-help-btn')?.addEventListener('click', () => {
     toast('Quản lý học sinh v3.1: Chọn lớp tại Menu Đi làm → Sơ đồ lớp (Thu BTVN & Điểm danh) → Nhập điểm → Checklist & Kết ca.');
   });
@@ -7722,12 +8399,12 @@ export function setupFeatures(ctx) {
                 <button type="button" class="primary-button" data-reopen-class-date="${escapeHtml(session.date)}" style="padding:7px 12px; font-size:13.5px; font-weight:700; background:#2e6d42;">
                   ▶ Mở ca học này
                 </button>
-                ${getSignedInAccount()?.role === 'admin' ? `<button type="button" class="outline-button btn-admin-log" data-admin-log-history-session="${escapeHtml(session.date)}" style="padding:7px 11px; font-size:13.5px;">🛡 Admin Log</button>` : ''}
+                ${getSignedInAccount()?.role === 'admin' ? `<button type="button" class="outline-button btn-admin-log" data-admin-log-history-session="${escapeHtml(session.date)}" style="padding:7px 11px; font-size:13.5px;">Admin Log</button>` : ''}
                 <button type="button" class="outline-button" data-edit-history-session="${escapeHtml(session.date)}" style="padding:7px 11px; font-size:13.5px; font-weight:700; color:#1e40af; border-color:#bfdbfe; background:#eff6ff;">
                   ✎ Sửa ca
                 </button>
                 <button type="button" class="outline-button text-danger" data-delete-history-session="${escapeHtml(session.date)}" style="padding:7px 11px; font-size:13.5px; font-weight:700; color:#b91c1c; border-color:#fca5a5; background:#fef2f2;">
-                  🗑 Xoá ca
+                  Xoá ca
                 </button>
               </div>
             </div>
@@ -7975,7 +8652,9 @@ export function setupFeatures(ctx) {
       const cls = getClassCatalog().find(c => c.id === classId) || getActiveClassConfig();
       openClassSession(classId, date, user, cls);
       updateSessionStateUI();
-    }
+    },
+    updateOfficeInboxBadge,
+    openOfficeInboxDialog
   };
 }
 

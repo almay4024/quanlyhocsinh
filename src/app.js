@@ -575,7 +575,12 @@ function _recordDeletedIds(deletedIds = [], ts = Date.now()) {
 }
 
 function _shouldSyncKey(key) {
-  return typeof key === 'string' && key.startsWith(RT_PREFIX) && !RT_EXCLUDED.has(key);
+  if (typeof key !== 'string') return false;
+  if (key.startsWith('class_mgr.')) {
+    const equiv = _resolveDualStorageKey(key);
+    return equiv ? (equiv.startsWith(RT_PREFIX) && !RT_EXCLUDED.has(equiv)) : true;
+  }
+  return key.startsWith(RT_PREFIX) && !RT_EXCLUDED.has(key);
 }
 
 function _notifyRtStatus(state = _rtState, ts = Date.now(), detail = '') {
@@ -1976,6 +1981,51 @@ function _migrateLocalStorageToCompactPlain() {
   } catch {}
 }
 
+const _CLASS_MGR_STORAGE_MAP = {
+  'class_mgr.auth.session.v1': 'lopvui.signed-in-account.v1',
+  'class_mgr.catalog.master.v1': 'lopvui.master-data.v1',
+  'class_mgr.catalog.classes.v1': 'lopvui.class-catalog.v1',
+  'class_mgr.catalog.rooms.v1': 'lopvui.room-templates.v1',
+  'class_mgr.students.master.v1': 'lopvui.students.v9',
+  'class_mgr.students.makeup.v1': 'lopvui.makeup-students.v1',
+  'class_mgr.sessions.history.v1': 'lopvui.session-history.v2',
+  'class_mgr.sheets.cohorts.v1': 'lopvui.google-sheets-config.v1',
+  'class_mgr.sync.offline_queue.v1': 'lopvui.sync-offline-queue.v1'
+};
+
+function _resolveDualStorageKey(key) {
+  if (typeof key !== 'string') return null;
+  if (key.startsWith('class_mgr.')) {
+    if (_CLASS_MGR_STORAGE_MAP[key]) return _CLASS_MGR_STORAGE_MAP[key];
+    const m = key.match(/^class_mgr\.session\.(layout|desks|late_queue|checklist|notes)\.([^.]+)\.(.+)$/);
+    if (m) {
+      const [, kind, classId, date] = m;
+      if (kind === 'layout') return `lopvui.layout.v5.${classId}.${date}`;
+      if (kind === 'desks') return `lopvui.desk-items.v7.${classId}.${date}`;
+      if (kind === 'late_queue') return `lopvui.late-queue.v6.${classId}.${date}`;
+      if (kind === 'checklist') return `lopvui.checklist.v1.${classId}.${date}`;
+      if (kind === 'notes') return `lopvui.attendance-notes.v1.${classId}.${date}`;
+    }
+    return null;
+  }
+  if (key.startsWith('lopvui.')) {
+    for (const [cmKey, lvKey] of Object.entries(_CLASS_MGR_STORAGE_MAP)) {
+      if (key === lvKey) return cmKey;
+    }
+    const m = key.match(/^lopvui\.(layout\.v5|desk-items\.v7|late-queue\.v6|checklist\.v1|attendance-notes\.v1)\.([^.]+)\.(.+)$/);
+    if (m) {
+      const [, kind, classId, date] = m;
+      if (kind === 'layout.v5') return `class_mgr.session.layout.${classId}.${date}`;
+      if (kind === 'desk-items.v7') return `class_mgr.session.desks.${classId}.${date}`;
+      if (kind === 'late-queue.v6') return `class_mgr.session.late_queue.${classId}.${date}`;
+      if (kind === 'checklist.v1') return `class_mgr.session.checklist.${classId}.${date}`;
+      if (kind === 'attendance-notes.v1') return `class_mgr.session.notes.${classId}.${date}`;
+    }
+    return null;
+  }
+  return null;
+}
+
 // KÍCH HOẠT NGAY LẬP TỨC BỘ ĐỒNG BỘ LOCALSTORAGE TRƯỚC KHI ĐỌC BẤT KỲ DỮ LIỆU NÀO KHI KHỞI ĐỘNG
 function _installStorageVaultInterceptor() {
   if (window.__lopvuiVaultStorageInstalled) return;
@@ -1986,11 +2036,20 @@ function _installStorageVaultInterceptor() {
       if (this === window.localStorage && _memStorageMap.has(kStr)) {
         return _memStorageMap.get(kStr);
       }
-      const raw = _nativeGetItem.call(this, kStr);
+      let raw = _nativeGetItem.call(this, kStr);
+      if ((raw === null || raw === undefined) && this === window.localStorage) {
+        const equiv = _resolveDualStorageKey(kStr);
+        if (equiv && equiv !== kStr) {
+          if (_memStorageMap.has(equiv)) return _memStorageMap.get(equiv);
+          raw = _nativeGetItem.call(this, equiv);
+        }
+      }
       if (raw === null || raw === undefined) return null;
       if (this === window.localStorage) {
         const plain = String(raw).startsWith('lvenc_v38$') ? decryptVaultPayload(raw, kStr) : String(raw);
         _memStorageMap.set(kStr, plain);
+        const equiv = _resolveDualStorageKey(kStr);
+        if (equiv && equiv !== kStr) _memStorageMap.set(equiv, plain);
         return plain;
       }
       return raw;
@@ -2029,6 +2088,14 @@ function _installStorageVaultInterceptor() {
       const storedOk = _safeNativeSetLocalItem(this, kStr, toStoreLocal);
       if (this !== window.localStorage && !storedOk) return;
 
+      if (this === window.localStorage) {
+        const equiv = _resolveDualStorageKey(kStr);
+        if (equiv && equiv !== kStr) {
+          _memStorageMap.set(equiv, plainStr);
+          try { _safeNativeSetLocalItem(this, equiv, toStoreLocal); } catch {}
+        }
+      }
+
       if (this === window.localStorage && _shouldSyncKey(kStr) && !_rtApplyingRemote) {
         if (prevPlain !== plainStr && !_isJsonSemanticallyEqual(prevPlain, plainStr)) {
           _rtLastLocalWriteAt = now;
@@ -2049,6 +2116,12 @@ function _installStorageVaultInterceptor() {
         had = _memStorageMap.has(kStr);
         _memStorageMap.delete(kStr);
         _idbDeleteKey(kStr);
+        const equiv = _resolveDualStorageKey(kStr);
+        if (equiv && equiv !== kStr) {
+          _memStorageMap.delete(equiv);
+          _idbDeleteKey(equiv);
+          try { _nativeRemoveItem.call(this, equiv); } catch {}
+        }
       }
       try { if (!had) had = _nativeGetItem.call(this, kStr) !== null; } catch {}
       try { _nativeRemoveItem.call(this, kStr); } catch {}
@@ -2621,8 +2694,8 @@ function renderAdminLogTextToElements({
   // 1. Populate Class Select
   if (classSelectEl) {
     const curClassVal = preferredClassId !== null ? preferredClassId : (classSelectEl.value || 'all');
-    classSelectEl.innerHTML = `<option value="all">📚 Tất cả các lớp (${classesList.length} lớp)</option>` +
-      classesList.map(c => `<option value="${escapeHtml(c.id)}">🏫 ${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`).join('');
+    classSelectEl.innerHTML = `<option value="all">Tất cả các lớp (${classesList.length} lớp)</option>` +
+      classesList.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`).join('');
     if ([...classSelectEl.options].some(o => o.value === curClassVal)) {
       classSelectEl.value = curClassVal;
     } else {
@@ -2642,14 +2715,14 @@ function renderAdminLogTextToElements({
     }
     const sortedDates = Array.from(sessionDatesSet).sort((a, b) => String(b).localeCompare(String(a)));
     sessionSelectEl.innerHTML =
-      `<option value="all">🗓 Tất cả các ca học & Thao tác lớp</option>` +
-      `<option value="_class_">⚙ Chỉ thao tác Cài đặt lớp / Edit ca / Xoá ca</option>` +
+      `<option value="all">Tất cả các ca học & Thao tác lớp</option>` +
+      `<option value="_class_">Chỉ thao tác Cài đặt lớp / Edit ca / Xoá ca</option>` +
       sortedDates.map(d => {
         const histMatch = selectedClassId !== 'all'
           ? allHist.find(s => s.classId === selectedClassId && s.date === d)
           : null;
         const lesson = histMatch?.lessonTitle ? ` · ${histMatch.lessonTitle}` : '';
-        return `<option value="${escapeHtml(d)}">📅 Ca ngày ${escapeHtml(formatDateDDMMYYYY(d))}${escapeHtml(lesson)}</option>`;
+        return `<option value="${escapeHtml(d)}">Ca ngày ${escapeHtml(formatDateDDMMYYYY(d))}${escapeHtml(lesson)}</option>`;
       }).join('');
     if ([...sessionSelectEl.options].some(o => o.value === curSessVal)) {
       sessionSelectEl.value = curSessVal;
@@ -2701,7 +2774,7 @@ function renderAdminLogTextToElements({
 
   if (accountSelectEl) {
     const prevAcc = accountSelectEl.value || 'all';
-    accountSelectEl.innerHTML = `<option value="all">👤 Tất cả tài khoản (${allCollectedEntries.length})</option>` +
+    accountSelectEl.innerHTML = `<option value="all">Tất cả tài khoản (${allCollectedEntries.length})</option>` +
       Array.from(accountStats.values()).map(acc => {
         const rLabel = ADMIN_LOG_ROLE_LABELS[acc.role] || acc.role;
         const text = acc.code ? `${acc.name} · #${acc.code} (${rLabel}) [${acc.count}]` : `${acc.name} (${rLabel}) [${acc.count}]`;
@@ -2725,7 +2798,7 @@ function renderAdminLogTextToElements({
         Array.from(accountStats.values()).map(acc => {
           const rLabel = ADMIN_LOG_ROLE_LABELS[acc.role] || acc.role;
           const display = acc.code ? `${acc.name} (#${acc.code} · ${rLabel})` : `${acc.name} (${rLabel})`;
-          return `<button type="button" class="admin-log-acc-chip ${selectedAcc === acc.key ? 'active' : ''}" data-admin-log-acc-chip="${escapeHtml(acc.key)}">👤 ${escapeHtml(display)} <span class="chip-count">${acc.count}</span></button>`;
+          return `<button type="button" class="admin-log-acc-chip ${selectedAcc === acc.key ? 'active' : ''}" data-admin-log-acc-chip="${escapeHtml(acc.key)}">${escapeHtml(display)} <span class="chip-count">${acc.count}</span></button>`;
         }).join('');
       chipsEl.querySelectorAll('[data-admin-log-acc-chip]').forEach(chip => {
         chip.onclick = () => {
@@ -2799,7 +2872,7 @@ function renderAdminLogTextToElements({
     textOutputEl.textContent = finalPlainText;
   }
   if (countEl) {
-    countEl.textContent = `🛡 ${totalFiltered} / ${allCollectedEntries.length} thao tác (${accountStats.size} tài khoản)`;
+    countEl.textContent = `${totalFiltered} / ${allCollectedEntries.length} thao tác (${accountStats.size} tài khoản)`;
   }
   return finalPlainText;
 }
@@ -3041,7 +3114,6 @@ function _captureKnownDeskSnapshot() {
  *    HOẶC giữ nguyên Vắng có phép / Vắng không phép (absent_excused / absent_unexcused / absent) khi được đánh dấu vắng.
  */
 function reconcileSessionAttendanceWithSeating() {
-  if (isClassHistoryViewMode) return;
   const now = Date.now();
   _ensureDeskTombstones(deskItems);
 
@@ -3530,7 +3602,7 @@ function sessionMakeupStudents(placementsMap = null, lateSetOrArr = null) {
   }
   return result;
 }
-const splitStudentName=name=>{const parts=String(name||'').trim().split(/\s+/).filter(Boolean);return {familyName:parts.slice(0,-1).join(' '),givenName:parts.at(-1)||''};};
+const splitStudentName=name=>{const clean=String(name||'').normalize('NFC').trim();const parts=clean.split(/\s+/).filter(Boolean);return {familyName:parts.slice(0,-1).join(' '),givenName:parts.at(-1)||''};};
 function createStudentProfile({name,familyName=undefined,givenName=undefined,school='',kind='regular',parentContact={name:'',phone:''},studentCode=null,classIds=null,enrollmentStatus='Học',tags=[],isNew=undefined}){
   const makeup=kind==='makeup';
   const cleanCode=(studentCode&&String(studentCode).trim())?String(studentCode).trim().toUpperCase():null;
@@ -3618,7 +3690,7 @@ const renderPersonalWork=()=>{const didWork=Boolean(personalWorkDays[checklistDa
 $('#personal-work-toggle').onclick=()=>{if(personalWorkDays[checklistDate])delete personalWorkDays[checklistDate];else personalWorkDays[checklistDate]={staff:currentStaffName(),at:Date.now()};localStorage.setItem(personalWorkKey(),JSON.stringify(personalWorkDays));renderPersonalWork();};
 renderPersonalWork();
 const assignedIds=()=>new Set(allEntries().map(x=>x.entry.studentId).filter(Boolean));
-const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const escapeHtml=value=>String(value??'').normalize('NFC').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const communicationTime=timestamp=>new Date(timestamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
 function persistClassCommunication(){saveClassCommunication(CURRENT_CLASS_ID,checklistDate,classCommunication);}
 function renderClassCommunication(){const messages=$('#chat-message-list'),activity=$('#activity-log-list');if(!messages||!activity)return;$('#chat-message-count').textContent=`${classCommunication.messages.filter(item=>item.kind==='user').length} tin`;messages.innerHTML=classCommunication.messages.map(item=>item.kind==='system'?`<article class="chat-system-message"><span></span><div><p>${escapeHtml(item.text)}</p><time>${communicationTime(item.createdAt)}</time></div></article>`:`<article class="chat-message"><div class="chat-message-meta"><strong>${escapeHtml(item.author||'Trợ giảng')}</strong><time>${communicationTime(item.createdAt)}</time></div><p>${escapeHtml(item.text).replace(/\n/g,'<br>')}</p></article>`).join('')||'<div class="chat-empty-state"><span></span><strong>Chưa có tin nhắn</strong><small>Gửi trao đổi đầu tiên cho nhân sự trong lớp.</small></div>';activity.innerHTML=classCommunication.activity.map(item=>`<article class="activity-log-item"><span class="activity-log-dot ${escapeHtml(item.type||'system')}"></span><div><p>${escapeHtml(item.text)}</p><small>${escapeHtml(item.actor||'Hệ thống')} · ${communicationTime(item.createdAt)}</small></div></article>`).join('')||'<div class="chat-empty-state activity-empty"><span></span><strong>Chưa có hoạt động</strong><small>Hệ thống sẽ ghi lại các mốc chính trong ca.</small></div>';messages.scrollTop=messages.scrollHeight;}
@@ -3667,11 +3739,11 @@ function renderNotifications(){
   }
   const unmatchedBannerHtml = (canMatchMaster && unmatchedLive.length)
     ? `<article class="notification-item unread notification-unmatched-banner" style="background:#eff6ff; border:1px solid #93c5fd;">
-        <span class="notification-item-icon system" style="background:#dbeafe; color:#1d4ed8;">🔗</span>
+        <span class="notification-item-icon system" style="background:#dbeafe; color:#1d4ed8;">•</span>
         <div style="flex:1; min-width:0;">
           <strong style="color:#1e3a8a;">Có ${unmatchedLive.length} học sinh mới / học bù cần khớp DS tổng</strong>
           <p style="margin:3px 0 6px;">${unmatchedLive.slice(0, 4).map(u => escapeHtml(u.student.name)).join(', ')}${unmatchedLive.length > 4 ? ` (+${unmatchedLive.length - 4})` : ''}</p>
-          <button type="button" class="outline-button" data-match-unmatched-student="${escapeHtml(unmatchedLive[0].student.id)}" style="padding:4px 10px; font-size:12px; color:#1d4ed8; border-color:#93c5fd; background:#ffffff; font-weight:700;">🔗 Mở hộp thoại Khớp DS tổng</button>
+          <button type="button" class="outline-button" data-match-unmatched-student="${escapeHtml(unmatchedLive[0].student.id)}" style="padding:4px 10px; font-size:12px; color:#1d4ed8; border-color:#93c5fd; background:#ffffff; font-weight:700;">Mở hộp thoại Khớp DS tổng</button>
         </div>
       </article>`
     : '';
@@ -3679,11 +3751,11 @@ function renderNotifications(){
     const targetStu = item.studentId ? studentById(item.studentId) : null;
     const canMatchThisItem = canMatchMaster && item.type === 'unmatched-student' && targetStu && !targetStu._matchedOrConfirmed && !item.resolved;
     return `<article class="notification-item ${item.read?'':'unread'}">
-      <span class="notification-item-icon ${escapeHtml(item.type)}">${item.type==='chat'?'':item.type==='homework'?'✓':item.type==='attendance'?'✓':item.type==='unmatched-student'?'🔗':item.type==='reminder'?'':''}</span>
+      <span class="notification-item-icon ${escapeHtml(item.type)}">${item.type==='chat'?'':item.type==='homework'?'✓':item.type==='attendance'?'✓':item.type==='unmatched-student'?'•':item.type==='reminder'?'':''}</span>
       <div style="flex:1; min-width:0;">
         <strong>${escapeHtml(item.title)}</strong>
         <p>${escapeHtml(item.body)}</p>
-        ${canMatchThisItem ? `<button type="button" class="outline-button" data-match-unmatched-student="${escapeHtml(targetStu.id)}" style="margin:5px 0 3px; padding:3px 9px; font-size:12px; color:#1d4ed8; border-color:#93c5fd; background:#eff6ff; font-weight:700;">🔗 Khớp "${escapeHtml(targetStu.name)}" với DS tổng</button>` : ''}
+        ${canMatchThisItem ? `<button type="button" class="outline-button" data-match-unmatched-student="${escapeHtml(targetStu.id)}" style="margin:5px 0 3px; padding:3px 9px; font-size:12px; color:#1d4ed8; border-color:#93c5fd; background:#eff6ff; font-weight:700;">Khớp "${escapeHtml(targetStu.name)}" với DS tổng</button>` : ''}
         <small style="display:block;">${communicationTime(item.createdAt)}</small>
       </div>
     </article>`;
@@ -3766,7 +3838,7 @@ function renderStudentWarningTag(student, classId = CURRENT_CLASS_ID, showAddIfE
   if (ew.hasWarning) {
     const lvl = ew.level > 0 ? ew.level : 1;
     const label = ew.shortTag || ew.badgeText || `Mức ${lvl}`;
-    return `<span class="early-warning-pill warn-level-${lvl}" role="button" tabindex="0" data-edit-warning-student="${escapeHtml(student.id)}" data-edit-warning-class="${escapeHtml(classId || '')}" title="${escapeHtml(ew.tooltip)} (Bấm để chỉnh sửa mức cảnh báo / lưu ý)">⚠ ${escapeHtml(label)}</span>`;
+    return `<span class="early-warning-pill warn-level-${lvl}" role="button" tabindex="0" data-edit-warning-student="${escapeHtml(student.id)}" data-edit-warning-class="${escapeHtml(classId || '')}" title="${escapeHtml(ew.tooltip)} (Bấm để chỉnh sửa mức cảnh báo / lưu ý)">! ${escapeHtml(label)}</span>`;
   }
   if (showAddIfEmpty) {
     return `<button type="button" class="add-warning-tag-btn" data-edit-warning-student="${escapeHtml(student.id)}" data-edit-warning-class="${escapeHtml(classId || '')}" title="Gắn tag lưu ý / mức cảnh báo (Mức 1-4) cho học sinh">+ Cảnh báo / Lưu ý</button>`;
@@ -3815,11 +3887,11 @@ function openEditStudentWarningDialog(studentId, classId = CURRENT_CLASS_ID) {
 
       <label class="field-label">Chọn mức độ cảnh báo hiển thị:
         <select id="warning-level-mode-select" style="margin-top:4px; font-weight:700;">
-          <option value="auto" ${curMode === 'auto' ? 'selected' : ''}>⚡ Tự động theo 4 buổi gần nhất (Hiện tại: ${ew.autoLevel > 0 ? `Mức ${ew.autoLevel}` : 'Không cảnh báo'})</option>
-          <option value="1" ${curMode === '1' ? 'selected' : ''}>🟡 Mức 1 — Nhắc nhở nhẹ (1 lỗi)</option>
-          <option value="2" ${curMode === '2' ? 'selected' : ''}>🟠 Mức 2 — Cần chú ý (2 lỗi)</option>
-          <option value="3" ${curMode === '3' ? 'selected' : ''}>🔴 Mức 3 — Cảnh báo cao (3 lỗi)</option>
-          <option value="4" ${curMode === '4' ? 'selected' : ''}>🚨 Mức 4 — Cảnh báo đặc biệt (≥ 4 lỗi)</option>
+          <option value="auto" ${curMode === 'auto' ? 'selected' : ''}>Tự động theo 4 buổi gần nhất (Hiện tại: ${ew.autoLevel > 0 ? `Mức ${ew.autoLevel}` : 'Không cảnh báo'})</option>
+          <option value="1" ${curMode === '1' ? 'selected' : ''}>Mức 1 — Nhắc nhở nhẹ (1 lỗi)</option>
+          <option value="2" ${curMode === '2' ? 'selected' : ''}>Mức 2 — Cần chú ý (2 lỗi)</option>
+          <option value="3" ${curMode === '3' ? 'selected' : ''}>Mức 3 — Cảnh báo cao (3 lỗi)</option>
+          <option value="4" ${curMode === '4' ? 'selected' : ''}>Mức 4 — Cảnh báo đặc biệt (≥ 4 lỗi)</option>
           <option value="0" ${curMode === '0' ? 'selected' : ''}>✓ Mức 0 — Tắt cảnh báo / Đã khắc phục</option>
         </select>
       </label>
@@ -4324,7 +4396,7 @@ function renderMainMenu(){
         <button type="button" class="primary-button" data-enter-class="${escapeHtml(item.id)}" data-session-date="${date.toLocaleDateString('sv-SE')}">Vào lớp</button>
       </article>`;
     }).join('') || '<div class="menu-empty">Chưa có lớp học nào trong hệ thống.</div>';
-  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-header-stack"><div class="managed-class-header-row1"><strong class="managed-class-title">${escapeHtml(item.name)}</strong><div class="managed-class-heading-right"><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span><div class="card-more-menu-wrap"><button type="button" class="outline-button card-more-toggle-btn" data-toggle-card-more="${escapeHtml(item.id)}" aria-label="Tùy chọn quản lý lớp" title="Tùy chọn quản trị lớp">⋯</button><div class="card-more-dropdown" hidden><button type="button" class="card-more-item" data-roster-class="${escapeHtml(item.id)}">Danh sách gốc</button><button type="button" class="card-more-item" data-edit-class="${escapeHtml(item.id)}">Sửa lớp</button><button type="button" class="card-more-item" data-edit-session="${escapeHtml(item.id)}">Đổi lịch buổi</button>${role==='admin'?`<button type="button" class="card-more-item" data-admin-log-class="${escapeHtml(item.id)}" style="color:#4f46e5; font-weight:700;">🛡 Nhật ký Admin (Log)</button>`:''}<button type="button" class="card-more-item text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></div></div></div><div class="managed-class-header-row2"><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span><span class="room-chip" style="background:#f5f3ff; color:#5b21b6; font-weight:600;">${escapeHtml(item.subject||'Chưa có môn học')}</span></div></div><div class="managed-class-details managed-class-grid-2col"><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist & Nhắc việc</small>${item.defaultChecklist.startItems.length} đầu · ${item.defaultChecklist.endItems.length} cuối · ${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions managed-class-primary-actions managed-class-single-action"><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}" style="width:100%; justify-content:center; font-weight:700;">Tổng quan & Lịch sử</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';if($('#add-class-button'))$('#add-class-button').hidden=!(role==='office'||role==='admin');if($('#manage-employees-button'))$('#manage-employees-button').hidden=role!=='admin';
+  }managed.innerHTML=editable.map(item=>`<article class="managed-class-card"><div class="managed-class-header-stack"><div class="managed-class-header-row1"><strong class="managed-class-title">${escapeHtml(item.name)}</strong><div class="managed-class-heading-right"><span class="room-chip">${escapeHtml(item.room||'Chưa xếp phòng')}</span><div class="card-more-menu-wrap"><button type="button" class="outline-button card-more-toggle-btn" data-toggle-card-more="${escapeHtml(item.id)}" aria-label="Tùy chọn quản lý lớp" title="Tùy chọn quản trị lớp">⋯</button><div class="card-more-dropdown" hidden><button type="button" class="card-more-item" data-roster-class="${escapeHtml(item.id)}">Danh sách gốc</button><button type="button" class="card-more-item" data-edit-class="${escapeHtml(item.id)}">Sửa lớp</button><button type="button" class="card-more-item" data-edit-session="${escapeHtml(item.id)}">Đổi lịch buổi</button>${role==='admin'?`<button type="button" class="card-more-item" data-admin-log-class="${escapeHtml(item.id)}" style="color:#4f46e5; font-weight:700;">Nhật ký Admin (Log)</button>`:''}<button type="button" class="card-more-item text-danger" data-delete-class="${escapeHtml(item.id)}">Xóa lớp</button></div></div></div></div><div class="managed-class-header-row2"><span class="room-chip" style="background:#eaf5ec; color:#27673b; font-weight:700;">MÃ: ${escapeHtml(item.code||item.id)}</span><span class="room-chip" style="background:#f0f4f8; color:#3d4d5c; font-weight:600;">${escapeHtml(formatBirthYearInline(item.grade))}</span><span class="room-chip" style="background:#f5f3ff; color:#5b21b6; font-weight:600;">${escapeHtml(item.subject||'Chưa có môn học')}</span></div></div><div class="managed-class-details managed-class-grid-2col"><span><small>Giáo viên · ${escapeHtml((item.teacherIds||[item.teacherId]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.teacherName)}</span><span><small>Trợ giảng · ${escapeHtml((item.assistantIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(item.assistantName)}</span><span><small>Văn phòng · ${escapeHtml((item.officeIds||[]).map(id=>masterData.employees.find(employee=>employee.id===id)?.code||'').filter(Boolean).join(', '))}</small>${escapeHtml(employeeNames(item.officeIds||[]))}</span><span><small>Lịch học</small>${weekdayNames[item.weekday]} · ${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</span><span><small>Sơ đồ mặc định</small>${item.defaultLayout.length} dãy · ${item.defaultLayout.map(row=>row.desks.length).join(' / ')} bàn</span><span><small>Checklist & Nhắc việc</small>${item.defaultChecklist.startItems.length} đầu · ${item.defaultChecklist.endItems.length} cuối · ${item.defaultNotifications.length} mốc</span></div><div class="managed-class-actions managed-class-primary-actions managed-class-single-action"><button type="button" class="outline-button btn-view-class-history" data-class-history="${escapeHtml(item.id)}" style="width:100%; justify-content:center; font-weight:700;">Tổng quan & Lịch sử</button></div></article>`).join('')||'<div class="menu-empty">Chưa có lớp nào trong danh sách.</div>';if($('#add-class-button'))$('#add-class-button').hidden=!(role==='office'||role==='admin');if($('#manage-employees-button'))$('#manage-employees-button').hidden=role!=='admin';
   if($('#mgmt-tab-staff')){$('#mgmt-tab-staff').hidden=role!=='admin';$('#mgmt-tab-staff').style.display=role==='admin'?'':'none';}
   if($('#mgmt-tab-admin-log')){$('#mgmt-tab-admin-log').hidden=role!=='admin';$('#mgmt-tab-admin-log').style.display=role==='admin'?'':'none';}
   const canViewStudentDir = role !== 'assistant';
@@ -4785,12 +4857,12 @@ function renderClassGeneralView(classId, preferredTab = null) {
                 <button type="button" class="primary-button" data-view-history-date="${escapeHtml(s.date)}" style="padding:7px 12px; font-size:13px; background:#2e6d42; font-weight:700;">
                   ${isClosed ? 'Xem lại ca học' : 'Vào ca trực (Live)'}
                 </button>
-                ${selectedRole() === 'admin' ? `<button type="button" class="outline-button btn-admin-log" data-admin-log-session-date="${escapeHtml(s.date)}" style="padding:7px 11px; font-size:13px;" title="Xem Nhật ký Admin Log của ca học ngày ${escapeHtml(dFormatted)} (Chỉ Admin thấy)">🛡 Admin Log</button>` : ''}
+                ${selectedRole() === 'admin' ? `<button type="button" class="outline-button btn-admin-log" data-admin-log-session-date="${escapeHtml(s.date)}" style="padding:7px 11px; font-size:13px;" title="Xem Nhật ký Admin Log của ca học ngày ${escapeHtml(dFormatted)} (Chỉ Admin thấy)">Admin Log</button>` : ''}
                 <button type="button" class="outline-button" data-edit-session-date="${escapeHtml(s.date)}" style="padding:7px 11px; font-size:13px; font-weight:700; color:#1e40af; border-color:#bfdbfe; background:#eff6ff;" title="Sửa thông tin ca học này">
                   ✎ Sửa ca
                 </button>
                 <button type="button" class="outline-button text-danger" data-delete-session-date="${escapeHtml(s.date)}" style="padding:7px 11px; font-size:13px; font-weight:700; color:#b91c1c; border-color:#fca5a5; background:#fef2f2;" title="Xoá ca học này và xoá dữ liệu buổi học trong hồ sơ học sinh">
-                  🗑 Xoá ca
+                  Xoá ca
                 </button>
               </div>
             </div>
@@ -5797,12 +5869,66 @@ let liveClassSortKey = 'name';
 let liveClassSortOrder = 'asc';
 let selectedLiveClassStudentIds = new Set();
 
+let isPaperRosterMode = localStorage.getItem('lopvui.paper-roster-mode') === 'true';
+let isEditingPaperOrder = false;
+let paperTranscribeActiveId = null;
+const paperTranscribeDoneIds = new Set();
+
+function getStudentPaperOrder(student, classId) {
+  if (student?.paperOrderIndex && student.paperOrderIndex[classId] !== undefined) {
+    const n = Number(student.paperOrderIndex[classId]);
+    if (!Number.isNaN(n) && n > 0) return n;
+  }
+  if (student?.stt !== undefined) {
+    const n = Number(student.stt);
+    if (!Number.isNaN(n) && n > 0) return n;
+  }
+  return 9999;
+}
+
+function moveStudentPaperOrder(studentId, direction) {
+  const roster = classStudents().filter(s => !isNewStudentRecord(s));
+  const byGiven = (a, b) => {
+    const aParts = splitStudentName(a.name);
+    const bParts = splitStudentName(b.name);
+    return (a.givenName || aParts.givenName).localeCompare(b.givenName || bParts.givenName, 'vi')
+      || (a.familyName || aParts.familyName).localeCompare(b.familyName || bParts.familyName, 'vi');
+  };
+  roster.sort((a, b) => getStudentPaperOrder(a, CURRENT_CLASS_ID) - getStudentPaperOrder(b, CURRENT_CLASS_ID) || byGiven(a, b));
+  roster.forEach((s, idx) => {
+    s.paperOrderIndex = s.paperOrderIndex || {};
+    s.paperOrderIndex[CURRENT_CLASS_ID] = idx + 1;
+  });
+  const curIdx = roster.findIndex(s => s.id === studentId);
+  if (curIdx === -1) return;
+  const targetIdx = curIdx + direction;
+  if (targetIdx < 0 || targetIdx >= roster.length) return;
+  const curStu = roster[curIdx];
+  const targetStu = roster[targetIdx];
+  const tmp = curStu.paperOrderIndex[CURRENT_CLASS_ID];
+  curStu.paperOrderIndex[CURRENT_CLASS_ID] = targetStu.paperOrderIndex[CURRENT_CLASS_ID];
+  targetStu.paperOrderIndex[CURRENT_CLASS_ID] = tmp;
+  saveStudentRecords(students, makeupStudents);
+  renderStudentList();
+}
+
 function renderStudentList(){
   const host=$('#student-list-items'),makeupHost=$('#makeup-list-items');if(!host)return;
   if (makeupHost) {
     makeupHost.innerHTML = '';
     const makeupSec = makeupHost.closest('.makeup-roster-section');
     if (makeupSec) makeupSec.hidden = true;
+  }
+  const paperModeBtn = $('#toggle-paper-roster-mode-btn');
+  const editPaperOrderBtn = $('#toggle-edit-paper-order-btn');
+  if (paperModeBtn) {
+    paperModeBtn.classList.toggle('active', isPaperRosterMode);
+    paperModeBtn.textContent = isPaperRosterMode ? 'Chép sổ giấy: BẬT' : 'Chép sổ giấy';
+  }
+  if (editPaperOrderBtn) {
+    editPaperOrderBtn.hidden = !isPaperRosterMode;
+    editPaperOrderBtn.classList.toggle('active', isEditingPaperOrder);
+    editPaperOrderBtn.textContent = isEditingPaperOrder ? 'Khóa STT Sổ' : 'Sửa STT Sổ Giấy';
   }
   const placements=new Map(allEntries().filter(({entry})=>entry.studentId).map(place=>[place.entry.studentId,place]));
   const lateIds=new Set(lateQueue);
@@ -5923,7 +6049,7 @@ function renderStudentList(){
     const matchBtn = $('#open-match-temp-students-btn');
     if (matchBtn) {
       matchBtn.hidden = !canCrossClass;
-      matchBtn.innerHTML = `🔗 Khớp dữ liệu HS mới / Học bù với DS tổng${unmatchedCount ? ` <span class="pill-count" style="background:#ffffff; color:#1d4ed8; margin-left:4px;">${unmatchedCount}</span>` : ''}`;
+      matchBtn.innerHTML = `Khớp dữ liệu HS mới / Học bù với DS tổng${unmatchedCount ? ` <span class="pill-count" style="background:#ffffff; color:#1d4ed8; margin-left:4px;">${unmatchedCount}</span>` : ''}`;
     }
   }
 
@@ -5974,19 +6100,40 @@ function renderStudentList(){
   };
 
   // Makeup students are always placed at the bottom of the main table
-  const visibleRegular = filter === 'makeup' ? [] : filterAndSort(records);
-  const visibleMakeup = filter === 'new_student' ? [] : filterAndSort(makeupRecords);
+  let visibleRegular, visibleMakeup;
+  if (isPaperRosterMode) {
+    const regularFixed = records.filter(r => !isNewSessionStudentRow(r));
+    regularFixed.sort((a, b) => getStudentPaperOrder(a.student, CURRENT_CLASS_ID) - getStudentPaperOrder(b.student, CURRENT_CLASS_ID) || byGivenName(a.student, b.student));
+    regularFixed.forEach((r, idx) => {
+      r.paperStt = idx + 1;
+    });
+    const bottomNew = records.filter(r => isNewSessionStudentRow(r));
+    const bottomAll = [...bottomNew, ...makeupRecords];
+
+    if (query || (filter && filter !== 'all')) {
+      visibleRegular = filterAndSort(regularFixed);
+      visibleMakeup = filterAndSort(bottomAll);
+    } else {
+      visibleRegular = regularFixed;
+      visibleMakeup = bottomAll;
+    }
+  } else {
+    visibleRegular = filter === 'makeup' ? [] : filterAndSort(records);
+    visibleMakeup = filter === 'new_student' ? [] : filterAndSort(makeupRecords);
+  }
   const visible = [...visibleRegular, ...visibleMakeup];
 
   const getLiveTableColumnOrder = () => {
     const defaultCols = ['family', 'name', 'school', 'seat', 'attendance', 'homework', 'score', 'note'];
     try {
+      const hidden = new Set(JSON.parse(localStorage.getItem('lopvui.column-hidden.live.v1') || '[]'));
       const saved = JSON.parse(localStorage.getItem('lopvui.column-order.live.v1') || 'null');
       if (Array.isArray(saved) && saved.length) {
-        const valid = saved.filter(k => defaultCols.includes(k));
-        defaultCols.forEach(k => { if (!valid.includes(k)) valid.push(k); });
+        const valid = saved.filter(k => defaultCols.includes(k) && !hidden.has(k));
+        defaultCols.forEach(k => { if (!valid.includes(k) && !hidden.has(k)) valid.push(k); });
         return valid;
       }
+      return defaultCols.filter(k => !hidden.has(k));
     } catch {}
     return defaultCols;
   };
@@ -6005,8 +6152,8 @@ function renderStudentList(){
       name: `${showParentCopyCol ? `<th style="width:105px; text-align:center;" title="Nút Copy nhanh báo cáo buổi học gửi Phụ huynh (Văn phòng / Admin)">Báo PH</th>` : ''}<th class="sortable-th ${sortClass('name')}" data-live-sort="name">Tên <span class="sort-icon">${sortIcon('name')}</span></th>`,
       school: `<th class="sortable-th ${sortClass('school')}" data-live-sort="school">Trường <span class="sort-icon">${sortIcon('school')}</span></th>`,
       seat: `<th class="sortable-th ${sortClass('seat')}" data-live-sort="seat">Vị trí ngồi <span class="sort-icon">${sortIcon('seat')}</span></th>`,
-      attendance: `<th class="sortable-th ${sortClass('attendance')}" data-live-sort="attendance">Trạng thái điểm danh <span class="sort-icon">${sortIcon('attendance')}</span></th>`,
-      homework: `<th class="sortable-th ${sortClass('homework')}" data-live-sort="homework">Trạng thái BTVN <span class="sort-icon">${sortIcon('homework')}</span></th>`,
+      attendance: `<th class="sortable-th ${sortClass('attendance')}" data-live-sort="attendance">${isPaperRosterMode ? 'Điểm danh (Sổ)' : 'Trạng thái điểm danh'} <span class="sort-icon">${sortIcon('attendance')}</span></th>`,
+      homework: `<th class="sortable-th ${sortClass('homework')}" data-live-sort="homework">${isPaperRosterMode ? 'BTVN (Sổ)' : 'Trạng thái BTVN'} <span class="sort-icon">${sortIcon('homework')}</span></th>`,
       score: `<th class="sortable-th ${sortClass('score')}" data-live-sort="score" style="text-align:center;">Điểm BTVN / Test <span class="sort-icon">${sortIcon('score')}</span></th>`,
       note: `<th class="sortable-th ${sortClass('note')}" data-live-sort="note" style="min-width:170px;">Ghi chú buổi học <span class="sort-icon">${sortIcon('note')}</span></th>`
     };
@@ -6022,11 +6169,138 @@ function renderStudentList(){
           ${canCrossClass ? `<button type="button" class="outline-button" id="live-bulk-add-class">Thêm vào lớp khác</button>` : ''}
           ${canCrossClass ? `<button type="button" class="outline-button" id="live-bulk-move-class">Chuyển lớp</button>` : ''}
           <button type="button" class="outline-button text-danger" id="live-bulk-remove-class">Bỏ khỏi lớp</button>
-          <button type="button" class="outline-button text-danger" id="live-bulk-delete-student" style="background:#fef2f2; border-color:#fca5a5; color:#b91c1c; font-weight:700;">🗑 Xoá học sinh</button>
+          <button type="button" class="outline-button text-danger" id="live-bulk-delete-student" style="background:#fef2f2; border-color:#fca5a5; color:#b91c1c; font-weight:700;">Xoá học sinh</button>
           <button type="button" class="outline-button" id="live-bulk-clear">Bỏ chọn</button>
         </div>
       </div>
     `;
+
+    const regularListToRender = isPaperRosterMode ? visibleRegular : visible;
+    const bottomListToRender = isPaperRosterMode ? visibleMakeup : [];
+
+    const renderRows = (list) => list.map(({student, familyName, givenName, isMakeupRow, originalIndex, paperStt, attendance, homework, seat, testScore, note}) => {
+      const attStatus = attendance?.status;
+      const lateDet = attStatus === 'late' ? resolveLateDetails(student, { attendance }) : null;
+      let statusBadge;
+      if (isPaperRosterMode) {
+        if (attStatus === 'present') {
+          statusBadge = '<span class="paper-symbol paper-symbol-present" title="Có mặt đúng giờ">✓</span>';
+        } else if (attStatus === 'late') {
+          const mins = lateDet?.lateMinutes || 10;
+          statusBadge = `<span class="paper-symbol paper-symbol-late" title="Đi muộn ${mins}p (${escapeHtml(lateDet?.arrivalTime || '')})">M${mins}</span>`;
+        } else if (attStatus === 'absent_excused') {
+          statusBadge = '<span class="paper-symbol paper-symbol-absent-excused" title="Vắng có phép">VP</span>';
+        } else if (attStatus === 'absent' || attStatus === 'absent_unexcused') {
+          statusBadge = '<span class="paper-symbol paper-symbol-absent-unexcused" title="Vắng không phép">KP</span>';
+        } else {
+          statusBadge = '<span class="paper-symbol paper-symbol-unrecorded" title="Chưa điểm danh">—</span>';
+        }
+      } else {
+        statusBadge = attStatus === 'present'
+          ? '<span class="student-state state-present">✓ Có mặt</span>'
+          : attStatus === 'late'
+            ? `<span class="student-state state-late">Đi muộn ${lateDet.lateMinutes}p (${escapeHtml(lateDet.arrivalTime)})</span>`
+            : (attStatus === 'absent' || attStatus === 'absent_excused' || attStatus === 'absent_unexcused')
+              ? `<span class="student-state state-missing">× ${attStatus === 'absent_excused' ? 'Vắng có phép' : 'Vắng mặt'}</span>`
+              : '<span class="student-state state-pending">Chưa điểm danh</span>';
+      }
+
+      const reasonMap = { not_done: 'Chưa làm', forgot: 'Quên vở', missed_previous: 'Nghỉ buổi trước' };
+      const reasonText = reasonMap[homework.reason] || homework.reason || '';
+      let hwBadge;
+      if (isPaperRosterMode) {
+        const hwScVal = (homework.score !== null && homework.score !== undefined && homework.score !== '') ? formatScoreVN(homework.score) : null;
+        if (hwScVal !== null) {
+          hwBadge = `<strong style="color:#15803d; font-size:14px; font-variant-numeric:tabular-nums;">${escapeHtml(hwScVal)}</strong>`;
+        } else if (homework.status === 'submitted' || homework.status === 'graded') {
+          hwBadge = '<span class="paper-symbol paper-symbol-hw-done" title="Đã nộp">✓</span>';
+        } else if (homework.status === 'not_submitted') {
+          hwBadge = `<span class="paper-symbol paper-symbol-hw-missing" title="Chưa nộp">×</span>${reasonText ? ` <span style="font-size:11.5px; color:#b91c1c;">(${escapeHtml(reasonText)})</span>` : ''}`;
+        } else {
+          hwBadge = '<span class="paper-symbol paper-symbol-unrecorded" title="Chưa thu">—</span>';
+        }
+      } else {
+        hwBadge = homework.status === 'not_submitted'
+          ? `<span class="student-state state-missing">× Chưa nộp${reasonText ? ` (${escapeHtml(reasonText)})` : ''}</span>`
+          : (homework.status === 'submitted' || homework.status === 'graded')
+            ? '<span class="student-state state-collected">✓ Đã nộp</span>'
+            : '<span class="student-state state-pending">· Chưa thu</span>';
+      }
+
+      const hwScStr = (homework.score !== null && homework.score !== undefined && homework.score !== '') ? formatScoreVN(homework.score) : '';
+      const testScStr = (testScore !== null && testScore !== undefined && testScore !== '') ? formatScoreVN(testScore) : '';
+      const scoreCellHtml = `
+        <div style="display:inline-flex; align-items:center; gap:6px; justify-content:center;">
+          <input type="text" inputmode="decimal" class="manual-score-input" data-live-list-hw-score="${escapeHtml(student.id)}" value="${escapeHtml(hwScStr)}" placeholder="BTVN" title="Nhập điểm BTVN (VD: 7,5)" style="width:62px; text-align:center;" />
+          ${checklist?.testRequired || testScStr ? `<input type="text" inputmode="decimal" class="manual-score-input" data-live-list-test-score="${escapeHtml(student.id)}" value="${escapeHtml(testScStr)}" placeholder="Test" title="Nhập điểm Test (VD: 8,5)" style="width:62px; text-align:center;" />` : ''}
+        </div>
+      `;
+
+      const schoolLabel = isMakeupRow
+        ? `Học Bù (${getMakeupSourceClassDisplay(student)})`
+        : (student.school || '—');
+
+      const officeCopyTd = showParentCopyCol
+        ? `<td style="text-align:center; white-space:nowrap;"><button type="button" class="btn-copy-parent-zalo office-copy-before-name-btn" data-quick-copy-parent-zalo="${escapeHtml(student.id)}" data-copy-parent-zalo="${escapeHtml(student.id)}" title="Copy nhanh tin nhắn báo cáo gửi Phụ huynh (Chỉ 1 lần bấm)">Copy PH</button></td>`
+        : '';
+
+      const cellMap = {
+        family: `<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${isMakeupRow ? '#6d28d9' : '#395140'}; font-weight:${isMakeupRow ? '700' : '500'};">${escapeHtml(familyName || '—')}</button></td>`,
+        name: `${officeCopyTd}<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;"><strong style="color:${isMakeupRow ? '#6d28d9' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>${renderInlineTags(student)}</button>${renderStudentWarningTag(student, CURRENT_CLASS_ID)}</td>`,
+        school: `<td>${isMakeupRow ? `<span class="makeup-school-tag">${escapeHtml(schoolLabel)}</span>` : escapeHtml(schoolLabel)}</td>`,
+        seat: `<td><span class="room-chip">${escapeHtml(seat)}</span></td>`,
+        attendance: `<td>${statusBadge}</td>`,
+        homework: `<td>${hwBadge}</td>`,
+        score: `<td style="text-align:center; white-space:nowrap;">${scoreCellHtml}</td>`,
+        note: `<td class="col-allow-wrap"><textarea rows="1" class="attendance-note-input auto-expand-note" data-session-note="${escapeHtml(student.id)}" aria-label="Ghi chú chung cho ${escapeHtml(student.name)}" placeholder="Nhập ghi chú buổi học..." style="width:100%; min-width:150px;">${escapeHtml(note)}</textarea></td>`
+      };
+
+      const isRowNewOrMakeup = isMakeupRow || isNewSessionStudentRow({ student, isMakeupRow, note });
+      const showMatchBtn = canCrossClass && isRowNewOrMakeup && !student?._matchedOrConfirmed;
+
+      let sttTd = '';
+      if (isPaperRosterMode) {
+        if (isMakeupRow || isRowNewOrMakeup) {
+          sttTd = `<td style="text-align:center; font-size:12px; font-weight:700; color:#6d28d9; white-space:nowrap;">${isMakeupRow ? 'Học bù' : 'Mới'}</td>`;
+        } else if (isEditingPaperOrder) {
+          sttTd = `
+            <td style="text-align:center; white-space:nowrap;">
+              <div style="display:inline-flex; align-items:center; gap:2px;">
+                <input type="number" min="1" class="paper-stt-input" data-paper-stt-student="${escapeHtml(student.id)}" value="${paperStt || originalIndex}" style="width:40px; text-align:center; padding:2px 4px; font-weight:700; font-size:13px;" />
+                <div style="display:flex; flex-direction:column; gap:1px;">
+                  <button type="button" class="paper-stt-move-btn" data-move-stt-up="${escapeHtml(student.id)}" style="padding:1px 4px; font-size:9px; line-height:1;" title="Đẩy lên">▲</button>
+                  <button type="button" class="paper-stt-move-btn" data-move-stt-down="${escapeHtml(student.id)}" style="padding:1px 4px; font-size:9px; line-height:1;" title="Đẩy xuống">▼</button>
+                </div>
+              </div>
+            </td>`;
+        } else {
+          sttTd = `<td style="text-align:center; font-weight:700; color:#334155; font-variant-numeric:tabular-nums;">${paperStt || originalIndex}</td>`;
+        }
+      }
+
+      const isRowActive = isPaperRosterMode && paperTranscribeActiveId === student.id;
+      const isRowDone = isPaperRosterMode && paperTranscribeDoneIds.has(student.id);
+
+      return `
+        <tr data-student-id="${escapeHtml(student.id)}" class="${isRowActive ? 'paper-transcribe-active-row ' : ''}${isRowDone ? 'paper-transcribe-done-row ' : ''}${isMakeupRow ? 'makeup-row-tr' : (isRowNewOrMakeup ? 'new-student-row-tr' : '')}">
+          <td style="text-align:center;">
+            <input type="checkbox" class="live-student-cb" data-student-id="${escapeHtml(student.id)}" ${selectedLiveClassStudentIds.has(student.id) ? 'checked' : ''} />
+          </td>
+          ${sttTd}
+          ${colOrder.map(k => cellMap[k] || '').join('')}
+          <td style="text-align:center; white-space:nowrap;">
+            ${showMatchBtn ? `<button type="button" class="outline-button btn-match-master-row" data-match-master-student="${escapeHtml(student.id)}" title="Khớp thông tin học sinh mới / học bù này với học sinh trong danh sách tổng của trung tâm và đính dữ liệu buổi học">Khớp DS tổng</button>` : ''}
+            <button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(student.id)}" title="Mở sơ đồ lớp và tìm nhanh chỗ ngồi học sinh này">Tìm chỗ</button>
+            ${(!isMakeupRow && canCrossClass) ? `<button type="button" class="outline-button" data-transfer-class-student="${escapeHtml(student.id)}" style="padding:5px 7px; font-size:12px; margin-left:3px; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;" title="Chuyển học sinh sang lớp khác (vẫn giữ dữ liệu lớp cũ)">⇄ Chuyển</button>` : ''}
+            <button type="button" class="outline-button text-danger" data-delete-class-student="${escapeHtml(student.id)}" style="padding:5px 8px; font-size:12.5px; margin-left:3px;" title="Xoá học sinh này khỏi danh sách">Xoá</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const dividerHtml = (isPaperRosterMode && bottomListToRender.length > 0)
+      ? `<tr class="paper-roster-divider-row"><td colspan="100%" style="text-align:left; background:#f1f5f9; padding:8px 12px; font-weight:700; color:#334155; font-size:12px; letter-spacing:0.5px; border-top:2px solid #cbd5e1; border-bottom:2px solid #cbd5e1;">--- HỌC SINH MỚI &amp; HỌC BÙ (GHI CUỐI TRANG SỔ GIẤY: ${bottomListToRender.length} HỌC SINH) ---</td></tr>`
+      : '';
 
     return `
       ${bulkBarHtml}
@@ -6035,76 +6309,15 @@ function renderStudentList(){
           <thead>
             <tr>
               <th style="width:36px; text-align:center;"><input type="checkbox" id="live-student-select-all" ${visible.length && visible.every(i => selectedLiveClassStudentIds.has(i.student.id)) ? 'checked' : ''} title="Chọn tất cả" /></th>
+              ${isPaperRosterMode ? '<th style="width:70px; text-align:center;">STT Sổ</th>' : ''}
               ${colOrder.map(k => colHeaderMap[k] || '').join('')}
               <th style="width:155px; text-align:center;">Thao tác</th>
             </tr>
           </thead>
           <tbody>
-            ${items.map(({student, familyName, givenName, isMakeupRow, attendance, homework, seat, testScore, note}) => {
-              const attStatus = attendance?.status;
-              const lateDet = attStatus === 'late' ? resolveLateDetails(student, { attendance }) : null;
-              const statusBadge = attStatus === 'present'
-                ? '<span class="student-state state-present">✓ Có mặt</span>'
-                : attStatus === 'late'
-                  ? `<span class="student-state state-late">Đi muộn ${lateDet.lateMinutes}p (${escapeHtml(lateDet.arrivalTime)})</span>`
-                  : (attStatus === 'absent' || attStatus === 'absent_excused' || attStatus === 'absent_unexcused')
-                    ? `<span class="student-state state-missing">× ${attStatus === 'absent_excused' ? 'Vắng có phép' : 'Vắng mặt'}</span>`
-                    : '<span class="student-state state-pending">Chưa điểm danh</span>';
-
-              const reasonMap = { not_done: 'Chưa làm', forgot: 'Quên vở', missed_previous: 'Nghỉ buổi trước' };
-              const reasonText = reasonMap[homework.reason] || homework.reason || '';
-              const hwBadge = homework.status === 'not_submitted'
-                ? `<span class="student-state state-missing">× Chưa nộp${reasonText ? ` (${escapeHtml(reasonText)})` : ''}</span>`
-                : (homework.status === 'submitted' || homework.status === 'graded')
-                  ? '<span class="student-state state-collected">✓ Đã nộp</span>'
-                  : '<span class="student-state state-pending">· Chưa thu</span>';
-
-              const hwScStr = (homework.score !== null && homework.score !== undefined && homework.score !== '') ? formatScoreVN(homework.score) : '';
-              const testScStr = (testScore !== null && testScore !== undefined && testScore !== '') ? formatScoreVN(testScore) : '';
-              const scoreCellHtml = `
-                <div style="display:inline-flex; align-items:center; gap:6px; justify-content:center;">
-                  <input type="text" inputmode="decimal" class="manual-score-input" data-live-list-hw-score="${escapeHtml(student.id)}" value="${escapeHtml(hwScStr)}" placeholder="BTVN" title="Nhập điểm BTVN (VD: 7,5)" style="width:62px; text-align:center;" />
-                  ${checklist?.testRequired || testScStr ? `<input type="text" inputmode="decimal" class="manual-score-input" data-live-list-test-score="${escapeHtml(student.id)}" value="${escapeHtml(testScStr)}" placeholder="Test" title="Nhập điểm Test (VD: 8,5)" style="width:62px; text-align:center;" />` : ''}
-                </div>
-              `;
-
-              const schoolLabel = isMakeupRow
-                ? `Học Bù (${getMakeupSourceClassDisplay(student)})`
-                : (student.school || '—');
-
-              const officeCopyTd = showParentCopyCol
-                ? `<td style="text-align:center; white-space:nowrap;"><button type="button" class="btn-copy-parent-zalo office-copy-before-name-btn" data-quick-copy-parent-zalo="${escapeHtml(student.id)}" data-copy-parent-zalo="${escapeHtml(student.id)}" title="Copy nhanh tin nhắn báo cáo gửi Phụ huynh (Chỉ 1 lần bấm)">📋 Copy PH</button></td>`
-                : '';
-
-              const cellMap = {
-                family: `<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; color:${isMakeupRow ? '#6d28d9' : '#395140'}; font-weight:${isMakeupRow ? '700' : '500'};">${escapeHtml(familyName || '—')}</button></td>`,
-                name: `${officeCopyTd}<td><button type="button" data-open-student-profile="${escapeHtml(student.id)}" style="background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit;"><strong style="color:${isMakeupRow ? '#6d28d9' : '#214e2d'};">${escapeHtml(givenName || student.name)}</strong>${renderInlineTags(student)}</button>${renderStudentWarningTag(student, CURRENT_CLASS_ID)}</td>`,
-                school: `<td>${isMakeupRow ? `<span class="makeup-school-tag">${escapeHtml(schoolLabel)}</span>` : escapeHtml(schoolLabel)}</td>`,
-                seat: `<td><span class="room-chip">${escapeHtml(seat)}</span></td>`,
-                attendance: `<td>${statusBadge}</td>`,
-                homework: `<td>${hwBadge}</td>`,
-                score: `<td style="text-align:center; white-space:nowrap;">${scoreCellHtml}</td>`,
-                note: `<td class="col-allow-wrap"><textarea rows="1" class="attendance-note-input auto-expand-note" data-session-note="${escapeHtml(student.id)}" aria-label="Ghi chú chung cho ${escapeHtml(student.name)}" placeholder="Nhập ghi chú buổi học..." style="width:100%; min-width:150px;">${escapeHtml(note)}</textarea></td>`
-              };
-
-              const isRowNewOrMakeup = isMakeupRow || isNewSessionStudentRow({ student, isMakeupRow, note });
-              const showMatchBtn = canCrossClass && isRowNewOrMakeup && !student?._matchedOrConfirmed;
-
-              return `
-                <tr class="${isMakeupRow ? 'makeup-row-tr' : (isRowNewOrMakeup ? 'new-student-row-tr' : '')}">
-                  <td style="text-align:center;">
-                    <input type="checkbox" class="live-student-cb" data-student-id="${escapeHtml(student.id)}" ${selectedLiveClassStudentIds.has(student.id) ? 'checked' : ''} />
-                  </td>
-                  ${colOrder.map(k => cellMap[k] || '').join('')}
-                  <td style="text-align:center; white-space:nowrap;">
-                    ${showMatchBtn ? `<button type="button" class="outline-button btn-match-master-row" data-match-master-student="${escapeHtml(student.id)}" title="Khớp thông tin học sinh mới / học bù này với học sinh trong danh sách tổng của trung tâm và đính dữ liệu buổi học">🔗 Khớp DS tổng</button>` : ''}
-                    <button type="button" class="outline-button find-seat-btn" data-find-seat-student="${escapeHtml(student.id)}" title="Mở sơ đồ lớp và tìm nhanh chỗ ngồi học sinh này">Tìm chỗ</button>
-                    ${(!isMakeupRow && canCrossClass) ? `<button type="button" class="outline-button" data-transfer-class-student="${escapeHtml(student.id)}" style="padding:5px 7px; font-size:12px; margin-left:3px; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;" title="Chuyển học sinh sang lớp khác (vẫn giữ dữ liệu lớp cũ)">⇄ Chuyển</button>` : ''}
-                    <button type="button" class="outline-button text-danger" data-delete-class-student="${escapeHtml(student.id)}" style="padding:5px 8px; font-size:12.5px; margin-left:3px;" title="Xoá học sinh này khỏi danh sách">Xoá</button>
-                  </td>
-                </tr>
-              `;
-            }).join('')}
+            ${renderRows(regularListToRender)}
+            ${dividerHtml}
+            ${renderRows(bottomListToRender)}
           </tbody>
         </table>
       </div>
@@ -6333,6 +6546,59 @@ function renderStudentList(){
       toast(`Đã xoá học sinh ${stu.name}.`);
     });
   });
+
+  // Wire paper roster row click (ruler) and double-click (done)
+  host.querySelectorAll('tr[data-student-id]').forEach(tr => {
+    tr.addEventListener('click', (e) => {
+      if (!isPaperRosterMode) return;
+      if (e.target.closest('button, input, textarea, a, select')) return;
+      const sid = tr.dataset.studentId;
+      paperTranscribeActiveId = (paperTranscribeActiveId === sid) ? null : sid;
+      host.querySelectorAll('tr.paper-transcribe-active-row').forEach(r => r.classList.remove('paper-transcribe-active-row'));
+      if (paperTranscribeActiveId) tr.classList.add('paper-transcribe-active-row');
+    });
+    tr.addEventListener('dblclick', (e) => {
+      if (!isPaperRosterMode) return;
+      if (e.target.closest('button, input, textarea, a, select')) return;
+      const sid = tr.dataset.studentId;
+      if (paperTranscribeDoneIds.has(sid)) {
+        paperTranscribeDoneIds.delete(sid);
+        tr.classList.remove('paper-transcribe-done-row');
+      } else {
+        paperTranscribeDoneIds.add(sid);
+        tr.classList.add('paper-transcribe-done-row');
+      }
+    });
+  });
+
+  // Wire STT inputs & up/down move buttons
+  host.querySelectorAll('[data-paper-stt-student]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const sid = inp.dataset.paperSttStudent;
+      const val = parseInt(inp.value, 10);
+      const stu = studentById(sid);
+      if (stu && !Number.isNaN(val) && val > 0) {
+        stu.paperOrderIndex = stu.paperOrderIndex || {};
+        stu.paperOrderIndex[CURRENT_CLASS_ID] = val;
+        saveStudentRecords(students, makeupStudents);
+        renderStudentList();
+      }
+    });
+  });
+  host.querySelectorAll('[data-move-stt-up]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sid = btn.dataset.moveSttUp;
+      moveStudentPaperOrder(sid, -1);
+    });
+  });
+  host.querySelectorAll('[data-move-stt-down]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sid = btn.dataset.moveSttDown;
+      moveStudentPaperOrder(sid, 1);
+    });
+  });
 }
 let _studentListSearchDebounce = null;
 $('#student-list-search').addEventListener('input', () => {
@@ -6340,6 +6606,30 @@ $('#student-list-search').addEventListener('input', () => {
   _studentListSearchDebounce = setTimeout(renderStudentList, 120);
 });
 $('#student-list-filter').addEventListener('change', renderStudentList);
+
+$('#toggle-paper-roster-mode-btn')?.addEventListener('click', () => {
+  isPaperRosterMode = !isPaperRosterMode;
+  localStorage.setItem('lopvui.paper-roster-mode', String(isPaperRosterMode));
+  if (!isPaperRosterMode) isEditingPaperOrder = false;
+  renderStudentList();
+  toast(isPaperRosterMode ? '✓ Đã BẬT Chế độ Chép Sổ Giấy.' : 'Đã TẮT Chế độ Chép Sổ Giấy.');
+});
+
+$('#toggle-edit-paper-order-btn')?.addEventListener('click', () => {
+  isEditingPaperOrder = !isEditingPaperOrder;
+  if (!isEditingPaperOrder) {
+    const roster = classStudents().filter(s => !isNewStudentRecord(s));
+    roster.forEach((s, idx) => {
+      s.paperOrderIndex = s.paperOrderIndex || {};
+      if (s.paperOrderIndex[CURRENT_CLASS_ID] === undefined) {
+        s.paperOrderIndex[CURRENT_CLASS_ID] = idx + 1;
+      }
+    });
+    saveStudentRecords(students, makeupStudents);
+    toast('✓ Đã khóa STT sổ giấy và lưu đồng bộ.');
+  }
+  renderStudentList();
+});
 
 document.querySelectorAll('[data-office-student-filter]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -6709,7 +6999,7 @@ function openConfirmNewStudentClassTransferDialog(tempStu, masterStu, targetClas
         ${!alreadyInTargetClass && masterClasses.length ? `
         <button type="button" class="outline-button" id="confirm-transfer-choice-add" style="justify-content:flex-start; text-align:left; padding:10px 14px; line-height:1.4; border-color:#93c5fd; background:#eff6ff; color:#1e40af;">
           <div>
-            <div style="font-weight:800; font-size:13.5px;">➕ Thêm học song song cả lớp ${escapeHtml(targetCls?.code || targetCls?.name || targetClassId)}</div>
+            <div style="font-weight:800; font-size:13.5px;">+ Thêm học song song cả lớp ${escapeHtml(targetCls?.code || targetCls?.name || targetClassId)}</div>
             <div style="font-size:12px; color:#3b82f6; font-weight:500;">Giữ nguyên lớp cũ (${escapeHtml(currentClassesText)}) và thêm lớp này vào hồ sơ</div>
           </div>
         </button>
@@ -6717,7 +7007,7 @@ function openConfirmNewStudentClassTransferDialog(tempStu, masterStu, targetClas
 
         <button type="button" class="outline-button" id="confirm-transfer-choice-keep" style="justify-content:flex-start; text-align:left; padding:10px 14px; line-height:1.4;">
           <div>
-            <div style="font-weight:700; font-size:13.5px;">⏸ Không chuyển lớp (Chỉ đính dữ liệu buổi học vào hồ sơ)</div>
+            <div style="font-weight:700; font-size:13.5px;">Không chuyển lớp (Chỉ đính dữ liệu buổi học vào hồ sơ)</div>
             <div style="font-size:12px; color:#64748b; font-weight:500;">Giữ nguyên lớp trong danh sách tổng (${escapeHtml(currentClassesText)}), chỉ lưu đính dữ liệu buổi học hôm nay</div>
           </div>
         </button>
@@ -6864,14 +7154,14 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
           <select id="match-temp-student-select" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #93c5fd; background:#eff6ff; font-weight:700; color:#1e3a8a;">
             ${tempCandidates.map(item => {
               const s = item.student;
-              const badge = item.isMakeup ? '🔄 [Học bù]' : '🆕 [Học sinh mới]';
+              const badge = item.isMakeup ? '[Học bù]' : '[Học sinh mới]';
               const extra = item.isMakeup ? (s.sourceClassName || s.school || 'Chưa rõ lớp gốc') : (s.school || 'Chưa rõ trường');
               return `<option value="${escapeHtml(s.id)}" ${s.id === tempStu.id ? 'selected' : ''}>${badge} ${escapeHtml(s.name)} — ${escapeHtml(extra)}</option>`;
             }).join('')}
           </select>
 
           <div style="margin-top:8px; padding:10px 14px; border-radius:10px; background:${isMakeup ? '#faf5ff' : '#f0fdf4'}; border:1px solid ${isMakeup ? '#d8b4fe' : '#bbf7d0'}; display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:6px 14px; font-size:13px;">
-            <div><strong>Phân loại:</strong> <span style="font-weight:800; color:${isMakeup ? '#6d28d9' : '#15803d'};">${isMakeup ? '🔄 Học sinh học bù' : '🆕 Học sinh mới'}</span></div>
+            <div><strong>Phân loại:</strong> <span style="font-weight:800; color:${isMakeup ? '#6d28d9' : '#15803d'};">${isMakeup ? 'Học sinh học bù' : 'Học sinh mới'}</span></div>
             <div><strong>Trường / Lớp gốc:</strong> ${escapeHtml(tempStu.school || tempStu.sourceClassName || '—')}</div>
             <div><strong>SĐT Phụ huynh:</strong> ${escapeHtml(tempStu.parentContact?.phone || '—')}</div>
             <div><strong>Chỗ ngồi &amp; BTVN:</strong> ${escapeHtml(seatText)} · ${escapeHtml(hwText)}</div>
@@ -6978,7 +7268,7 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
               <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                 <strong style="font-size:14px; color:#0f172a;">${escapeHtml(masterStu.name)}</strong>
                 ${masterStu.studentCode ? `<span class="code-badge" style="font-size:11.5px; padding:1px 6px; background:#e0f2fe; color:#0369a1; border-radius:4px; font-weight:700;">${escapeHtml(masterStu.studentCode)}</span>` : '<span style="font-size:11.5px; color:#64748b;">(Chưa có mã HS)</span>'}
-                ${isSuggested ? `<span style="font-size:11px; padding:1px 7px; border-radius:999px; background:#dbeafe; color:#1d4ed8; font-weight:800;">★ Gợi ý khớp tên</span>` : ''}
+                ${isSuggested ? `<span style="font-size:11px; padding:1px 7px; border-radius:999px; background:#dbeafe; color:#1d4ed8; font-weight:800;">• Gợi ý khớp tên</span>` : ''}
               </div>
               <div style="font-size:12.5px; color:#475569; margin-top:2px;">
                 <span>Lớp: <strong style="color:#334155;">${escapeHtml(clsLabels)}</strong></span>
@@ -6987,7 +7277,7 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
               </div>
             </div>
             <button type="button" class="primary-button" data-pick-master-to-match="${escapeHtml(masterStu.id)}" style="white-space:nowrap; padding:7px 12px; font-size:12.5px;">
-              🔗 Khớp &amp; Lưu dữ liệu
+              Khớp &amp; Lưu dữ liệu
             </button>
           </div>
         `;
@@ -7339,11 +7629,11 @@ function openStudentProfile(id, origin = null){
     <div class="student-portrait-showcase">
       <button type="button" id="student-photo-expand" class="student-portrait-frame-btn" title="Bấm để phóng to ảnh ${escapeHtml(student.name)}" aria-label="Mở ảnh ${escapeHtml(student.name)} cỡ lớn">
         <img class="profile-portrait profile-portrait-lg" id="profile-portrait-preview" src="${escapeHtml(photo)}" alt="Ảnh chân dung ${escapeHtml(student.name)}" />
-        <span class="portrait-zoom-hint">🔍 Phóng to</span>
+        <span class="portrait-zoom-hint">Phóng to</span>
       </button>
       <div class="student-portrait-actions has-photo">
         <label id="profile-upload-portrait-label" class="portrait-action-btn edit" title="Đổi ảnh chân dung khác">
-          📷 Đổi ảnh
+          Đổi ảnh
           <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
         </label>
         <button type="button" id="profile-remove-photo-btn" class="portrait-action-btn remove" title="Xóa ảnh chân dung">Xóa</button>
@@ -7357,7 +7647,7 @@ function openStudentProfile(id, origin = null){
       </div>
       <div class="student-portrait-actions no-photo">
         <label id="profile-upload-portrait-label" class="portrait-action-btn upload">
-          📷 Tải ảnh lên
+          Tải ảnh lên
           <input type="file" id="profile-upload-portrait-input" accept="image/*" style="display:none;" />
         </label>
       </div>
@@ -7439,7 +7729,7 @@ function openStudentProfile(id, origin = null){
       <label class="field-label profile-wide" id="profile-photo-url-wrap" hidden>Link ảnh Google Drive hoặc URL trực tiếp
         <div style="display:flex; gap:8px; align-items:center;">
           <input id="profile-photo-url" value="${escapeHtml(student.photoDriveFileId ? `https://drive.google.com/file/d/${student.photoDriveFileId}/view` : (student.photoURL||''))}" placeholder="Dán link chia sẻ Google Drive (https://drive.google.com/file/d/...) hoặc link ảnh..." style="flex:1;" />
-          <button type="button" class="outline-button" id="open-drive-config-from-profile-btn" style="padding:7px 10px; font-size:12.5px; white-space:nowrap;">☁ Cấu hình Drive</button>
+          <button type="button" class="outline-button" id="open-drive-config-from-profile-btn" style="padding:7px 10px; font-size:12.5px; white-space:nowrap;">Cấu hình Drive</button>
         </div>
       </label>
     </div>`;
@@ -7869,7 +8159,7 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
         ${sessThumbUrl ? `
           <button type="button" class="student-portrait-frame-btn" id="sess-prof-photo-expand" title="Bấm để phóng to ảnh chân dung">
             <img src="${escapeHtml(sessThumbUrl)}" alt="${escapeHtml(student.name)}" class="profile-portrait profile-portrait-md" />
-            <span class="portrait-zoom-hint">🔍 Phóng to</span>
+            <span class="portrait-zoom-hint">Phóng to</span>
           </button>
         ` : `
           <div class="profile-portrait profile-portrait-md profile-portrait-placeholder">
@@ -8247,7 +8537,7 @@ function buildSeatTokenHtml(deskId, entry, origIndex, isNoHwActive, mapSearchQue
   const isSeatActuallyLate = Boolean(lateSeatDet && lateSeatDet.isLate && lateSeatDet.lateMinutes > 0);
   const lateSeatPillHtml = isSeatActuallyLate ? `<span class="seat-late-pill" title="Đi muộn ${lateSeatDet.lateMinutes} phút (${escapeHtml(lateSeatDet.arrivalTime)})">Muộn ${lateSeatDet.lateMinutes}p</span>` : '';
   const seatEw = student ? evaluateStudentEarlyWarning(student, CURRENT_CLASS_ID) : null;
-  const seatWarnBadgeHtml = seatEw?.hasWarning ? `<span class="early-warning-pill warn-level-${seatEw.level > 0 ? seatEw.level : 1} seat-mini-warn-pill" title="${escapeHtml(seatEw.tooltip)}">⚠ ${escapeHtml(seatEw.shortTag || `M${seatEw.level || 1}`)}</span>` : '';
+  const seatWarnBadgeHtml = seatEw?.hasWarning ? `<span class="early-warning-pill warn-level-${seatEw.level > 0 ? seatEw.level : 1} seat-mini-warn-pill" title="${escapeHtml(seatEw.tooltip)}">! ${escapeHtml(seatEw.shortTag || `M${seatEw.level || 1}`)}</span>` : '';
   const isSearchMatch = Boolean(mapSearchQuery && student && matchesAcronymOrText(`${student.name} ${student.studentCode || ''} ${(student.tags || []).join(' ')}`, mapSearchQuery));
   return `<button class="seat occupied seat-token ${student?'seat-named':'seat-anonymous'} ${isMakeupStudent?'seat-makeup':''} ${isSeatActuallyLate?'attendance-late':''} ${warnClass} ${isSearchMatch?'seat-search-match':''}" data-entry-index="${origIndex}" data-desk-id="${deskId}" data-student-id="${escapeHtml(student?.id||'')}" aria-label="${student?`${student.name}${isMakeupStudent?' (Học bù)':''}; BTVN ${homeworkLabel(hw?.status)}; ${attendanceLabel(att?.status)}`:'Biểu tượng học sinh chưa ghi tên'}">${student?'':`<span class="seat-symbol">${studentIcon}</span>`}${student?`<span class="seat-name">${makeupBadgeHtml}${escapeHtml(student.name)}${lateSeatPillHtml}${renderInlineTags(student)}${seatWarnBadgeHtml}${warnTag}<span class="homework-mark ${homeworkClass(hw?.status)}" title="${homeworkLabel(hw?.status)}">${homeworkSymbol(hw)}</span></span>`:hw?.status&&hw.status!=='uncollected'?`<span class="homework-mark ${homeworkClass(hw.status)}" title="${homeworkLabel(hw.status)}">${homeworkSymbol(hw)}</span>`:''}</button>`;
 }
@@ -8976,7 +9266,7 @@ function showIdentityForm(kind='new'){
   $('#makeup-student-choice').onclick=()=>showIdentityForm('makeup');
   const otherClassBlockHtml = canCrossMakeup ? `
     <div style="margin-bottom:12px; padding:10px; background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px;">
-      <strong style="display:block; color:#5b21b6; font-size:13.5px; margin-bottom:6px;">🔄 Học bù từ lớp khác trong hệ thống (lưu vào hồ sơ gốc)</strong>
+      <strong style="display:block; color:#5b21b6; font-size:13.5px; margin-bottom:6px;">Học bù từ lớp khác trong hệ thống (lưu vào hồ sơ gốc)</strong>
       <div style="display:flex; gap:6px; margin-bottom:6px;">
         <input type="search" id="identity-cross-makeup-search" placeholder="Gõ tên hoặc mã HS từ lớp khác..." style="flex:1; padding:6px 10px; font-size:13px;" />
         <button type="button" class="outline-button" id="identity-open-cross-makeup-modal" style="padding:5px 9px; font-size:12.5px; color:#5b21b6; border-color:#c4b5fd; background:#fff; white-space:nowrap;">Danh sách lớp khác</button>
@@ -10095,7 +10385,7 @@ function recordStudentScore(student,score,type='BTVN'){
 
 let _isSyncingLive = false;
 function syncLiveSessionData() {
-  if (_isSyncingLive || isClassHistoryViewMode) return;
+  if (_isSyncingLive) return;
   _isSyncingLive = true;
   try {
     const classInfo = activeClassConfig();
@@ -10257,7 +10547,7 @@ function showLateIdentityForm(kind='new'){
   const canCrossMakeup = makeup && canAccessCrossClassData();
   const otherClassBlockHtml = canCrossMakeup ? `
     <div style="margin-bottom:12px; padding:10px; background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px;">
-      <strong style="display:block; color:#5b21b6; font-size:13.5px; margin-bottom:6px;">🔄 Học bù từ lớp khác trong hệ thống (lưu vào hồ sơ gốc)</strong>
+      <strong style="display:block; color:#5b21b6; font-size:13.5px; margin-bottom:6px;">Học bù từ lớp khác trong hệ thống (lưu vào hồ sơ gốc)</strong>
       <div style="display:flex; gap:6px; margin-bottom:6px;">
         <input type="search" id="late-cross-makeup-search" placeholder="Gõ tên hoặc mã HS từ lớp khác..." style="flex:1; padding:6px 10px; font-size:13px;" />
         <button type="button" class="outline-button" id="late-open-cross-makeup-modal" style="padding:5px 9px; font-size:12.5px; color:#5b21b6; border-color:#c4b5fd; background:#fff; white-space:nowrap;">Danh sách lớp khác</button>
@@ -10831,7 +11121,8 @@ const features = setupFeatures({
   canShowParentCopyZalo: () => canShowParentCopyZalo(),
   isStudentAccessibleToCurrentAccount: (stu) => isStudentAccessibleToCurrentAccount(stu),
   renderNotifications: () => renderNotifications(),
-  openUnmatchedStudentsMatchDialog: (preselectedId) => openUnmatchedStudentsMatchDialog(preselectedId)
+  openUnmatchedStudentsMatchDialog: (preselectedId) => openUnmatchedStudentsMatchDialog(preselectedId),
+  mergeAssistantStudentIntoMasterStudent: (tempId, masterId, classAction) => mergeAssistantStudentIntoMasterStudent(tempId, masterId, classAction)
 });
 window.__featuresApp = features;
 

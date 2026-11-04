@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
   <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <meta name="apple-mobile-web-app-title" content="Quản lý lớp" />
   <script>
     (function () {
       if (!Array.prototype.at) {
@@ -62,10 +67,9 @@
       }
     })();
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/src/styles.css?v=4.5.0" />
+  <link rel="preload" href="/src/fonts/plus-jakarta-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/src/fonts/plus-jakarta-sans-normal-vietnamese.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/src/styles.css?v=4.6.0" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -82,13 +86,14 @@
     <main class="main-content">
       <header class="topbar">
         <div class="crumb">
-          <button type="button" class="main-menu-back" id="main-menu-shortcut" hidden>☰ Menu</button>
+          <button type="button" class="main-menu-back" id="main-menu-shortcut" hidden>Menu</button>
           <span id="topbar-crumb-label">Menu chính</span><span>/</span><strong id="topbar-crumb-sub">Đi làm</strong>
         </div>
         <div class="topbar-right">
           <button type="button" id="realtime-sync-badge" class="realtime-sync-badge" title="Trạng thái đồng bộ dữ liệu thời gian thực (Bấm để đồng bộ ngay)">
             <span class="rt-dot"></span><span>● Đồng bộ Real-time</span>
           </button>
+          <button type="button" class="outline-button office-inbox-topbar-btn" id="office-inbox-btn" hidden style="margin-right:8px; padding:4px 10px; font-size:12.5px; font-weight:700; background:#fef2f2; color:#b91c1c; border-color:#fecaca;" title="Hộp việc Cần xử lý của Văn phòng (Khớp học sinh mới / Học bù &amp; Duyệt Google Sheets)">Hộp việc <span id="office-inbox-badge" class="office-inbox-badge" hidden>0</span></button>
           <div class="notification-anchor">
             <button type="button" class="bell" id="notification-toggle" aria-label="Mở thông báo" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span id="notification-badge" class="notification-badge" hidden>0</span>
             </button>
@@ -220,7 +225,7 @@
             <button type="button" class="sub-nav-tab active" id="mgmt-tab-classes">Danh sách Lớp học</button>
             <button type="button" class="sub-nav-tab" id="mgmt-tab-templates">Phòng học & Sơ đồ mẫu</button>
             <button type="button" class="sub-nav-tab" id="mgmt-tab-staff" hidden>Quản lý Nhân sự (Admin)</button>
-            <button type="button" class="sub-nav-tab" id="mgmt-tab-admin-log" hidden>🛡 Nhật ký Admin (Log)</button>
+            <button type="button" class="sub-nav-tab" id="mgmt-tab-admin-log" hidden>Nhật ký Admin (Log)</button>
             <button type="button" class="sub-nav-tab" id="mgmt-tab-students">Danh bạ Học sinh toàn trung tâm</button>
           </div>
 
@@ -249,8 +254,8 @@
               <span id="master-student-count">0 học sinh</span>
               <span>Tổng hợp toàn bộ học sinh, tra cứu hồ sơ đa lớp và thông tin phụ huynh</span>
               <div style="margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" class="outline-button" id="master-google-sheets-sync-btn" style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; font-weight:800;" title="Cấu hình & Đồng bộ Mã học sinh, duyệt Học sinh mới và Học sinh chuyển lớp từ Google Sheets">🔄 Đồng bộ Google Sheets (Mã HS)</button>
-                <button type="button" class="outline-button" id="export-all-students-csv-btn">📥 Xuất Excel (.xlsx)</button>
+                <button type="button" class="outline-button" id="master-google-sheets-sync-btn" style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; font-weight:800;" title="Cấu hình & Đồng bộ Mã học sinh, duyệt Học sinh mới và Học sinh chuyển lớp từ Google Sheets">Đồng bộ Google Sheets (Mã HS)</button>
+                <button type="button" class="outline-button" id="export-all-students-csv-btn">Xuất Excel (.xlsx)</button>
                 <button type="button" class="primary-button" id="master-import-excel-btn">Nhập từ Excel / Sheets</button>
               </div>
             </div>
@@ -304,7 +309,7 @@
                 </button>
                 <div class="excel-status-filter-dropdown" id="master-status-filter-dropdown" hidden></div>
               </div>
-              <button type="button" class="outline-button" id="customize-master-columns-btn" title="Đổi thứ tự cột hiển thị và xuất file">⚙ Đổi thứ tự cột</button>
+              <button type="button" class="outline-button" id="customize-master-columns-btn" title="Đổi thứ tự cột hiển thị và xuất file">Đổi thứ tự cột</button>
             </div>
 
             <!-- Floating / Top Bulk Actions Bar -->
@@ -349,7 +354,7 @@
               <span id="management-staff-count">0 nhân sự</span>
               <span>Quản lý thông tin, phân quyền, số điện thoại và các lớp phụ trách của Giáo viên, Trợ giảng, Văn phòng</span>
               <div style="margin-left:auto; display:flex; gap:8px;">
-                <button type="button" class="outline-button" id="export-staff-csv-btn">📥 Xuất Excel (.xlsx)</button>
+                <button type="button" class="outline-button" id="export-staff-csv-btn">Xuất Excel (.xlsx)</button>
                 <button type="button" class="primary-button" id="add-staff-member-btn">+ Thêm nhân viên</button>
               </div>
             </div>
@@ -415,23 +420,23 @@
           <!-- Subtab Admin Log (Nhật ký Admin chia theo từng lớp & từng ca học - Dạng Text dễ lưu) -->
           <div id="mgmt-panel-admin-log" hidden>
             <div class="management-summary" style="flex-wrap:wrap; gap:10px;">
-              <span id="mgmt-admin-log-total-badge" style="background:#ede9fe; color:#5b21b6; font-weight:700;">🛡 0 thao tác</span>
+              <span id="mgmt-admin-log-total-badge" style="background:#ede9fe; color:#5b21b6; font-weight:700;">0 thao tác</span>
               <span>Nhật ký toàn bộ thao tác dữ liệu của các tài khoản chia theo từng lớp và từng ca học (bao gồm cả sửa thông tin lớp, thêm/sửa/xoá ca học)</span>
               <div style="margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" class="outline-button" id="mgmt-copy-admin-log-btn" style="font-weight:700; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;">📋 Copy toàn bộ Text</button>
-                <button type="button" class="primary-button" id="mgmt-download-admin-log-txt-btn" style="background:#4f46e5;">💾 Tải file .txt</button>
+                <button type="button" class="outline-button" id="mgmt-copy-admin-log-btn" style="font-weight:700; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;">Copy toàn bộ Text</button>
+                <button type="button" class="primary-button" id="mgmt-download-admin-log-txt-btn" style="background:#4f46e5;">Tải file .txt</button>
               </div>
             </div>
 
             <div class="admin-log-filter-bar" style="margin-top:12px;">
               <select id="mgmt-admin-log-class-filter" aria-label="Chọn lớp học" style="min-width:210px; font-weight:600;">
-                <option value="all">📚 Tất cả các lớp học</option>
+                <option value="all">Tất cả các lớp học</option>
               </select>
               <select id="mgmt-admin-log-session-filter" aria-label="Chọn ca học trong lớp" style="min-width:220px; font-weight:600;">
-                <option value="all">🗓 Tất cả các ca & Thao tác lớp</option>
+                <option value="all">Tất cả các ca & Thao tác lớp</option>
               </select>
               <select id="mgmt-admin-log-account-filter" aria-label="Chọn tài khoản" style="min-width:190px;">
-                <option value="all">👤 Tất cả tài khoản</option>
+                <option value="all">Tất cả tài khoản</option>
               </select>
               <input type="search" id="mgmt-admin-log-search-input" placeholder="Tìm theo tên tài khoản, mã NV, tên học sinh hoặc hành động..." style="flex:1; min-width:200px;" />
             </div>
@@ -459,7 +464,7 @@
               </label>
               <div class="portal-export-btns">
                 <button type="button" class="outline-button" id="export-timesheet-btn">In bảng chấm công (A4)</button>
-                <button type="button" class="outline-button" id="export-timesheet-csv-btn">📥 Xuất Excel (.xlsx)</button>
+                <button type="button" class="outline-button" id="export-timesheet-csv-btn">Xuất Excel (.xlsx)</button>
               </div>
             </div>
           </div>
@@ -580,7 +585,7 @@
         <div id="general-panel-history" class="portal-stat-card" style="padding:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
             <div>
-              <h3 style="margin:0; font:700 17px Manrope,sans-serif; color:#233d31;">Lịch sử các buổi học của lớp</h3>
+              <h3 style="margin:0; font:600 17px var(--font-sans); color:#233d31;">Lịch sử các buổi học của lớp</h3>
               <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào từng ca học để xem lại sơ đồ/checklist, sửa/xoá ca hoặc <strong>nhập/sửa điểm của học sinh buổi hôm đó</strong>.</p>
             </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -594,13 +599,13 @@
         <div id="general-panel-students" class="portal-stat-card" style="padding:16px;" hidden>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
             <div>
-              <h3 style="margin:0; font:700 17px Manrope,sans-serif; color:#233d31;">Danh sách học sinh & Theo dõi 4 buổi gần nhất</h3>
+              <h3 style="margin:0; font:600 17px var(--font-sans); color:#233d31;">Danh sách học sinh & Theo dõi 4 buổi gần nhất</h3>
               <p style="font-size:14px; color:#6b7c70; margin:3px 0 0;">Bấm vào <strong>Tên học sinh</strong> để xem kỹ toàn bộ lịch sử điểm, trạng thái đi học và tên bài học từng buổi. Ký hiệu điểm danh: <strong>✓</strong> Có mặt · <strong>M</strong> Đi muộn · <strong>×</strong> Vắng.</p>
             </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
               <select id="general-student-warning-filter" aria-label="Lọc học sinh cần chú ý" style="padding:7px 10px; font-size:13.5px; border-radius:8px; border:1px solid #cbd8cd; background:#fff;">
                 <option value="all">Tất cả học sinh</option>
-                <option value="warning">⚠ Cần chú ý (Vắng/Nợ BTVN/Điểm &lt;5)</option>
+                <option value="warning">Cần chú ý (Vắng/Nợ BTVN/Điểm &lt;5)</option>
               </select>
               <button type="button" class="outline-button" id="general-export-roster-btn" style="padding:8px 14px; font-size:14px;">Xuất Excel</button>
             </div>
@@ -826,8 +831,8 @@
               <label class="test-required-toggle scores-test-toggle" style="margin:0; padding:6px 12px; background:#f5f3ff; border:1px solid #c4b5fd; border-radius:8px; color:#5b21b6; font-weight:700; cursor:pointer;" title="Đồng bộ với mục Ca này có test bên tab Checklist">
                 <input type="checkbox" id="scores-tab-test-toggle" /> Ca này có test (Hiện cột Điểm Test)
               </label>
-              <button type="button" class="outline-button" id="import-scores-excel-btn" style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; font-weight:700;" title="Nhập nhanh điểm BTVN / Test bằng file Excel hoặc dán 2 cột Mã HS + Điểm">📥 Nhập điểm bằng Excel</button>
-              <button type="button" class="outline-button" id="export-scores-template-btn" title="Tải file Excel (.xlsx) mẫu có sẵn Mã HS và Tên học sinh của lớp này">📤 Xuất mẫu Excel</button>
+              <button type="button" class="outline-button" id="import-scores-excel-btn" style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; font-weight:700;" title="Nhập nhanh điểm BTVN / Test bằng file Excel hoặc dán 2 cột Mã HS + Điểm">Nhập điểm bằng Excel</button>
+              <button type="button" class="outline-button" id="export-scores-template-btn" title="Tải file Excel (.xlsx) mẫu có sẵn Mã HS và Tên học sinh của lớp này">Xuất mẫu Excel</button>
               <span id="scores-tab-save-status" style="font-size:14px; color:#2e6d42; font-weight:700;">Tự động lưu khi nhập</span>
             </div>
           </div>
@@ -843,7 +848,7 @@
               <option value="group3">Nhóm 3: Chưa điểm danh / Vắng mặt</option>
               <option value="makeup">Chỉ học sinh Học bù</option>
             </select>
-            <button type="button" class="outline-button" id="customize-scores-columns-btn" title="Đổi thứ tự cột bảng Nhập điểm (VD: đưa cột Điểm BTVN/Test sát cạnh cột Tên)">⚙ Đổi thứ tự cột</button>
+            <button type="button" class="outline-button" id="customize-scores-columns-btn" title="Đổi thứ tự cột bảng Nhập điểm (VD: đưa cột Điểm BTVN/Test sát cạnh cột Tên)">Đổi thứ tự cột</button>
           </div>
 
           <div class="attendance-table-wrap">
@@ -1042,13 +1047,13 @@
             <div class="office-filter-pills-group" role="group" aria-label="Bộ lọc nhanh Học mới / Học bù (Tài khoản Văn phòng)">
               <span class="office-filter-label">Lọc nhanh (Văn phòng):</span>
               <button type="button" class="office-filter-pill active" data-office-student-filter="all">Tất cả</button>
-              <button type="button" class="office-filter-pill" data-office-student-filter="new_or_makeup">🌟 Học mới &amp; Học bù <span class="pill-count" id="office-pill-new-makeup-count">0</span></button>
-              <button type="button" class="office-filter-pill" data-office-student-filter="new_student">🆕 Học mới <span class="pill-count" id="office-pill-new-count">0</span></button>
-              <button type="button" class="office-filter-pill" data-office-student-filter="makeup">🔄 Học bù <span class="pill-count" id="office-pill-makeup-count">0</span></button>
+              <button type="button" class="office-filter-pill" data-office-student-filter="new_or_makeup">Học mới &amp; Học bù <span class="pill-count" id="office-pill-new-makeup-count">0</span></button>
+              <button type="button" class="office-filter-pill" data-office-student-filter="new_student">Học mới <span class="pill-count" id="office-pill-new-count">0</span></button>
+              <button type="button" class="office-filter-pill" data-office-student-filter="makeup">Học bù <span class="pill-count" id="office-pill-makeup-count">0</span></button>
             </div>
             <div class="office-match-actions">
               <button type="button" class="primary-button btn-match-master-toolbar" id="open-match-temp-students-btn" title="Khớp thông tin học sinh mới / học bù do trợ giảng nhập với học sinh trong danh sách tổng của trung tâm">
-                🔗 Khớp dữ liệu HS mới / Học bù với DS tổng
+                Khớp dữ liệu HS mới / Học bù với DS tổng
               </button>
             </div>
           </div>
@@ -1059,16 +1064,19 @@
             </label>
             <select id="student-list-filter" aria-label="Lọc học sinh">
               <option value="all">Tất cả trạng thái (Gồm cả Học bù)</option>
-              <option value="new_or_makeup">🌟 Học mới &amp; Học bù</option>
-              <option value="new_student">🆕 Học sinh mới</option>
-              <option value="makeup">🔄 Học bù trong buổi</option>
+              <option value="new_or_makeup">Học mới &amp; Học bù</option>
+              <option value="new_student">Học sinh mới</option>
+              <option value="makeup">Học bù trong buổi</option>
               <option value="present">Có mặt</option>
               <option value="late">Đi muộn</option>
               <option value="absent">Vắng mặt</option>
               <option value="unmarked">Chưa điểm danh</option>
               <option value="homework">Chưa nộp BTVN</option>
+              <option value="warning">Cảnh báo sớm</option>
             </select>
-            <button type="button" class="outline-button" id="customize-live-columns-btn" title="Đổi thứ tự cột hiển thị và xuất file (VD: đặt cột Điểm cạnh cột Tên)">⚙ Đổi thứ tự cột</button>
+            <button type="button" class="outline-button" id="toggle-paper-roster-mode-btn" title="Bật/Tắt Chế độ Chép Sổ Giấy khớp chính xác với tờ điểm danh in sẵn">Chép sổ giấy</button>
+            <button type="button" class="outline-button" id="toggle-edit-paper-order-btn" hidden title="Mở khóa để sửa STT sổ giấy hoặc Khóa lại khi đã khớp">Sửa STT Sổ Giấy</button>
+            <button type="button" class="outline-button" id="customize-live-columns-btn" title="Đổi thứ tự cột hiển thị và xuất file (VD: đặt cột Điểm cạnh cột Tên)">Đổi thứ tự cột</button>
           </div>
 
           <section class="student-roster-section">
@@ -1094,10 +1102,12 @@
               <p>Xem tổng kết sĩ số, điểm danh, BTVN, điểm kiểm tra và sao chép nhanh báo cáo gửi Giáo viên.</p>
             </div>
             <div class="students-page-actions report-inline-toolbar">
-              <button type="button" class="outline-button" id="inline-customize-report-columns-btn">⚙ Đổi thứ tự cột</button>
-              <button type="button" class="outline-button" id="inline-copy-teacher-report-btn" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">📋 Copy gửi GV (Zalo)</button>
-              <button type="button" class="outline-button" id="inline-export-xlsx-btn">📥 Xuất Excel (.xlsx)</button>
-              <button type="button" class="primary-button" id="inline-print-report-btn">🖨 In / Lưu PDF</button>
+              <button type="button" class="outline-button" id="inline-customize-report-columns-btn">Đổi thứ tự cột</button>
+              <button type="button" class="outline-button" id="inline-copy-teacher-report-btn" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">Sao chép gửi GV (Zalo)</button>
+              <button type="button" class="outline-button" id="inline-export-doc-btn" style="background:#f0f9ff; color:#0369a1; border-color:#bae6fd; font-weight:700;">Xuất Google Docs (.doc)</button>
+              <button type="button" class="outline-button" id="inline-export-xlsx-btn">Xuất Excel (.xlsx)</button>
+              <button type="button" class="outline-button" id="inline-sync-sheets-btn">Đẩy lên Google Sheets</button>
+              <button type="button" class="primary-button" id="inline-print-report-btn">In / Lưu PDF A4</button>
             </div>
           </div>
 
@@ -1170,8 +1180,8 @@
       <div class="account-dialog-footer" style="margin-top:14px; padding-top:12px; border-top:1px solid #e2ebe4; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
         <small style="color:#647868;">Để đăng nhập tài khoản khác, vui lòng đăng xuất phiên hiện tại.</small>
         <div style="display:flex; gap:8px; align-items:center; margin-left:auto;">
-          <button type="button" class="outline-button" id="admin-open-staff-pw-btn" hidden>🔑 Quản lý Nhân sự & MK</button>
-          <button type="button" class="logout-button-inside" id="dialog-logout-btn">⎋ Đăng xuất</button>
+          <button type="button" class="outline-button" id="admin-open-staff-pw-btn" hidden>Quản lý Nhân sự & MK</button>
+          <button type="button" class="logout-button-inside" id="dialog-logout-btn">Đăng xuất</button>
         </div>
       </div>
     </div>
@@ -1529,8 +1539,8 @@
       <!-- 1. CẤU HÌNH ĐẦY ĐỦ (CONFIGURATION PANEL) -->
       <div class="sheets-config-panel" style="padding:12px 14px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-          <strong style="font-size:14px; color:#1e3a8a;">⚙ 1. Cấu hình Kết nối Google Sheets &amp; Quy tắc Đồng bộ</strong>
-          <button type="button" class="outline-button" id="save-drive-photo-config-btn" style="padding:5px 12px; font-size:12.5px; font-weight:700; background:#eff6ff; color:#1d4ed8; border-color:#93c5fd;">💾 Lưu cấu hình</button>
+          <strong style="font-size:14px; color:#1e3a8a;">1. Cấu hình Kết nối Google Sheets &amp; Quy tắc Đồng bộ</strong>
+          <button type="button" class="outline-button" id="save-drive-photo-config-btn" style="padding:5px 12px; font-size:12.5px; font-weight:700; background:#eff6ff; color:#1d4ed8; border-color:#93c5fd;">Lưu cấu hình</button>
         </div>
 
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
@@ -1554,7 +1564,7 @@
           <label class="field-label" style="margin:0;">Khi học sinh có lớp trên Sheet khác lớp gốc:
             <select id="sheets-class-diff-mode">
               <option value="transfer">⇄ Chuyển sang lớp trên Sheet (Bảo lưu dữ liệu lớp cũ)</option>
-              <option value="add">➕ Thêm học song song lớp trên Sheet (Giữ cả lớp gốc)</option>
+              <option value="add">+ Thêm học song song lớp trên Sheet (Giữ cả lớp gốc)</option>
             </select>
           </label>
           <label class="field-label" style="margin:0;">Google Apps Script Web App URL (Đọc/Ghi 2 chiều):
@@ -1576,7 +1586,7 @@
         </div>
 
         <details style="margin-top:10px; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:13px;">
-          <summary style="cursor:pointer; font-weight:700; color:#334155;">📐 Cấu hình Cột nâng cao trên Sheet &amp; Google Drive (Tự động nhận diện nếu để trống)</summary>
+          <summary style="cursor:pointer; font-weight:700; color:#334155;">Cấu hình Cột nâng cao trên Sheet &amp; Google Drive (Tự động nhận diện nếu để trống)</summary>
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; margin-top:8px;">
             <label class="field-label" style="margin:0; font-size:12px;">Cột Mã học sinh (Mã HS):
               <input id="sheets-col-code" placeholder="Tự động (VD: B hoặc Mã HS)" />
@@ -1611,30 +1621,33 @@
       <!-- 2. CÁC NÚT THAO TÁC QUÉT & ĐỒNG BỘ -->
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; padding:10px 12px; background:#eff6ff; border:1.5px solid #93c5fd; border-radius:10px; align-items:center;">
         <button type="button" class="primary-button" id="pull-sheets-sync-btn" style="background:#1d4ed8; font-weight:800;">
-          🔍 Quét Google Sheet: Tìm HS mới &amp; HS khác lớp gốc để duyệt
+          Quét Google Sheet: Tìm HS mới &amp; HS khác lớp gốc
+        </button>
+        <button type="button" class="primary-button" id="pull-multi-cohort-sheets-btn" style="background:#047857; font-weight:800;" title="Quét toàn bộ các khóa học sinh (2K9, 2K10, 2K11, 2K12, 2K13)">
+          Quét tất cả các khóa (2K9 - 2K13)
         </button>
         <button type="button" class="outline-button" id="trigger-sheets-sync-btn" style="background:#f0fdf4; color:#15803d; border-color:#86efac; font-weight:700;">
-          📤 Đẩy dữ liệu lên Google Sheet (Export)
+          Đẩy dữ liệu lên Google Sheet (Export)
         </button>
         <button type="button" class="outline-button" id="copy-sheets-tsv-btn" title="Copy toàn bộ bảng chuẩn theo Mã HS để Ctrl+V thẳng vào Google Sheets">
-          📋 Copy bảng dán vào Sheet
+          Copy bảng dán vào Sheet
         </button>
         <button type="button" class="outline-button" id="export-sheets-xlsx-btn" title="Tải file .xlsx chuẩn đồng bộ theo Mã HS">
-          📥 Xuất file Sheet (.xlsx)
+          Xuất file Sheet (.xlsx)
         </button>
       </div>
 
       <!-- Khung dán nhanh / tải file Sheet để quét duyệt ngay cả khi chưa mở link public -->
       <details id="sheets-paste-fallback-details" style="margin-top:10px; padding:10px 12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px;">
         <summary style="cursor:pointer; font-weight:700; color:#1e293b; font-size:13.5px;">
-          ⚡ Hoặc Dán trực tiếp vùng dữ liệu từ Google Sheets (Ctrl + V) / Tải file (.xlsx, .csv) để quét &amp; duyệt theo Mã HS
+          Hoặc dán trực tiếp vùng dữ liệu từ Google Sheets (Ctrl + V) / Tải file (.xlsx, .csv) để quét &amp; duyệt theo Mã HS
         </summary>
         <div style="margin-top:8px;">
           <textarea id="sheets-paste-sync-textarea" rows="3" placeholder="Copy các dòng từ Google Sheets (Ctrl+C) rồi dán vào đây (Ctrl+V): Hệ thống sẽ tự động đối chiếu Mã HS, tìm Học sinh mới và Học sinh khác lớp gốc để hiện bảng duyệt..." style="width:100%; font-family:monospace; font-size:12.5px;"></textarea>
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:8px;">
             <input type="file" id="sheets-sync-file-input" accept=".xlsx, .csv, .tsv, .txt" style="font-size:12.5px;" />
             <button type="button" class="primary-button" id="apply-sheets-paste-sync-btn" style="background:#1d4ed8; font-weight:700;">
-              🔍 Quét dữ liệu đã dán / file &amp; Hiện bảng duyệt
+              Quét dữ liệu đã dán / file &amp; Hiện bảng duyệt
             </button>
           </div>
         </div>
@@ -1642,7 +1655,7 @@
 
       <!-- Thông báo trạng thái quét -->
       <div id="sheets-sync-status-banner" class="checklist-log" style="margin-top:10px;">
-        Sẵn sàng đồng bộ. Nhập Link Google Sheets rồi bấm <strong>"🔍 Quét Google Sheet"</strong> (hoặc dán bảng dữ liệu) để kiểm tra Học sinh mới &amp; Học sinh chuyển lớp.
+        Sẵn sàng đồng bộ. Nhập Link Google Sheets rồi bấm <strong>"Quét Google Sheet"</strong> (hoặc dán bảng dữ liệu) để kiểm tra Học sinh mới &amp; Học sinh chuyển lớp.
       </div>
       <div id="sheets-sync-status-box" hidden></div>
 
@@ -1656,7 +1669,7 @@
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <label class="time-toggle" style="margin:0; padding:6px 10px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; font-weight:800; color:#166534; cursor:pointer;">
               <input type="checkbox" id="sheets-approve-tag-all-cb" checked />
-              <span>🏷 Gắn tag "Mới" cho tất cả (Bỏ tích để gỡ hàng loạt)</span>
+              <span>Gắn tag "Mới" cho tất cả (Bỏ tích để gỡ hàng loạt)</span>
             </label>
           </div>
         </div>
@@ -1678,7 +1691,7 @@
                 <th style="min-width:105px;">Mã HS</th>
                 <th style="min-width:165px;">Họ và tên</th>
                 <th style="min-width:135px;">Trường / SĐT PH</th>
-                <th style="min-width:230px;">Lớp gốc ➔ Lớp trên Sheet</th>
+                <th style="min-width:230px;">Lớp gốc ➡ Lớp trên Sheet</th>
                 <th style="min-width:140px; text-align:center;">Tag "Mới" (Bấm để bật/tắt)</th>
               </tr>
             </thead>
@@ -1699,7 +1712,7 @@
 
       <div style="margin-top:14px; padding-top:10px; border-top:1.5px dashed #cfe0d2;">
         <details style="background:#f8fbf9; border:1px solid #d5e4d8; border-radius:8px; padding:8px 12px; font-size:13px;">
-          <summary style="cursor:pointer; font-weight:700; color:#1f5f33;">📋 Xem mã Google Apps Script mẫu hỗ trợ cả Đồng bộ Google Sheets 2 chiều theo Mã HS &amp; Ảnh Drive</summary>
+          <summary style="cursor:pointer; font-weight:700; color:#1f5f33;">Xem mã Google Apps Script mẫu hỗ trợ cả Đồng bộ Google Sheets 2 chiều theo Mã HS &amp; Ảnh Drive</summary>
           <pre style="margin:8px 0 0; padding:10px; background:#1e293b; color:#f8fafc; border-radius:6px; overflow-x:auto; font-size:12px; line-height:1.45;">function doPost(e) {
   var data = JSON.parse(e.postData.contents || '{}');
   if (data.action === 'syncStudentsByCode') {
@@ -1779,8 +1792,9 @@ function jsonOut_(obj) {
       <p class="dialog-hint">Sắp xếp lại vị trí các cột (ví dụ: đặt cột <strong>Điểm số</strong> và <strong>BTVN</strong> ngay sát cạnh cột <strong>Tên</strong> để dễ nhìn và nhập nhanh). Thứ tự này được áp dụng cho cả bảng hiển thị lẫn khi Xuất file Excel (.xlsx).</p>
 
       <div class="column-preset-buttons" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-        <button type="button" class="outline-button" id="col-preset-score-next-name" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">⚡ Đặt cột Điểm & BTVN sát cạnh Tên</button>
-        <button type="button" class="outline-button" id="col-preset-reset-default">🔄 Khôi phục thứ tự mặc định</button>
+        <button type="button" class="outline-button" id="col-preset-score-next-name" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">Đặt cột Điểm &amp; BTVN sát cạnh Tên</button>
+        <button type="button" class="outline-button" id="col-preset-paper-mode" style="background:#fefce8; color:#854d0e; border-color:#fde047; font-weight:700;">Chế độ Chép Sổ Giấy (Gọn nhất)</button>
+        <button type="button" class="outline-button" id="col-preset-reset-default">Đầy đủ thông tin / Mặc định</button>
       </div>
 
       <div id="column-order-list" class="column-order-list" style="display:grid; gap:6px; max-height:52vh; overflow-y:auto;"></div>
@@ -1980,12 +1994,12 @@ function jsonOut_(obj) {
       <footer class="attendance-export-actions report-sticky-bottom-bar">
         <div class="report-bottom-left">
           <button type="button" class="outline-button report-bottom-close-desktop" id="close-attendance-export-bottom-btn">← Đóng</button>
-          <button type="button" class="outline-button" id="customize-report-columns-btn">⚙ Đổi thứ tự cột</button>
+          <button type="button" class="outline-button" id="customize-report-columns-btn">Đổi thứ tự cột</button>
         </div>
         <div class="report-bottom-right">
-          <button type="button" class="outline-button" id="copy-teacher-report-btn" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">📋 Copy gửi GV (Zalo)</button>
-          <button type="button" class="outline-button" id="export-csv-button">📥 Xuất Excel (.xlsx)</button>
-          <button type="button" class="primary-button" id="print-attendance-export">🖨 In / Lưu PDF</button>
+          <button type="button" class="outline-button" id="copy-teacher-report-btn" style="background:#f0fdf4; color:#166534; border-color:#86efac; font-weight:700;">Copy gửi GV (Zalo)</button>
+          <button type="button" class="outline-button" id="export-csv-button">Xuất Excel (.xlsx)</button>
+          <button type="button" class="primary-button" id="print-attendance-export">In / Lưu PDF</button>
         </div>
       </footer>
     </div>
@@ -2533,7 +2547,7 @@ function jsonOut_(obj) {
 
       <div id="close-session-uncompleted-section" style="margin: 14px 0; padding: 12px 14px; background: #fffbf5; border: 1px solid #f2dfc6; border-radius: 8px;">
         <h4 style="margin: 0 0 8px; color: #a45a16; font-size:14.5px; display: flex; align-items: center; gap: 6px;">
-          <span>!️</span> Các mục/nội dung chưa hoàn thành cần rà soát lại trước khi kết ca:
+          <span>!</span> Các mục/nội dung chưa hoàn thành cần rà soát lại trước khi kết ca:
         </h4>
         <div id="close-session-uncompleted-list" style="display: grid; gap: 8px; font-size:14px; color: #5c4530;"></div>
       </div>
@@ -2559,7 +2573,7 @@ function jsonOut_(obj) {
 
       <div class="class-history-layout">
         <div class="class-history-sidebar">
-          <h4 style="margin: 0 0 10px; font-size:14.5px; color: #405447; text-transform: uppercase; letter-spacing: 0.5px;">Danh sách buổi học</h4>
+          <h4 style="margin: 0 0 10px; font-size:14.5px; color: #405447; text-transform: uppercase; letter-spacing: normal;">Danh sách buổi học</h4>
           <div id="class-history-sessions-list" style="display: grid; gap: 8px;"></div>
         </div>
         <div class="class-history-main">
@@ -2588,7 +2602,7 @@ function jsonOut_(obj) {
     <h2 id="student-session-profile-title">Chi tiết học sinh trong buổi học</h2>
     <div id="student-session-profile-content"></div>
     <div class="student-profile-actions" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-      <button type="button" class="outline-button btn-copy-parent-zalo" id="session-profile-copy-zalo-btn" title="Sao chép tin nhắn báo tình hình buổi học của học sinh này gửi Phụ huynh qua Zalo">📋 Copy báo Phụ huynh (Zalo)</button>
+      <button type="button" class="outline-button btn-copy-parent-zalo" id="session-profile-copy-zalo-btn" title="Sao chép tin nhắn báo tình hình buổi học của học sinh này gửi Phụ huynh qua Zalo">Copy báo Phụ huynh (Zalo)</button>
       <div style="display:flex; gap:8px; margin-left:auto;">
         <button type="button" class="outline-button" id="session-profile-open-class-btn">Xem hồ sơ trong lớp</button>
         <button type="button" class="primary-button" id="save-student-session-profile-btn">Lưu & Đóng</button>
@@ -2602,8 +2616,8 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:800 20px Manrope,sans-serif; color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.5</span></strong>
-            <small style="display:block; font-size:12.5px; letter-spacing:1px; color:#859388; font-weight:700;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
+            <strong style="font:600 20px var(--font-sans); color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.6</span></strong>
+            <small style="display:block; font-size:12.5px; letter-spacing:normal; color:#859388; font-weight:600;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
         <h1>Đăng nhập hệ thống</h1>
@@ -2624,7 +2638,7 @@ function jsonOut_(obj) {
               autocapitalize="none"
               spellcheck="false"
               placeholder="Nhập mã nhân viên hoặc tên đăng nhập (VD: AD001, TA001)..."
-              style="font-weight:700; letter-spacing:0.3px;"
+              style="font-weight:600; letter-spacing:normal;"
             />
           </label>
 
@@ -2655,7 +2669,7 @@ function jsonOut_(obj) {
         <div id="login-error-msg" class="auth-login-error" role="alert" hidden></div>
 
         <button type="submit" class="primary-button auth-submit-btn" id="login-submit-btn">
-          Đăng nhập vào hệ thống ➔
+          Đăng nhập vào hệ thống ➡
         </button>
       </form>
 
@@ -2745,14 +2759,14 @@ function jsonOut_(obj) {
     <div class="dialog-panel" style="width:min(980px, 95vw); max-height:88vh; display:flex; flex-direction:column;">
       <div class="dialog-head" style="border-bottom:1px solid #e2e8f0; padding-bottom:12px;">
         <div>
-          <span class="eyebrow" style="color:#4f46e5; font-weight:700;">🛡 NHẬT KÝ DỮ LIỆU ADMIN (DẠNG TEXT · CHIA THEO LỚP & CA)</span>
+          <span class="eyebrow" style="color:#4f46e5; font-weight:700;">NHẬT KÝ DỮ LIỆU ADMIN (DẠNG TEXT · CHIA THEO LỚP & CA)</span>
           <h2 id="admin-log-dialog-title" style="margin:2px 0 0; font-size:19px;">Admin Log · Quản lý Lớp & Ca học</h2>
           <p id="admin-log-dialog-sub" style="margin:3px 0 0; font-size:13px; color:#64748b;">Ghi nhận toàn bộ thao tác của từng tài khoản (bao gồm sửa thông tin lớp, thêm/sửa/xoá ca học và thao tác trong từng ca).</p>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <button type="button" class="outline-button" id="copy-admin-log-text-btn" style="padding:7px 12px; font-size:13px; font-weight:700; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;">📋 Copy Text</button>
-          <button type="button" class="primary-button" id="export-admin-log-excel-btn" style="padding:7px 12px; font-size:13px; font-weight:700; background:#4f46e5;">💾 Tải file .txt</button>
-          <button type="button" class="icon-close" id="close-admin-log-dialog" aria-label="Đóng">✕</button>
+          <button type="button" class="outline-button" id="copy-admin-log-text-btn" style="padding:7px 12px; font-size:13px; font-weight:700; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;">Copy Text</button>
+          <button type="button" class="primary-button" id="export-admin-log-excel-btn" style="padding:7px 12px; font-size:13px; font-weight:700; background:#4f46e5;">Tải file .txt</button>
+          <button type="button" class="icon-close" id="close-admin-log-dialog" aria-label="Đóng">×</button>
         </div>
       </div>
 
@@ -2760,13 +2774,13 @@ function jsonOut_(obj) {
 
       <div class="admin-log-filter-bar">
         <select id="admin-log-class-filter" aria-label="Lọc theo lớp học" style="min-width:195px; font-weight:600;">
-          <option value="all">📚 Tất cả các lớp</option>
+          <option value="all">Tất cả các lớp</option>
         </select>
         <select id="admin-log-session-filter" aria-label="Lọc theo ca học" style="min-width:205px; font-weight:600;">
-          <option value="all">🗓 Tất cả các ca & Thao tác lớp</option>
+          <option value="all">Tất cả các ca & Thao tác lớp</option>
         </select>
         <select id="admin-log-account-filter" aria-label="Lọc theo tài khoản" style="min-width:185px;">
-          <option value="all">👤 Tất cả tài khoản</option>
+          <option value="all">Tất cả tài khoản</option>
         </select>
         <input type="search" id="admin-log-search-input" placeholder="Tìm theo tên tài khoản, mã NV, tên học sinh hoặc hành động..." style="flex:1; min-width:190px;" />
       </div>
@@ -2841,7 +2855,7 @@ function jsonOut_(obj) {
       </div>
 
       <div class="class-config-actions" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:14px;">
-        <button type="button" class="outline-button text-danger" id="manage-session-delete-btn" hidden style="background:#fef2f2; border-color:#fca5a5; color:#b91c1c; font-weight:700;">🗑 Xoá ca học này</button>
+        <button type="button" class="outline-button text-danger" id="manage-session-delete-btn" hidden style="background:#fef2f2; border-color:#fca5a5; color:#b91c1c; font-weight:700;">Xóa ca học này</button>
         <div style="display:flex; gap:8px; margin-left:auto; flex-wrap:wrap;">
           <button type="button" class="outline-button" id="cancel-past-session-manage-btn">Hủy</button>
           <button type="submit" class="outline-button" id="save-past-session-only-btn" style="background:#eef6f0; color:#1f5130; border-color:#86c292; font-weight:700;">Lưu thông tin ca</button>
@@ -2849,6 +2863,30 @@ function jsonOut_(obj) {
         </div>
       </div>
     </form>
+  </dialog>
+
+  <!-- HỘP THOẠI HỘP VIỆC VĂN PHÒNG (OFFICE ACTION INBOX DIALOG) - SPEC SECTION 9.1 -->
+  <dialog id="office-inbox-dialog" class="class-config-dialog" style="width:min(940px, calc(100vw - 24px)); max-height:88vh;">
+    <div class="dialog-form" style="max-height:84vh; display:flex; flex-direction:column;">
+      <button type="button" class="close-button" id="close-office-inbox-dialog" aria-label="Đóng">×</button>
+      <div class="eyebrow">DÀNH CHO TÀI KHOẢN VĂN PHÒNG &amp; ADMIN</div>
+      <h2 style="margin:0 0 4px; color:#1e3a29;">Hộp việc Cần xử lý của Văn phòng</h2>
+      <p class="dialog-hint" style="margin:0 0 10px;">Khớp học sinh mới &amp; học bù do Trợ giảng ghi nhận tại lớp vào hồ sơ gốc, duyệt biến động chuyển lớp từ Google Sheets đa khóa.</p>
+
+      <div class="report-nav-tabs" style="margin-bottom:12px;" role="tablist">
+        <button type="button" class="report-tab active" id="office-tab-btn-pending-ta" data-office-inbox-tab="pending-ta">1. Học sinh Mới &amp; Học bù chờ khớp (<span id="office-inbox-count-ta">0</span>)</button>
+        <button type="button" class="report-tab" id="office-tab-btn-pending-sheets" data-office-inbox-tab="pending-sheets">2. Biến động từ Google Sheets (<span id="office-inbox-count-sheets">0</span>)</button>
+      </div>
+
+      <div id="office-inbox-content" style="flex:1; overflow-y:auto; min-height:220px; max-height:56vh; padding-right:4px;">
+        <!-- Dynamic content rendered by features.js -->
+      </div>
+
+      <div class="class-config-actions" style="margin-top:14px; display:flex; justify-content:space-between; align-items:center;">
+        <button type="button" class="outline-button" id="office-inbox-refresh-btn">Quét lại dữ liệu</button>
+        <button type="button" class="primary-button" id="close-office-inbox-btn">Đóng</button>
+      </div>
+    </div>
   </dialog>
 
   <script type="module" src="/src/app.js?v=4.5.0"></script>

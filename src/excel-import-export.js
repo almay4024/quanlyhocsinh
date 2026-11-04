@@ -1159,6 +1159,14 @@ export function extractSheetGid(rawInput = '') {
   return '';
 }
 
+export const DEFAULT_COHORTS = [
+  { cohortName: '2K9', birthYear: 2009, sheetUrl: '', spreadsheetId: '', sheetName: '2K9', gid: '0' },
+  { cohortName: '2K10', birthYear: 2010, sheetUrl: '', spreadsheetId: '', sheetName: '2K10', gid: '0' },
+  { cohortName: '2K11', birthYear: 2011, sheetUrl: '', spreadsheetId: '', sheetName: '2K11', gid: '0' },
+  { cohortName: '2K12', birthYear: 2012, sheetUrl: '', spreadsheetId: '', sheetName: '2K12', gid: '0' },
+  { cohortName: '2K13', birthYear: 2013, sheetUrl: '', spreadsheetId: '', sheetName: '2K13', gid: '0' }
+];
+
 export function loadGoogleSheetsConfig(storage = localStorage) {
   const defaults = {
     spreadsheetId: '',
@@ -1178,11 +1186,17 @@ export function loadGoogleSheetsConfig(storage = localStorage) {
     colPhone: '',
     colStatus: '',
     lastSyncedAt: null,
-    syncStatus: 'idle'
+    syncStatus: 'idle',
+    cohortSheets: DEFAULT_COHORTS
   };
   try {
     const parsed = JSON.parse(storage.getItem(GOOGLE_SHEETS_CONFIG_KEY) || 'null');
-    return parsed ? { ...defaults, ...parsed } : defaults;
+    if (!parsed) return defaults;
+    const res = { ...defaults, ...parsed };
+    if (!Array.isArray(res.cohortSheets) || !res.cohortSheets.length) {
+      res.cohortSheets = DEFAULT_COHORTS;
+    }
+    return res;
   } catch {
     return defaults;
   }
@@ -1217,7 +1231,7 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
       return {
         success: false,
         ok: false,
-        message: 'Để đẩy dữ liệu tự động lên Google Sheets, vui lòng nhập Google Apps Script Web App URL (hoặc dùng nút "📋 Copy bảng dán vào Sheet" / "📥 Xuất file .xlsx").'
+        message: 'Để đẩy dữ liệu tự động lên Google Sheets, vui lòng nhập Google Apps Script Web App URL (hoặc dùng nút "Copy bảng dán vào Sheet" / "Xuất file .xlsx").'
       };
     }
 
@@ -1400,4 +1414,419 @@ export async function pullStudentsFromGoogleSheets(config) {
       message: `Lỗi khi tải dữ liệu từ Google Sheets: ${err?.message || err}`
     };
   }
+}
+
+export async function pullStudentsFromGoogleSheetsMultiCohort(config, specificCohort = null) {
+  const cohorts = Array.isArray(config?.cohortSheets) ? config.cohortSheets : DEFAULT_COHORTS;
+  const targetCohorts = specificCohort
+    ? cohorts.filter(c => c.cohortName === specificCohort)
+    : cohorts.filter(c => c.spreadsheetId || c.sheetUrl || c.sheetName);
+
+  if (!targetCohorts.length) {
+    return pullStudentsFromGoogleSheets(config);
+  }
+
+  const allRows = [];
+  const errors = [];
+  let successCount = 0;
+
+  for (const cohort of targetCohorts) {
+    const subCfg = {
+      ...config,
+      spreadsheetId: cohort.spreadsheetId || config.spreadsheetId,
+      rawSheetUrl: cohort.sheetUrl || config.rawSheetUrl,
+      sheetName: cohort.sheetName || cohort.cohortName,
+      gid: cohort.gid || '0'
+    };
+    const res = await pullStudentsFromGoogleSheets(subCfg);
+    if (res.success && Array.isArray(res.rows) && res.rows.length) {
+      successCount++;
+      const rowsWithCohort = res.rows.map(r => {
+        if (Array.isArray(r)) {
+          return [...r, cohort.cohortName];
+        }
+        return { ...r, cohort: cohort.cohortName };
+      });
+      allRows.push(...rowsWithCohort);
+    } else {
+      errors.push(`${cohort.cohortName}: ${res.message || 'Không có dữ liệu'}`);
+    }
+  }
+
+  if (allRows.length) {
+    return {
+      success: true,
+      ok: true,
+      rows: allRows,
+      source: 'multi-cohort',
+      message: `Đã đọc thành công ${allRows.length} học sinh từ ${successCount}/${targetCohorts.length} khóa Google Sheets.`
+    };
+  }
+
+  return {
+    success: false,
+    ok: false,
+    rows: [],
+    message: errors.length ? errors.join('; ') : 'Không tìm thấy dữ liệu từ các bảng khóa Google Sheets.'
+  };
+}
+
+export function exportSessionReportToGoogleDocs(reportData = {}, fileName = 'BaoCaoBuoiHoc.doc') {
+  const {
+    currentClass = {},
+    date = '',
+    lessonTitle = '',
+    homeworkAssignment = '',
+    homeworkLink = '',
+    notebookLink = '',
+    sessionNote = '',
+    stats = {},
+    missingHW = [],
+    lateList = [],
+    lowScores = [],
+    sessionMakeups = [],
+    absentList = [],
+    roster = [],
+    thresholdStr = '6'
+  } = reportData;
+
+  const escapeXml = (str) => String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  const docHtml = `<!DOCTYPE html>
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeXml(currentClass.name || 'Lớp')} - Báo cáo ca học ${escapeXml(date)}</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    @page Section1 {
+      size: 841.9pt 595.3pt; /* A4 Landscape */
+      mso-page-orientation: landscape;
+      margin: 1.0in 0.8in 1.0in 0.8in;
+      mso-header-margin: 0.5in;
+      mso-footer-margin: 0.5in;
+    }
+    div.Section1 { page: Section1; }
+    body {
+      font-family: 'Times New Roman', 'Segoe UI', Tahoma, sans-serif;
+      font-size: 11pt;
+      line-height: 1.4;
+      color: #111827;
+    }
+    h1 {
+      text-align: center;
+      font-size: 16pt;
+      font-weight: bold;
+      color: #1e3a29;
+      margin: 0 0 4pt;
+      text-transform: uppercase;
+    }
+    .center-sub {
+      text-align: center;
+      font-size: 11pt;
+      color: #4b5563;
+      margin-bottom: 12pt;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 12pt;
+    }
+    th, td {
+      border: 1pt solid #9ca3af;
+      padding: 5pt 7pt;
+      font-size: 10pt;
+      vertical-align: middle;
+    }
+    th {
+      background-color: #f3f4f6;
+      font-weight: bold;
+      color: #1f2937;
+      text-align: left;
+    }
+    .th-center, .td-center {
+      text-align: center;
+    }
+    .info-table td {
+      border: none;
+      padding: 3pt 4pt;
+      font-size: 10.5pt;
+    }
+    .kpi-table th {
+      background-color: #e5e7eb;
+      text-align: center;
+      font-size: 10.5pt;
+    }
+    .kpi-table td {
+      text-align: center;
+      font-size: 12pt;
+      font-weight: bold;
+      padding: 6pt;
+    }
+    .sec-title {
+      font-size: 11.5pt;
+      font-weight: bold;
+      margin: 12pt 0 4pt;
+      color: #111827;
+    }
+    .tag-danger { color: #b91c1c; font-weight: bold; }
+    .tag-warning { color: #c2410c; font-weight: bold; }
+    .tag-purple { color: #6b21a8; font-weight: bold; }
+    .sig-table {
+      margin-top: 24pt;
+      border: none;
+    }
+    .sig-table td {
+      border: none;
+      text-align: center;
+      width: 50%;
+      padding-top: 10pt;
+    }
+  </style>
+</head>
+<body>
+  <div class="Section1">
+    <h1>BÁO CÁO TỔNG HỢP CA HỌC</h1>
+    <div class="center-sub">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</div>
+
+    <table class="info-table" style="margin-bottom:8pt;">
+      <tr>
+        <td style="width:55%;">Lớp học: <strong>${escapeXml(currentClass.name || '—')} (${escapeXml(currentClass.code || currentClass.id || '—')})</strong></td>
+        <td style="width:45%;">Ngày học: <strong>${escapeXml(date)}</strong> (${escapeXml(currentClass.startTime || '')} - ${escapeXml(currentClass.endTime || '')})</td>
+      </tr>
+      <tr>
+        <td>Phòng học: <strong>${escapeXml(currentClass.room || '—')}</strong> · Môn học: <strong>${escapeXml(currentClass.subject || '—')}</strong></td>
+        <td>Giáo viên: <strong>${escapeXml(currentClass.teacherName || '—')}</strong> · Trợ giảng: <strong>${escapeXml(currentClass.assistantName || '—')}</strong></td>
+      </tr>
+      <tr>
+        <td colspan="2">Bài dạy hôm nay: <strong>${escapeXml(lessonTitle || 'Chưa ghi tên bài')}</strong></td>
+      </tr>
+      ${homeworkAssignment ? `<tr><td colspan="2">BTVN giao về nhà: <strong>${escapeXml(homeworkAssignment)}</strong></td></tr>` : ''}
+      ${homeworkLink ? `<tr><td colspan="2">Link phiếu BTVN: <a href="${escapeXml(homeworkLink)}">${escapeXml(homeworkLink)}</a></td></tr>` : ''}
+      ${notebookLink ? `<tr><td colspan="2">Link vở ghi / Bài giảng: <a href="${escapeXml(notebookLink)}">${escapeXml(notebookLink)}</a></td></tr>` : ''}
+      ${sessionNote ? `<tr><td colspan="2">Ghi chú chung của ca học: <em>${escapeXml(sessionNote)}</em></td></tr>` : ''}
+    </table>
+
+    <table class="kpi-table">
+      <thead>
+        <tr>
+          <th>Sĩ số lớp</th>
+          <th>Có mặt đúng giờ</th>
+          <th>Đi muộn</th>
+          <th>Vắng mặt</th>
+          <th>Đã nộp BTVN</th>
+          <th>Chưa nộp BTVN</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${stats.total || (roster.length)}</td>
+          <td style="color:#15803d;">${stats.present ?? (stats.onTime ?? 0)}</td>
+          <td style="color:#b45309;">${stats.late || lateList.length}</td>
+          <td style="color:#b91c1c;">${stats.absent || absentList.length}</td>
+          <td style="color:#15803d;">${stats.homeworkDone || 0}</td>
+          <td style="color:#b91c1c;">${missingHW.length}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 1. CHƯA NỘP BTVN -->
+    <div class="sec-title" style="color:#991b1b;">1. Học sinh CHƯA NỘP BTVN (${missingHW.length} học sinh)</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px;" class="th-center">STT</th>
+          <th style="width:130px;">Họ và tên</th>
+          <th style="width:140px;">Trường / Phân loại</th>
+          <th style="width:110px;">Lý do chưa nộp</th>
+          <th>Ghi chú trong ca</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${missingHW.length ? missingHW.map((s, idx) => `
+          <tr>
+            <td class="td-center">${idx + 1}</td>
+            <td><strong>${escapeXml(s.name)}</strong></td>
+            <td>${escapeXml(s.school || '—')}</td>
+            <td class="tag-danger">${escapeXml(s.reason || 'Chưa làm')}</td>
+            <td>${escapeXml(s.note || '—')}</td>
+          </tr>
+        `).join('') : '<tr><td colspan="5" class="td-center" style="color:#15803d; font-style:italic;">100% học sinh có mặt đã nộp bài tập về nhà đầy đủ.</td></tr>'}
+      </tbody>
+    </table>
+
+    <!-- 2. ĐI MUỘN -->
+    <div class="sec-title" style="color:#9a3412;">2. Học sinh ĐI MUỘN (${lateList.length} học sinh)</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px;" class="th-center">STT</th>
+          <th style="width:130px;">Họ và tên</th>
+          <th style="width:140px;">Trường / Phân loại</th>
+          <th style="width:90px;" class="th-center">Giờ đến</th>
+          <th style="width:90px;" class="th-center">Phút muộn</th>
+          <th>Ghi chú trong ca</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${lateList.length ? lateList.map((s, idx) => `
+          <tr>
+            <td class="td-center">${idx + 1}</td>
+            <td><strong>${escapeXml(s.name)}</strong></td>
+            <td>${escapeXml(s.school || '—')}</td>
+            <td class="td-center">${escapeXml(s.arrivalTime || '—')}</td>
+            <td class="td-center tag-warning">muộn ${s.lateMinutes || 0}p</td>
+            <td>${escapeXml(s.note || '—')}</td>
+          </tr>
+        `).join('') : '<tr><td colspan="6" class="td-center" style="color:#15803d; font-style:italic;">Không có học sinh nào đi muộn trong ca hôm nay.</td></tr>'}
+      </tbody>
+    </table>
+
+    <!-- 3. ĐIỂM THẤP DƯỚI MỐC -->
+    <div class="sec-title" style="color:#854d0e;">3. Học sinh CÓ ĐIỂM THẤP DƯỚI ${escapeXml(thresholdStr)} ĐIỂM (${lowScores.length} học sinh)</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px;" class="th-center">STT</th>
+          <th style="width:130px;">Họ và tên</th>
+          <th style="width:140px;">Trường / Phân loại</th>
+          <th style="width:80px;" class="th-center">Điểm BTVN</th>
+          <th style="width:80px;" class="th-center">Điểm Test</th>
+          <th>Ghi chú trong ca</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${lowScores.length ? lowScores.map((s, idx) => `
+          <tr>
+            <td class="td-center">${idx + 1}</td>
+            <td><strong>${escapeXml(s.name)}</strong></td>
+            <td>${escapeXml(s.school || '—')}</td>
+            <td class="td-center" style="font-weight:bold; color:#b45309;">${escapeXml(s.hwScore || '—')}</td>
+            <td class="td-center" style="font-weight:bold; color:#b45309;">${escapeXml(s.testScore || '—')}</td>
+            <td>${escapeXml(s.note || '—')}</td>
+          </tr>
+        `).join('') : `<tr><td colspan="6" class="td-center" style="color:#15803d; font-style:italic;">Không có học sinh nào điểm dưới ${escapeXml(thresholdStr)}.</td></tr>`}
+      </tbody>
+    </table>
+
+    <!-- 4. HỌC BÙ & HỌC SINH MỚI -->
+    <div class="sec-title" style="color:#6b21a8;">4. Học sinh HỌC BÙ & HỌC SINH MỚI (${sessionMakeups.length} học sinh)</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px;" class="th-center">STT</th>
+          <th style="width:130px;">Họ và tên</th>
+          <th style="width:140px;">Phân loại / Lớp gốc</th>
+          <th style="width:110px;">Trạng thái</th>
+          <th style="width:110px;" class="th-center">Điểm BTVN / Test</th>
+          <th>Ghi chú trong ca</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sessionMakeups.length ? sessionMakeups.map((s, idx) => `
+          <tr>
+            <td class="td-center">${idx + 1}</td>
+            <td><strong class="tag-purple">${escapeXml(s.name)}</strong></td>
+            <td>${escapeXml(s.sourceClass || s.school || 'Học bù')}</td>
+            <td>${escapeXml(s.attendanceStatus || 'Có mặt')}</td>
+            <td class="td-center">${escapeXml(s.scores || '—')}</td>
+            <td>${escapeXml(s.note || '—')}</td>
+          </tr>
+        `).join('') : '<tr><td colspan="6" class="td-center" style="font-style:italic; color:#6b21a8;">Không có học sinh học bù trong buổi này.</td></tr>'}
+      </tbody>
+    </table>
+
+    <!-- 5. VẮNG MẶT -->
+    <div class="sec-title" style="color:#374151;">5. Học sinh VẮNG MẶT (${absentList.length} học sinh)</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px;" class="th-center">STT</th>
+          <th style="width:130px;">Họ và tên</th>
+          <th style="width:140px;">Trường</th>
+          <th style="width:110px;">Trạng thái</th>
+          <th style="width:130px;">Lý do</th>
+          <th>Ghi chú trong ca</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${absentList.length ? absentList.map((s, idx) => `
+          <tr>
+            <td class="td-center">${idx + 1}</td>
+            <td><strong>${escapeXml(s.name)}</strong></td>
+            <td>${escapeXml(s.school || '—')}</td>
+            <td>${escapeXml(s.excused ? 'Có phép' : 'Chưa phép')}</td>
+            <td>${escapeXml(s.reason || 'Chưa rõ lý do')}</td>
+            <td>${escapeXml(s.note || '—')}</td>
+          </tr>
+        `).join('') : '<tr><td colspan="6" class="td-center" style="color:#15803d; font-style:italic;">100% học sinh đều có mặt.</td></tr>'}
+      </tbody>
+    </table>
+
+    <!-- 6. TOÀN BỘ DANH SÁCH LỚP -->
+    ${roster.length ? `
+      <div class="sec-title" style="page-break-before:always;">6. BẢNG ĐIỂM DANH &amp; THEO DÕI TOÀN BỘ HỌC SINH TRONG CA</div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:28px;" class="th-center">STT</th>
+            <th style="width:120px;">Họ và tên</th>
+            <th style="width:80px;" class="th-center">Mã HS</th>
+            <th style="width:130px;">Trường</th>
+            <th style="width:90px;" class="th-center">Điểm danh</th>
+            <th style="width:90px;">BTVN</th>
+            <th style="width:65px;" class="th-center">Điểm BT</th>
+            <th style="width:65px;" class="th-center">Điểm Test</th>
+            <th>Ghi chú</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${roster.map((s, idx) => `
+            <tr>
+              <td class="td-center">${idx + 1}</td>
+              <td><strong>${escapeXml(s.name)}</strong></td>
+              <td class="td-center">${escapeXml(s.studentCode || '—')}</td>
+              <td>${escapeXml(s.school || '—')}</td>
+              <td class="td-center">${escapeXml(s.attendance || '—')}</td>
+              <td>${escapeXml(s.homework || '—')}</td>
+              <td class="td-center" style="font-weight:bold;">${escapeXml(s.hwScore || '—')}</td>
+              <td class="td-center" style="font-weight:bold;">${escapeXml(s.testScore || '—')}</td>
+              <td>${escapeXml(s.note || '—')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    ` : ''}
+
+    <table class="sig-table">
+      <tr>
+        <td>
+          <strong>Chữ ký Trợ giảng</strong><br><br><br><br>
+          <span>${escapeXml(currentClass.assistantName || '—')}</span>
+        </td>
+        <td>
+          <strong>Chữ ký Giáo viên phụ trách</strong><br><br><br><br>
+          <span>${escapeXml(currentClass.teacherName || '—')}</span>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob(['\ufeff' + docHtml], { type: 'application/msword;charset=utf-8' });
+  downloadFile(blob, fileName, 'application/msword;charset=utf-8');
+  return fileName;
 }
