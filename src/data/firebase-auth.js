@@ -7,7 +7,9 @@ import {
   signInWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  updatePassword,
+  sendPasswordResetEmail
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { 
   getDatabase, 
@@ -109,4 +111,21 @@ export async function createStaffAuthAccount(codeOrUsername, password) {
   const cred = await createUserWithEmailAndPassword(secondaryAuth, email, String(password || ''));
   await signOut(secondaryAuth);
   return cred.user;
+}
+
+/**
+ * Đổi mật khẩu của chính tài khoản đang đăng nhập
+ */
+export async function updateSelfPassword(newPassword) {
+  if (!auth.currentUser) throw new Error('Chưa đăng nhập');
+  await updatePassword(auth.currentUser, String(newPassword || ''));
+}
+
+/**
+ * Gửi email đặt lại mật khẩu cho nhân viên
+ */
+export async function sendStaffPasswordReset(codeOrEmail) {
+  const email = codeToAuthEmail(codeOrEmail);
+  await sendPasswordResetEmail(auth, email);
+  return email;
 }

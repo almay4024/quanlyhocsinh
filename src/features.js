@@ -5,7 +5,7 @@ import { matchesAcronymOrText } from './student-search.js?v=4.5.0';
 import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.5.0';
 import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.5.0';
 import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.5.0';
-import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth } from './data/firebase-auth.js?v=4.5.0';
+import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth, createStaffAuthAccount, updateSelfPassword } from './data/firebase-auth.js?v=4.5.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
@@ -5926,6 +5926,15 @@ export function setupFeatures(ctx) {
         authVersion: 1,
         updatedAt: Date.now()
       }));
+
+      // Tự động tạo user trên Firebase Authentication
+      const safePw = String(password || '').trim();
+      const authPassword = safePw.length >= 6 ? safePw : (safePw + '123456').slice(0, 6);
+      createStaffAuthAccount(code, authPassword).then(() => {
+        toast(`Đã tự động tạo tài khoản Firebase Auth cho ${code} (${code.toLowerCase()}.tct@gmail.com).`);
+      }).catch(err => {
+        console.warn(`Lỗi tạo user Firebase Auth cho ${code}:`, err);
+      });
     }
 
     if (ctx.setMasterData) ctx.setMasterData(master);
@@ -5986,6 +5995,13 @@ export function setupFeatures(ctx) {
       const updatedAcc = { ...currentAcc, authVersion: emp.authVersion, authSig: computeSessionAuthSignature(emp) };
       setSignedInAccount(updatedAcc);
       localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(updatedAcc));
+      if (auth.currentUser) {
+        updateSelfPassword(newPw).then(() => {
+          toast(`Mật khẩu tài khoản của bạn trên Firebase đã được cập nhật thành công.`);
+        }).catch(err => {
+          console.warn('Lỗi đổi mật khẩu Firebase:', err);
+        });
+      }
     }
 
     $('#admin-password-dialog')?.close();
