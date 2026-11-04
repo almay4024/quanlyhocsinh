@@ -250,7 +250,7 @@ export function autoDetectGridColumnRoles(rows = [], classCatalog = []) {
         roles[idx] = 'fullName';
       } else if (h === 'tên' || h === 'tên hs' || h === 'tên học sinh' || h === 'first name' || h === 'name') {
         roles[idx] = 'givenName';
-      } else if (h.includes('tag') || h.includes('phân loại')) {
+      } else if (h.includes('tag') || h.includes('phân loại') || h.includes('nhãn') || h.includes('thẻ')) {
         roles[idx] = 'tag';
       }
     });
@@ -528,6 +528,7 @@ export function autoDetectColumnMapping(rows = [], classCatalog = []) {
     phoneCol: roles.indexOf('phone'),
     parentNameCol: roles.indexOf('parentName'),
     statusCol: roles.indexOf('status'),
+    tagCol: roles.indexOf('tag'),
     roles
   };
 }
@@ -553,6 +554,7 @@ export function mapCustomColumns(rows, mapping, classCatalog = []) {
     if (mapping.phoneCol >= 0) roles[mapping.phoneCol] = 'phone';
     if (mapping.parentNameCol >= 0) roles[mapping.parentNameCol] = 'parentName';
     if (mapping.statusCol >= 0) roles[mapping.statusCol] = 'status';
+    if (mapping.tagCol >= 0) roles[mapping.tagCol] = 'tag';
   }
   return extractStudentsFromGrid(rows, roles, mapping || {}, classCatalog);
 }
@@ -1312,6 +1314,7 @@ export function loadGoogleSheetsConfig(storage = localStorage) {
     colSchool: '',
     colPhone: '',
     colStatus: '',
+    colTag: '',
     lastSyncedAt: null,
     syncStatus: 'idle',
     cohortSheets: DEFAULT_COHORTS
@@ -1366,7 +1369,7 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
     const sheetName = String(config?.sheetName || '').trim() || 'DiemDanh';
     const headers = sessionData.headers || [
       'Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh',
-      'Trạng thái', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test',
+      'Trạng thái', 'Tag', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test',
       'Ghi chú buổi học', 'Ghi chú học lực'
     ];
     const rows = Array.isArray(sessionData.rows) && sessionData.rows.length
@@ -1374,6 +1377,7 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
       : (sessionData.students || []).map(r => [
           r.studentCode || '', r.familyName || '', r.givenName || '', r.fullName || '',
           r.school || '', r.parentName || '', r.parentPhone || '', r.enrollmentStatus || 'Học',
+          r.tags || (Array.isArray(r.tag) ? r.tag.join(', ') : (r.tag || '')),
           r.classCodes || '', r.oldClassCodes || '', r.attendance || '', r.homeworkStatus || '',
           r.btvnScore ?? '', r.testScore ?? '', r.sessionNote || '', r.learningNotes || ''
         ]);

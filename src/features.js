@@ -3880,6 +3880,27 @@ export function setupFeatures(ctx) {
       renderMasterStudentDirectory();
     });
 
+    $('#master-bulk-status-btn')?.addEventListener('click', () => {
+      openBulkStudentActionDialog({
+        mode: 'change-status',
+        studentIds: Array.from(selectedMasterStudentIds)
+      });
+    });
+
+    $('#master-bulk-add-class-btn')?.addEventListener('click', () => {
+      openBulkStudentActionDialog({
+        mode: 'add-class',
+        studentIds: Array.from(selectedMasterStudentIds)
+      });
+    });
+
+    $('#master-bulk-move-class-btn')?.addEventListener('click', () => {
+      openBulkStudentActionDialog({
+        mode: 'move-class',
+        studentIds: Array.from(selectedMasterStudentIds)
+      });
+    });
+
     $('#master-bulk-add-tag-btn')?.addEventListener('click', () => {
       openBulkStudentActionDialog({
         mode: 'add-tag',
@@ -3917,6 +3938,20 @@ export function setupFeatures(ctx) {
     });
   }, 100);
 
+  function isTutoringClassId(classId, catalog = []) {
+    if (!classId) return false;
+    if (classId === TUTORING_CLASS_ID || classId === 'class-tutoring') return true;
+    const cat = Array.isArray(catalog) ? catalog : [];
+    const c = cat.find(x => x.id === classId);
+    if (c) {
+      if (c.code === 'BOTRO' || c.id === 'class-tutoring') return true;
+      const nameLow = String(c.name || '').toLowerCase();
+      const subLow = String(c.subject || '').toLowerCase();
+      if (nameLow.includes('bổ trợ') || nameLow.includes('gia sư') || subLow.includes('bổ trợ') || subLow.includes('gia sư')) return true;
+    }
+    return false;
+  }
+
   const MASTER_DEFAULT_COLUMNS = [
     { key: 'code', label: 'Mã HS' },
     { key: 'family', label: 'Họ đệm' },
@@ -3924,8 +3959,20 @@ export function setupFeatures(ctx) {
     { key: 'school', label: 'Trường học' },
     { key: 'parent', label: 'Phụ huynh' },
     { key: 'status', label: 'Trạng thái' },
-    { key: 'classes', label: 'Các lớp theo học' }
+    { key: 'classes', label: 'Các lớp theo học' },
+    { key: 'tags', label: 'Tag' }
   ];
+
+  window._masterColFilters = window._masterColFilters || {
+    code: '',
+    family: '',
+    given: '',
+    school: '',
+    parent: '',
+    status: 'all',
+    classes: 'all',
+    tags: ''
+  };
 
   function getMasterColumnOrder() {
     const defKeys = MASTER_DEFAULT_COLUMNS.map(c => c.key);
@@ -3966,14 +4013,15 @@ export function setupFeatures(ctx) {
     const students = getScopedMasterStudents();
     const visibleCatalog = getVisibleClasses();
     const fullCatalog = getClassCatalog();
+    const nonTutoringVisibleCatalog = visibleCatalog.filter(c => !isTutoringClassId(c.id, fullCatalog));
 
     const classFilter = $('#master-class-filter');
     if (classFilter) {
       const prevVal = classFilter.value || 'all';
-      classFilter.innerHTML = '<option value="all">Tất cả các lớp phụ trách</option>' + visibleCatalog.map(c =>
+      classFilter.innerHTML = '<option value="all">Tất cả các lớp phụ trách</option>' + nonTutoringVisibleCatalog.map(c =>
         `<option value="${escapeHtml(c.id)}">${escapeHtml(c.code || c.id)} (${escapeHtml(formatBirthYearLabel(c.grade))})</option>`
       ).join('');
-      if (prevVal === 'all' || visibleCatalog.some(c => c.id === prevVal)) {
+      if (prevVal === 'all' || nonTutoringVisibleCatalog.some(c => c.id === prevVal)) {
         classFilter.value = prevVal;
       } else {
         classFilter.value = 'all';
@@ -3984,10 +4032,13 @@ export function setupFeatures(ctx) {
 
     const searchQuery = ($('#master-student-search')?.value || '').trim().toLowerCase();
     const selectedClass = classFilter?.value || 'all';
+    const selectedGrade = $('#master-grade-filter')?.value || 'all';
+    const colFilters = window._masterColFilters || {};
 
+    const regularClassIdsForStudent = (s) => (s.classIds || []).filter(cid => !isTutoringClassId(cid, fullCatalog));
     const total = students.length;
-    const singleClass = students.filter(s => (s.classIds || []).length <= 1).length;
-    const multiClass = students.filter(s => (s.classIds || []).length > 1).length;
+    const singleClass = students.filter(s => regularClassIdsForStudent(s).length <= 1).length;
+    const multiClass = students.filter(s => regularClassIdsForStudent(s).length > 1).length;
     const newStudents = students.filter(s => s.isNew || (Array.isArray(s.tags) && s.tags.includes('Mới'))).length;
 
     if ($('#master-student-count')) $('#master-student-count').textContent = `${total} học sinh`;
@@ -3996,29 +4047,55 @@ export function setupFeatures(ctx) {
     if ($('#master-kpi-multi')) $('#master-kpi-multi').textContent = multiClass;
     if ($('#master-kpi-new')) $('#master-kpi-new').textContent = newStudents;
 
-    const selectedGrade = $('#master-grade-filter')?.value || 'all';
     const filtered = students.filter(s => {
+      // 1. Lọc theo lớp ở dropdown
       if (selectedClass !== 'all') {
         if (!(s.classIds || []).includes(selectedClass)) return false;
       }
+      // 2. Lọc theo khối / năm sinh
       if (selectedGrade !== 'all') {
         const normTarget = normalizeGradeToBirthYear(selectedGrade);
-        const hasMatchingGrade = (s.classIds || []).some(cid => {
+        const hasMatchingGrade = regularClassIdsForStudent(s).some(cid => {
           const c = fullCatalog.find(x => x.id === cid);
           return c && normalizeGradeToBirthYear(c.grade) === normTarget;
         });
         if (!hasMatchingGrade) return false;
       }
+      // 3. Lọc theo trạng thái
       const stVal = (s.enrollmentStatus && String(s.enrollmentStatus).trim()) ? String(s.enrollmentStatus).trim() : 'Học';
       if (selectedMasterStatuses && !selectedMasterStatuses.has(stVal)) {
         return false;
       }
+      // 4. Ô tìm kiếm chung
       if (searchQuery) {
-        const full = `${s.name} ${s.familyName || ''} ${s.givenName || ''} ${s.studentCode || ''} ${s.school || ''} ${s.parentContact?.name || ''} ${stVal}`;
+        const full = `${s.name} ${s.familyName || ''} ${s.givenName || ''} ${s.studentCode || ''} ${s.school || ''} ${s.parentContact?.name || ''} ${stVal} ${(s.tags || []).join(' ')}`;
         if (!matchesAcronymOrText(full, searchQuery)) return false;
+      }
+      // 5. Bộ lọc đa cột từng cột (Multi-column filters)
+      if (colFilters.code && !matchesAcronymOrText(s.studentCode || '', colFilters.code)) return false;
+      if (colFilters.family && !matchesAcronymOrText(s.familyName || '', colFilters.family)) return false;
+      if (colFilters.given && !matchesAcronymOrText(s.givenName || s.name || '', colFilters.given)) return false;
+      if (colFilters.school && !matchesAcronymOrText(s.school || '', colFilters.school)) return false;
+      if (colFilters.parent) {
+        const pStr = `${s.parentContact?.name || ''} ${s.parentContact?.phone || ''}`;
+        if (!matchesAcronymOrText(pStr, colFilters.parent)) return false;
+      }
+      if (colFilters.status && colFilters.status !== 'all') {
+        if (stVal !== colFilters.status) return false;
+      }
+      if (colFilters.classes && colFilters.classes !== 'all') {
+        if (!(s.classIds || []).includes(colFilters.classes)) return false;
+      }
+      if (colFilters.tags) {
+        const sTags = Array.isArray(s.tags) ? s.tags.join(' ') : (s.tags || '');
+        if (!matchesAcronymOrText(sTags, colFilters.tags)) return false;
       }
       return true;
     });
+
+    const hasActiveColFilter = Object.entries(colFilters).some(([k, v]) => v && v !== 'all') || Boolean(searchQuery) || selectedGrade !== 'all' || selectedClass !== 'all';
+    const clearFiltersBtn = $('#master-clear-all-filters-btn');
+    if (clearFiltersBtn) clearFiltersBtn.hidden = !hasActiveColFilter;
 
     const tbody = $('#master-student-tbody');
     const theadRow = document.querySelector('#master-student-table thead tr');
@@ -4038,13 +4115,87 @@ export function setupFeatures(ctx) {
         school: `<th class="sortable-th ${sortCls('school')}" data-master-sort="school">Trường học <span class="sort-icon">${sortIcon('school')}</span></th>`,
         parent: `<th class="sortable-th ${sortCls('parent')}" data-master-sort="parent">Phụ huynh <span class="sort-icon">${sortIcon('parent')}</span></th>`,
         status: `<th class="sortable-th ${sortCls('status')}" data-master-sort="status">Trạng thái <span class="sort-icon">${sortIcon('status')}</span></th>`,
-        classes: `<th class="sortable-th ${sortCls('classes')}" data-master-sort="classes">Các lớp theo học <span class="sort-icon">${sortIcon('classes')}</span></th>`
+        classes: `<th class="sortable-th ${sortCls('classes')}" data-master-sort="classes">Các lớp theo học <span class="sort-icon">${sortIcon('classes')}</span></th>`,
+        tags: `<th class="sortable-th ${sortCls('tags')}" data-master-sort="tags">Tag <span class="sort-icon">${sortIcon('tags')}</span></th>`
       };
       theadRow.innerHTML = `
         <th style="width:30px; text-align:center;"><input type="checkbox" id="master-bulk-select-all" title="Chọn tất cả" /></th>
         ${colOrder.map(k => thHtmlMap[k] || '').join('')}
-        <th style="text-align:center;">Hành động</th>
+        <th style="text-align:center; min-width:85px;">Hành động</th>
       `;
+
+      // Hàng bộ lọc đa cột ngay bên dưới tiêu đề (Multi-column filter row)
+      let filterRow = document.querySelector('#master-filter-row');
+      if (!filterRow) {
+        filterRow = document.createElement('tr');
+        filterRow.id = 'master-filter-row';
+        filterRow.className = 'table-filter-row';
+        theadRow.parentNode.appendChild(filterRow);
+      }
+
+      const filterColMap = {
+        code: `<th><input type="text" class="master-inline-filter ${colFilters.code ? 'is-filtered' : ''}" data-col-filter="code" placeholder="Lọc mã..." value="${escapeHtml(colFilters.code || '')}" /></th>`,
+        family: `<th><input type="text" class="master-inline-filter ${colFilters.family ? 'is-filtered' : ''}" data-col-filter="family" placeholder="Lọc họ..." value="${escapeHtml(colFilters.family || '')}" /></th>`,
+        given: `<th><input type="text" class="master-inline-filter ${colFilters.given ? 'is-filtered' : ''}" data-col-filter="given" placeholder="Lọc tên..." value="${escapeHtml(colFilters.given || '')}" /></th>`,
+        school: `<th><input type="text" class="master-inline-filter ${colFilters.school ? 'is-filtered' : ''}" data-col-filter="school" placeholder="Lọc trường..." value="${escapeHtml(colFilters.school || '')}" /></th>`,
+        parent: `<th><input type="text" class="master-inline-filter ${colFilters.parent ? 'is-filtered' : ''}" data-col-filter="parent" placeholder="Lọc PH/SĐT..." value="${escapeHtml(colFilters.parent || '')}" /></th>`,
+        status: `<th>
+          <select class="master-inline-filter ${colFilters.status !== 'all' ? 'is-filtered' : ''}" data-col-filter="status">
+            <option value="all">Tất cả</option>
+            <option value="Học" ${colFilters.status === 'Học' ? 'selected' : ''}>Học</option>
+            <option value="Tạm nghỉ" ${colFilters.status === 'Tạm nghỉ' ? 'selected' : ''}>Tạm nghỉ</option>
+            <option value="Nghỉ" ${colFilters.status === 'Nghỉ' ? 'selected' : ''}>Nghỉ</option>
+            <option value="Chưa nhập học" ${colFilters.status === 'Chưa nhập học' ? 'selected' : ''}>Chưa nhập học</option>
+          </select>
+        </th>`,
+        classes: `<th>
+          <select class="master-inline-filter ${colFilters.classes !== 'all' ? 'is-filtered' : ''}" data-col-filter="classes">
+            <option value="all">Tất cả lớp</option>
+            ${nonTutoringVisibleCatalog.map(c => `<option value="${escapeHtml(c.id)}" ${colFilters.classes === c.id ? 'selected' : ''}>${escapeHtml(c.code || c.id)}</option>`).join('')}
+          </select>
+        </th>`,
+        tags: `<th><input type="text" class="master-inline-filter ${colFilters.tags ? 'is-filtered' : ''}" data-col-filter="tags" placeholder="Lọc tag..." value="${escapeHtml(colFilters.tags || '')}" /></th>`
+      };
+
+      filterRow.innerHTML = `
+        <th style="text-align:center;">
+          <button type="button" class="master-col-clear-btn" id="master-clear-inline-filters-btn" title="Xóa tất cả bộ lọc cột" style="${hasActiveColFilter ? '' : 'display:none;'}">✕</button>
+        </th>
+        ${colOrder.map(k => filterColMap[k] || '<th></th>').join('')}
+        <th style="text-align:center;"></th>
+      `;
+
+      filterRow.querySelectorAll('.master-inline-filter').forEach(inp => {
+        const handler = () => {
+          const colKey = inp.dataset.colFilter;
+          const val = inp.value.trim();
+          window._masterColFilters[colKey] = inp.tagName === 'SELECT' ? inp.value : val;
+          renderMasterStudentDirectory();
+          const freshInp = document.querySelector(`.master-inline-filter[data-col-filter="${colKey}"]`);
+          if (freshInp && freshInp.tagName === 'INPUT') {
+            freshInp.focus();
+            try { freshInp.setSelectionRange(freshInp.value.length, freshInp.value.length); } catch {}
+          }
+        };
+        if (inp.tagName === 'SELECT') {
+          inp.onchange = handler;
+        } else {
+          inp.oninput = () => {
+            clearTimeout(window._masterInlineFilterDebounce);
+            window._masterInlineFilterDebounce = setTimeout(handler, 160);
+          };
+        }
+      });
+
+      document.querySelectorAll('#master-clear-inline-filters-btn, #master-clear-all-filters-btn').forEach(btn => {
+        btn.onclick = () => {
+          window._masterColFilters = { code: '', family: '', given: '', school: '', parent: '', status: 'all', classes: 'all', tags: '' };
+          if ($('#master-student-search')) $('#master-student-search').value = '';
+          if ($('#master-grade-filter')) $('#master-grade-filter').value = 'all';
+          if ($('#master-class-filter')) $('#master-class-filter').value = 'all';
+          renderMasterStudentDirectory();
+        };
+      });
     }
 
     filtered.sort((a, b) => {
@@ -4066,7 +4217,11 @@ export function setupFeatures(ctx) {
         const bSt = b.enrollmentStatus || 'Học';
         cmp = aSt.localeCompare(bSt, 'vi');
       } else if (masterSortKey === 'classes') {
-        cmp = (a.classIds || []).length - (b.classIds || []).length;
+        cmp = regularClassIdsForStudent(a).length - regularClassIdsForStudent(b).length;
+      } else if (masterSortKey === 'tags') {
+        const aT = (a.tags || []).join(', ');
+        const bT = (b.tags || []).join(', ');
+        cmp = aT.localeCompare(bT, 'vi');
       } else {
         cmp = 0;
       }
@@ -4087,7 +4242,7 @@ export function setupFeatures(ctx) {
     });
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="${colOrder.length + 2}" style="text-align:center; padding:18px; color:#879389;">Không tìm thấy học sinh nào trong các lớp bạn đang phụ trách.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="${colOrder.length + 2}" style="text-align:center; padding:18px; color:#879389;">Không tìm thấy học sinh nào phù hợp với bộ lọc hiện tại.</td></tr>`;
       return;
     }
 
@@ -4106,9 +4261,11 @@ export function setupFeatures(ctx) {
       else if (stVal === 'Nghỉ') stClass = 'status-text-stopped';
       else if (stVal === 'Trùng') stClass = 'status-text-duplicate';
 
-      const displayClassIds = canCross
+      // Lọc bỏ lớp bổ trợ & gia sư 1-1 khỏi cột hiển thị Các lớp theo học (chỉ hiển thị dưới dạng ca học bù / ca bổ trợ trong Hồ sơ)
+      const displayClassIds = (canCross
         ? (s.classIds || [])
-        : (s.classIds || []).filter(cid => visibleClassIdsSet.has(cid));
+        : (s.classIds || []).filter(cid => visibleClassIdsSet.has(cid))
+      ).filter(cid => !isTutoringClassId(cid, fullCatalog));
 
       const classPlainLinks = displayClassIds.map(cid => {
         const c = fullCatalog.find(x => x.id === cid);
@@ -4116,7 +4273,7 @@ export function setupFeatures(ctx) {
         return `<span class="plain-class-link" data-open-student-class="${escapeHtml(s.id)}" data-class-id="${escapeHtml(cid)}" title="Bấm xem tình hình học lớp ${escapeHtml(cCode)}">${escapeHtml(cCode)}</span>`;
       }).join(', ') || '<small style="color:#a8b4aa;">Chưa gán lớp</small>';
 
-      const prevClassIds = (s.previousClassIds || []).filter(cid => !(s.classIds || []).includes(cid) && (canCross || visibleClassIdsSet.has(cid)));
+      const prevClassIds = (s.previousClassIds || []).filter(cid => !(s.classIds || []).includes(cid) && (canCross || visibleClassIdsSet.has(cid)) && !isTutoringClassId(cid, fullCatalog));
       const prevClassLinksHtml = prevClassIds.length
         ? `<div style="margin-top:3px; font-size:12px; color:#64748b;">Lớp cũ: ${prevClassIds.map(cid => {
             const c = fullCatalog.find(x => x.id === cid);
@@ -4143,7 +4300,8 @@ export function setupFeatures(ctx) {
         school: `<td>${escapeHtml(s.school || '—')}</td>`,
         parent: `<td><div>${escapeHtml(parentDisplay)}</div></td>`,
         status: `<td style="white-space:nowrap;"><span class="enrollment-status-pill ${stClass}">${escapeHtml(stVal)}</span></td>`,
-        classes: `<td class="col-allow-wrap plain-class-cell">${classPlainLinks}${prevClassLinksHtml}</td>`
+        classes: `<td class="col-allow-wrap plain-class-cell">${classPlainLinks}${prevClassLinksHtml}</td>`,
+        tags: `<td>${renderStudentTagsBadges(s) || '<span style="color:#94a3b8; font-size:12px;">—</span>'}</td>`
       };
 
       return `
@@ -4228,7 +4386,8 @@ export function setupFeatures(ctx) {
     const headers = ['STT', ...colOrder.map(k => labelMap[k] || k), 'Học sinh mới'];
 
     const rows = sorted.map((s, idx) => {
-      const scopedCids = canCross ? (s.classIds || []) : (s.classIds || []).filter(cid => visibleIds.has(cid));
+      const scopedCids = (canCross ? (s.classIds || []) : (s.classIds || []).filter(cid => visibleIds.has(cid)))
+        .filter(cid => !isTutoringClassId(cid, fullCatalog));
       const classNames = scopedCids.map(cid => {
         const c = fullCatalog.find(x => x.id === cid);
         return c ? (c.code || c.name) : cid;
@@ -4242,7 +4401,8 @@ export function setupFeatures(ctx) {
         school: s.school || '',
         parent: [s.parentContact?.name, s.parentContact?.phone].filter(Boolean).join(' - ') || '',
         status: s.enrollmentStatus || 'Học',
-        classes: classNames
+        classes: classNames,
+        tags: Array.isArray(s.tags) ? s.tags.join(', ') : (s.tags || '')
       };
       return [
         idx + 1,
@@ -5656,14 +5816,17 @@ export function setupFeatures(ctx) {
     }
 
     const catalog = getClassCatalog();
+    const isChangeStatus = mode === 'change-status';
     const isClassMode = mode === 'add-class' || mode === 'move-class';
-    const titleText = mode === 'add-class'
-      ? `Thêm ${studentIds.length} học sinh vào lớp`
-      : mode === 'move-class'
-        ? `Chuyển ${studentIds.length} học sinh sang lớp khác`
-        : mode === 'add-tag'
-          ? `Gắn Tag phân loại cho ${studentIds.length} học sinh`
-          : `Gỡ Tag khỏi ${studentIds.length} học sinh`;
+    const titleText = isChangeStatus
+      ? `Đổi trạng thái học tập cho ${studentIds.length} học sinh`
+      : mode === 'add-class'
+        ? `Thêm ${studentIds.length} học sinh vào lớp`
+        : mode === 'move-class'
+          ? `Chuyển ${studentIds.length} học sinh sang lớp khác`
+          : mode === 'add-tag'
+            ? `Gắn Tag phân loại cho ${studentIds.length} học sinh`
+            : `Gỡ Tag khỏi ${studentIds.length} học sinh`;
 
     const presetTags = ['Mới', 'Cần chú ý', 'HS Giỏi', 'Mục tiêu 9+', 'Hay quên BTVN'];
     const fromClassObj = currentClassId ? catalog.find(c => c.id === currentClassId) : null;
@@ -5671,9 +5834,31 @@ export function setupFeatures(ctx) {
     dlg.innerHTML = `
       <form id="bulk-student-action-form" class="dialog-form">
         <button type="button" class="close-button" id="close-bulk-action-dlg" aria-label="Đóng"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
-        <div class="eyebrow">THAO TÁC LỚP & TAG (${studentIds.length} HỌC SINH)</div>
+        <div class="eyebrow">THAO TÁC HỌC SINH HÀNG LOẠT (${studentIds.length} HỌC SINH)</div>
         <h2>${escapeHtml(titleText)}</h2>
-        ${isClassMode ? `
+        ${isChangeStatus ? `
+          <div class="field-label" style="margin-bottom:12px;">
+            <span>Chọn trạng thái mới cần áp dụng:</span>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; margin-top:8px;">
+              <label style="display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #86efac; border-radius:8px; background:#f0fdf4; cursor:pointer; font-weight:700; color:#166534;">
+                <input type="radio" name="bulk-status-radio" value="Học" checked />
+                <span>● Học (Bình thường)</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #fde047; border-radius:8px; background:#fefce8; cursor:pointer; font-weight:700; color:#854d0e;">
+                <input type="radio" name="bulk-status-radio" value="Tạm nghỉ" />
+                <span>⏸ Tạm nghỉ (Bảo lưu)</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #fca5a5; border-radius:8px; background:#fef2f2; cursor:pointer; font-weight:700; color:#991b1b;">
+                <input type="radio" name="bulk-status-radio" value="Nghỉ" />
+                <span>✕ Nghỉ (Dừng học)</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:8px; background:#f8fafc; cursor:pointer; font-weight:700; color:#475569;">
+                <input type="radio" name="bulk-status-radio" value="Chưa nhập học" />
+                <span>○ Chưa nhập học</span>
+              </label>
+            </div>
+          </div>
+        ` : isClassMode ? `
           ${mode === 'move-class' ? `
             <div style="background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3; padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:10px; line-height:1.45;">
               <strong>Bảo lưu 100% dữ liệu lớp cũ:</strong> Khi chuyển lớp, học sinh sẽ chuyển sang danh sách lớp mới, nhưng <strong>toàn bộ lịch sử điểm danh, điểm BTVN/Test và ghi chú ở lớp cũ vẫn được giữ nguyên</strong> trong Hồ sơ học sinh (mục <em>Lớp cũ</em>).
@@ -5729,6 +5914,31 @@ export function setupFeatures(ctx) {
       const allStudents = getStudents();
       const makeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
       const idSet = new Set(studentIds);
+
+      if (isChangeStatus) {
+        const checkedRadio = dlg.querySelector('input[name="bulk-status-radio"]:checked');
+        const newStatus = checkedRadio ? checkedRadio.value : 'Học';
+        const now = Date.now();
+        [...allStudents, ...makeups].forEach(s => {
+          if (!idSet.has(s.id)) return;
+          s.enrollmentStatus = newStatus;
+          s.updatedAt = now;
+          s.revision = (Number(s.revision) || 0) + 1;
+        });
+        saveStudentRecords(allStudents, makeups);
+        window.__logAdminSessionAction?.(
+          `Đổi trạng thái học tập hàng loạt`,
+          `Chuyển ${studentIds.length} học sinh sang trạng thái "${newStatus}"`,
+          'student'
+        );
+        selectedMasterStudentIds.clear();
+        updateMasterBulkBar();
+        renderMasterStudentDirectory();
+        render();
+        dlg.close();
+        toast(`✓ Đã đổi trạng thái sang "${newStatus}" cho ${studentIds.length} học sinh.`);
+        return;
+      }
 
       if (isClassMode) {
         const targetClassId = dlg.querySelector('#bulk-action-target-class')?.value;
@@ -6238,9 +6448,9 @@ export function setupFeatures(ctx) {
       storageKey: 'lopvui.column-order.master.v1',
       hiddenKey: 'lopvui.column-hidden.master.v1',
       title: 'Đổi thứ tự & Ẩn/Hiện cột: Danh bạ học sinh & Xuất Excel (.xlsx) tổng',
-      defaults: ['code', 'family', 'given', 'school', 'parent', 'status', 'classes'],
-      scoreNextToName: ['family', 'given', 'code', 'classes', 'status', 'school', 'parent'],
-      paperMode: ['code', 'family', 'given', 'school', 'classes'],
+      defaults: ['code', 'family', 'given', 'school', 'parent', 'status', 'classes', 'tags'],
+      scoreNextToName: ['family', 'given', 'code', 'classes', 'tags', 'status', 'school', 'parent'],
+      paperMode: ['code', 'family', 'given', 'school', 'classes', 'tags'],
       labels: {
         code: 'Mã học sinh',
         family: 'Họ đệm',
@@ -6248,7 +6458,8 @@ export function setupFeatures(ctx) {
         school: 'Trường học',
         parent: 'Phụ huynh',
         status: 'Trạng thái theo học',
-        classes: 'Các lớp theo học'
+        classes: 'Các lớp theo học',
+        tags: 'Tag phân loại'
       }
     }
   };
@@ -6647,6 +6858,7 @@ export function setupFeatures(ctx) {
     const colSchool = ($('#sheets-col-school')?.value || '').trim();
     const colPhone = ($('#sheets-col-phone')?.value || '').trim();
     const colStatus = ($('#sheets-col-status')?.value || '').trim();
+    const colTag = ($('#sheets-col-tag')?.value || '').trim();
 
     const prevCfg = loadGoogleSheetsConfig();
     const cfg = {
@@ -6665,6 +6877,7 @@ export function setupFeatures(ctx) {
       colSchool,
       colPhone,
       colStatus,
+      colTag,
       cohortSheets: prevCfg.cohortSheets || DEFAULT_COHORTS
     };
     saveGoogleSheetsConfig(cfg);
@@ -6821,6 +7034,7 @@ export function setupFeatures(ctx) {
     if ($('#sheets-col-school')) $('#sheets-col-school').value = cfg.colSchool || '';
     if ($('#sheets-col-phone')) $('#sheets-col-phone').value = cfg.colPhone || '';
     if ($('#sheets-col-status')) $('#sheets-col-status').value = cfg.colStatus || '';
+    if ($('#sheets-col-tag')) $('#sheets-col-tag').value = cfg.colTag || '';
 
     const previewPre = $('#apps-script-preview-code');
     if (previewPre) {
@@ -6879,14 +7093,19 @@ export function setupFeatures(ctx) {
       const btvnScore = hwObj.score ?? '';
       const testScore = (isCurrentSession ? (seated?.entry.testScore ?? s.testScore) : s.testScore) ?? '';
       const sessionNote = (isCurrentSession && ctx.sessionNoteFor ? ctx.sessionNoteFor(s.id) : s.sessionNote) || '';
-      const classCodes = (s.classIds || []).map(cid => {
-        const c = catalog.find(x => x.id === cid);
-        return c ? (c.code || c.id) : cid;
-      }).join(', ');
-      const oldClassCodes = (s.previousClassIds || []).map(cid => {
-        const c = catalog.find(x => x.id === cid);
-        return c ? (c.code || c.id) : cid;
-      }).join(', ');
+      const classCodes = (s.classIds || [])
+        .filter(cid => !isTutoringClassId(cid, catalog))
+        .map(cid => {
+          const c = catalog.find(x => x.id === cid);
+          return c ? (c.code || c.id) : cid;
+        }).join(', ');
+      const oldClassCodes = (s.previousClassIds || [])
+        .filter(cid => !isTutoringClassId(cid, catalog))
+        .map(cid => {
+          const c = catalog.find(x => x.id === cid);
+          return c ? (c.code || c.id) : cid;
+        }).join(', ');
+      const tagsStr = Array.isArray(s.tags) ? s.tags.join(', ') : (s.tags || '');
 
       return {
         studentCode: s.studentCode || '',
@@ -6897,6 +7116,7 @@ export function setupFeatures(ctx) {
         parentName: s.parentContact?.name || '',
         parentPhone: s.parentContact?.phone || '',
         enrollmentStatus: s.enrollmentStatus || 'Học',
+        tags: tagsStr,
         classCodes,
         oldClassCodes,
         attendance: attStatus,
@@ -6965,7 +7185,11 @@ export function setupFeatures(ctx) {
           school: String(item.school || item['Trường'] || item['Trường học'] || '').trim(),
           parentName: String(item.parentName || item['Phụ huynh'] || '').trim(),
           parentPhone: String(item.parentPhone || item['SĐT Phụ huynh'] || item['SĐT'] || '').trim(),
-          enrollmentStatus: normalizeEnrollmentStatus(item.enrollmentStatus || item['Trạng thái'] || 'Học'),
+          enrollmentStatus: normalizeEnrollmentStatus(item.enrollmentStatus || item['Trạng thái'] || item['Tình trạng'] || item['Trạng thái học'] || 'Học'),
+          tags: (item.tags || item.tag || item['Tag'] || item['Tags'] || item['Thẻ'] || item['Phân loại'] || item['Nhãn'])
+            ? String(item.tags || item.tag || item['Tag'] || item['Tags'] || item['Thẻ'] || item['Phân loại'] || item['Nhãn']).split(/[,;\n]+/).map(t => t.trim()).filter(Boolean)
+            : [],
+          tag: String(item.tags || item.tag || item['Tag'] || item['Tags'] || item['Thẻ'] || item['Phân loại'] || item['Nhãn'] || '').trim(),
           rawClassTexts: rawClassStr ? [rawClassStr] : [],
           resolvedClassIds,
           btvnScore: item.btvnScore ?? item['Điểm BTVN'] ?? '',
@@ -7016,6 +7240,7 @@ export function setupFeatures(ctx) {
     applyOverride(cfg.colSchool, 'school');
     applyOverride(cfg.colPhone, 'phone');
     applyOverride(cfg.colStatus, 'status');
+    applyOverride(cfg.colTag, 'tag');
 
     const startIdx = hasHeader ? 1 : 0;
     const results = [];
@@ -7038,6 +7263,7 @@ export function setupFeatures(ctx) {
       let parentPhone = '';
       let parentName = '';
       let enrollmentStatus = 'Học';
+      let rawTag = '';
       const rawClassTexts = [];
       const resolvedClassIds = [];
       let btvnScore = '';
@@ -7070,6 +7296,8 @@ export function setupFeatures(ctx) {
           if (!parentName) parentName = val;
         } else if (role === 'status') {
           enrollmentStatus = normalizeEnrollmentStatus(val);
+        } else if (role === 'tag') {
+          if (!rawTag) rawTag = val;
         } else if (role === 'classCode') {
           rawClassTexts.push(val);
           const cids = resolveClassIdsFromCell(val, null, catalog);
@@ -7095,6 +7323,7 @@ export function setupFeatures(ctx) {
       if (!studentCode && !fullName) continue;
       if (fullName && (isStatusWord(fullName) || /^\d+$/.test(fullName))) continue;
 
+      const parsedTags = rawTag ? rawTag.split(/[,;\n]+/).map(t => t.trim()).filter(Boolean) : [];
       results.push({
         studentCode,
         fullName,
@@ -7104,6 +7333,8 @@ export function setupFeatures(ctx) {
         parentName,
         parentPhone,
         enrollmentStatus,
+        tags: parsedTags,
+        tag: rawTag,
         rawClassTexts,
         resolvedClassIds,
         btvnScore,
@@ -7234,6 +7465,12 @@ export function setupFeatures(ctx) {
       const oldCodeDiff = (item.existingStudent && item.existingStudent.studentCode !== item.studentCode)
         ? `<div style="font-size:11px; color:#6b21a8; margin-top:2px;">Mã cũ: ${escapeHtml(item.existingStudent.studentCode || 'Chưa có')}</div>`
         : '';
+      const statusDiffHtml = (item.isStatusDifferent || (item.existingStudent && item.existingStudent.enrollmentStatus !== item.enrollmentStatus))
+        ? `<div style="font-size:11.5px; font-weight:700; color:#b91c1c; margin-top:3px; background:#fee2e2; border:1px solid #fca5a5; padding:2px 6px; border-radius:4px; display:inline-block;">Trạng thái: ${escapeHtml(item.oldStatus || item.existingStudent?.enrollmentStatus || 'Học')} ➡ <strong style="color:#991b1b;">${escapeHtml(item.enrollmentStatus)}</strong></div>`
+        : '';
+      const tagDiffHtml = (Array.isArray(item.tags) && item.tags.length > 0)
+        ? `<div style="font-size:11px; font-weight:600; color:#0f766e; margin-top:2px; background:#ccfbf1; padding:1px 5px; border-radius:4px; display:inline-block;">Tag Sheet: ${escapeHtml(item.tags.join(', '))}</div>`
+        : '';
 
       return `
         <tr style="background:${item.approved ? (item.category === 'new_student' ? '#f0fdf4' : item.category === 'class_change' ? '#eff6ff' : '#ffffff') : '#f8fafc'}; opacity:${item.approved ? '1' : '0.6'};">
@@ -7248,6 +7485,8 @@ export function setupFeatures(ctx) {
           <td>
             <strong style="color:#0f172a; font-size:13.5px;">${escapeHtml(item.fullName || '—')}</strong>
             ${item.existingStudent ? `<div style="font-size:11px; color:#475569;">Khớp hồ sơ: ${escapeHtml(item.existingStudent.name)}</div>` : ''}
+            ${statusDiffHtml}
+            ${tagDiffHtml}
           </td>
           <td style="font-size:12.5px; color:#334155;">
             <div>${escapeHtml(item.school || '—')}</div>
@@ -7381,6 +7620,7 @@ export function setupFeatures(ctx) {
           parentName: row.parentName,
           parentPhone: row.parentPhone,
           enrollmentStatus: row.enrollmentStatus || 'Học',
+          tags: row.tags || (row.tag ? [row.tag] : []),
           rawClassTexts: row.rawClassTexts || [],
           targetClassIds: fallbackClsIds,
           btvnScore: row.btvnScore,
@@ -7403,8 +7643,15 @@ export function setupFeatures(ctx) {
 
       const existingCode = String(existingStu.studentCode || '').trim().toUpperCase();
       const isCodeDifferent = Boolean(codeNorm && codeNorm !== existingCode);
+      const isStatusDifferent = Boolean(row.enrollmentStatus && row.enrollmentStatus !== existingStu.enrollmentStatus);
+      const existingTags = Array.isArray(existingStu.tags) ? existingStu.tags : [];
+      const rowTags = Array.isArray(row.tags) ? row.tags : (row.tag ? [row.tag] : []);
+      const hasTagUpdate = rowTags.some(t => !existingTags.includes(t));
+
       const hasScoreOrInfoUpdate = Boolean(
         isCodeDifferent ||
+        isStatusDifferent ||
+        hasTagUpdate ||
         (row.school && row.school !== existingStu.school) ||
         (row.parentPhone && row.parentPhone !== existingStu.parentContact?.phone) ||
         String(row.btvnScore ?? '').trim() !== '' ||
@@ -7429,6 +7676,9 @@ export function setupFeatures(ctx) {
           parentName: row.parentName || existingStu.parentContact?.name || '',
           parentPhone: row.parentPhone || existingStu.parentContact?.phone || '',
           enrollmentStatus: row.enrollmentStatus || existingStu.enrollmentStatus || 'Học',
+          tags: rowTags,
+          isStatusDifferent,
+          oldStatus: existingStu.enrollmentStatus || 'Học',
           rawClassTexts: row.rawClassTexts || [],
           targetClassIds: sheetClassIds.length ? sheetClassIds : origClassIds,
           btvnScore: row.btvnScore,
@@ -7454,6 +7704,9 @@ export function setupFeatures(ctx) {
           parentName: row.parentName || existingStu.parentContact?.name || '',
           parentPhone: row.parentPhone || existingStu.parentContact?.phone || '',
           enrollmentStatus: row.enrollmentStatus || existingStu.enrollmentStatus || 'Học',
+          tags: rowTags,
+          isStatusDifferent,
+          oldStatus: existingStu.enrollmentStatus || 'Học',
           rawClassTexts: row.rawClassTexts || [],
           targetClassIds: origClassIds,
           btvnScore: row.btvnScore,
@@ -7544,7 +7797,8 @@ export function setupFeatures(ctx) {
       }
 
       if (item.category === 'new_student') {
-        const tagsArr = item.addNewTag ? ['Mới'] : [];
+        const sheetTags = Array.isArray(item.tags) ? item.tags : [];
+        const tagsArr = [...new Set([...(item.addNewTag ? ['Mới'] : []), ...sheetTags])];
         const newStu = createStudentProfile({
           name: item.fullName,
           familyName: item.familyName,
@@ -7619,6 +7873,11 @@ export function setupFeatures(ctx) {
         }
 
         stu.tags = Array.isArray(stu.tags) ? [...stu.tags] : [];
+        if (Array.isArray(item.tags) && item.tags.length) {
+          item.tags.forEach(t => {
+            if (t && !stu.tags.includes(t)) stu.tags.push(t);
+          });
+        }
         if (item.addNewTag) {
           stu.isNew = true;
           if (!stu.tags.some(t => String(t).trim().toLowerCase() === 'mới')) {
@@ -7650,6 +7909,11 @@ export function setupFeatures(ctx) {
         if (item.learningNotes) stu.learningNotes = item.learningNotes;
 
         stu.tags = Array.isArray(stu.tags) ? [...stu.tags] : [];
+        if (Array.isArray(item.tags) && item.tags.length) {
+          item.tags.forEach(t => {
+            if (t && !stu.tags.includes(t)) stu.tags.push(t);
+          });
+        }
         if (item.addNewTag) {
           stu.isNew = true;
           if (!stu.tags.some(t => String(t).trim().toLowerCase() === 'mới')) {
@@ -7794,12 +8058,12 @@ export function setupFeatures(ctx) {
     readAndSaveSheetsConfigFromDialog();
     const targetCls = $('#sheets-sync-class-filter')?.value || 'all';
     const rows = buildStudentSyncRowsForClass(targetCls);
-    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh', 'Trạng thái', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
+    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh', 'Trạng thái', 'Tag', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
     const tsvLines = [
       headers.join('\t'),
       ...rows.map(r => [
         r.studentCode, r.familyName, r.givenName, r.fullName, r.school,
-        r.parentName, r.parentPhone, r.enrollmentStatus, r.classCodes, r.oldClassCodes,
+        r.parentName, r.parentPhone, r.enrollmentStatus, r.tags, r.classCodes, r.oldClassCodes,
         r.attendance, r.homeworkStatus, r.btvnScore, r.testScore,
         String(r.sessionNote || '').replace(/[\r\n\t]+/g, ' '),
         String(r.learningNotes || '').replace(/[\r\n\t]+/g, ' ')
@@ -7816,10 +8080,10 @@ export function setupFeatures(ctx) {
     readAndSaveSheetsConfigFromDialog();
     const targetCls = $('#sheets-sync-class-filter')?.value || 'all';
     const rows = buildStudentSyncRowsForClass(targetCls);
-    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh', 'Trạng thái', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
+    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh', 'Trạng thái', 'Tag', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
     const data = rows.map(r => [
       r.studentCode, r.familyName, r.givenName, r.fullName, r.school,
-      r.parentName, r.parentPhone, r.enrollmentStatus, r.classCodes, r.oldClassCodes,
+      r.parentName, r.parentPhone, r.enrollmentStatus, r.tags, r.classCodes, r.oldClassCodes,
       r.attendance, r.homeworkStatus, r.btvnScore, r.testScore, r.sessionNote, r.learningNotes
     ]);
     const outName = exportToExcel(headers, data, `DongBoGoogleSheet_MaHS_${getChecklistDate()}.xlsx`);

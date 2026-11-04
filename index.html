@@ -309,6 +309,7 @@
                 </button>
                 <div class="excel-status-filter-dropdown" id="master-status-filter-dropdown" hidden></div>
               </div>
+              <button type="button" class="outline-button" id="master-clear-all-filters-btn" style="color:#b91c1c; border-color:#fca5a5; background:#fef2f2; font-weight:700;" title="Xóa toàn bộ các bộ lọc đang áp dụng" hidden>× Xóa bộ lọc</button>
               <button type="button" class="outline-button" id="customize-master-columns-btn" title="Đổi thứ tự cột hiển thị và xuất file">Đổi thứ tự cột</button>
             </div>
 
@@ -318,6 +319,7 @@
                 <span>Đã chọn <strong id="master-bulk-count">0</strong> học sinh:</span>
               </div>
               <div class="bulk-actions-buttons">
+                <button type="button" class="outline-button" id="master-bulk-status-btn" style="background:#eff6ff; color:#1e40af; border-color:#bfdbfe; font-weight:700;">Đổi trạng thái</button>
                 <button type="button" class="outline-button" id="master-bulk-add-tag-btn">Thêm tag</button>
                 <button type="button" class="outline-button" id="master-bulk-remove-tag-btn">Xóa tag</button>
                 <button type="button" class="outline-button" id="master-bulk-add-class-btn">Thêm vào lớp</button>
@@ -1601,6 +1603,9 @@
             </label>
             <label class="field-label" style="margin:0; font-size:12px;">Cột Trạng thái học:
               <input id="sheets-col-status" placeholder="Tự động (VD: A)" />
+            </label>
+            <label class="field-label" style="margin:0; font-size:12px;">Cột Tag / Phân loại:
+              <input id="sheets-col-tag" placeholder="Tự động (VD: Tag, Thẻ)" />
             </label>
           </div>
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-top:8px; padding-top:8px; border-top:1px dashed #e2e8f0;">

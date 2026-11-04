@@ -743,3 +743,45 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - Chỉ hiển thị duy nhất cho tài khoản có vai trò `admin` (ẩn tuyệt đối với `office`, `teacher`, `assistant`).
   - Ghi nhận đầy đủ mọi thao tác tác động lên dữ liệu (điểm danh, thu BTVN, nhập/sửa điểm, đổi chỗ, sửa checklist, mở/đóng/sửa/xóa ca học, chuyển lớp, duyệt Google Sheets) kèm thời gian chính xác tới giây (`DD/MM/YYYY HH:mm:ss`), Tên tài khoản, Mã nhân viên và Vai trò.
   - Phân nhóm khoa học theo từng Lớp học và từng Ca học trong lớp, hỗ trợ lọc theo Lớp, Ca học, Tài khoản, từ khóa và xuất ra file `.txt` / `.xlsx`.
+
+---
+
+### PHẦN BỔ SUNG ĐẶC TẢ CHI TIẾT (CẬP NHẬT MỚI NHẤT)
+
+#### 1. Cơ chế Tự động Nhận diện & Đồng bộ Trạng thái "Nghỉ" từ Google Sheets
+- **Phát hiện khác biệt trạng thái 2 chiều:** Thuật toán quét và so sánh Google Sheets (`scanIncomingSheetsRowsForApproval`) thực hiện đối chiếu trường trạng thái `enrollmentStatus` của từng dòng trong Sheet với trạng thái hiện tại của học sinh trong hệ thống.
+- **Tự động bắt trạng thái "Nghỉ":** Khi một học sinh trên Google Sheet được đổi trạng thái thành `Nghỉ`, `Nghỉ học`, `Đã nghỉ`, `Tạm nghỉ`, hoặc `Chưa nhập học`, hệ thống tự động:
+  1. Đưa học sinh vào danh sách chờ duyệt với phân loại `Cập nhật Mã HS / Thông tin`.
+  2. Hiển thị badge màu đỏ trực quan: `Trạng thái: [Trạng thái cũ] ➡ [Trạng thái mới]` ngay trên bảng duyệt của Văn phòng.
+  3. Khi bấm `✓ Duyệt & Áp dụng` (hoặc qua cơ chế đồng bộ nền), hệ thống lập tức cập nhật `stu.enrollmentStatus = item.enrollmentStatus`, tăng `revision`, gán `updatedAt = Date.now()` và kích hoạt đồng bộ Firebase Realtime Database để mọi thiết bị khác lập tức thấy học sinh đã chuyển sang trạng thái Nghỉ.
+
+#### 2. Đồng bộ 2 Chiều Cột Tag Phân Loại với Google Sheets
+- **Tự động phát hiện cột Tag:** Thuật toán `autoDetectGridColumnRoles` tự động nhận diện các cột có tiêu đề `Tag`, `Tags`, `Thẻ`, `Phân loại`, `Nhãn`. Hộp thoại cấu hình Google Sheets cũng hỗ trợ ô chỉ định thủ công `Cột Tag / Phân loại` (`#sheets-col-tag`).
+- **Phân tách & So khớp Tag:** Chuỗi tag trên Google Sheet (ngăn cách bởi dấu phẩy hoặc chấm phẩy) được bóc tách thành mảng các tag riêng biệt, so sánh với mảng `stu.tags` hiện tại để phát hiện tag mới và hiển thị badge `Tag Sheet: [tag1, tag2...]` trên bảng duyệt.
+- **Đồng bộ ngược lại Google Sheet:**
+  - Khi thực hiện đẩy dữ liệu lên Google Sheets (`syncSessionToGoogleSheets`), xuất TSV (`#copy-sheets-tsv-btn`), hoặc xuất file Excel đồng bộ (`#export-sheets-xlsx-btn`), hệ thống bổ sung cột `Tag` chuẩn hóa để bảo toàn 100% nhãn phân loại học sinh giữa hai nền tảng.
+  - File Excel xuất tổng (`exportAllStudentsCsv`) cũng tích hợp sẵn cột Tag theo cấu hình cột người dùng.
+
+#### 3. Bảng Danh Bạ Toàn Trung Tâm: Bộ Lọc Đa Cột & Thao Tác Hàng Loạt Nâng Cao
+- **Hàng bộ lọc đa cột trực tiếp trên bảng (`#master-filter-row`):**
+  - Đặt ngay bên dưới hàng tiêu đề, hỗ trợ lọc độc lập trên từng cột:
+    * `Mã HS`: Tìm kiếm nhanh theo mã học sinh.
+    * `Họ đệm` & `Tên`: Tìm kiếm theo họ hoặc tên học sinh.
+    * `Trường học`: Lọc theo trường cấp 2, cấp 3.
+    * `Phụ huynh`: Lọc theo số điện thoại hoặc tên phụ huynh.
+    * `Trạng thái`: Dropdown chọn lọc `Học`, `Tạm nghỉ`, `Nghỉ`, `Chưa nhập học`.
+    * `Các lớp theo học`: Dropdown chọn xem học sinh theo từng lớp học.
+    * `Tag`: Tìm kiếm học sinh theo các thẻ phân loại (`Mới`, `VIP`, `Cần chú ý`, v.v.).
+  - Ô nhập liệu bộ lọc được debounce tối ưu, chống gián đoạn thao tác gõ bàn phím và tự động bảo lưu focus/vị trí con trỏ khi dữ liệu bảng cập nhật.
+  - Tích hợp nút `✕` xóa nhanh tại đầu hàng lọc và nút `× Xóa tất cả bộ lọc` trên thanh công cụ khi có bất kỳ bộ lọc nào đang hoạt động.
+- **Thanh thao tác hàng loạt (`#master-bulk-bar`):**
+  - `Đổi trạng thái`: Hộp thoại modal giao diện trực quan cho phép chọn nhanh trạng thái mới (`● Học`, `⏸ Tạm nghỉ`, `✕ Nghỉ`, `○ Chưa nhập học`) để áp dụng đồng loạt cho toàn bộ học sinh được tích chọn, tự động ghi nhật ký Admin Log và đẩy dữ liệu lên Cloud.
+  - `Thêm tag` / `Xóa tag`: Thêm hoặc gỡ tag cho hàng loạt học sinh.
+  - `Thêm vào lớp` / `Chuyển lớp`: Thêm học sinh vào lớp học mới hoặc chuyển lớp có bảo lưu 100% lịch sử học tập tại lớp cũ.
+  - `Xóa HS`: Xóa học sinh khỏi danh bạ tổng (chỉ khả dụng với tài khoản Admin và Văn phòng).
+
+#### 4. Quy Tắc Hiển Thị Ca Bổ Trợ & Gia Sư 1-1
+- **Ứng xử như ca học bù:** Lớp bổ trợ (`TUTORING_CLASS_ID = 'class-tutoring'` / mã `BOTRO` / môn `Bổ trợ & Gia sư 1-1`) được quản lý theo mô hình ca chuyên biệt tương tự như ca học bù.
+- **Ẩn tên lớp bổ trợ trên Danh bạ tổng:** Tuyệt đối không hiển thị tên lớp bổ trợ/gia sư trong cột "Các lớp theo học" của Bảng danh bạ học sinh toàn trung tâm để tránh gây nhiễu danh sách các lớp học chính thức.
+- **Đếm chính xác KPI số lớp:** Các chỉ số KPI `Học 1 lớp` và `Học nhiều lớp` chỉ tính trên các lớp học chính khóa, không tính lớp bổ trợ.
+- **Truy xuất chi tiết trong Hồ sơ:** Toàn bộ lịch sử các ca bổ trợ và gia sư 1 kèm 1 được lưu vết đầy đủ trong hồ sơ học sinh (mục `Học bù & Bổ trợ`) và trong phân hệ quản lý ca bổ trợ.

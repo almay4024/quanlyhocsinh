@@ -10128,3 +10128,57 @@ body.is-dragging * {
   .desk-seats { flex-wrap:nowrap !important; }
 }
 input, select, textarea { font-size:16px !important; touch-action:manipulation; }
+
+/* Master Student Directory: Multi-Column Filters & Filter Row */
+.table-filter-row th {
+  background: #f8fafc !important;
+  padding: 5px 6px !important;
+  font-weight: 500 !important;
+  border-bottom: 2px solid #cbd5e1 !important;
+  vertical-align: middle !important;
+}
+.master-inline-filter {
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 4px 6px !important;
+  font-size: 12px !important;
+  line-height: 1.3 !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  color: #1e293b !important;
+  outline: none !important;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease !important;
+}
+.master-inline-filter:focus {
+  border-color: #2563eb !important;
+  background: #eff6ff !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18) !important;
+}
+.master-inline-filter.is-filtered {
+  border-color: #2563eb !important;
+  background: #eff6ff !important;
+  font-weight: 700 !important;
+  color: #1e40af !important;
+}
+.master-col-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+.master-col-clear-btn:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
