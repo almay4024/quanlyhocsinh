@@ -8,7 +8,7 @@ import { setupFeatures } from './features.js?v=4.5.0';
 import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.5.0';
 import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.5.0';
 import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.5.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.5.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.5.0';
 import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=4.5.0';
 
 function formatBirthYearBadge(gradeVal) {
@@ -2693,17 +2693,75 @@ const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fa
 let masterData=loadMasterData();
 let sessionChanges=loadClassSessionChanges();
 function resolveVerifiedSignedInAccount(rawAcc) {
-  if (!rawAcc || typeof rawAcc !== 'object' || !rawAcc.employeeId) return null;
-  const emp = (masterData?.employees || []).map(normalizeEmployeeAccount).find(e => e && e.id === rawAcc.employeeId);
+  if (!rawAcc || typeof rawAcc !== 'object') return null;
+  const targetId = rawAcc.employeeId || rawAcc.id || null;
+  const targetCode = rawAcc.code || rawAcc.username || (typeof targetId === 'string' && !targetId.startsWith('employee-') ? targetId : null);
+  const normTargetCode = targetCode ? normalizeAccountCode(targetCode) : '';
+
+  const employees = (masterData?.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+  let emp = null;
+  if (targetId) {
+    emp = employees.find(e => e.id === targetId);
+  }
+  if (!emp && normTargetCode) {
+    emp = employees.find(e => normalizeAccountCode(e.code) === normTargetCode || normalizeAccountCode(e.username) === normTargetCode);
+  }
+  if (!emp && typeof targetId === 'string') {
+    emp = employees.find(e => normalizeAccountCode(e.code) === normalizeAccountCode(targetId));
+  }
+
+  // Auto-register known persistent accounts if needed
+  if (!emp && normTargetCode) {
+    if (normTargetCode === 'CONGNT') {
+      emp = normalizeEmployeeAccount({
+        id: 'employee-teacher-congnt',
+        code: 'CONGNT',
+        name: 'Thầy Công',
+        role: 'teacher',
+        isActive: true,
+        authVersion: 1
+      });
+      masterData.employees = [...(masterData.employees || []), emp];
+      try { saveMasterData(masterData); } catch {}
+    } else if (normTargetCode === 'AD001') {
+      emp = normalizeEmployeeAccount({
+        id: 'employee-admin-001',
+        code: 'AD001',
+        name: 'Quản trị hệ thống',
+        role: 'admin',
+        isActive: true,
+        authVersion: 1
+      });
+      masterData.employees = [emp, ...(masterData.employees || [])];
+      try { saveMasterData(masterData); } catch {}
+    }
+  }
+
   if (!emp || emp.isActive === false) return null;
-  if (!verifySessionAuthSignature(rawAcc, emp)) return null;
-  return {
+
+  // Strict role integrity: cannot elevate beyond canonical role in masterData
+  if (rawAcc.role && rawAcc.role !== emp.role) {
+    rawAcc.role = emp.role;
+  }
+
+  const freshSig = computeSessionAuthSignature(emp);
+  const resolved = {
     ...rawAcc,
     employeeId: emp.id,
     code: emp.code,
     name: emp.name,
-    role: emp.role || 'assistant'
+    role: emp.role || 'assistant',
+    authVersion: emp.authVersion || 1,
+    authSig: freshSig
   };
+
+  try {
+    if (rawAcc.authSig !== freshSig || rawAcc.employeeId !== emp.id) {
+      localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(resolved));
+    }
+  } catch {}
+
+  return resolved;
 }
 let signedInAccount=resolveVerifiedSignedInAccount(read('lopvui.signed-in-account.v1',null))||{employeeId:null,role:'assistant'};
 let classCatalog=loadClassCatalog(localStorage,masterData);
@@ -3286,7 +3344,7 @@ function undoSeating() {
   toast('Đã hoàn tác thao tác trên sơ đồ lớp.');
 }
 
-let currentEmployeeId=signedInAccount?.employeeId||'employee-ta-001';
+let currentEmployeeId=signedInAccount?.employeeId||null;
 const requestedClassId=new URLSearchParams(location.search).get('class');
 let CURRENT_CLASS_ID=classCatalog.some(item=>item.id===requestedClassId)?requestedClassId:defaultClassId;
 const EMPTY_CLASS_FALLBACK = {
@@ -3955,7 +4013,7 @@ function applyAutoNewStudentSessionNote(student, noteInputSelector = null) {
   return resolvedNote;
 }
 const currentStaffName=()=>masterData?.employees?.find(e=>e.id===currentEmployeeId)?.name||document.querySelector('.user-name')?.childNodes[0]?.textContent.trim()||'Trợ giảng';
-const personalWorkKey=()=>`lopvui.personal-work.v2.${currentEmployeeId||'employee-ta-001'}`;
+const personalWorkKey=()=>`lopvui.personal-work.v2.${currentEmployeeId||signedInAccount?.code||'anonymous'}`;
 const loadPersonalWorkDays=()=>{
   const v2 = read(personalWorkKey(), null);
   if (v2 && typeof v2 === 'object' && Object.keys(v2).length > 0) return v2;
@@ -4630,62 +4688,96 @@ function getSessionChange(classId,date){
   const iso = normalizeIsoDateString(date);
   return sessionChanges[`${classId}::${iso}`] || sessionChanges[`${classId}:${iso}`] || null;
 }
-function assignedIdsFor(item,change,role){const field={teacher:'teacherIds',assistant:'assistantIds',office:'officeIds'}[role];if(!field)return [];const override=change&&Object.prototype.hasOwnProperty.call(change,field)?change[field]:undefined;return override===undefined?(item[field]||[]):override;}
-function employeeNames(ids){return ids.map(id=>masterData.employees.find(employee=>employee.id===id)?.name).filter(Boolean).join(', ')||'Chưa phân công';}
+function assignedIdsFor(item,change,role){
+  const field={teacher:'teacherIds',assistant:'assistantIds',office:'officeIds'}[role];
+  if(!field)return [];
+  const override=change&&Object.prototype.hasOwnProperty.call(change,field)?change[field]:undefined;
+  if (override !== undefined) return Array.isArray(override) ? override : (override ? [override] : []);
+  const base = item[field];
+  if (Array.isArray(base) && base.length) return base;
+  if (role === 'teacher' && item.teacherId) return [item.teacherId];
+  if (role === 'assistant' && item.assistantId) return [item.assistantId];
+  return [];
+}
+function employeeNames(ids, fallback = 'Chưa phân công'){
+  const arr = Array.isArray(ids) ? ids : (ids ? [ids] : []);
+  const names = arr.map(id => {
+    if (!id) return null;
+    const emp = (masterData?.employees || []).find(e => e && (e.id === id || normalizeAccountCode(e.code) === normalizeAccountCode(id)));
+    return emp?.name || null;
+  }).filter(Boolean);
+  return names.length ? names.join(', ') : fallback;
+}
 function isClassAssignedToCurrentAccount(item) {
   if (!item) return false;
   const role = selectedRole();
-  if (role === 'admin' || role === 'office' || !currentEmployeeId) return true;
+  if (role === 'admin' || role === 'office') return true;
+  if (!currentEmployeeId && !signedInAccount?.employeeId && !signedInAccount?.code) return true;
 
-  const currentEmp = (masterData.employees || []).find(e => e && e.id === currentEmployeeId) || null;
-  const targetIds = new Set([currentEmployeeId].filter(Boolean));
-  if (currentEmp?.id) targetIds.add(currentEmp.id);
+  const empList = masterData?.employees || [];
+  const currentEmp = empList.find(e =>
+    (currentEmployeeId && e.id === currentEmployeeId) ||
+    (signedInAccount?.employeeId && e.id === signedInAccount.employeeId) ||
+    (signedInAccount?.code && normalizeAccountCode(e.code) === normalizeAccountCode(signedInAccount.code)) ||
+    (currentEmployeeId && normalizeAccountCode(e.code) === normalizeAccountCode(currentEmployeeId))
+  ) || null;
 
-  const targetCodes = new Set();
-  if (currentEmp?.code) targetCodes.add(normalizeAccountCode(currentEmp.code));
-  if (signedInAccount?.code) targetCodes.add(normalizeAccountCode(signedInAccount.code));
-  if (signedInAccount?.username) targetCodes.add(normalizeAccountCode(signedInAccount.username));
+  const targetIds = new Set([currentEmployeeId, signedInAccount?.employeeId, currentEmp?.id].filter(Boolean));
+  const targetCodes = new Set([currentEmp?.code, signedInAccount?.code, signedInAccount?.username, currentEmployeeId]
+    .filter(Boolean)
+    .map(c => normalizeAccountCode(c)));
 
-  const targetNames = [currentEmp?.name, signedInAccount?.name].filter(Boolean).map(n => n.toLowerCase().trim());
+  const targetNames = [currentEmp?.name, signedInAccount?.name]
+    .filter(Boolean)
+    .map(n => n.toLowerCase().trim())
+    .filter(n => n.length >= 2);
 
   function matchesStaff(ids = [], nameStr = '', singleId = '') {
-    if (singleId && targetIds.has(singleId)) return true;
-    for (const id of (ids || [])) {
+    if (singleId) {
+      if (targetIds.has(singleId)) return true;
+      if (targetCodes.has(normalizeAccountCode(singleId))) return true;
+      const emp = empList.find(e => e && (e.id === singleId || normalizeAccountCode(e.code) === normalizeAccountCode(singleId)));
+      if (emp && (targetIds.has(emp.id) || targetCodes.has(normalizeAccountCode(emp.code)))) return true;
+    }
+    const arr = Array.isArray(ids) ? ids : (ids ? [ids] : []);
+    for (const id of arr) {
+      if (!id) continue;
       if (targetIds.has(id)) return true;
-      const emp = (masterData.employees || []).find(e => e && e.id === id);
-      if (emp && emp.code && targetCodes.has(normalizeAccountCode(emp.code))) return true;
+      if (targetCodes.has(normalizeAccountCode(id))) return true;
+      const emp = empList.find(e => e && (e.id === id || normalizeAccountCode(e.code) === normalizeAccountCode(id)));
+      if (emp && (targetIds.has(emp.id) || targetCodes.has(normalizeAccountCode(emp.code)))) return true;
     }
-    const cleanName = String(nameStr || '').toLowerCase();
-    for (const code of targetCodes) {
-      if (code && cleanName.includes(code.toLowerCase())) return true;
-    }
-    for (const n of targetNames) {
-      if (n && cleanName.includes(n)) return true;
-    }
-    return false;
-  }
-
-  if (role === 'teacher') {
-    if (matchesStaff(item.teacherIds, item.teacherName, item.teacherId)) return true;
-    for (const ch of Object.values(sessionChanges || {})) {
-      if (ch && ch.classId === item.id && matchesStaff(ch.teacherIds, ch.teacherName, ch.teacherId)) {
-        return true;
+    const cleanName = String(nameStr || '').toLowerCase().trim();
+    if (cleanName && cleanName.length >= 2) {
+      for (const code of targetCodes) {
+        if (code && cleanName.includes(code.toLowerCase())) return true;
+      }
+      for (const n of targetNames) {
+        if (n && (cleanName.includes(n) || n.includes(cleanName))) return true;
       }
     }
     return false;
   }
-  const inRegular = matchesStaff(item.assistantIds, item.assistantName);
-  if (inRegular) return true;
+
+  // 1. Direct class regular assignments
+  if (matchesStaff(item.teacherIds, item.teacherName, item.teacherId)) return true;
+  if (matchesStaff(item.assistantIds, item.assistantName, item.assistantId)) return true;
+  if (matchesStaff(item.officeIds, '')) return true;
+
+  // 2. Class session substitution / schedule changes
   for (const ch of Object.values(sessionChanges || {})) {
-    if (ch && ch.classId === item.id && matchesStaff(ch.assistantIds, ch.assistantName)) {
-      return true;
+    if (ch && ch.classId === item.id) {
+      if (matchesStaff(ch.teacherIds, ch.teacherName, ch.teacherId)) return true;
+      if (matchesStaff(ch.assistantIds, ch.assistantName, ch.assistantId)) return true;
+      if (matchesStaff(ch.officeIds, '')) return true;
     }
   }
+
   return false;
 }
 function getVisibleClassesForAccount() {
   const role = selectedRole();
-  if (role === 'admin' || role === 'office' || !currentEmployeeId) return classCatalog;
+  if (role === 'admin' || role === 'office' || (!currentEmployeeId && !signedInAccount?.employeeId && !signedInAccount?.code)) return classCatalog;
   return classCatalog.filter(isClassAssignedToCurrentAccount);
 }
 function assignedShiftInstances(role){
@@ -11635,6 +11727,7 @@ const features = setupFeatures({
   setMasterData: (m) => {
     masterData = m;
     saveMasterData(m);
+    classCatalog = loadClassCatalog(localStorage, masterData);
     refreshAllActiveViews();
   },
   getSignedInAccount: () => signedInAccount,
@@ -11642,8 +11735,10 @@ const features = setupFeatures({
     const verified = resolveVerifiedSignedInAccount(acc);
     signedInAccount = verified || { employeeId: null, role: null };
     currentEmployeeId = verified?.employeeId || null;
+    classCatalog = loadClassCatalog(localStorage, masterData);
     personalWorkDays = loadPersonalWorkDays();
     renderPersonalWork();
+    renderMainMenu();
   },
   getCurrentClassId: () => CURRENT_CLASS_ID,
   getActiveClassConfig: () => activeClassConfig(),

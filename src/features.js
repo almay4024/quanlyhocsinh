@@ -192,13 +192,19 @@ export function setupFeatures(ctx) {
       sessionStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
     } catch {}
 
-    // Record lastLoginAt in masterData
+    // Record lastLoginAt in masterData & ensure current employee exists in masterData
     const master = getMasterData();
-    const targetInMaster = (master.employees || []).find(e => e.id === normEmp.id);
+    let targetInMaster = (master.employees || []).find(e => e && (e.id === normEmp.id || normalizeAccountCode(e.code) === normalizeAccountCode(normEmp.code)));
     if (targetInMaster) {
       targetInMaster.lastLoginAt = Date.now();
-      if (ctx.setMasterData) ctx.setMasterData(master);
+      targetInMaster.id = normEmp.id;
+      targetInMaster.code = normEmp.code;
+      targetInMaster.name = normEmp.name;
+      targetInMaster.role = normEmp.role;
+    } else {
+      master.employees = [...(master.employees || []), normEmp];
     }
+    if (ctx.setMasterData) ctx.setMasterData(master);
 
     // Reset any active class path/query in URL to return to main menu
     try {
@@ -440,7 +446,7 @@ export function setupFeatures(ctx) {
     if (!currentAcc || !currentAcc.employeeId) return false;
     const master = getMasterData();
     const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
-    const emp = employees.find(e => e.id === currentAcc.employeeId);
+    const emp = employees.find(e => e && (e.id === currentAcc.employeeId || normalizeAccountCode(e.code) === normalizeAccountCode(currentAcc.employeeId) || (currentAcc.code && normalizeAccountCode(e.code) === normalizeAccountCode(currentAcc.code))));
     if (!emp) {
       handleLogout('Tài khoản của bạn không còn tồn tại trên hệ thống. Vui lòng đăng nhập lại.');
       return false;
@@ -493,7 +499,7 @@ export function setupFeatures(ctx) {
       return false;
     }
 
-    const emp = employees.find(e => e.id === account.employeeId);
+    const emp = employees.find(e => e && (e.id === account.employeeId || normalizeAccountCode(e.code) === normalizeAccountCode(account.employeeId) || (account.code && normalizeAccountCode(e.code) === normalizeAccountCode(account.code))));
     if (!emp || emp.isActive === false || (account.authVersion && Number(emp.authVersion) > Number(account.authVersion)) || !verifySessionAuthSignature(account, emp)) {
       handleLogout(emp?.isActive === false ? 'Tài khoản đã bị Admin tạm khóa.' : 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.');
       return false;
@@ -5751,10 +5757,10 @@ export function setupFeatures(ctx) {
 
     const user = getSignedInAccount();
     const master = getMasterData();
-    const emp = (master.employees || []).find(e => e.id === user?.employeeId);
+    const emp = (master.employees || []).find(e => e && (e.id === user?.employeeId || normalizeAccountCode(e.code) === normalizeAccountCode(user?.code || user?.employeeId)));
     const operator = {
-      id: emp?.id || user?.employeeId || 'employee-ta-001',
-      name: emp?.name || 'Trợ giảng',
+      id: emp?.id || user?.employeeId || 'unassigned',
+      name: emp?.name || user?.name || 'Trợ giảng',
       role: user?.role || 'assistant'
     };
 

@@ -174,12 +174,34 @@ function resolveClass(classInfo, masters, storage = localStorage) {
   }
 
   const oldTeacherNames = String(classInfo.teacherName || '').split(',').map(value => value.trim()).filter(Boolean);
-  const teacherIds = Array.isArray(classInfo.teacherIds) ? classInfo.teacherIds : (classInfo.teacherId ? [classInfo.teacherId] : []);
-  const teachers = teacherIds.map(id => masters.employees.find(item => item.id === id)).filter(Boolean);
-  const resolvedTeachers = teachers.length ? teachers : oldTeacherNames.map(name => masters.employees.find(item => item.name === name)).filter(Boolean);
+  const rawTeacherIds = Array.isArray(classInfo.teacherIds) ? classInfo.teacherIds : (classInfo.teacherId ? [classInfo.teacherId] : []);
+  const empCatalog = Array.isArray(masters?.employees) ? masters.employees : [];
+  const teachers = rawTeacherIds.map(id => findMatchingEmployeeAccount(empCatalog, id)).filter(Boolean);
+  const resolvedTeachers = teachers.length ? teachers : oldTeacherNames.map(name => findMatchingEmployeeAccount(empCatalog, name)).filter(Boolean);
+
+  const teacherIds = resolvedTeachers.length
+    ? resolvedTeachers.map(item => item.id)
+    : (rawTeacherIds.length ? rawTeacherIds : (classInfo.teacherId ? [classInfo.teacherId] : []));
+  const teacherId = resolvedTeachers[0]?.id || teacherIds[0] || classInfo.teacherId || '';
+  const teacherName = resolvedTeachers.map(item => item.name).join(', ') || classInfo.teacherName || '';
+
   const oldAssistantNames = String(classInfo.assistantName || '').split(',').map(value => value.trim()).filter(Boolean);
-  const assistants = (classInfo.assistantIds || []).map(id => masters.employees.find(item => item.id === id)).filter(Boolean);
-  const resolvedAssistants = assistants.length ? assistants : oldAssistantNames.map(name => masters.employees.find(item => item.name === name)).filter(Boolean);
+  const rawAssistantIds = Array.isArray(classInfo.assistantIds) ? classInfo.assistantIds : (classInfo.assistantId ? [classInfo.assistantId] : []);
+  const assistants = rawAssistantIds.map(id => findMatchingEmployeeAccount(empCatalog, id)).filter(Boolean);
+  const resolvedAssistants = assistants.length ? assistants : oldAssistantNames.map(name => findMatchingEmployeeAccount(empCatalog, name)).filter(Boolean);
+
+  const assistantIds = resolvedAssistants.length
+    ? resolvedAssistants.map(item => item.id)
+    : (rawAssistantIds.length ? rawAssistantIds : (classInfo.assistantId ? [classInfo.assistantId] : []));
+  const assistantId = resolvedAssistants[0]?.id || assistantIds[0] || classInfo.assistantId || '';
+  const assistantName = resolvedAssistants.map(item => item.name).join(', ') || classInfo.assistantName || '';
+
+  const rawOfficeIds = Array.isArray(classInfo.officeIds) ? classInfo.officeIds : (seed?.officeIds || []);
+  const resolvedOffice = rawOfficeIds.map(id => findMatchingEmployeeAccount(empCatalog, id)).filter(Boolean);
+  const officeIds = (empCatalog.length && resolvedOffice.length)
+    ? resolvedOffice.map(item => item.id)
+    : rawOfficeIds;
+
   const savedChecklist = classInfo.defaultChecklist;
   const defaultChecklist = savedChecklist && !Array.isArray(savedChecklist) ? {
     startItems: Array.isArray(savedChecklist.startItems) ? savedChecklist.startItems : (seed?.defaultChecklist.startItems || []),
@@ -198,12 +220,13 @@ function resolveClass(classInfo, masters, storage = localStorage) {
     defaultLayout,
     subjectId: subject?.id || masters.subjects[0]?.id || '',
     subject: subject?.name || classInfo.subject || '',
-    teacherIds: resolvedTeachers.map(item => item.id),
-    teacherId: resolvedTeachers[0]?.id || '',
-    teacherName: resolvedTeachers.map(item => item.name).join(', ') || classInfo.teacherName || '',
-    assistantIds: resolvedAssistants.map(item => item.id),
-    officeIds: (Array.isArray(classInfo.officeIds) ? classInfo.officeIds : (seed?.officeIds || [])).filter(id => masters.employees.some(employee => employee.id === id && employee.role === 'office')),
-    assistantName: resolvedAssistants.map(item => item.name).join(', '),
+    teacherIds,
+    teacherId,
+    teacherName,
+    assistantIds,
+    assistantId,
+    officeIds,
+    assistantName,
     defaultChecklist,
     defaultNotifications: Array.isArray(classInfo.defaultNotifications) ? classInfo.defaultNotifications : structuredClone(startNotifications)
   };
@@ -345,10 +368,35 @@ export function computeSessionAuthSignature(emp) {
 }
 
 export function verifySessionAuthSignature(account, emp) {
-  if (!account || !emp || !account.authSig) return false;
+  if (!account || !emp) return false;
   const norm = normalizeEmployeeAccount(emp);
-  if (account.role !== norm.role || account.employeeId !== norm.id) return false;
-  return account.authSig === computeSessionAuthSignature(norm);
+  if (!norm) return false;
+
+  // Account must match employee ID or Code
+  const idMatches = account.employeeId === norm.id ||
+                    (account.code && normalizeAccountCode(account.code) === normalizeAccountCode(norm.code)) ||
+                    (account.employeeId && normalizeAccountCode(account.employeeId) === normalizeAccountCode(norm.code));
+  if (!idMatches) return false;
+
+  // If account specifies a role, it cannot exceed the employee's canonical role in masterData
+  if (account.role && account.role !== norm.role) return false;
+
+  if (!account.authSig) {
+    // Session authenticated without legacy authSig; accept if ID and role match canonical employee
+    return true;
+  }
+
+  const expectedSig = computeSessionAuthSignature(norm);
+  if (account.authSig === expectedSig) return true;
+
+  // Fallback signature without passwordHash (for sessions created before password sync or where password is not loaded yet)
+  const legacySig = hashStaffPassword(
+    norm.code,
+    `session_sig_v4::${norm.id}::${norm.role}::${norm.authVersion || 1}::`
+  );
+  if (account.authSig === legacySig) return true;
+
+  return false;
 }
 
 export function encryptStaffPasswordForAdmin(code, plainPassword) {
