@@ -12268,8 +12268,9 @@ function applyStudentManualScore(studentId, field, rawValue, opts = {}) {
   if (field === 'hw') {
     const prevHw = seated?.entry.homework || student.homework || { status: 'uncollected' };
     const basePrevSt = prevHw.status === 'graded' ? 'submitted' : (prevHw.status || 'uncollected');
+    const autoSubmit = opts.autoSubmitHw !== false;
     const nextStatus = numVal !== null
-      ? (basePrevSt === 'not_submitted' ? 'not_submitted' : 'submitted')
+      ? (basePrevSt === 'not_submitted' && !autoSubmit ? 'not_submitted' : 'submitted')
       : basePrevSt;
     const nextHw = {
       ...prevHw,
@@ -12282,6 +12283,9 @@ function applyStudentManualScore(studentId, field, rawValue, opts = {}) {
       seated.entry.homework = nextHw;
       seated.entry.homeworkSaved = true;
       seated.entry._updatedAt = now;
+      if (typeof patchDeskDOMImmediate === 'function' && seated.deskId) {
+        patchDeskDOMImmediate(seated.deskId);
+      }
     }
     checklist.hwScores = checklist.hwScores || {};
     checklist.hwScores[studentId] = { status: nextStatus, score: numVal, _scoreCleared: numVal === null, _updatedAt: now };
@@ -12358,24 +12362,44 @@ function applyStudentManualScore(studentId, field, rawValue, opts = {}) {
 }
 
 function applyBatchImportedScores(scoreRows = [], options = {}) {
-  if (!Array.isArray(scoreRows) || !scoreRows.length) return { updatedCount: 0, btvnCount: 0, testCount: 0 };
+  if (!Array.isArray(scoreRows) || !scoreRows.length) return { updatedCount: 0, btvnCount: 0, testCount: 0, matched: 0, unmatched: 0 };
   let updatedCount = 0;
   let btvnCount = 0;
   let testCount = 0;
   let hasAnyTestScore = false;
+  const autoSubmitHw = options.autoSubmitHw !== false;
 
   scoreRows.forEach(row => {
-    const stu = row.studentId ? studentById(row.studentId) : null;
+    let stu = row.studentId ? studentById(row.studentId) : null;
+    if (!stu && row.studentCode) {
+      const codeNorm = String(row.studentCode).trim().toUpperCase();
+      stu = students.find(s => String(s.studentCode || '').trim().toUpperCase() === codeNorm)
+        || (makeupStudents || []).find(s => String(s.studentCode || '').trim().toUpperCase() === codeNorm);
+    }
+    if (!stu && row.fullName) {
+      const nameNorm = String(row.fullName).trim().toLowerCase();
+      stu = students.find(s => String(s.name || '').trim().toLowerCase() === nameNorm)
+        || (makeupStudents || []).find(s => String(s.name || '').trim().toLowerCase() === nameNorm);
+    }
     if (!stu) return;
+
     let touched = false;
-    if (row.btvnScore !== null && row.btvnScore !== undefined && !Number.isNaN(Number(row.btvnScore))) {
-      applyStudentManualScore(stu.id, 'hw', String(row.btvnScore));
+    const btvnVal = (row.btvnScore !== null && row.btvnScore !== undefined)
+      ? row.btvnScore
+      : ((row.hwScore !== null && row.hwScore !== undefined) ? row.hwScore : (row.hwParsed?.hasValue ? row.hwParsed.score : null));
+
+    if (btvnVal !== null && btvnVal !== undefined && !Number.isNaN(Number(btvnVal))) {
+      applyStudentManualScore(stu.id, 'hw', String(btvnVal), { immediate: true, autoSubmitHw });
       btvnCount++;
       touched = true;
     }
-    if (row.testScore !== null && row.testScore !== undefined && !Number.isNaN(Number(row.testScore))) {
+    const testVal = (row.testScore !== null && row.testScore !== undefined)
+      ? row.testScore
+      : (row.testParsed?.hasValue ? row.testParsed.score : null);
+
+    if (testVal !== null && testVal !== undefined && !Number.isNaN(Number(testVal))) {
       hasAnyTestScore = true;
-      applyStudentManualScore(stu.id, 'test', String(row.testScore));
+      applyStudentManualScore(stu.id, 'test', String(testVal), { immediate: true });
       testCount++;
       touched = true;
     }
@@ -12399,7 +12423,7 @@ function applyBatchImportedScores(scoreRows = [], options = {}) {
     'score'
   );
   refreshAllActiveViews();
-  return { updatedCount, btvnCount, testCount };
+  return { updatedCount, btvnCount, testCount, matched: updatedCount, unmatched: scoreRows.length - updatedCount };
 }
 
 function saveStudentLearningNote(studentId, value, opts = {}) {
@@ -12437,6 +12461,27 @@ function saveStudentLearningNote(studentId, value, opts = {}) {
 
 function renderScoresView() {
   const tbody = $('#scores-tab-tbody');
+
+  const scoresViewEl = $('#scores-view');
+  if (scoresViewEl && !scoresViewEl.dataset.pasteListenerAttached) {
+    scoresViewEl.dataset.pasteListenerAttached = 'true';
+    scoresViewEl.addEventListener('paste', (e) => {
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      const text = e.clipboardData?.getData('text/plain');
+      if (!text || !text.trim()) return;
+      if (text.includes('\t') || text.includes('\n')) {
+        e.preventDefault();
+        $('#import-scores-excel-btn')?.click();
+        const pasteTa = $('#import-scores-paste-textarea') || $('#import-scores-raw-input');
+        if (pasteTa) {
+          pasteTa.value = text;
+          pasteTa.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+    });
+  }
   if (!tbody) return;
 
   const isTypingInsideScoresTbody = Boolean(

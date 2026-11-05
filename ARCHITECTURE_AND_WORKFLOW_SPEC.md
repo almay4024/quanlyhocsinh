@@ -662,74 +662,74 @@ Tab **`Báo cáo buổi học`** nằm trực tiếp trên thanh điều hướn
 AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **toàn bộ 8 nhóm tiêu chí nghiệm thu** dưới đây trước khi bàn giao mã nguồn:
 
 #### Nhóm 1: Giao diện, Font chữ, Trợ năng (WCAG AA), Không Emoji & Chống Chồng Chéo Nút (UI/UX & Layout)
-- [ ] **1.1. Không Emoji 100% (Zero-Emoji):** Quét toàn bộ HTML, CSS, JavaScript, thông báo Toast và mẫu xuất báo cáo; đảm bảo không còn bất kỳ ký tự Emoji màu nào. Chỉ sử dụng chữ thuần túy kết hợp bộ ký hiệu chuẩn (`✓`, `×`, `+`, `—`, `/`, `•`) hoặc icon SVG nét mảnh đơn sắc (`stroke="currentColor"`, `fill="none"`) ở những nút công cụ nhỏ thực sự cần thiết.
-- [ ] **1.2. Font chữ Tiếng Việt & Số thẳng cột (`tabular-nums`):** Tất cả chữ tiếng Việt có dấu hiển thị rõ nét, không lỗi dấu; toàn bộ cột STT, Mã HS, Điểm số, Sĩ số, Thời gian và Số phút muộn đều áp dụng `font-variant-numeric: tabular-nums` thẳng hàng từ trên xuống dưới.
-- [ ] **1.3. Không tự động phóng to trên iOS/Android:** Tất cả các ô `input`, `select`, `textarea` có `font-size: 16px` và `touch-action: manipulation`, đảm bảo khi bấm vào ô tìm kiếm học sinh hoặc ô nhập điểm trên iPhone/Android màn hình không bị tự động zoom phông.
+- [x] **1.1. Không Emoji 100% (Zero-Emoji):** Quét toàn bộ HTML, CSS, JavaScript, thông báo Toast và mẫu xuất báo cáo; đảm bảo không còn bất kỳ ký tự Emoji màu nào. Chỉ sử dụng chữ thuần túy kết hợp bộ ký hiệu chuẩn (`✓`, `×`, `+`, `—`, `/`, `•`) hoặc icon SVG nét mảnh đơn sắc (`stroke="currentColor"`, `fill="none"`) ở những nút công cụ nhỏ thực sự cần thiết.
+- [x] **1.2. Font chữ Tiếng Việt & Số thẳng cột (`tabular-nums`):** Tất cả chữ tiếng Việt có dấu hiển thị rõ nét, không lỗi dấu; toàn bộ cột STT, Mã HS, Điểm số, Sĩ số, Thời gian và Số phút muộn đều áp dụng `font-variant-numeric: tabular-nums` thẳng hàng từ trên xuống dưới.
+- [x] **1.3. Không tự động phóng to trên iOS/Android:** Tất cả các ô `input`, `select`, `textarea` có `font-size: 16px` và `touch-action: manipulation`, đảm bảo khi bấm vào ô tìm kiếm học sinh hoặc ô nhập điểm trên iPhone/Android màn hình không bị tự động zoom phông.
 - [x] **1.4. Không có nút nào đè lên nhau (Zero-Overlap) & Căn giữa Icon / Nút đóng Chuẩn xác 100%:**
   - Toàn bộ nút đóng `×` của mọi hộp thoại chuyển sang SVG vector nét mảnh đơn sắc với tâm tọa độ hình học `(12, 12)` kết hợp `display: inline-flex; align-items: center; justify-content: center; line-height: 0;`, loại bỏ triệt để hiện tượng icon bị lệch xuống dưới do chênh lệch đường cơ sở font chữ.
   - Nút `Sửa sơ đồ: BẬT/TẮT` nằm trên thanh ngang riêng, không đè lên thanh `BẢNG · ĐẦU LỚP`.
   - Nút `+` trên mỗi bàn nằm ở cột Grid riêng bên phải bàn, không bao giờ đè lên thẻ tên học sinh.
   - Nút đóng của mọi hộp thoại nằm ở góc trên bên phải header, không đè lên tiêu đề hộp thoại.
   - Các ghế trong cùng một bàn luôn nằm trên **1 hàng ngang duy nhất** (`flex-wrap: nowrap`), không bị rớt dòng dọc.
-- [ ] **1.5. Trợ năng & Điều hướng Bàn phím (Accessibility):** Mọi nút tương tác có kích thước chạm tối thiểu $40\text{ px}\times 40\text{ px}$ và đầy đủ `aria-label`; nhấn `Enter` trong ô tìm kiếm chọn ngay học sinh đầu tiên; nhấn `Enter` hoặc `ArrowDown`/`ArrowUp` trong bảng điểm di chuyển mượt giữa các dòng; nhấn `Escape` đóng hộp thoại; nhấn `Ctrl+Z` (hoặc nút `Hoàn tác`) khôi phục thao tác sơ đồ lớp vừa thực hiện.
+- [x] **1.5. Trợ năng & Điều hướng Bàn phím (Accessibility):** Mọi nút tương tác có kích thước chạm tối thiểu $40\text{ px}\times 40\text{ px}$ và đầy đủ `aria-label`; nhấn `Enter` trong ô tìm kiếm chọn ngay học sinh đầu tiên; nhấn `Enter` hoặc `ArrowDown`/`ArrowUp` trong bảng điểm di chuyển mượt giữa các dòng; nhấn `Escape` đóng hộp thoại; nhấn `Ctrl+Z` (hoặc nút `Hoàn tác`) khôi phục thao tác sơ đồ lớp vừa thực hiện.
 
 #### Nhóm 2: Hiệu năng Phản hồi Tức thì ($< 16\text{ ms}$), Lưu trữ & Đồng bộ Thời gian thực / Ngoại tuyến
 - [x] **2.1. Phản hồi $0\text{ ms}$ trên máy đang thao tác (Optimistic UI) & Zero-Latency Typing:** Ngắt hoàn toàn sự kiện gõ phím (`keydown`) khỏi chu kỳ thăm dò đám mây `pullFromFirebaseCloudNow`, debounce tối ưu các ô tìm kiếm ($75\text{–}90\text{ ms}$) và trường checklist ($220\text{–}250\text{ ms}$), loại bỏ triệt để hiện tượng layout thrashing (`ta.style.height = 'auto'`) trong `autoResizeNoteTextareas`, chuyển sang `requestAnimationFrame` và chỉ cập nhật DOM khi chênh lệch $\ge 3\text{ px}$.
 - [x] **2.2. Không mất con trỏ khi đang gõ:** Khi thiết bị A đang gõ ghi chú hoặc nhập điểm trong bảng mà nhận được gói tin đồng bộ từ thiết bị B, giá trị của các học sinh khác tự động cập nhật nhưng ô `input`/`textarea` đang `focus` trên thiết bị A tuyệt đối không bị mất con trỏ hay xóa chữ đang gõ dở.
 - [x] **2.3. Hợp nhất Đa thiết bị Không Ghi Đè (CRDT & Active Session Propagation):** Khi 2 trợ giảng trên 2 máy cùng điểm danh 2 bàn khác nhau hoặc cùng sửa dữ liệu trong 1 ca học, hệ thống gộp chính xác theo từng `entryId`/`studentId` và `_updatedAt`. Khi một thiết bị mở ca học, đính kèm `updatedAt` / `revision` và đẩy tức thì lên đám mây, các thiết bị khác nhận gói tin và tự động hiển thị ca đang mở trên menu chính (`● Đang mở ca`) và trang tổng quan lớp (`● Vào ca đang mở (Live)`).
-- [ ] **2.4. Hoạt động Ngoại tuyến (Offline-First) & Vượt trần 5MB Safari:** Khi ngắt mạng Wi-Fi/4G, thanh trạng thái trên Topbar chuyển sang `• Ngoại tuyến · Lưu tạm X thay đổi`; mọi thao tác điểm danh, BTVN, nhập điểm vẫn lưu an toàn vào RAM + IndexedDB + LocalStorage. Ngay khi bật mạng lại, hệ thống tự động đẩy toàn bộ hàng đợi lên Firebase và báo `• Đã đồng bộ`.
+- [x] **2.4. Hoạt động Ngoại tuyến (Offline-First) & Vượt trần 5MB Safari:** Khi ngắt mạng Wi-Fi/4G, thanh trạng thái trên Topbar chuyển sang `• Ngoại tuyến · Lưu tạm X thay đổi`; mọi thao tác điểm danh, BTVN, nhập điểm vẫn lưu an toàn vào RAM + IndexedDB + LocalStorage. Ngay khi bật mạng lại, hệ thống tự động đẩy toàn bộ hàng đợi lên Firebase và báo `• Đã đồng bộ`.
 
 #### Nhóm 3: Nghiệp vụ Sơ đồ Lớp, Thu BTVN Đầu Giờ, Điểm Danh & Đi Muộn (`#seating-view`)
-- [ ] **3.1. Chế độ `Sửa sơ đồ: BẬT` và `Sửa sơ đồ: TẮT`:**
+- [x] **3.1. Chế độ `Sửa sơ đồ: BẬT` và `Sửa sơ đồ: TẮT`:**
   - Đã loại bỏ hoàn toàn khay kéo `#student-pool` cũ ở phía trên sơ đồ.
   - Khi **`Sửa sơ đồ: BẬT`**: Hiện nút `+` ở mỗi bàn, hiện nút `Thu BTVN` ở đầu mỗi dãy bàn, cho phép **Kéo - Thả (Drag & Drop $\ge 6\text{ px}$)** để di chuyển ghế học sinh sang vị trí khác hoặc bàn khác.
   - Khi **`Sửa sơ đồ: TẮT`**: Ẩn toàn bộ nút `+` và nút `Thu BTVN` dãy, khóa kéo-thả ghế đã có tên trên bàn (nhưng vẫn cho phép kéo học sinh từ khu vực chờ Đi muộn `#late-area` vào bàn).
-- [ ] **3.2. Chạm (Tap $< 6\text{ px}$) Luôn Mở Menu Điểm Danh (`#seat-dialog`):** Bấm chạm vào bất kỳ ghế nào trên bàn luôn mở ngay hộp thoại `#seat-dialog` **cả khi đang BẬT lẫn khi đang TẮT `Sửa sơ đồ`**.
-- [ ] **3.3. Quy trình Đi thu BTVN từ trên xuống:**
+- [x] **3.2. Chạm (Tap $< 6\text{ px}$) Luôn Mở Menu Điểm Danh (`#seat-dialog`):** Bấm chạm vào bất kỳ ghế nào trên bàn luôn mở ngay hộp thoại `#seat-dialog` **cả khi đang BẬT lẫn khi đang TẮT `Sửa sơ đồ`**.
+- [x] **3.3. Quy trình Đi thu BTVN từ trên xuống:**
   - Bấm `+` tạo biểu tượng học sinh vô danh (trạng thái mặc định `Chưa thu`).
   - Với học sinh **không nộp BTVN**: Bấm vào biểu tượng $\rightarrow$ chọn tên học sinh $\rightarrow$ chọn `Chưa nộp` + Lý do (`Chưa làm`, `Quên vở`, `Nghỉ buổi trước`) $\rightarrow$ Lưu; ghế hiển thị tên học sinh (đã điểm danh `Có mặt`) kèm ký hiệu `×` đỏ.
   - Với học sinh **có nộp BTVN**: Đi thu xuống cuối dãy bấm nút `Thu BTVN` của dãy $\rightarrow$ toàn bộ ghế đang `Chưa thu` trong dãy (kể cả ghế vô danh chưa gắn tên) chuyển sang `Đã nộp` (`✓` xanh), tuyệt đối không làm thay đổi các ghế đã đánh dấu `Chưa nộp`.
   - Với học sinh **mới vào lớp sau khi đã thu**: Bấm `+` thêm biểu tượng mới vào bàn $\rightarrow$ biểu tượng mới giữ trạng thái `Chưa thu` (hiện cảnh báo `!` vàng) để trợ giảng biết ngay học sinh này chưa nộp BTVN.
   - Khi gán tên học sinh vào ghế vô danh đã được đánh dấu `Đã nộp` trước đó, học sinh tự động nhận luôn trạng thái `Đã nộp BTVN` của ghế đó.
-- [ ] **3.4. Nhập điểm BTVN ở cả trạng thái `Đã nộp` và `Chưa nộp`:** Trong cả `#seat-dialog` và `#late-dialog`, khi chọn trạng thái `Chưa nộp`, ô nhập `Điểm BTVN (0 – 10)` vẫn hiển thị đầy đủ để trợ giảng nhập điểm khi học sinh làm bù/gửi bù (tự động ghi nhận điểm nhưng vẫn giữ lịch sử quên bài đầu giờ).
-- [ ] **3.5. Điểm danh muộn & Tự động tính số phút muộn (`#late-dialog` & `#late-area`):**
+- [x] **3.4. Nhập điểm BTVN ở cả trạng thái `Đã nộp` và `Chưa nộp`:** Trong cả `#seat-dialog` và `#late-dialog`, khi chọn trạng thái `Chưa nộp`, ô nhập `Điểm BTVN (0 – 10)` vẫn hiển thị đầy đủ để trợ giảng nhập điểm khi học sinh làm bù/gửi bù (tự động ghi nhận điểm nhưng vẫn giữ lịch sử quên bài đầu giờ).
+- [x] **3.5. Điểm danh muộn & Tự động tính số phút muộn (`#late-dialog` & `#late-area`):**
   - Tự động tính số phút đi muộn = `Giờ đến thực tế` trừ `Giờ bắt đầu ca học` (nếu đến trước hoặc đúng giờ thì số phút muộn = `0`, ghi nhận `Đúng giờ · Chờ xếp chỗ`). Cho phép sửa trực tiếp số phút muộn hoặc giờ đến bất kỳ lúc nào.
   - Học sinh sau khi lưu ở `#late-dialog` sẽ hiển thị ở khu vực `CUỐI LỚP` (`#late-area`) kèm nhãn phút muộn, trạng thái BTVN và nút sửa nhanh. Khi kéo học sinh từ `CUỐI LỚP` vào bàn, toàn bộ trạng thái điểm danh, số phút muộn, BTVN, điểm số và ghi chú đi theo vào đúng ghế đó.
-- [ ] **3.6. Vạch ngăn cách bàn & Kế thừa chỗ ngồi buổi trước:**
+- [x] **3.6. Vạch ngăn cách bàn & Kế thừa chỗ ngồi buổi trước:**
   - Hiển thị đúng vạch phân cách ngang giữa 2 bàn trên-dưới theo cấu hình riêng của từng dãy.
   - Nút `Xếp chỗ theo buổi trước` tự động đặt học sinh vào đúng vị trí bàn của buổi học liền trước (với trạng thái `Có mặt · Chưa thu BTVN`).
-- [ ] **3.7. Chế độ Giáo viên (`Góc nhìn Giáo viên`):** Lật ngược 180 độ toàn bộ sơ đồ lớp (Bảng ở dưới, Cuối lớp ở trên, đảo chiều các dãy Trái-Phải và ghế Trái-Phải) kèm thanh lọc làm nổi bật nhanh các học sinh `Chưa nộp BTVN hôm nay`, `Điểm thấp / Nợ bài buổi trước` và `Cảnh báo Mức 1–4`.
+- [x] **3.7. Chế độ Giáo viên (`Góc nhìn Giáo viên`):** Lật ngược 180 độ toàn bộ sơ đồ lớp (Bảng ở dưới, Cuối lớp ở trên, đảo chiều các dãy Trái-Phải và ghế Trái-Phải) kèm thanh lọc làm nổi bật nhanh các học sinh `Chưa nộp BTVN hôm nay`, `Điểm thấp / Nợ bài buổi trước` và `Cảnh báo Mức 1–4`.
 
 #### Nhóm 4: Bảo mật Phân quyền (Strict RBAC) & Luồng Học sinh Mới / Học bù
 - [x] **4.1. Bảo mật Đăng nhập Firebase Authentication & Thu hồi Phiên tức thì:** Đăng nhập an toàn kết nối Firebase Auth server-side (`[username].tct@gmail.com`), Realtime Database Rules khóa truy cập ở mức `"auth != null"`, Realtime Database Web SDK duy trì kết nối WebSocket bền vững, tự động cấp tài khoản Auth khi thêm nhân viên mới và hỗ trợ đổi mật khẩu an toàn ngay trên giao diện web.
-- [ ] **4.2. Cô lập Dữ liệu theo Lớp Phụ Trách:** Tài khoản Trợ giảng (`assistant`) và Giáo viên (`teacher`) chỉ nhìn thấy các lớp mình được phân công và chỉ tìm kiếm được học sinh thuộc đúng lớp đang mở. Không thể xem Danh bạ Học sinh toàn trung tâm hay học sinh của các lớp khác.
-- [ ] **4.3. Form Nhập tay Học sinh Mới / Học bù (Không lộ dữ liệu trung tâm):** Khi Trợ giảng bấm `+ Học sinh mới / Học bù` trong `#seat-dialog` hoặc `#late-dialog`, chỉ hiển thị form nhập tay (`Họ và tên`, `Trường học` / `Lớp gốc`, `Tên/SĐT Phụ huynh`). Tự động gắn tag `Mới` và ghi chú buổi học `Học sinh mới` cho học sinh mới tạo.
-- [ ] **4.4. Xóa học sinh khỏi ghế (`#clear-seat`) & Đồng bộ Bất biến Sơ đồ $\leftrightarrow$ Điểm danh:**
+- [x] **4.2. Cô lập Dữ liệu theo Lớp Phụ Trách:** Tài khoản Trợ giảng (`assistant`) và Giáo viên (`teacher`) chỉ nhìn thấy các lớp mình được phân công và chỉ tìm kiếm được học sinh thuộc đúng lớp đang mở. Không thể xem Danh bạ Học sinh toàn trung tâm hay học sinh của các lớp khác.
+- [x] **4.3. Form Nhập tay Học sinh Mới / Học bù (Không lộ dữ liệu trung tâm):** Khi Trợ giảng bấm `+ Học sinh mới / Học bù` trong `#seat-dialog` hoặc `#late-dialog`, chỉ hiển thị form nhập tay (`Họ và tên`, `Trường học` / `Lớp gốc`, `Tên/SĐT Phụ huynh`). Tự động gắn tag `Mới` và ghi chú buổi học `Học sinh mới` cho học sinh mới tạo.
+- [x] **4.4. Xóa học sinh khỏi ghế (`#clear-seat`) & Đồng bộ Bất biến Sơ đồ $\leftrightarrow$ Điểm danh:**
   - Khi bấm nút thùng rác xóa học sinh khỏi ghế, hiển thị hộp thoại xác nhận rõ ràng.
   - Nếu là học sinh chính thức của lớp: xóa khỏi ghế và tự động đưa trạng thái buổi hôm đó về `Chưa điểm danh` (nhưng giữ nguyên 100% lịch sử các buổi trước).
   - Nếu học sinh không có trên sơ đồ nhưng đã được Văn phòng đánh dấu `Vắng có phép` hoặc `Vắng không phép`: giữ nguyên trạng thái Vắng đó.
   - Nếu là bản ghi tạm (Học sinh mới / Học bù do Trợ giảng vừa tạo trong buổi): xóa khỏi sơ đồ và xóa sạch bản ghi tạm khỏi cơ sở dữ liệu.
 
 #### Nhóm 5: Chế độ "Chép Sổ Giấy", Bộ lọc Bảng, Ẩn/Hiện Cột & Bảng Nhập điểm (`#students-view` & `#scores-view`)
-- [ ] **5.1. Chế độ "Chép Sổ Giấy" (`Paper Transcription Mode`):**
+- [x] **5.1. Chế độ "Chép Sổ Giấy" (`Paper Transcription Mode`):**
   - Tự động tách bảng thành **2 phần cố định**: Phần trên là Danh sách học sinh cố định của lớp xếp đúng theo thứ tự `paperOrderIndex` của sổ giấy (tuyệt đối không nhảy dòng khi điểm danh hay nhập điểm); Phần dưới cùng là nhóm Học sinh Mới phát sinh & Học bù trong buổi.
   - Cho phép mở khóa chỉnh sửa STT Sổ Giấy (`1, 2, 3...` hoặc đẩy Lên/Xuống) và bấm `Khóa STT Sổ Giấy` để lưu cố định cho lớp đó.
   - Hiển thị đúng ký hiệu ngắn gọn chuẩn sổ giấy: `✓` (Có mặt), `M15` (Đi muộn 15 phút), `VP` (Vắng có phép), `KP` (Vắng không phép), `—` (Chưa điểm danh), `×` (Không nộp BTVN), điểm số định dạng dấu phẩy (`8,5`).
-- [ ] **5.2. Đổi vị trí cột & Ẩn/Hiện cột như Excel (`#column-order-dialog`):** Cho phép tích checkbox Ẩn/Hiện từng cột và đổi thứ tự cột linh hoạt (có nút đặt nhanh cột `Điểm & BTVN` sát cạnh cột `Tên`). Thứ tự cột được áp dụng đồng bộ cho cả bảng trên màn hình lẫn khi xuất file Excel (`.xlsx`).
-- [ ] **5.3. Bảng Nhập điểm (`#scores-view`) & Nhập điểm Excel theo Mã HS:**
+- [x] **5.2. Đổi vị trí cột & Ẩn/Hiện cột như Excel (`#column-order-dialog`):** Cho phép tích checkbox Ẩn/Hiện từng cột và đổi thứ tự cột linh hoạt (có nút đặt nhanh cột `Điểm & BTVN` sát cạnh cột `Tên`). Thứ tự cột được áp dụng đồng bộ cho cả bảng trên màn hình lẫn khi xuất file Excel (`.xlsx`).
+- [x] **5.3. Bảng Nhập điểm (`#scores-view`) & Nhập điểm Excel theo Mã HS:**
   - Sắp xếp thông minh hoặc theo thứ tự sổ giấy; hỗ trợ bật/tắt cột `Điểm Test` (đồng bộ với mục `Ca này có test` bên tab Checklist).
   - Bấm vào ô `Điểm 4 bài gần nhất` mở ngay hộp thoại chi tiết lịch sử điểm, trạng thái đi học và tên bài học từng buổi trước của học sinh đó.
   - Hỗ trợ xuất file mẫu Excel và nhập điểm hàng loạt bằng file `.xlsx` hoặc dán `Ctrl+V` 2 cột `Mã HS + Điểm` (tự động chuyển trạng thái BTVN từ `Chưa thu` sang `Đã nộp` khi có điểm).
 
 #### Nhóm 6: Đóng Ca Học Không Khóa Dữ Liệu (Always-Editable Sessions), Checklist & Chấm công TA
-- [ ] **6.1. Checklist Buổi học & Chấm công Cá nhân Trợ giảng:**
+- [x] **6.1. Checklist Buổi học & Chấm công Cá nhân Trợ giảng:**
   - Tích hoàn thành mục đầu tiên trong Checklist đầu giờ (hoặc bấm nút xác nhận đi làm) tự động ghi nhận giờ bắt đầu ca và cộng ca làm việc vào bảng **Chấm công của tôi (`#portal-menu-panel`)**.
   - Tự động lưu khi gõ: `Tên bài học hôm nay`, `Ghi chú buổi học (nội bộ)`, `Ghi chú chung gửi phụ huynh`, `Nội dung BTVN giao về nhà`, `Link vở ghi`, `Link phiếu BTVN` và `Tên trợ giảng cầm bài về chấm`.
   - Tự động nhận diện `Buổi này không có BTVN` nếu buổi liền trước không giao BTVN (và cho phép bật/tắt thủ công).
-- [ ] **6.2. Ca Đã Đóng Vẫn Chỉnh Sửa Được 100% (Always-Editable Closed Sessions):**
+- [x] **6.2. Ca Đã Đóng Vẫn Chỉnh Sửa Được 100% (Always-Editable Closed Sessions):**
   - Khi bấm `Kết ca học & Lưu lịch sử`, hệ thống kiểm tra và liệt kê các mục còn sót (như ghế vô danh chưa gắn tên, học sinh chưa tích BTVN, chưa nhập tên bài học) để trợ giảng rà soát trước khi xác nhận đóng ca.
   - Sau khi ca đã chuyển sang trạng thái `✓ Đã đóng ca` (hoặc khi mở lại ca học cũ từ lịch sử $1\text{–}2\text{ ngày}$ sau), Trợ giảng / Giáo viên / Văn phòng **vẫn sửa được 100% mọi thông tin** (nhập bổ sung điểm Test/BTVN sau khi chấm xong, sửa điểm danh, sửa checklist, sửa tên bài học, thêm ghi chú) mà không bị khóa Read-only. Mọi chỉnh sửa tự động cập nhật vào cả lịch sử ca học lẫn hồ sơ học sinh.
-- [ ] **6.3. Quản lý Ca học Quá khứ & Xóa Ca học:** Cho phép thêm bổ sung ca học trong quá khứ, sửa thông tin/ngày học của ca cũ, hoặc xóa ca học (xóa sạch dữ liệu buổi học đó khỏi hồ sơ học sinh nhưng vẫn lưu vết thao tác trong Nhật ký Admin Log).
+- [x] **6.3. Quản lý Ca học Quá khứ & Xóa Ca học:** Cho phép thêm bổ sung ca học trong quá khứ, sửa thông tin/ngày học của ca cũ, hoặc xóa ca học (xóa sạch dữ liệu buổi học đó khỏi hồ sơ học sinh nhưng vẫn lưu vết thao tác trong Nhật ký Admin Log).
 
 #### Nhóm 7: Hộp việc Văn phòng (Office Action Inbox), Đồng bộ Google Sheets Đa Khóa & Chuyển Lớp
 - [x] **7.1. Hộp việc Cần xử lý của Văn phòng (`Office Action Inbox`) & Khớp Hồ sơ Ghi Rõ Nguồn Gốc Lớp:**
@@ -742,19 +742,19 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - Cung cấp mã nguồn Google Apps Script Web App và hướng dẫn 6 bước tích hợp trực quan trong menu để vượt qua 100% rào cản phân quyền cho tài khoản tổ chức/trường học.
   - Tự động đối chiếu theo `Mã HS` (và tên + SĐT) để phát hiện 3 nhóm cần duyệt: `Học sinh mới`, `Khác lớp gốc (Chuyển lớp)` và `Cập nhật Mã HS / Thông tin`.
   - Trên bảng duyệt của Văn phòng: mặc định gắn tag `Mới` cho học sinh mới và học sinh chuyển lớp, nhưng có nút tích chọn/bỏ chọn tag `Mới` cho từng em hoặc tất cả trước khi bấm `✓ Duyệt & Cập nhật`.
-- [ ] **7.3. Bảo toàn 100% Dữ liệu Học sinh khi Chuyển lớp:** Khi học sinh chuyển từ lớp A sang lớp B (qua duyệt Google Sheets hoặc qua nút `Chuyển lớp`), mã lớp A được chuyển vào `previousClassIds` & `classTransferHistory`. Khi mở Hồ sơ học sinh theo lớp (`#student-class-profile-dialog`), vẫn hiển thị tab `Lớp cũ` để xem lại đầy đủ 100% lịch sử điểm danh, điểm BTVN/Test và nhận xét tại lớp A.
+- [x] **7.3. Bảo toàn 100% Dữ liệu Học sinh khi Chuyển lớp:** Khi học sinh chuyển từ lớp A sang lớp B (qua duyệt Google Sheets hoặc qua nút `Chuyển lớp`), mã lớp A được chuyển vào `previousClassIds` & `classTransferHistory`. Khi mở Hồ sơ học sinh theo lớp (`#student-class-profile-dialog`), vẫn hiển thị tab `Lớp cũ` để xem lại đầy đủ 100% lịch sử điểm danh, điểm BTVN/Test và nhận xét tại lớp A.
 
 #### Nhóm 8: Tab Báo cáo Buổi học Trực quan (`#report-view`), Xuất Dữ liệu & Nhật ký Admin (`Admin Audit Log`)
-- [ ] **8.1. Tab Báo cáo Chính Trực quan (`#report-view` — Không dùng Pop-up):**
+- [x] **8.1. Tab Báo cáo Chính Trực quan (`#report-view` — Không dùng Pop-up):**
   - Nằm trực tiếp trên thanh tab chính của ca học, hiển thị rõ 5 bảng cảnh báo trực quan: `1. Học sinh Vắng mặt`, `2. Học sinh Đi muộn`, `3. Học sinh Chưa nộp BTVN`, `4. Học sinh Điểm thấp dưới mốc` (cho phép chọn nhanh mốc `< 5`, `< 6`, `< 7` hoặc nhập mốc bất kỳ) và `5. Học sinh Học bù & Học sinh mới`.
-- [ ] **8.2. Copy Báo cáo Zalo 1 Chạm (Gửi Giáo viên & Gửi Phụ huynh):**
+- [x] **8.2. Copy Báo cáo Zalo 1 Chạm (Gửi Giáo viên & Gửi Phụ huynh):**
   - Nút `Sao chép báo cáo gửi Giáo viên` tạo bản tổng hợp đầy đủ (thông tin lớp, bài học, link BTVN/vở ghi, sĩ số, 5 danh sách chi tiết kèm lý do và ghi chú) bằng văn bản thuần túy, sạch đẹp, không chứa emoji.
   - Nút `Copy báo PH` (trên từng dòng học sinh ở bảng danh sách lớp của tài khoản Văn phòng, trong hồ sơ buổi học và trong tab Báo cáo) tạo đúng mẫu tin nhắn gửi Phụ huynh của riêng học sinh đó (tự động ẩn các dòng trống, đính kèm ghi chú chung gửi phụ huynh ở cuối tin nhắn).
-- [ ] **8.3. Xuất Đa Định Dạng Chuẩn A4:**
+- [x] **8.3. Xuất Đa Định Dạng Chuẩn A4:**
   - Xuất file Excel (`.xlsx`) chuẩn OpenXML mở trực tiếp trên Microsoft Excel / Google Sheets không lỗi font tiếng Việt.
   - Xuất file Google Docs / Word (`.doc`) và chế độ In / Lưu PDF chuẩn trang A4 ngang có đầy đủ bảng điểm danh và ô chữ ký Trợ giảng / Giáo viên.
   - Xuất ảnh PNG Sơ đồ lớp (`#seating-snapshot-dialog`) tự động căn vừa khít 1 khung hình (không cần cuộn), hiển thị rõ tên, tag `#Mới`, phút đi muộn (`Muộn 15p`), điểm/trạng thái BTVN, nhãn `[BÙ]` và chú thích ký hiệu bên dưới.
-- [ ] **8.4. Nhật ký Admin Log (`#mgmt-panel-admin-log` & `#session-admin-log-dialog`):**
+- [x] **8.4. Nhật ký Admin Log (`#mgmt-panel-admin-log` & `#session-admin-log-dialog`):**
   - Chỉ hiển thị duy nhất cho tài khoản có vai trò `admin` (ẩn tuyệt đối với `office`, `teacher`, `assistant`).
   - Ghi nhận đầy đủ mọi thao tác tác động lên dữ liệu (điểm danh, thu BTVN, nhập/sửa điểm, đổi chỗ, sửa checklist, mở/đóng/sửa/xóa ca học, chuyển lớp, duyệt Google Sheets) kèm thời gian chính xác tới giây (`DD/MM/YYYY HH:mm:ss`), Tên tài khoản, Mã nhân viên và Vai trò.
   - Phân nhóm khoa học theo từng Lớp học và từng Ca học trong lớp, hỗ trợ lọc theo Lớp, Ca học, Tài khoản, từ khóa và xuất ra file `.txt` / `.xlsx`.

@@ -2273,6 +2273,8 @@ export function setupFeatures(ctx) {
       };
       const zaloReasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
 
+      const newStudentsInSession = roster.filter(s => s.isNew || (s.tags || []).some(t => String(t).trim().toLowerCase() === 'mới'));
+
       const zaloLines = [
         `BÁO CÁO CA HỌC: ${currentClass.name} (${currentClass.code || currentClass.id})`,
         `* Ngày: ${date} (${currentClass.startTime}–${currentClass.endTime}) · Phòng: ${currentClass.room}`,
@@ -2283,14 +2285,10 @@ export function setupFeatures(ctx) {
         ...(notebookLink ? [`* Link vở ghi / Bài giảng: ${notebookLink}`] : []),
         `* Sĩ số: Có mặt ${presentCount + lateList.length}/${regularRoster.length} (Đúng giờ: ${presentCount}, Đi muộn: ${lateList.length}, Vắng: ${absentList.length}${sessionMakeups.length ? `, Học bù: +${sessionMakeups.length}` : ''})`,
         ``,
-        `1. Chưa nộp BTVN (${missingHW.length} HS):`,
-        ...(missingHW.length
-          ? missingHW.map(s => {
-              const seated = entries.find(p => p.entry.studentId === s.id);
-              const r = zaloReasonMap[seated?.entry.homework?.reason || s.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
-              return `   - ${s.name} (${s.school || '—'}): ${r}${getZaloNote(s, seated)}`;
-            })
-          : ['   - 100% học sinh có mặt đã nộp đủ BTVN.']),
+        `1. Vắng mặt (${absentList.length} HS):`,
+        ...(absentList.length
+          ? absentList.map(s => `   - ${s.name} (${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}${s.attendance?.reason ? ': ' + s.attendance.reason : ''})${getZaloNote(s, null)}`)
+          : ['   - 100% học sinh có mặt đầy đủ.']),
         `2. Đi muộn (${lateList.length} HS):`,
         ...(lateList.length
           ? lateList.map(s => {
@@ -2299,7 +2297,15 @@ export function setupFeatures(ctx) {
               return `   - ${s.name}: ${lateStr}${getZaloNote(s, seated)}`;
             })
           : ['   - Không có học sinh đi muộn.']),
-        `3. Điểm thấp < ${thresholdStr} (${lowScores.length} HS):`,
+        `3. Chưa nộp BTVN (${missingHW.length} HS):`,
+        ...(missingHW.length
+          ? missingHW.map(s => {
+              const seated = entries.find(p => p.entry.studentId === s.id);
+              const r = zaloReasonMap[seated?.entry.homework?.reason || s.homework?.reason] || seated?.entry.homework?.reason || 'Chưa làm';
+              return `   - ${s.name} (${s.school || '—'}): ${r}${getZaloNote(s, seated)}`;
+            })
+          : ['   - 100% học sinh có mặt đã nộp đủ BTVN.']),
+        `4. Điểm thấp < ${thresholdStr} (${lowScores.length} HS):`,
         ...(lowScores.length
           ? lowScores.map(s => {
               const seated = entries.find(p => p.entry.studentId === s.id);
@@ -2308,19 +2314,22 @@ export function setupFeatures(ctx) {
               return `   - ${s.name}: BTVN ${hwSc} · Test ${testSc}${getZaloNote(s, seated)}`;
             })
           : [`   - Không có học sinh điểm dưới ${thresholdStr}.`]),
-        `4. Học sinh học bù (${sessionMakeups.length} HS):`,
-        ...(sessionMakeups.length
-          ? sessionMakeups.map(s => {
-              const seated = entries.find(p => p.entry.studentId === s.id);
-              const hwSc = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '');
-              const srcCls = ctx.getMakeupSourceClassDisplay ? ctx.getMakeupSourceClassDisplay(s) : (s.sourceClassName || 'Lớp khác');
-              return `   - ${s.name} (Bù từ: ${srcCls})${hwSc ? ` · BTVN: ${hwSc}` : ''}${getZaloNote(s, seated)}`;
-            })
-          : ['   - Không có học sinh học bù.']),
-        `5. Vắng mặt (${absentList.length} HS):`,
-        ...(absentList.length
-          ? absentList.map(s => `   - ${s.name} (${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}${s.attendance?.reason ? ': ' + s.attendance.reason : ''})${getZaloNote(s, null)}`)
-          : ['   - 100% học sinh có mặt đầy đủ.'])
+        `5. Học sinh học bù & Học sinh mới (${sessionMakeups.length + newStudentsInSession.length} HS):`,
+        ...(sessionMakeups.length || newStudentsInSession.length
+          ? [
+              ...sessionMakeups.map(s => {
+                const seated = entries.find(p => p.entry.studentId === s.id);
+                const hwSc = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '');
+                const srcCls = ctx.getMakeupSourceClassDisplay ? ctx.getMakeupSourceClassDisplay(s) : (s.sourceClassName || 'Lớp khác');
+                return `   - [Học bù] ${s.name} (Bù từ: ${srcCls})${hwSc ? ` · BTVN: ${hwSc}` : ''}${getZaloNote(s, seated)}`;
+              }),
+              ...newStudentsInSession.filter(s => !sessionMakeups.some(m => m.id === s.id)).map(s => {
+                const seated = entries.find(p => p.entry.studentId === s.id);
+                const hwSc = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '');
+                return `   - [Mới] ${s.name} (${s.school || '—'})${hwSc ? ` · BTVN: ${hwSc}` : ''}${getZaloNote(s, seated)}`;
+              })
+            ]
+          : ['   - Không có học sinh học bù hoặc học sinh mới.'])
       ];
       if (sessionNote) {
         zaloLines.push(``, `Ghi chú buổi học: ${sessionNote}`);
@@ -2395,36 +2404,35 @@ export function setupFeatures(ctx) {
         </div>
 
         <div class="report-sections-stack">
-          <div class="report-section-card border-danger">
-            <strong class="report-section-title" style="color:#991b1b;">× 1. Học sinh CHƯA NỘP BTVN (${missingHW.length} bạn):</strong>
-            ${missingHW.length ? `
+          <!-- 1. VẮNG MẶT -->
+          <div class="report-section-card border-neutral">
+            <strong class="report-section-title" style="color:#374151;">1. Học sinh VẮNG MẶT (${absentList.length} bạn):</strong>
+            ${absentList.length ? `
               <div class="attendance-table-wrap">
                 <table class="attendance-report-table">
                   <thead>
-                    <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do chưa nộp</th><th>Ghi chú trong buổi</th></tr>
+                    <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do</th><th>Ghi chú trong buổi</th>${showParentZaloCol ? '<th style="text-align:center;">Báo PH</th>' : ''}</tr>
                   </thead>
                   <tbody>
-                    ${missingHW.map((s) => {
-                      const { fam, giv, isMakeup } = getFamGiv(s);
-                      const seated = entries.find(p => p.entry.studentId === s.id);
-                      const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
-                      const reason = reasonMap[seated?.entry.homework?.reason || s.homework?.reason] || seated?.entry.homework?.reason || s.homework?.reason || 'Chưa làm';
-                      const noteInSession = getStudentSessionNote(s, seated);
-                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school||'—'))}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td></tr>`;
+                    ${absentList.map((s) => {
+                      const { fam, giv } = getFamGiv(s);
+                      const noteInSession = getStudentSessionNote(s, null);
+                      return `<tr><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong></td><td>${escapeHtml(s.school||'—')}</td><td>${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}</td><td>${escapeHtml(s.attendance?.reason||'Chưa có lý do')}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td>${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Sao chép tin nhắn Zalo gửi Phụ huynh em ${escapeHtml(s.name)}" style="padding:2px 8px; font-size:11px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:4px; color:#065f46; cursor:pointer; font-weight:600;">Báo PH</button></td>` : ''}</tr>`;
                     }).join('')}
                   </tbody>
                 </table>
               </div>
-            ` : '<div class="report-empty-ok">✓ 100% học sinh có mặt đã nộp bài tập về nhà đầy đủ!</div>'}
+            ` : '<div class="report-empty-ok">✓ 100% học sinh đều có mặt!</div>'}
           </div>
 
+          <!-- 2. ĐI MUỘN -->
           <div class="report-section-card border-warning">
             <strong class="report-section-title" style="color:#9a3412;">2. Học sinh ĐI MUỘN (${lateList.length} bạn):</strong>
             ${lateList.length ? `
               <div class="attendance-table-wrap">
                 <table class="attendance-report-table">
                   <thead>
-                    <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Giờ đến</th><th>Phút muộn</th><th>Ghi chú trong buổi</th></tr>
+                    <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Giờ đến</th><th>Phút muộn</th><th>Ghi chú trong buổi</th>${showParentZaloCol ? '<th style="text-align:center;">Báo PH</th>' : ''}</tr>
                   </thead>
                   <tbody>
                     ${lateList.map((s) => {
@@ -2434,7 +2442,7 @@ export function setupFeatures(ctx) {
                       const arrTime = lateDet?.arrivalTime || resolveStudentArrivalTime(s, seated, date, currentClass.id) || '—';
                       const mins = lateDet?.lateMinutes ?? seated?.entry.attendance?.lateMinutes ?? seated?.entry.attendance?.minutesLate ?? s.attendance?.lateMinutes ?? s.lateMinutes ?? 10;
                       const noteInSession = getStudentSessionNote(s, seated);
-                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school||'—'))}</td><td><strong>${escapeHtml(arrTime || '—')}</strong></td><td style="color:#c2410c; font-weight:700;">muộn ${mins}’</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td></tr>`;
+                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school||'—'))}</td><td><strong>${escapeHtml(arrTime || '—')}</strong></td><td style="color:#c2410c; font-weight:700;">muộn ${mins}’</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td>${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Sao chép tin nhắn Zalo gửi Phụ huynh em ${escapeHtml(s.name)}" style="padding:2px 8px; font-size:11px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:4px; color:#065f46; cursor:pointer; font-weight:600;">Báo PH</button></td>` : ''}</tr>`;
                     }).join('')}
                   </tbody>
                 </table>
@@ -2442,9 +2450,34 @@ export function setupFeatures(ctx) {
             ` : '<div class="report-empty-ok">✓ Không có học sinh nào đi muộn trong ca hôm nay!</div>'}
           </div>
 
+          <!-- 3. CHƯA NỘP BTVN -->
+          <div class="report-section-card border-danger">
+            <strong class="report-section-title" style="color:#991b1b;">3. Học sinh CHƯA NỘP BTVN (${missingHW.length} bạn):</strong>
+            ${missingHW.length ? `
+              <div class="attendance-table-wrap">
+                <table class="attendance-report-table">
+                  <thead>
+                    <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Lý do chưa nộp</th><th>Ghi chú trong buổi</th>${showParentZaloCol ? '<th style="text-align:center;">Báo PH</th>' : ''}</tr>
+                  </thead>
+                  <tbody>
+                    ${missingHW.map((s) => {
+                      const { fam, giv, isMakeup } = getFamGiv(s);
+                      const seated = entries.find(p => p.entry.studentId === s.id);
+                      const reasonMap = { not_done: 'Chưa làm bài', forgot: 'Quên mang vở', missed_previous: 'Nghỉ buổi trước' };
+                      const reason = reasonMap[seated?.entry.homework?.reason || s.homework?.reason] || seated?.entry.homework?.reason || s.homework?.reason || 'Chưa làm';
+                      const noteInSession = getStudentSessionNote(s, seated);
+                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school||'—'))}</td><td style="color:#b91c1c; font-weight:700;">${escapeHtml(reason)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td>${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Sao chép tin nhắn Zalo gửi Phụ huynh em ${escapeHtml(s.name)}" style="padding:2px 8px; font-size:11px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:4px; color:#065f46; cursor:pointer; font-weight:600;">Báo PH</button></td>` : ''}</tr>`;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            ` : '<div class="report-empty-ok">✓ 100% học sinh có mặt đã nộp bài tập về nhà đầy đủ!</div>'}
+          </div>
+
+          <!-- 4. ĐIỂM THẤP DƯỚI MỐC -->
           <div class="report-section-card border-yellow">
             <div class="low-score-header-bar">
-              <strong class="report-section-title" style="color:#854d0e;">! 3. Học sinh CÓ ĐIỂM THẤP (&lt; ${escapeHtml(thresholdStr)} điểm) (${lowScores.length} bạn):</strong>
+              <strong class="report-section-title" style="color:#854d0e;">4. Học sinh CÓ ĐIỂM THẤP (&lt; ${escapeHtml(thresholdStr)} điểm) (${lowScores.length} bạn):</strong>
               <div class="low-score-threshold-controls">
                 <span>Mốc điểm thấp:</span>
                 <button type="button" class="low-score-preset-btn ${lowScoreThreshold === 5 ? 'active' : ''}" data-low-score-preset="5">&lt; 5</button>
@@ -2460,7 +2493,7 @@ export function setupFeatures(ctx) {
               <div class="attendance-table-wrap">
                 <table class="attendance-report-table">
                   <thead>
-                    <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Điểm BTVN</th><th>Điểm Test</th><th>Ghi chú trong buổi</th></tr>
+                    <tr><th>Họ đệm</th><th>Tên</th><th>Trường / Phân loại</th><th>Điểm BTVN</th><th>Điểm Test</th><th>Ghi chú trong buổi</th>${showParentZaloCol ? '<th style="text-align:center;">Báo PH</th>' : ''}</tr>
                   </thead>
                   <tbody>
                     ${lowScores.map((s) => {
@@ -2469,7 +2502,7 @@ export function setupFeatures(ctx) {
                       const hwScore = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
                       const testScore = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
                       const noteInSession = getStudentSessionNote(s, seated);
-                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school||'—'))}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(hwScore)}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(testScore)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td></tr>`;
+                      return `<tr class="${isMakeup ? 'makeup-row-tr' : ''}"><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> ${isMakeup ? '<span class="makeup-status-badge">Học bù</span>' : ''}</td><td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school||'—'))}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(hwScore)}</td><td style="color:#b45309; font-weight:700;">${escapeHtml(testScore)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td>${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Sao chép tin nhắn Zalo gửi Phụ huynh em ${escapeHtml(s.name)}" style="padding:2px 8px; font-size:11px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:4px; color:#065f46; cursor:pointer; font-weight:600;">Báo PH</button></td>` : ''}</tr>`;
                     }).join('')}
                   </tbody>
                 </table>
@@ -2477,13 +2510,14 @@ export function setupFeatures(ctx) {
             ` : `<div class="report-empty-ok">✓ Không có học sinh nào có điểm dưới ${escapeHtml(thresholdStr)}!</div>`}
           </div>
 
+          <!-- 5. HỌC BÙ & HỌC SINH MỚI -->
           <div class="report-section-card border-purple">
-            <strong class="report-section-title" style="color:#6b21a8;">4. Học sinh HỌC BÙ trong buổi (${sessionMakeups.length} bạn):</strong>
-            ${sessionMakeups.length ? `
+            <strong class="report-section-title" style="color:#6b21a8;">5. Học sinh HỌC BÙ & HỌC SINH MỚI trong buổi (${sessionMakeups.length + newStudentsInSession.length} bạn):</strong>
+            ${(sessionMakeups.length || newStudentsInSession.length) ? `
               <div class="attendance-table-wrap">
                 <table class="attendance-report-table">
                   <thead>
-                    <tr><th>Họ đệm</th><th>Tên</th><th>Học bù từ lớp</th><th>Trạng thái</th><th>Điểm BTVN / Test</th><th>Ghi chú trong buổi</th></tr>
+                    <tr><th>Họ đệm</th><th>Tên</th><th>Phân loại / Nguồn gốc</th><th>Trạng thái</th><th>Điểm BTVN / Test</th><th>Ghi chú trong buổi</th>${showParentZaloCol ? '<th style="text-align:center;">Báo PH</th>' : ''}</tr>
                   </thead>
                   <tbody>
                     ${sessionMakeups.map((s) => {
@@ -2495,37 +2529,28 @@ export function setupFeatures(ctx) {
                       const hwScore = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
                       const testScore = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
                       const noteInSession = getStudentSessionNote(s, seated);
-                      return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge">Học bù</span></td><td>${escapeHtml(getMakeupSourceLabel(s))}</td><td><strong>${escapeHtml(attText)}</strong></td><td>BTVN: ${escapeHtml(hwScore)} · Test: ${escapeHtml(testScore)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td></tr>`;
+                      return `<tr class="makeup-row-tr"><td>${escapeHtml(fam)}</td><td><strong style="color:#581c87;">${escapeHtml(giv)}</strong> <span class="makeup-status-badge">Học bù</span></td><td>Bù từ: ${escapeHtml(getMakeupSourceLabel(s))}</td><td><strong>${escapeHtml(attText)}</strong></td><td>BTVN: ${escapeHtml(hwScore)} · Test: ${escapeHtml(testScore)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td>${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Sao chép tin nhắn Zalo gửi Phụ huynh em ${escapeHtml(s.name)}" style="padding:2px 8px; font-size:11px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:4px; color:#065f46; cursor:pointer; font-weight:600;">Báo PH</button></td>` : ''}</tr>`;
                     }).join('')}
-                  </tbody>
-                </table>
-              </div>
-            ` : '<div style="color:#6b21a8; font-size:13.5px; font-weight:600; margin-top:4px;">Không có học sinh học bù trong buổi này.</div>'}
-          </div>
-
-          <div class="report-section-card border-neutral">
-            <strong class="report-section-title" style="color:#374151;">5. Học sinh VẮNG MẶT (${absentList.length} bạn):</strong>
-            ${absentList.length ? `
-              <div class="attendance-table-wrap">
-                <table class="attendance-report-table">
-                  <thead>
-                    <tr><th>Họ đệm</th><th>Tên</th><th>Trường</th><th>Trạng thái vắng</th><th>Lý do</th><th>Ghi chú trong buổi</th></tr>
-                  </thead>
-                  <tbody>
-                    ${absentList.map((s) => {
+                    ${newStudentsInSession.filter(s => !sessionMakeups.some(m => m.id === s.id)).map((s) => {
                       const { fam, giv } = getFamGiv(s);
-                      const noteInSession = getStudentSessionNote(s, null);
-                      return `<tr><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong></td><td>${escapeHtml(s.school||'—')}</td><td>${s.attendance?.status === 'absent_excused' ? 'Có phép' : 'Chưa phép'}</td><td>${escapeHtml(s.attendance?.reason||'Chưa có lý do')}</td><td>${escapeHtml(noteInSession || '—')}</td></tr>`;
+                      const seated = entries.find(p => p.entry.studentId === s.id);
+                      const isLate = ctx.isStudentLateInSession ? ctx.isStudentLateInSession(s, seated?.entry || null, currentClass, date) : (seated?.entry.attendance?.status === 'late' || s.attendance?.status === 'late');
+                      const isPresent = Boolean(seated || lateQueueIds.includes(s.id));
+                      const attText = formatMergedAttendanceAndArrival(s, seated, isLate, isPresent, false, date, currentClass.id);
+                      const hwScore = formatScoreVN(seated?.entry.homework?.score ?? s.homework?.score, '—');
+                      const testScore = formatScoreVN(s.testScore ?? seated?.entry.testScore, '—');
+                      const noteInSession = getStudentSessionNote(s, seated);
+                      return `<tr><td>${escapeHtml(fam)}</td><td><strong>${escapeHtml(giv)}</strong> <span class="student-tag-inline new-tag">Mới</span></td><td>${escapeHtml(s.school || '—')}</td><td><strong>${escapeHtml(attText)}</strong></td><td>BTVN: ${escapeHtml(hwScore)} · Test: ${escapeHtml(testScore)}</td><td class="col-allow-wrap">${escapeHtml(noteInSession || '—')}</td>${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Sao chép tin nhắn Zalo gửi Phụ huynh em ${escapeHtml(s.name)}" style="padding:2px 8px; font-size:11px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:4px; color:#065f46; cursor:pointer; font-weight:600;">Báo PH</button></td>` : ''}</tr>`;
                     }).join('')}
                   </tbody>
                 </table>
               </div>
-            ` : '<div class="report-empty-ok">✓ 100% học sinh đều có mặt!</div>'}
+            ` : '<div style="color:#6b21a8; font-size:13.5px; font-weight:600; margin-top:4px;">Không có học sinh học bù hoặc học sinh mới trong buổi này.</div>'}
           </div>
 
           ${sessionNote ? `
             <div style="background:#f0fdf4; border-left:4px solid #22c55e; padding:10px 14px; border-radius:6px; font-size:13.5px; color:#166534;">
-              <strong>Nhận xét & Lưu ý của Trợ giảng trong ca:</strong>
+              <strong>Nhận xét &amp; Lưu ý của Trợ giảng trong ca:</strong>
               <p style="margin:4px 0 0; white-space:pre-wrap;">${escapeHtml(sessionNote)}</p>
             </div>
           ` : ''}
