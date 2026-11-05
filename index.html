@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm</title>
+  <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm (v5.0)</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
@@ -74,7 +74,7 @@
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.5</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v5.0</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -607,6 +607,7 @@
                   <button type="button" class="office-filter-pill" data-panel-approve-filter="new_student">Học sinh mới <span class="pill-count" id="panel-sheets-count-new">0</span></button>
                   <button type="button" class="office-filter-pill" data-panel-approve-filter="class_change">Khác lớp gốc (Chuyển lớp) <span class="pill-count" id="panel-sheets-count-diff-class">0</span></button>
                   <button type="button" class="office-filter-pill" data-panel-approve-filter="code_update">Cập nhật Mã HS <span class="pill-count" id="panel-sheets-count-code">0</span></button>
+                  <button type="button" class="office-filter-pill" data-panel-approve-filter="missing_code">Thiếu Mã HS <span class="pill-count" id="panel-sheets-count-missing-code">0</span></button>
                 </div>
 
                 <div class="attendance-table-wrap" style="max-height:48vh; overflow:auto; border:1px solid #cbd5e1; border-radius:8px;">
@@ -618,7 +619,7 @@
                         <th style="min-width:105px;">Mã HS</th>
                         <th style="min-width:165px;">Họ và tên</th>
                         <th style="min-width:135px;">Trường / SĐT PH</th>
-                        <th style="min-width:230px;">Lớp gốc ➡ Lớp trên Sheet</th>
+                        <th style="min-width:230px;">Lớp gốc → Lớp trên Sheet</th>
                         <th style="min-width:140px; text-align:center;">Tag "Mới" (Bật/Tắt)</th>
                       </tr>
                     </thead>
@@ -732,7 +733,7 @@
                   <div><strong>Bước 2:</strong> Xóa toàn bộ mã mặc định trong <code>Code.gs</code>, bấm nút sao chép bên dưới và dán vào:
                     <div style="margin-top:6px; display:flex; gap:8px; align-items:center;">
                       <button type="button" class="primary-button" id="panel-copy-apps-script-btn" style="padding:6px 14px; font-size:12px; background:#b45309;">
-                        📋 Sao chép mã Google Apps Script chuẩn
+                        Sao chép mã Google Apps Script chuẩn
                       </button>
                       <span id="panel-copy-apps-script-status" style="font-size:12px; color:#15803d; font-weight:700;" hidden>✓ Đã copy vào bộ nhớ tạm!</span>
                     </div>
@@ -747,7 +748,7 @@
                   <div><strong>Bước 5:</strong> Bấm <strong>Triển khai</strong> &gt; <strong>Ủy quyền truy cập (Authorize access)</strong> &gt; Sao chép <strong>URL ứng dụng web (Web app URL)</strong> dán vào ô URL ở Tab Cấu hình.
                     <div style="margin-top:6px; display:flex; gap:8px; align-items:center;">
                       <button type="button" class="outline-button" id="panel-test-apps-script-btn" style="padding:5px 12px; font-size:12px; font-weight:700; background:#ffffff; border-color:#d97706; color:#b45309;">
-                        🔍 Kiểm tra kết nối Apps Script ngay
+                        Kiểm tra kết nối Apps Script ngay
                       </button>
                       <span id="panel-test-apps-script-result" style="font-size:12px; font-weight:700;"></span>
                     </div>
@@ -775,6 +776,10 @@
                 <span>Tháng đối chiếu:</span>
                 <select id="portal-month-vn-select" class="portal-month-vn-select" aria-label="Chọn tháng đối chiếu"></select>
                 <input type="month" id="portal-month-input" hidden style="display:none!important;" />
+              </label>
+              <label class="portal-month-label" id="portal-employee-filter-label" for="portal-employee-select" style="margin-left:6px;">
+                <span>Nhân sự:</span>
+                <select id="portal-employee-select" class="portal-month-vn-select" style="min-width:180px; font-weight:700; color:#1e3a8a;" aria-label="Chọn nhân sự đối chiếu"></select>
               </label>
               <div class="portal-export-btns">
                 <button type="button" class="outline-button" id="export-timesheet-btn">In bảng chấm công (A4)</button>
@@ -1459,7 +1464,7 @@
   <dialog id="upload-session-sheets-dialog" class="class-config-dialog" style="width:min(540px, calc(100vw - 24px));">
     <div class="dialog-form">
       <button type="button" class="close-button" id="close-upload-session-sheets" aria-label="Đóng"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
-      <div class="eyebrow" style="color:#1d4ed8;">BÁO CÁO BUỔI HỌC ➡ GOOGLE SHEETS</div>
+      <div class="eyebrow" style="color:#1d4ed8;">BÁO CÁO BUỔI HỌC → GOOGLE SHEETS</div>
       <h2>Đẩy dữ liệu buổi học lên Google Sheet</h2>
       <p class="dialog-hint">Ghi nhận điểm danh (đầu cột ghi ngày và link web buổi học), điểm BTVN, kiểm tra và ghi chú vào các cột tương ứng trên Google Sheet.</p>
       <div id="upload-session-sheets-info" style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:10px 12px; font-size:13px; margin-bottom:12px;"></div>
@@ -2018,7 +2023,7 @@
         <!-- 1.2. HƯỚNG DẪN CHI TIẾT APPS SCRIPT / API KHI BỊ GIỚI HẠN QUYỀN -->
         <details id="sheets-apps-script-guide-details" style="margin-top:10px; background:#fffbeb; border:1.5px solid #fde68a; border-radius:10px; padding:10px 14px;">
           <summary style="cursor:pointer; font-weight:800; color:#92400e; font-size:13.5px; display:flex; justify-content:space-between; align-items:center;">
-            <span>📖 Hướng dẫn chi tiết: Dùng Google Apps Script / API khi Sheet bị giới hạn quyền truy cập</span>
+            <span>Hướng dẫn chi tiết: Dùng Google Apps Script / API khi Sheet bị giới hạn quyền truy cập</span>
             <span style="font-size:12px; font-weight:700; background:#fef3c7; color:#b45309; padding:2px 8px; border-radius:999px;">Bypass 403 / Tài khoản nội bộ</span>
           </summary>
           <div style="margin-top:10px; font-size:13px; color:#451a03; line-height:1.55;">
@@ -2032,13 +2037,13 @@
               <div><strong>Bước 2:</strong> Xóa toàn bộ mã mặc định trong tệp <code>Code.gs</code>, sau đó bấm nút bên dưới để copy và dán đoạn mã chuẩn vào:
                 <div style="margin-top:6px; display:flex; gap:8px; align-items:center;">
                   <button type="button" class="primary-button" id="copy-apps-script-template-btn" style="padding:6px 14px; font-size:12px; background:#b45309;">
-                    📋 Sao chép mã Google Apps Script mẫu
+                    Sao chép mã Google Apps Script mẫu
                   </button>
                   <span id="copy-apps-script-status" style="font-size:12px; color:#15803d; font-weight:700;" hidden>✓ Đã copy vào bộ nhớ tạm!</span>
                 </div>
               </div>
               <div><strong>Bước 3:</strong> Nhấp nút <strong>Triển khai (Deploy)</strong> ở góc trên bên phải &gt; Chọn <strong>Tùy chọn triển khai mới (New deployment)</strong>.</div>
-              <div><strong>Bước 4:</strong> Bấm biểu tượng bánh răng ⚙ cạnh "Chọn loại" &gt; Chọn <strong>Ứng dụng web (Web app)</strong>:
+              <div><strong>Bước 4:</strong> Bấm biểu tượng Cài đặt cạnh "Chọn loại" &gt; Chọn <strong>Ứng dụng web (Web app)</strong>:
                 <ul style="margin:4px 0 6px 20px; font-size:12.5px;">
                   <li><em>Mô tả:</em> Dong bo Quan ly hoc sinh</li>
                   <li><em>Thực thi dưới dạng (Execute as):</em> <strong>Tôi (Me / email của bạn)</strong></li>
@@ -2049,7 +2054,7 @@
               <div><strong>Bước 6:</strong> Dán URL vừa sao chép vào ô <strong>"Google Apps Script Web App URL"</strong> ở mục 1 bên trên.
                 <div style="margin-top:6px; display:flex; gap:8px; align-items:center;">
                   <button type="button" class="outline-button" id="test-apps-script-connection-btn" style="padding:5px 12px; font-size:12px; font-weight:700; background:#ffffff; border-color:#d97706; color:#b45309;">
-                    🔍 Kiểm tra kết nối Apps Script ngay
+                    Kiểm tra kết nối Apps Script ngay
                   </button>
                   <span id="test-apps-script-result" style="font-size:12px; font-weight:700;"></span>
                 </div>
@@ -2123,9 +2128,10 @@
         <!-- Bộ lọc nhanh trong bảng duyệt -->
         <div id="sheets-approval-filter-pills" class="office-filter-pills-group" style="margin-bottom:10px;">
           <button type="button" class="office-filter-pill active" data-sheets-approve-filter="all">Tất cả cần duyệt <span class="pill-count" id="sheets-count-all">0</span></button>
-          <button type="button" class="office-filter-pill" data-sheets-approve-filter="new_student">🆕 Học sinh mới <span class="pill-count" id="sheets-count-new">0</span></button>
+          <button type="button" class="office-filter-pill" data-sheets-approve-filter="new_student">Học sinh mới <span class="pill-count" id="sheets-count-new">0</span></button>
           <button type="button" class="office-filter-pill" data-sheets-approve-filter="class_change">⇄ Khác lớp gốc (Chuyển lớp) <span class="pill-count" id="sheets-count-diff-class">0</span></button>
-          <button type="button" class="office-filter-pill" data-sheets-approve-filter="code_update">🆔 Cập nhật Mã HS / Thông tin <span class="pill-count" id="sheets-count-code">0</span></button>
+          <button type="button" class="office-filter-pill" data-sheets-approve-filter="code_update">Cập nhật Mã HS / Thông tin <span class="pill-count" id="sheets-count-code">0</span></button>
+          <button type="button" class="office-filter-pill" data-sheets-approve-filter="missing_code">Thiếu Mã HS <span class="pill-count" id="sheets-count-missing-code">0</span></button>
         </div>
 
         <div class="attendance-table-wrap" style="max-height:42vh; overflow:auto; border:1px solid #cbd5e1; border-radius:8px;">
@@ -2137,7 +2143,7 @@
                 <th style="min-width:105px;">Mã HS</th>
                 <th style="min-width:165px;">Họ và tên</th>
                 <th style="min-width:135px;">Trường / SĐT PH</th>
-                <th style="min-width:230px;">Lớp gốc ➡ Lớp trên Sheet</th>
+                <th style="min-width:230px;">Lớp gốc → Lớp trên Sheet</th>
                 <th style="min-width:140px; text-align:center;">Tag "Mới" (Bấm để bật/tắt)</th>
               </tr>
             </thead>
@@ -3062,7 +3068,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:600 20px var(--font-sans); color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v4.6</span></strong>
+            <strong style="font:600 20px var(--font-sans); color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v5.0</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:normal; color:#859388; font-weight:600;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -3115,7 +3121,7 @@ function jsonOut_(obj) {
         <div id="login-error-msg" class="auth-login-error" role="alert" hidden></div>
 
         <button type="submit" class="primary-button auth-submit-btn" id="login-submit-btn">
-          Đăng nhập vào hệ thống ➡
+          Đăng nhập vào hệ thống →
         </button>
       </form>
 

@@ -1698,6 +1698,37 @@ strong, b { font-weight: 600; }*{box-sizing:border-box}body{margin:0;min-width:3
   transform: scale(1.03);
 }
 
+.realtime-sync-badge.state-offline {
+  border: 1px solid #f59e0b !important;
+  background: #fffbeb !important;
+  color: #92400e !important;
+}
+.realtime-sync-badge.state-offline .rt-dot {
+  background: #f59e0b !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25) !important;
+}
+
+.realtime-sync-badge.state-syncing {
+  border: 1px solid #93c5fd !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+.realtime-sync-badge.state-syncing .rt-dot {
+  background: #2563eb !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25) !important;
+  animation: pulse 1s infinite;
+}
+
+.realtime-sync-badge.state-synced {
+  border: 1px solid #bbe3c5 !important;
+  background: #effaf2 !important;
+  color: #1c6232 !important;
+}
+.realtime-sync-badge.state-synced .rt-dot {
+  background: #16a34a !important;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2) !important;
+}
+
 /* ==========================================================================
    v1.2 ENHANCEMENTS:
    - Single Centered Rectangular Student Drag Pool Token
@@ -9556,7 +9587,7 @@ textarea.auto-expand-note:focus {
   display: none !important;
 }
 
-/* 4. Late Queue Token (Cuối lớp) with BTVN Pill & Inline ✎ Edit Button */
+/* 4. Late Queue Token (Cuối lớp) with BTVN Pill & Inline Edit Button */
 .late-token {
   display: inline-flex !important;
   align-items: center !important;
@@ -10181,4 +10212,121 @@ input, select, textarea { font-size:16px !important; touch-action:manipulation; 
   background: #fee2e2;
   color: #b91c1c;
   border-color: #fca5a5;
+}
+
+/* ==========================================================================
+   POPUP DIALOG & MODAL SCROLLBAR STYLING (Preserves rounded corners)
+   Prevents square scrollbar tracks from cutting off top-right and bottom-right border-radius
+   ========================================================================== */
+dialog,
+.modal-dialog,
+.class-config-dialog,
+.roster-admin-dialog,
+.student-profile-dialog,
+.attendance-export-dialog,
+.finalize-dialog,
+.bulk-student-dialog {
+  border-radius: 16px !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent !important;
+}
+
+/* Ensure track margins keep scrollbar away from the 16px curved corners */
+dialog::-webkit-scrollbar,
+.modal-dialog::-webkit-scrollbar,
+.class-config-dialog::-webkit-scrollbar,
+.roster-admin-dialog::-webkit-scrollbar,
+.student-profile-dialog::-webkit-scrollbar,
+.attendance-export-dialog::-webkit-scrollbar,
+.finalize-dialog::-webkit-scrollbar,
+.dialog-body::-webkit-scrollbar,
+.attendance-table-wrap::-webkit-scrollbar,
+.portal-table-wrap::-webkit-scrollbar,
+.roster-list::-webkit-scrollbar,
+.student-options::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+  display: block !important;
+}
+
+dialog::-webkit-scrollbar-track,
+.modal-dialog::-webkit-scrollbar-track,
+.class-config-dialog::-webkit-scrollbar-track,
+.roster-admin-dialog::-webkit-scrollbar-track,
+.student-profile-dialog::-webkit-scrollbar-track,
+.attendance-export-dialog::-webkit-scrollbar-track,
+.finalize-dialog::-webkit-scrollbar-track,
+.dialog-body::-webkit-scrollbar-track,
+.attendance-table-wrap::-webkit-scrollbar-track,
+.portal-table-wrap::-webkit-scrollbar-track,
+.roster-list::-webkit-scrollbar-track,
+.student-options::-webkit-scrollbar-track {
+  background: transparent !important;
+  margin: 16px 0 !important; /* Critical: keeps track and thumb 16px away from top and bottom corners! */
+}
+
+dialog::-webkit-scrollbar-thumb,
+.modal-dialog::-webkit-scrollbar-thumb,
+.class-config-dialog::-webkit-scrollbar-thumb,
+.roster-admin-dialog::-webkit-scrollbar-thumb,
+.student-profile-dialog::-webkit-scrollbar-thumb,
+.attendance-export-dialog::-webkit-scrollbar-thumb,
+.finalize-dialog::-webkit-scrollbar-thumb,
+.dialog-body::-webkit-scrollbar-thumb,
+.attendance-table-wrap::-webkit-scrollbar-thumb,
+.portal-table-wrap::-webkit-scrollbar-thumb,
+.roster-list::-webkit-scrollbar-thumb,
+.student-options::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.45) !important;
+  border-radius: 999px !important;
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+}
+
+dialog::-webkit-scrollbar-thumb:hover,
+.modal-dialog::-webkit-scrollbar-thumb:hover,
+.class-config-dialog::-webkit-scrollbar-thumb:hover,
+.roster-admin-dialog::-webkit-scrollbar-thumb:hover,
+.student-profile-dialog::-webkit-scrollbar-thumb:hover,
+.attendance-export-dialog::-webkit-scrollbar-thumb:hover,
+.finalize-dialog::-webkit-scrollbar-thumb:hover,
+.dialog-body::-webkit-scrollbar-thumb:hover,
+.attendance-table-wrap::-webkit-scrollbar-thumb:hover,
+.portal-table-wrap::-webkit-scrollbar-thumb:hover,
+.roster-list::-webkit-scrollbar-thumb:hover,
+.student-options::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.75) !important;
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+}
+
+dialog::-webkit-scrollbar-corner,
+.modal-dialog::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+/* Standard modern circular close button styling for all dialogs */
+.dialog-header .close-button,
+dialog .close-button,
+.modal-dialog .close-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 50% !important;
+  border: 1px solid #cbd5e1 !important;
+  background: #f8fafc !important;
+  color: #64748b !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  transition: all 0.15s ease !important;
+}
+.dialog-header .close-button:hover,
+dialog .close-button:hover,
+.modal-dialog .close-button:hover {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: #b91c1c !important;
+  transform: scale(1.05) !important;
 }

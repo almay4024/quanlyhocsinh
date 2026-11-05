@@ -48,18 +48,92 @@ const masterDefaults = {
     { id: 'subject-science', name: 'Khoa học tự nhiên' }
   ],
   employees: [
-    { id: 'employee-admin-001', code: 'AD001', name: 'Quản trị hệ thống', role: 'admin', password: 'admin123', isActive: true, authVersion: 1 },
-    { id: 'employee-teacher-congnt', code: 'CONGNT', name: 'Thầy Công', role: 'teacher', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-teacher-001', code: 'GV001', name: 'Cô Minh Anh', role: 'teacher', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-teacher-002', code: 'GV002', name: 'Thầy Quang', role: 'teacher', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-teacher-003', code: 'GV003', name: 'Cô Hương', role: 'teacher', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-ta-001', code: 'TA001', name: 'Anh Linh', role: 'assistant', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-ta-002', code: 'TA002', name: 'Mai Anh', role: 'assistant', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-ta-003', code: 'TA003', name: 'Minh Khoa', role: 'assistant', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-office-001', code: 'VP001', name: 'Lan Phương', role: 'office', password: '123456', isActive: true, authVersion: 1 },
-    { id: 'employee-office-002', code: 'VP002', name: 'Hoàng Nam', role: 'office', password: '123456', isActive: true, authVersion: 1 }
+    { id: 'employee-admin-001', code: 'AD001', name: 'Quản trị hệ thống', role: 'admin', password: 'admin123', isActive: true, authVersion: 1 }
   ]
 };
+
+export const MOCK_DEFAULT_CODES = new Set(['TA001', 'TA002', 'TA003', 'GV001', 'GV002', 'GV003', 'VP001', 'VP002']);
+export const MOCK_DEFAULT_NAMES = new Set([
+  'anh linh',
+  'cô minh anh',
+  'thầy quang',
+  'cô hương',
+  'mai anh',
+  'minh khoa',
+  'lan phương',
+  'hoàng nam'
+]);
+
+export function isMockEmployee(emp) {
+  if (!emp) return false;
+  const code = normalizeAccountCode(emp.code);
+  if (code && MOCK_DEFAULT_CODES.has(code)) return true;
+  const name = (emp.name || '').trim().toLowerCase();
+  if (name && MOCK_DEFAULT_NAMES.has(name)) return true;
+  return false;
+}
+
+/**
+ * Trích xuất khối / khóa từ tiền tố mã học sinh (VD: K9.001 -> K9, K10.123 -> K10, 2K9.001 -> 2K9)
+ */
+export function extractCohortFromStudentCode(code) {
+  if (!code) return '';
+  const trimmed = String(code).trim().toUpperCase();
+  const m = trimmed.match(/^(2?K\d+)/i);
+  if (m) {
+    return m[1].toUpperCase();
+  }
+  return '';
+}
+
+/**
+ * Hiển thị tên khối rõ nghĩa: K9 -> Khối 9 (K9), K10 -> Khối 10 (K10), 2K9 -> Khối 9 (2K9)
+ */
+export function formatCohortDisplayName(cohortPrefix) {
+  if (!cohortPrefix) return '';
+  const up = cohortPrefix.toUpperCase();
+  const numMatch = up.match(/\d+/);
+  if (numMatch) {
+    let num = Number(numMatch[0]);
+    if (num >= 2000) num = num - 2000;
+    return `Khối ${num} (${up})`;
+  }
+  return up;
+}
+
+/**
+ * Kiểm tra xem học sinh có thuộc khối / khóa đang lọc hay không
+ */
+export function isStudentInCohort(student, targetCohort) {
+  if (!targetCohort || targetCohort === 'all') return true;
+  const sCode = student?.studentCode || '';
+  const codeCohort = extractCohortFromStudentCode(sCode);
+  const targetUp = String(targetCohort).trim().toUpperCase();
+
+  // 1. So khớp trực tiếp tiền tố mã HS (K9 === K9, 2K9 === 2K9, v.v.)
+  if (codeCohort && (codeCohort === targetUp || targetUp.includes(codeCohort) || codeCohort.includes(targetUp))) {
+    return true;
+  }
+
+  // 2. So khớp theo số khối (VD: K9 và Khối 9 hoặc 2K9 và 2009)
+  const codeNum = codeCohort.match(/\d+/)?.[0];
+  const targetNum = targetUp.match(/\d+/)?.[0];
+  if (codeNum && targetNum) {
+    let cN = Number(codeNum);
+    let tN = Number(targetNum);
+    if (cN >= 2000) cN = cN - 2000;
+    if (tN >= 2000) tN = tN - 2000;
+    if (cN === tN) return true;
+  }
+
+  // 3. Fallback theo student.cohort hoặc student.grade
+  const sCohort = String(student?.cohort || student?.grade || '').trim().toUpperCase();
+  if (sCohort && (sCohort === targetUp || sCohort.includes(targetUp) || targetUp.includes(sCohort))) {
+    return true;
+  }
+
+  return false;
+}
 
 const startNotifications = [
   { id: 'prep-before-class', anchor: 'start', offsetMinutes: -15, title: 'Chuẩn bị trước giờ học', body: 'Kiểm tra phòng và chuẩn bị thu BTVN.' },
@@ -68,83 +142,7 @@ const startNotifications = [
   { id: 'end-test-collection', anchor: 'end', offsetMinutes: -15, title: 'Thu bài kiểm tra cuối giờ', body: 'Bắt đầu thu bài kiểm tra và chuẩn bị bàn giao.' }
 ];
 
-export const seedClasses = [
-  {
-    id: 'class-math-8a-algebra',
-    code: 'TOAN8A',
-    grade: '2013',
-    name: 'Toán 8A',
-    subjectId: 'subject-math',
-    subject: 'Toán',
-    teacherIds: ['employee-teacher-congnt', 'employee-teacher-001'],
-    teacherId: 'employee-teacher-congnt',
-    teacherName: 'Thầy Công, Cô Minh Anh',
-    assistantIds: ['employee-ta-001'],
-    assistantName: 'Anh Linh',
-    officeIds: ['employee-office-001'],
-    weekday: 1,
-    startTime: '15:30',
-    endTime: '17:00',
-    room: 'P1-T3-CS1',
-    roomTemplateId: 'room-p1-t3-cs1',
-    defaultLayout: makeDesks('class-math-8a-algebra', [3, 3, 2], [2]),
-    defaultChecklist: {
-      startItems: ['Lau bảng', 'Bật đèn và kiểm tra quạt/điều hòa', 'Chuẩn bị tài liệu và bài tập', 'Kiểm tra bàn ghế, cửa sổ và phòng học'],
-      endItems: ['Thu bài kiểm tra cuối giờ', 'Đếm và bàn giao bài kiểm tra', 'Tắt thiết bị và kiểm tra phòng học']
-    },
-    defaultNotifications: startNotifications
-  },
-  {
-    id: 'class-english-7b',
-    code: 'ANH7B',
-    grade: '2014',
-    name: 'Tiếng Anh 7B',
-    subjectId: 'subject-english',
-    subject: 'Tiếng Anh',
-    teacherIds: ['employee-teacher-002'],
-    teacherId: 'employee-teacher-002',
-    teacherName: 'Thầy Quang',
-    assistantIds: ['employee-ta-001', 'employee-ta-003'],
-    assistantName: 'Anh Linh, Minh Khoa',
-    officeIds: ['employee-office-001'],
-    weekday: 1,
-    startTime: '18:00',
-    endTime: '19:30',
-    room: 'P2-T2-CS1',
-    roomTemplateId: 'room-p2-t2-cs1',
-    defaultLayout: makeDesks('class-english-7b', [3, 3], [2]),
-    defaultChecklist: {
-      startItems: ['Bật máy chiếu', 'Phát phiếu bài tập', 'Kiểm tra loa và bảng'],
-      endItems: ['Thu bài kiểm tra cuối giờ', 'Thu lại tài liệu được phát']
-    },
-    defaultNotifications: startNotifications
-  },
-  {
-    id: 'class-math-9c',
-    code: 'TOAN9C',
-    grade: '2012',
-    name: 'Toán 9C',
-    subjectId: 'subject-math',
-    subject: 'Toán',
-    teacherIds: ['employee-teacher-congnt', 'employee-teacher-003'],
-    teacherId: 'employee-teacher-congnt',
-    teacherName: 'Thầy Công, Cô Hương',
-    assistantIds: ['employee-ta-002'],
-    assistantName: 'Mai Anh',
-    officeIds: ['employee-office-002'],
-    weekday: 2,
-    startTime: '18:00',
-    endTime: '19:30',
-    room: 'P3-T2-CS1',
-    roomTemplateId: 'room-p3-t2-cs1',
-    defaultLayout: makeDesks('class-math-9c', [3, 3, 3], [2]),
-    defaultChecklist: {
-      startItems: ['Lau bảng', 'Chuẩn bị đề kiểm tra', 'Kiểm tra điều hòa'],
-      endItems: ['Thu bài kiểm tra cuối giờ', 'Đếm bài kiểm tra', 'Khóa cửa phòng học']
-    },
-    defaultNotifications: startNotifications
-  }
-];
+export const seedClasses = [];
 
 function resolveClass(classInfo, masters, storage = localStorage) {
   const seed = seedClasses.find(item => item.id === classInfo.id);
@@ -465,9 +463,15 @@ export function loadMasterData(storage = localStorage) {
     const raw = storage.getItem(MASTER_KEY);
     const saved = JSON.parse(raw || 'null');
     if (saved && Array.isArray(saved.subjects) && Array.isArray(saved.employees) && saved.employees.length > 0) {
-      const employees = saved.employees.map(normalizeEmployeeAccount).filter(Boolean);
+      // 1. Purge all mock accounts completely (Anh Linh, Cô Minh Anh, Thầy Quang, etc.)
+      const employees = saved.employees
+        .map(normalizeEmployeeAccount)
+        .filter(Boolean)
+        .filter(e => !isMockEmployee(e));
+
+      // 2. Ensure active admin exists
       if (!employees.some(item => item.role === 'admin' && item.isActive !== false)) {
-        const defaultAdmin = normalizeEmployeeAccount(masterDefaults.employees.find(e => e.role === 'admin'));
+        const defaultAdmin = normalizeEmployeeAccount(masterDefaults.employees[0]);
         const existingAdminIdx = employees.findIndex(e => e.code === defaultAdmin.code || e.id === defaultAdmin.id);
         if (existingAdminIdx >= 0) {
           employees[existingAdminIdx].role = 'admin';
@@ -476,14 +480,12 @@ export function loadMasterData(storage = localStorage) {
           employees.unshift(defaultAdmin);
         }
       }
-      // Merge missing default employees (such as CONGNT, GV001, TA001, etc.)
-      for (const defEmp of masterDefaults.employees) {
-        const normDefCode = normalizeAccountCode(defEmp.code);
-        const exists = employees.some(e => e.id === defEmp.id || (normDefCode && normalizeAccountCode(e.code) === normDefCode));
-        if (!exists) {
-          employees.push(normalizeEmployeeAccount(defEmp));
-        }
+
+      // If any mock employees were purged, write clean data back to storage
+      if (employees.length !== saved.employees.length) {
+        saveMasterData({ ...saved, employees }, storage);
       }
+
       return { ...saved, employees };
     }
   } catch {}
@@ -510,6 +512,7 @@ export function saveMasterData(data, storage = localStorage) {
 export function loadClassCatalog(storage = localStorage, masters = loadMasterData(storage)) {
   let saved = null;
   let hasStoredKey = false;
+  const MOCK_SEED_CLASS_IDS = new Set(['class-math-8a-algebra', 'class-english-7b', 'class-math-9c']);
   try {
     const raw = storage.getItem(CATALOG_KEY);
     if (raw !== null) {
@@ -517,8 +520,15 @@ export function loadClassCatalog(storage = localStorage, masters = loadMasterDat
       saved = JSON.parse(raw);
     }
   } catch {}
-  if (!hasStoredKey || !Array.isArray(saved) || saved.length === 0) {
-    saved = structuredClone(seedClasses);
+  if (!hasStoredKey || !Array.isArray(saved)) {
+    saved = [];
+  } else {
+    // Purge mock seed classes completely
+    const filtered = saved.filter(c => !MOCK_SEED_CLASS_IDS.has(c.id));
+    if (filtered.length !== saved.length) {
+      saved = filtered;
+      saveClassCatalog(saved, storage);
+    }
   }
 
   return saved.map(item => resolveClass(item, masters, storage));

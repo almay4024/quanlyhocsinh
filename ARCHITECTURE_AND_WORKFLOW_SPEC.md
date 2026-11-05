@@ -1,4 +1,4 @@
-# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v6.3)
+# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v5.0)
 
 * **Mã dự án (Project Namespace):** `edu_center` / `class_mgr`
 * **Loại tài liệu:** Universal System Architecture & Product Specification (chuẩn GitHub Spec Kit dành cho mọi AI Coding Agent: Cursor, Claude Code, Windsurf, GitHub Copilot Workspace, Google Antigravity, Devin...)
@@ -1012,3 +1012,130 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
     * **CẤM TUYỆT ĐỐI VÀO MENU GOOGLE SHEETS:** Tab `#mgmt-tab-sheets` và toàn bộ panel `#mgmt-panel-sheets` bị ẩn hoàn toàn đối với vai trò Trợ giảng và Giáo viên.
     * Nút đồng bộ từ Báo cáo buổi học (`#inline-sync-sheets-btn`) bị ẩn khỏi thanh công cụ của Trợ giảng/Giáo viên.
     * Nếu tài khoản Trợ giảng/Giáo viên cố tình gọi hàm đồng bộ hoặc mở URL trực tiếp, hệ thống sẽ lập tức chặn lại bằng lớp kiểm tra phân quyền bảo mật tầng logic (`canAccessCrossClass()` / vai trò kiểm tra) và hiển thị thông báo lỗi từ chối truy cập.
+
+---
+
+## 16. ĐẶC TẢ CHI TIẾT NÂNG CẤP HỆ THỐNG PHIÊN BẢN 5.0 (v5.0 RELEASE SPECIFICATION)
+
+### 16.1. Xóa Bỏ Triệt Để Dữ Liệu Mẫu (Clean Slate & Mock Data Elimination)
+- **Mục tiêu:** Loại bỏ hoàn toàn các tài khoản nhân sự mẫu (mock employees) và lớp học mẫu (mock classes) khỏi toàn bộ hệ sinh thái ứng dụng (Local Storage, Firebase Realtime Database, Master Defaults, Fallbacks giao diện và Interceptor).
+- **Danh sách nhân sự mẫu bị thanh lọc hoàn toàn:**
+  - `TA001` (Anh Linh - Trợ giảng mẫu)
+  - `TA002` (Mai Anh - Trợ giảng mẫu)
+  - `TA003` (Minh Khoa - Trợ giảng mẫu)
+  - `GV001` (Cô Minh Anh - Giáo viên mẫu)
+  - `GV002` (Thầy Quang - Giáo viên mẫu)
+  - `GV003` (Cô Hương - Giáo viên mẫu)
+  - `VP001` (Lan Phương - Văn phòng mẫu)
+  - `VP002` (Hoàng Nam - Văn phòng mẫu)
+- **Tài khoản quản trị bảo toàn:**
+  - `AD001` (`ad001.tct@gmail.com` / `admin`) - Tài khoản quản trị cấp cao khởi tạo hệ thống được bảo toàn để luôn đảm bảo quyền đăng nhập và cấu hình ban đầu.
+  - Toàn bộ tài khoản người dùng thực tế tự tạo qua giao diện Quản lý tài khoản (ví dụ `congnt`,...) được giữ nguyên vẹn 100%.
+- **Cơ chế thanh lọc dữ liệu tự động (`isMockEmployee` & `loadMasterData` sanitize filter):**
+  - Tầng `class-catalog-repository.js`:
+    * Biến `seedClasses` được thiết lập rỗng (`[]`).
+    * Hàm `isMockEmployee(emp)` kiểm tra theo cả `code` chuẩn hóa và `name` không dấu.
+    * Khi `loadMasterData()` và `loadClassCatalog()` chạy, hệ thống tự động lọc sạch các mock record còn lưu trong cache/storage trước đây và ghi đè lại dữ liệu sạch.
+  - Tầng `app.js` (Vault Remote Sync Interceptor):
+    * Khi kéo dữ liệu từ Firebase về (`_installStorageVaultInterceptor`), bộ lọc `addOrMergeEmp` lập tức loại bỏ bất kỳ tài khoản mock nào còn sót lại trên Firebase Cloud, đảm bảo không bao giờ bị merge ngược lại vào danh sách người dùng hiển thị.
+  - Tầng giao diện `features.js`:
+    * Xóa bỏ các fallback cứng "Anh Linh" / "TA001" khi tài khoản đăng nhập chưa kịp tải tên; sử dụng fallback an toàn `account?.displayName || 'Nhân sự'`.
+
+---
+
+### 16.2. Phân Khối Học Sinh Động Dựa Trên Tiền Tố Trong Mã Học Sinh (Cohort Prefix Partitioning)
+- **Nguyên lý kiến trúc:**
+  - Mã học sinh tại trung tâm tuân theo quy chuẩn tiền tố khối: `K9.XXXX`, `K10.XXXX`, `K11.XXXX`, `K12.XXXX`, `K8.XXXX`, `K7.XXXX`, `K6.XXXX` (hoặc `2K9.XXXX`, `2K10.XXXX`...).
+  - Hệ thống bổ sung module trích xuất tiền tố khối chuẩn hóa:
+    * `extractCohortFromStudentCode(code)`: Sử dụng regex nhận diện tiền tố khối (`K6` đến `K12`, chuẩn hóa các định dạng `2K9 -> K9`, `2009 -> K9`).
+    * `formatCohortDisplayName(cohortPrefix)`: Trả về tên hiển thị đầy đủ, ví dụ `Khối K9 (Lớp 9)`, `Khối K10 (Lớp 10)`, `Khối K11 (Lớp 11)`, `Khối K12 (Lớp 12)`.
+    * `isStudentInCohort(student, targetCohort)`: Kiểm tra một hồ sơ học sinh có thuộc khối chỉ định hay không (dựa trên `studentCode` hoặc thông tin lớp học liên kết).
+- **Áp dụng trực tiếp trên Danh bạ Toàn trung tâm (`#mgmt-tab-students`):**
+  - Bộ lọc Khối `#master-grade-filter`: Thay thế danh sách năm sinh cố định bằng danh sách Khối động được trích xuất trực tiếp từ toàn bộ mã học sinh thực tế trong hệ thống (`K12`, `K11`, `K10`, `K9`,...). Khi chọn một khối, bảng chỉ hiển thị đúng các học sinh thuộc khối đó.
+  - Nhãn khối (Cohort Badge): Cạnh cột Mã HS trong bảng danh bạ tổng, mỗi học sinh có mã khối hợp lệ sẽ được gắn một badge nhận diện màu tím chàm tinh tế (`background: #e0e7ff; color: #3730a3; font-weight: 800; border-radius: 4px;`) ghi rõ tiền tố khối (ví dụ `K9`, `K10`, `K11`), kèm tooltip hiển thị tên khối chi tiết khi rê chuột.
+
+---
+
+### 16.3. Quy Trình Nhận Diện & Đánh Dấu Xử Lý Học Sinh Thiếu Mã HS Khi Đồng Bộ Google Sheets
+- **Nguyên nhân nghiệp vụ:**
+  - Trên các trang tính Google Sheet của lớp học, một số học sinh mới nhập học hoặc học sinh thử nghiệm chưa được văn phòng cấp mã học sinh chính thức (cột Mã HS bị trống), hoặc học sinh đã nghỉ học nhưng vẫn còn tên trên sheet.
+- **Cơ chế phát hiện và gắn cờ cảnh báo (`category = 'missing_code'`):**
+  - Khi quét dữ liệu từ Google Sheet (qua Apps Script hoặc File Excel/CSV): Nếu một dòng có tên học sinh nhưng không có mã học sinh (`!codeNorm`), hệ thống tự động phân loại vào nhóm `missing_code`.
+  - Mặc định trạng thái duyệt của dòng này được đặt là `approved = false` để buộc Văn phòng/Admin phải chủ động kiểm tra và đưa ra quyết định xử lý, tránh tự động thêm dữ liệu rác hoặc ghi đè sai lệch.
+- **Giao diện bảng duyệt phê duyệt đa năng:**
+  - Badge trạng thái nổi bật: Hiển thị nhãn hổ phách `⚠ Thiếu Mã HS`.
+  - Nút lọc nhanh riêng biệt: Thêm nút lọc `⚠ Thiếu Mã HS` (`data-sheets-approve-filter="missing_code"` và `data-panel-approve-filter="missing_code"`) trên thanh công cụ lọc của bảng duyệt (cả modal popup lẫn màn hình riêng `#mgmt-panel-sheets`) kèm bộ đếm số lượng trực quan.
+  - Ô nhập Mã HS trực tiếp: Cho phép Văn phòng gõ cấp ngay mã học sinh mới cho học sinh đó (ví dụ gõ `K9.8888`).
+  - Dropdown chọn Trạng thái học vụ: Cung cấp menu chọn nhanh trạng thái ngay trên dòng học sinh:
+    * `Học`: Xác nhận học sinh đang học bình thường, cấp mã và đưa vào danh sách lớp.
+    * `Nghỉ`: Đánh dấu học sinh đã nghỉ học; hệ thống lưu trữ với trạng thái Nghỉ để theo dõi lịch sử.
+    * `Tạm nghỉ`: Ghi nhận học sinh bảo lưu hoặc tạm nghỉ học.
+  - Phân bổ Lớp học: Cho phép chỉ định lớp mục tiêu từ sheet hoặc chuyển sang lớp khác trong hệ thống.
+- **Xử lý khi bấm nút "Áp dụng đồng bộ":**
+  - Nhánh xử lý `item.category === 'missing_code'` trong `applyApprovedSheetsSyncItems`:
+    * Nếu đối chiếu thấy đã có học sinh trên hệ thống (theo Tên + SĐT phụ huynh): Cập nhật mã mới (nếu được cấp), cập nhật trạng thái học vụ và phân lớp.
+    * Nếu là học sinh mới hoàn toàn: Tạo hồ sơ học sinh mới với mã được cấp (hoặc để trống nếu chưa cấp), gắn đúng trạng thái đã chọn (`Học` / `Nghỉ` / `Tạm nghỉ`), lưu vết thời gian và tăng `revision` chuẩn hóa.
+
+---
+
+### 16.4. Cơ Chế Đồng Bộ Chuẩn Real-Time Nút Bấm "Đồng Bộ Chuẩn Real-time" (Flush Outbound -> Pull Inbound -> Clean Reload)
+- **Vấn đề kỹ thuật:**
+  - Trong môi trường phân tán nhiều thiết bị (máy văn phòng, máy giáo viên, điện thoại trợ giảng), có những trường hợp dữ liệu ca trực mới mở, phân lớp mới hoặc học sinh mới chưa kịp tải về do cache trình duyệt hoặc delay kết nối WebSocket.
+- **Quy trình 3 bước đảm bảo dữ liệu chuẩn 100%:**
+  1. **Bước 1 - Phản hồi trực quan (Visual Feedback):**
+     * Khi người dùng bấm vào huy hiệu `#realtime-sync-badge` trên thanh tiêu đề, badge lập tức chuyển sang trạng thái chờ: `🔄 Đang đồng bộ chuẩn...`, vô hiệu hóa tạm thời để tránh bấm đúp liên tục.
+  2. **Bước 2 - Đồng bộ hai chiều (Upload Flush & Download Snapshot):**
+     * **Upload Flush (`_flushFirebaseCloudPush(false, true)`):** Đẩy ngay lập tức toàn bộ các thay đổi cục bộ còn nằm trong hàng đợi outbound queue lên Firebase Cloud Realtime Database, đảm bảo không bị thất thoát bất kỳ thao tác nào người dùng vừa thực hiện.
+     * **Download Snapshot (`pullFromFirebaseCloudNow('manual-reload')`):** Kéo toàn bộ bản chụp snapshot dữ liệu mới nhất từ Firebase Cloud về ghi đè vào hệ thống lưu trữ chuẩn của trình duyệt.
+     * Tự động re-hydrate lại toàn bộ các kho dữ liệu bộ nhớ (`loadMasterData()`, `loadClassCatalog()`, `loadSessionHistory()`,...).
+  3. **Bước 3 - Tải lại trang sạch (`window.location.reload()`):**
+     * Hiển thị thông báo Toast `✓ Đã cập nhật dữ liệu chuẩn! Đang làm mới trang...`.
+     * Sau 450ms, thực hiện `window.location.reload()` để khởi động lại toàn bộ UI component, bảng biểu, danh bạ, ca trực với dữ liệu chuẩn xác 100% từ đám mây.
+
+---
+
+### 16.5. Đánh Dấu Phiên Bản v5.0 Toàn Hệ Thống
+- Phiên bản ứng dụng chính thức được nâng lên `v5.0`.
+- Thẻ thương hiệu góc trái thanh điều hướng chính: `<span class="brand-version-badge" title="Phiên bản hệ thống">v5.0</span>`.
+- Màn hình đăng nhập hệ thống: `<span class="brand-version-badge" title="Phiên bản hệ thống">v5.0</span>`.
+- Tiêu đề trang (Page `<title>`): `Quản lý học sinh · Hệ thống quản lý lớp học trung tâm (v5.0)`.
+- Tài liệu kiến trúc và đặc tả GitHub Spec Kit: Cập nhật lên phiên bản chuẩn `v5.0`.
+
+---
+
+### 16.6. Tinh Chỉnh Giao Diện Khớp Dữ Liệu, Sửa Lỗi Bảng Duyệt Google Sheet, Nâng Cấp Tab Chấm Công & Bảo Toàn Bo Góc Dialog Popup
+
+#### 16.6.1. Sửa Lỗi Hiển Thị Bảng Duyệt Học Sinh Đồng Bộ Google Sheet
+- **Nguyên nhân kỹ thuật:** Khối mã lắng nghe sự kiện bảng duyệt (`renderSheetsApprovalTable`) tham chiếu biến cục bộ `tbody` chưa được định nghĩa thay vì danh sách `tbodies`, gây lỗi `ReferenceError` làm gián đoạn quá trình gán nội dung `innerHTML` vào bảng.
+- **Giải pháp:**
+  - Chuẩn hóa quy trình: gán nội dung HTML dòng duyệt đồng thời cho cả modal dialog (`#sheets-approval-tbody`) và trang phân hệ riêng (`#panel-sheets-approval-tbody`).
+  - Gắn sự kiện lắng nghe tương tác (`[data-approve-status-select]`, `[data-approve-item-cb]`, `[data-approve-code-input]`, `[data-approve-target-class]`, `[data-approve-class-action]`, `[data-approve-new-tag-cb]`) xuyên suốt toàn bộ DOM cây bảng duyệt.
+  - Bảng duyệt lập tức hiển thị đầy đủ, mượt mà danh sách học sinh mới, học sinh đổi lớp, cập nhật mã HS và cảnh báo `⚠ Thiếu Mã HS`.
+
+#### 16.6.2. Nâng Cấp Toàn Diện Tab Chấm Công TA & Lớp Bổ Trợ
+- **Tab Chấm công (`renderTAPortal`):**
+  - Bổ sung bộ chọn Nhân sự linh hoạt (`#portal-employee-select`) trên thanh công cụ: cho phép Quản trị viên (`admin`) và Văn phòng (`office`) tra cứu nhanh bảng chấm công của từng nhân sự hoặc xem "Tất cả nhân sự" toàn trung tâm.
+  - Quét dữ liệu ca trực thực tế trực tiếp từ kho lưu trữ lịch sử buổi học (`loadSessionHistory`): tổng hợp chính xác các ca đã kết thúc, ca đã điểm danh, đối chiếu giờ dạy thực tế, thời điểm chốt ca và tên người xác nhận thay vì chỉ tính toán trên lịch cố định trong tuần.
+  - Tính toán tự động tổng số ca, tổng số giờ làm việc thực tế và tỷ lệ tuân thủ quy trình đầu giờ.
+- **Tab Lớp Bổ trợ & Học bù (`renderTutoringModule`):**
+  - Tích hợp đa nguồn: kết hợp các ca bổ trợ / gia sư 1-kèm-1 trực tiếp (`loadTutoringSessions`) cùng danh sách học sinh đăng ký học bù (`getMakeupStudents`) và lịch sử học sinh học bù ghi nhận từ các buổi học đã diễn ra (`sess.makeupStudents`).
+  - Tự động hiển thị thẻ ca học bù / ca bổ trợ với đầy đủ thông tin: lớp học, trợ giảng phụ trách, nội dung bài giảng, trạng thái phiếu bài tập và đánh giá học tập.
+
+#### 16.6.3. Tối Ưu Nút Xác Nhận Chuyển Lớp Trong Menu Khớp Dữ Liệu
+- **Khắc phục lỗi hiển thị:** Thay thế bố cục nút dạng inline chật hẹp bằng dạng danh thiếp tương tác toàn chiều rộng (`display: flex; width: 100%`).
+- **Nội dung trực quan:**
+  - Nút 1: `⇄ Có, chuyển lớp sang [Mã lớp] (Khuyên dùng)` - Chuyển học sinh sang lớp mới và bảo lưu đầy đủ lịch sử lớp cũ.
+  - Nút 2: `+ Thêm học song song cả [Mã lớp]` - Giữ nguyên lớp cũ và bổ sung lớp mới vào hồ sơ.
+  - Nút 3: `Không chuyển lớp (Chỉ đính dữ liệu buổi học vào hồ sơ)` - Giữ nguyên lớp hiện tại trong danh sách tổng, chỉ lưu vết dữ liệu buổi học.
+- Đảm bảo độ tương phản cao, phông chữ to rõ, đường viền mềm mại và phản hồi rê chuột (hover) sắc nét.
+
+#### 16.6.4. Nâng Cấp Nút Đóng Menu Khớp Dữ Liệu
+- Thay thế hoàn toàn ký tự `×` đơn sơ bằng nút bấm tròn đóng chuẩn hệ thống (`class="close-button"`) với biểu tượng SVG nét thanh đơn sắc (`currentColor`, stroke 2.5px).
+- Bố trí góc trên bên phải tiêu đề đối thoại (`.dialog-header`), có khoảng đệm an toàn, viền tròn bo cong thanh thoát (`border-radius: 50%`) và hiệu ứng chuyển màu đỏ nhạt (`#fee2e2`) khi rê chuột.
+
+#### 16.6.5. Tinh Chỉnh Thanh Cuộn Popup Triệt Tiêu Lỗi Vuông 2 Góc Phải
+- **Nguyên nhân:** Thanh cuộn mặc định của trình duyệt Windows là khối chữ nhật góc vuông 90 độ, khi hiển thị trên các thẻ `<dialog>` có bo góc (`border-radius: 16px`) sẽ đè lên đường viền cong ở góc trên-phải và góc dưới-phải, làm méo mó thẩm mỹ giao diện.
+- **Giải pháp CSS chuyên sâu:**
+  - Áp dụng chuẩn `scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.45) transparent;` trên tất cả dialog popup.
+  - Thêm quy tắc `margin: 16px 0 !important;` trên `::-webkit-scrollbar-track` cho tất cả các phần tử dialog, modal, dialog-body và bảng biểu popup: giữ cho vệt cuộn và con trượt luôn cách mép trên và mép dưới tối thiểu 16px.
+  - Kết quả: Giữ trọn vẹn 100% đường cong bo tròn tinh tế của cả 4 góc popup, không bao giờ bị thanh cuộn cắt góc vuông.

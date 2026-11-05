@@ -1363,9 +1363,15 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       if (localObj && remoteObj && Array.isArray(localObj.employees) && Array.isArray(remoteObj.employees)) {
         const empMap = new Map();
         const codeToId = new Map();
+        const MOCK_CODES = new Set(['TA001', 'TA002', 'TA003', 'GV001', 'GV002', 'GV003', 'VP001', 'VP002']);
+        const MOCK_NAMES = new Set(['anh linh', 'cô minh anh', 'thầy quang', 'cô hương', 'mai anh', 'minh khoa', 'lan phương', 'hoàng nam']);
         const addOrMergeEmp = (emp, isRemote = false) => {
           if (!emp || !emp.id || deletedMap[emp.id]) return;
           const normCode = normalizeAccountCode(emp.code);
+          const nameNorm = (emp.name || '').trim().toLowerCase();
+          if ((normCode && MOCK_CODES.has(normCode)) || (nameNorm && MOCK_NAMES.has(nameNorm))) {
+            return;
+          }
           const existingIdByCode = normCode ? codeToId.get(normCode) : null;
           const targetId = existingIdByCode || emp.id;
           const prev = empMap.get(targetId);
@@ -1504,7 +1510,13 @@ let _rtHeavyCloudPushTimer = null;
 
 function _scheduleFirebaseCloudPush(key, plainOrEncVal, ts = Date.now()) {
   const dbUrl = getConfiguredFirebaseDbUrl();
-  if (!dbUrl || !_shouldSyncKey(key)) return;
+  if (!_shouldSyncKey(key)) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    _addToOfflineQueue(key, plainOrEncVal, ts);
+    _updateSyncStatusBadge('offline', ts);
+    return;
+  }
+  if (!dbUrl) return;
   const encVal = plainOrEncVal === null || plainOrEncVal === undefined
     ? null
     : encryptVaultPayload(decryptVaultPayload(String(plainOrEncVal), key), key);
@@ -1739,9 +1751,21 @@ async function _flushFirebaseCloudPush(isUnloading = false, includeHeavy = false
     _lastSeenCloudMetaTs = Math.max(_lastSeenCloudMetaTs, metaNow);
     _persistSeenCloudKeyTimestamps(isUnloading);
     if (pushSuccess) {
+      _clearOfflineQueue();
       _notifyRtStatus('realtime-cloud', metaNow, 'cloud-pushed');
+      _updateSyncStatusBadge('synced', metaNow);
+    } else {
+      batch.forEach(([k, item]) => {
+        _addToOfflineQueue(k, item.value, item.updatedAt);
+      });
+      _updateSyncStatusBadge('offline', Date.now());
     }
-  } catch {} finally {
+  } catch (pushErr) {
+    batch.forEach(([k, item]) => {
+      _addToOfflineQueue(k, item.value, item.updatedAt);
+    });
+    _updateSyncStatusBadge('offline', Date.now());
+  } finally {
     _rtIsPushingCloud = false;
     if (_rtPendingCloudEntries.size > 0 && !_rtCloudPushTimer) {
       _rtCloudPushTimer = setTimeout(() => _flushFirebaseCloudPush(false, false), 250);
@@ -2064,13 +2088,117 @@ const _CLASS_MGR_STORAGE_MAP = {
   'class_mgr.catalog.master.v1': 'lopvui.master-data.v1',
   'class_mgr.catalog.classes.v1': 'lopvui.class-catalog.v1',
   'class_mgr.catalog.rooms.v1': 'lopvui.room-templates.v1',
+  'class_mgr.catalog.session_changes.v1': 'lopvui.class-session-changes.v1',
   'class_mgr.students.master.v1': 'lopvui.students.v9',
   'class_mgr.students.makeup.v1': 'lopvui.makeup-students.v1',
   'class_mgr.sessions.history.v1': 'lopvui.session-history.v2',
-  'class_mgr.session.notes.{classId}.{date}': 'lopvui.attendance-notes.v1.{classId}.{date}',
+  'class_mgr.tutoring.sessions.v1': 'lopvui.tutoring-sessions.v1',
   'class_mgr.sheets.cohorts.v1': 'lopvui.google-sheets-config.v1',
-  'class_mgr.sync.offline_queue.v1': 'lopvui.sync-offline-queue.v1'
+  'class_mgr.sync.offline_queue.v1': 'lopvui.sync-offline-queue.v1',
+  'class_mgr.photos.v1': 'lopvui.student-photos.v1',
+  'class_mgr.photos.drive_config.v1': 'lopvui.google-drive-photo-config.v1',
+  'class_mgr.photos.drive_rename_queue.v1': 'lopvui.google-drive-rename-queue.v1',
+  'class_mgr.column_order.live.v1': 'lopvui.column-order.live.v1',
+  'class_mgr.column_hidden.live.v1': 'lopvui.column-hidden.live.v1',
+  'class_mgr.column_order.scores.v1': 'lopvui.column-order.scores.v1',
+  'class_mgr.column_hidden.scores.v1': 'lopvui.column-hidden.scores.v1',
+  'class_mgr.column_order.report.v1': 'lopvui.column-order.report.v1',
+  'class_mgr.column_hidden.report.v1': 'lopvui.column-hidden.report.v1',
+  'class_mgr.column_order.master.v1': 'lopvui.column-order.master.v1',
+  'class_mgr.column_hidden.master.v1': 'lopvui.column-hidden.master.v1',
+  'class_mgr.paper_roster_mode': 'lopvui.paper-roster-mode'
 };
+
+const OFFLINE_QUEUE_KEY = 'class_mgr.sync.offline_queue.v1';
+
+function _getOfflineQueue() {
+  try {
+    const raw = _nativeGetItem.call(window.localStorage, OFFLINE_QUEUE_KEY) || _nativeGetItem.call(window.localStorage, 'lopvui.sync-offline-queue.v1');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function _saveOfflineQueue(queueObj) {
+  try {
+    const serialized = JSON.stringify(queueObj);
+    _safeNativeSetLocalItem(window.localStorage, OFFLINE_QUEUE_KEY, serialized);
+    _safeNativeSetLocalItem(window.localStorage, 'lopvui.sync-offline-queue.v1', serialized);
+    _idbPutKey(OFFLINE_QUEUE_KEY, serialized, Date.now());
+  } catch {}
+}
+
+function _addToOfflineQueue(key, val, ts = Date.now()) {
+  const q = _getOfflineQueue();
+  q[key] = { value: val, timestamp: ts };
+  _saveOfflineQueue(q);
+  _updateSyncStatusBadge('offline', ts);
+}
+
+function _getOfflineQueueCount() {
+  return Object.keys(_getOfflineQueue()).length;
+}
+
+function _clearOfflineQueue() {
+  try {
+    _safeNativeSetLocalItem(window.localStorage, OFFLINE_QUEUE_KEY, '{}');
+    _safeNativeSetLocalItem(window.localStorage, 'lopvui.sync-offline-queue.v1', '{}');
+    _idbPutKey(OFFLINE_QUEUE_KEY, '{}', Date.now());
+  } catch {}
+}
+
+function _updateSyncStatusBadge(state = _rtState, ts = Date.now()) {
+  const badges = [document.getElementById('realtime-sync-badge'), document.getElementById('sync-status-badge')].filter(Boolean);
+  if (!badges.length) return;
+
+  const timeStr = new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const offlineCount = _getOfflineQueueCount();
+  const pendingCount = _rtPendingCloudEntries.size + _rtPendingHeavyCloudEntries.size + offlineCount;
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+  badges.forEach(badge => {
+    badge.classList.remove('state-synced', 'state-syncing', 'state-offline', 'rt-pulse');
+
+    if (!isOnline || state === 'offline') {
+      badge.classList.add('state-offline');
+      badge.innerHTML = `<span class="rt-dot"></span><span>• Ngoại tuyến · Lưu tạm ${offlineCount} thay đổi</span>`;
+      badge.style.border = '1px solid #f59e0b';
+      badge.style.background = '#fffbeb';
+      badge.style.color = '#92400e';
+    } else if (state === 'syncing' || (_rtIsPushingCloud && pendingCount > 0)) {
+      badge.classList.add('state-syncing', 'rt-pulse');
+      badge.innerHTML = `<span class="rt-dot"></span><span>• Đang đồng bộ (${Math.max(1, pendingCount)})...</span>`;
+      badge.style.border = '1px solid #93c5fd';
+      badge.style.background = '#eff6ff';
+      badge.style.color = '#1d4ed8';
+    } else {
+      badge.classList.add('state-synced');
+      badge.innerHTML = `<span class="rt-dot"></span><span>• Đã đồng bộ · ${timeStr}</span>`;
+      badge.style.border = '1px solid #bbe3c5';
+      badge.style.background = '#effaf2';
+      badge.style.color = '#1c6232';
+    }
+  });
+}
+
+function _migrateStorageKeysToClassMgr() {
+  try {
+    for (const [cmKey, lvKey] of Object.entries(_CLASS_MGR_STORAGE_MAP)) {
+      const lvVal = _nativeGetItem.call(window.localStorage, lvKey);
+      const cmVal = _nativeGetItem.call(window.localStorage, cmKey);
+      if (lvVal !== null && cmVal === null) {
+        _safeNativeSetLocalItem(window.localStorage, cmKey, lvVal);
+        _memStorageMap.set(cmKey, lvVal);
+      } else if (cmVal !== null && lvVal === null) {
+        _safeNativeSetLocalItem(window.localStorage, lvKey, cmVal);
+        _memStorageMap.set(lvKey, cmVal);
+      }
+    }
+  } catch {}
+}
 
 // Lazy read alias for modules using architecture-spec keys. Legacy keys remain
 // the sole persisted/synchronized source until a complete migration is available.
@@ -2095,6 +2223,8 @@ function _resolveDualStorageKey(key) {
   if (typeof key !== 'string') return null;
   if (key.startsWith('class_mgr.')) {
     if (_CLASS_MGR_STORAGE_MAP[key]) return _CLASS_MGR_STORAGE_MAP[key];
+    const mAudit = key.match(/^class_mgr\.audit_log\.([^.]+)\.(.+)$/);
+    if (mAudit) return `lopvui.admin-audit-log.v1.${mAudit[1]}.${mAudit[2]}`;
     const m = key.match(/^class_mgr\.session\.(layout|desks|late_queue|checklist|notes)\.([^.]+)\.(.+)$/);
     if (m) {
       const [, kind, classId, date] = m;
@@ -2110,6 +2240,8 @@ function _resolveDualStorageKey(key) {
     for (const [cmKey, lvKey] of Object.entries(_CLASS_MGR_STORAGE_MAP)) {
       if (key === lvKey) return cmKey;
     }
+    const mAudit = key.match(/^lopvui\.admin-audit-log\.v1\.([^.]+)\.(.+)$/);
+    if (mAudit) return `class_mgr.audit_log.${mAudit[1]}.${mAudit[2]}`;
     const m = key.match(/^lopvui\.(layout\.v5|desk-items\.v7|late-queue\.v6|checklist\.v1|attendance-notes\.v1)\.([^.]+)\.(.+)$/);
     if (m) {
       const [, kind, classId, date] = m;
@@ -2586,12 +2718,12 @@ function updateSeatingEditBtn() {
   const cw = document.querySelector('.classroom-wrap');
   if (cw) cw.classList.toggle('seating-edit-mode-on', isSeatingEditMode);
   if (isSeatingEditMode) {
-    btn.textContent = '✓ Xong sơ đồ';
+    btn.textContent = 'Sửa sơ đồ: BẬT';
     btn.style.background = '#eaf5ec';
     btn.style.color = '#1f5f33';
     btn.style.borderColor = '#86c292';
   } else {
-    btn.textContent = '✎ Sửa sơ đồ';
+    btn.textContent = 'Sửa sơ đồ: TẮT';
     btn.style.background = '#f9fafb';
     btn.style.color = '#374151';
     btn.style.borderColor = '#d1d5db';
@@ -4603,7 +4735,7 @@ function scheduleCard(classInfo, dateArg, changeArg) {
   const teacherNames = employeeNames(assignedIdsFor(classInfo, change, 'teacher'));
   const assistantNames = employeeNames(assignedIdsFor(classInfo, change, 'assistant'));
   const chip = isSessionActive
-    ? '<span class="shift-state live" style="background:#dcfce7; color:#15803d; font-weight:700;">● Đang mở ca</span>'
+    ? '<span class="shift-state live" style="background:#dcfce7; color:#15803d; font-weight:700;">• Đang mở ca</span>'
     : change?.status === 'makeup'
       ? '<span class="shift-state live">Học bù</span>'
       : change?.note
@@ -4615,7 +4747,7 @@ function scheduleCard(classInfo, dateArg, changeArg) {
   const btnStyle = '';
 
   return '<article class="shift-card ' + (ongoing ? 'ongoing' : '') + '" style="cursor:pointer;" ' + btnAction + '="' + escapeHtml(classInfo.id) + '" data-session-date="' + dateIso + '">'
-    + '<div class="shift-card-icon">' + (ongoing ? '◉' : '') + '</div>'
+    + '<div class="shift-card-icon"></div>'
     + '<div class="shift-card-main">'
     + '<div class="shift-card-title">'
     + '<strong style="font-size:16px; color:#214e2d;">' + escapeHtml(classInfo.code || classInfo.name) + '</strong>'
@@ -4675,7 +4807,7 @@ function renderMainMenu(){
       const isAct = activeClassIdSet.has(item.id);
       const actBtn = 'data-enter-class';
       const actLabel = 'Xem lớp';
-      const actChip = isAct ? '<span class="shift-state live" style="background:#dcfce7; color:#15803d; font-weight:700;">● Đang mở ca</span>' : '';
+      const actChip = isAct ? '<span class="shift-state live" style="background:#dcfce7; color:#15803d; font-weight:700;">• Đang mở ca</span>' : '';
       return `<article class="shift-card ${isAct ? 'ongoing' : ''}" style="cursor:pointer;" ${actBtn}="${escapeHtml(item.id)}" data-session-date="${date.toLocaleDateString('sv-SE')}">
         <div class="shift-card-icon"></div>
         <div class="shift-card-main">
@@ -5125,7 +5257,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
   const liveBtn = $('#general-enter-live-btn');
   if (liveBtn) {
     if (isTodayActive) {
-      liveBtn.innerHTML = '● Vào ca đang mở (Live)';
+      liveBtn.innerHTML = '• Vào ca đang mở (Live)';
       liveBtn.style.background = '#15803d';
     } else {
       liveBtn.innerHTML = 'Mở ca mới';
@@ -5143,7 +5275,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
   const listEl = $('#general-history-sessions-list');
   if (listEl) {
     if (!classSessions.length) {
-      listEl.innerHTML = '<div class="menu-empty" style="padding:20px; text-align:center;">Lớp chưa có buổi học nào được ghi nhận trong lịch sử. Bấm "▶ Vào lớp (Mở ca mới)" ở trên để bắt đầu.</div>';
+      listEl.innerHTML = '<div class="menu-empty" style="padding:20px; text-align:center;">Lớp chưa có buổi học nào được ghi nhận trong lịch sử. Bấm "Vào lớp (Mở ca mới)" ở trên để bắt đầu.</div>';
     } else {
       listEl.innerHTML = classSessions.map(s => {
         const isClosed = s.status === 'closed';
@@ -5162,7 +5294,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
               <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                 <strong style="color:#21442a; font-size:15.5px;">${escapeHtml(dFormatted)}</strong>
                 <span class="room-chip" style="font-size:15.5px; background:${isClosed ? '#eaf5ec' : '#fef3c7'}; color:${isClosed ? '#2e6d42' : '#92400e'}; font-weight:700;">
-                  ${isClosed ? '✓ Đã đóng ca' : '● Đang mở'}
+                  ${isClosed ? '✓ Đã đóng ca' : '• Đang mở'}
                 </span>
                 ${hasBtvnBadge}
                 ${hasTestBadge}
@@ -5176,7 +5308,7 @@ function renderClassGeneralView(classId, preferredTab = null) {
                 </button>
                 ${selectedRole() === 'admin' ? `<button type="button" class="outline-button btn-admin-log" data-admin-log-session-date="${escapeHtml(s.date)}" style="padding:7px 11px; font-size:13px;" title="Xem Nhật ký Admin Log của ca học ngày ${escapeHtml(dFormatted)} (Chỉ Admin thấy)">Admin Log</button>` : ''}
                 <button type="button" class="outline-button" data-edit-session-date="${escapeHtml(s.date)}" style="padding:7px 11px; font-size:13px; font-weight:700; color:#1e40af; border-color:#bfdbfe; background:#eff6ff;" title="Sửa thông tin ca học này">
-                  ✎ Sửa ca
+                  Sửa thông tin ca
                 </button>
                 <button type="button" class="outline-button text-danger" data-delete-session-date="${escapeHtml(s.date)}" style="padding:7px 11px; font-size:13px; font-weight:700; color:#b91c1c; border-color:#fca5a5; background:#fef2f2;" title="Xoá ca học này và xoá dữ liệu buổi học trong hồ sơ học sinh">
                   Xoá ca
@@ -7315,12 +7447,17 @@ function openConfirmNewStudentClassTransferDialog(tempStu, masterStu, targetClas
   const alreadyInTargetClass = (masterStu.classIds || []).includes(targetClassId);
 
   dlg.innerHTML = `
-    <div class="dialog-header">
+    <div class="dialog-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #e2e8f0;">
       <div>
-        <p class="eyebrow" style="color:#1d4ed8;">XÁC NHẬN CHUYỂN LỚP CHO HỌC SINH MỚI</p>
-        <h2 style="margin:2px 0;">Có chuyển lớp cho học sinh "${escapeHtml(masterStu.name)}" không?</h2>
+        <p class="eyebrow" style="color:#1d4ed8; margin:0 0 4px 0; font-size:11px; font-weight:800; letter-spacing:0.5px;">XÁC NHẬN CHUYỂN LỚP CHO HỌC SINH MỚI</p>
+        <h2 style="margin:0; font-size:17px; font-weight:700; color:#0f172a;">Có chuyển lớp cho học sinh "${escapeHtml(masterStu.name)}" không?</h2>
       </div>
-      <button type="button" class="icon-button" id="close-confirm-transfer-dlg" aria-label="Đóng">×</button>
+      <button type="button" class="close-button" id="close-confirm-transfer-dlg" aria-label="Đóng" style="position:static; flex:0 0 34px; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer; color:#64748b; transition:all 0.15s ease;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
     </div>
     <div class="dialog-body" style="display:flex; flex-direction:column; gap:12px;">
       <div style="padding:12px 14px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; font-size:13.5px; line-height:1.55;">
@@ -7336,33 +7473,36 @@ function openConfirmNewStudentClassTransferDialog(tempStu, masterStu, targetClas
           : `Học sinh này được trợ giảng nhập dưới dạng <strong>Học sinh mới</strong> tại lớp <strong>${escapeHtml(targetClsLabel)}</strong>. Bạn có muốn <strong>chuyển lớp</strong> cho học sinh sang lớp này không?`}
       </p>
 
-      <div style="display:flex; flex-direction:column; gap:8px; margin-top:2px;">
-        <button type="button" class="primary-button" id="confirm-transfer-choice-transfer" style="justify-content:flex-start; text-align:left; padding:10px 14px; line-height:1.4;">
-          <div>
-            <div style="font-weight:800; font-size:14px;">⇄ Có, chuyển lớp sang ${escapeHtml(targetCls?.code || targetCls?.name || targetClassId)} (Khuyên dùng)</div>
-            <div style="font-size:12px; opacity:0.92; font-weight:500;">Chuyển học sinh sang lớp này và vẫn bảo lưu đầy đủ dữ liệu lớp cũ trong hồ sơ học sinh</div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:4px;">
+        <button type="button" id="confirm-transfer-choice-transfer" style="display:flex; width:100%; box-sizing:border-box; text-align:left; padding:12px 16px; border-radius:10px; cursor:pointer; background:#16a34a; color:#ffffff; border:none; box-shadow:0 2px 6px rgba(22,163,74,0.25); transition:all 0.15s ease;">
+          <div style="width:100%;">
+            <div style="font-weight:800; font-size:14.5px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+              <span>⇄ Có, chuyển lớp sang ${escapeHtml(targetCls?.code || targetCls?.name || targetClassId)}</span>
+              <span style="font-size:11px; font-weight:700; background:rgba(255,255,255,0.25); padding:1px 6px; border-radius:4px;">Khuyên dùng</span>
+            </div>
+            <div style="font-size:12.5px; opacity:0.95; font-weight:500; line-height:1.4;">Chuyển học sinh sang lớp này và vẫn bảo lưu đầy đủ dữ liệu lớp cũ trong hồ sơ học sinh</div>
           </div>
         </button>
 
         ${!alreadyInTargetClass && masterClasses.length ? `
-        <button type="button" class="outline-button" id="confirm-transfer-choice-add" style="justify-content:flex-start; text-align:left; padding:10px 14px; line-height:1.4; border-color:#93c5fd; background:#eff6ff; color:#1e40af;">
-          <div>
-            <div style="font-weight:800; font-size:13.5px;">+ Thêm học song song cả lớp ${escapeHtml(targetCls?.code || targetCls?.name || targetClassId)}</div>
-            <div style="font-size:12px; color:#3b82f6; font-weight:500;">Giữ nguyên lớp cũ (${escapeHtml(currentClassesText)}) và thêm lớp này vào hồ sơ</div>
+        <button type="button" id="confirm-transfer-choice-add" style="display:flex; width:100%; box-sizing:border-box; text-align:left; padding:12px 16px; border-radius:10px; cursor:pointer; border:1.5px solid #93c5fd; background:#eff6ff; color:#1e40af; transition:all 0.15s ease;">
+          <div style="width:100%;">
+            <div style="font-weight:800; font-size:14px; margin-bottom:4px; color:#1e40af;">+ Thêm học song song cả lớp ${escapeHtml(targetCls?.code || targetCls?.name || targetClassId)}</div>
+            <div style="font-size:12.5px; color:#2563eb; font-weight:500; line-height:1.4;">Giữ nguyên lớp cũ (${escapeHtml(currentClassesText)}) và thêm lớp này vào hồ sơ</div>
           </div>
         </button>
         ` : ''}
 
-        <button type="button" class="outline-button" id="confirm-transfer-choice-keep" style="justify-content:flex-start; text-align:left; padding:10px 14px; line-height:1.4;">
-          <div>
-            <div style="font-weight:700; font-size:13.5px;">Không chuyển lớp (Chỉ đính dữ liệu buổi học vào hồ sơ)</div>
-            <div style="font-size:12px; color:#64748b; font-weight:500;">Giữ nguyên lớp trong danh sách tổng (${escapeHtml(currentClassesText)}), chỉ lưu đính dữ liệu buổi học hôm nay</div>
+        <button type="button" id="confirm-transfer-choice-keep" style="display:flex; width:100%; box-sizing:border-box; text-align:left; padding:12px 16px; border-radius:10px; cursor:pointer; border:1.5px solid #cbd5e1; background:#ffffff; color:#334155; transition:all 0.15s ease;">
+          <div style="width:100%;">
+            <div style="font-weight:700; font-size:14px; margin-bottom:4px; color:#1e293b;">Không chuyển lớp (Chỉ đính dữ liệu buổi học vào hồ sơ)</div>
+            <div style="font-size:12.5px; color:#64748b; font-weight:500; line-height:1.4;">Giữ nguyên lớp trong danh sách tổng (${escapeHtml(currentClassesText)}), chỉ lưu đính dữ liệu buổi học hôm nay</div>
           </div>
         </button>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; margin-top:4px;">
-        <button type="button" class="outline-button" id="cancel-confirm-transfer-dlg">Quay lại</button>
+      <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+        <button type="button" class="outline-button" id="cancel-confirm-transfer-dlg" style="padding:7px 16px; font-weight:600; font-size:13px; border-radius:8px;">Quay lại</button>
       </div>
     </div>
   `;
@@ -7494,12 +7634,17 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
     const noteText = sessionNoteFor(tempStu.id) || '—';
 
     dlg.innerHTML = `
-      <div class="dialog-header">
+      <div class="dialog-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #e2e8f0;">
         <div>
-          <p class="eyebrow" style="color:#1d4ed8;">VĂN PHÒNG · KHỚP DỮ LIỆU HỌC SINH VỚI DANH SÁCH TỔNG</p>
-          <h2 style="margin:2px 0;">Khớp học sinh mới / học bù với Danh sách tổng của Trung tâm</h2>
+          <p class="eyebrow" style="color:#1d4ed8; margin:0 0 4px 0; font-size:11px; font-weight:800; letter-spacing:0.5px;">VĂN PHÒNG · KHỚP DỮ LIỆU HỌC SINH VỚI DANH SÁCH TỔNG</p>
+          <h2 style="margin:0; font-size:17px; font-weight:700; color:#0f172a;">Khớp học sinh mới / học bù với Danh sách tổng của Trung tâm</h2>
         </div>
-        <button type="button" class="icon-button" id="close-match-master-dlg" aria-label="Đóng">×</button>
+        <button type="button" class="close-button" id="close-match-master-dlg" aria-label="Đóng" style="position:static; flex:0 0 34px; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer; color:#64748b; transition:all 0.15s ease;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
       <div class="dialog-body" style="display:flex; flex-direction:column; gap:14px;">
         <div>
@@ -7516,7 +7661,7 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
 
           <div style="margin-top:8px; padding:10px 14px; border-radius:10px; background:${isMakeup ? '#faf5ff' : '#f0fdf4'}; border:1px solid ${isMakeup ? '#d8b4fe' : '#bbf7d0'}; display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:6px 14px; font-size:13px;">
             <div style="grid-column: 1 / -1; padding:6px 10px; background:#ffffff; border-radius:6px; border:1px solid ${isMakeup ? '#c4b5fd' : '#86efac'}; font-size:13px; font-weight:800; color:${isMakeup ? '#6d28d9' : '#15803d'}; display:flex; align-items:center; gap:6px;">
-              <span>📌 Khớp từ:</span>
+              <span>Khớp từ:</span>
               <span style="background:${isMakeup ? '#ede9fe' : '#dcfce7'}; padding:2px 8px; border-radius:4px; border:1px solid ${isMakeup ? '#c4b5fd' : '#86efac'}; font-size:13.5px;">
                 ${escapeHtml(originClassBadge)}
               </span>
@@ -8034,7 +8179,7 @@ function openStudentProfile(id, origin = null){
             <strong class="student-hero-name">${escapeHtml(student.name)}</strong>
             ${renderInlineTags(student)}
           </div>
-          <span class="enrollment-status-pill status-text-hoc">● ${escapeHtml(stEnrollment)}</span>
+          <span class="enrollment-status-pill status-text-hoc">• ${escapeHtml(stEnrollment)}</span>
         </div>
         <div class="student-hero-meta-grid">
           <div class="hero-meta-item">
@@ -8549,7 +8694,7 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
             ${renderInlineTags(student)}
             ${renderStudentWarningTag(student, targetClassId, true)}
           </div>
-          <span class="enrollment-status-pill status-text-hoc">● ${escapeHtml(student.enrollmentStatus || 'Học')}</span>
+          <span class="enrollment-status-pill status-text-hoc">• ${escapeHtml(student.enrollmentStatus || 'Học')}</span>
         </div>
         <div class="student-hero-meta-grid">
           <div class="hero-meta-item">
@@ -8958,7 +9103,7 @@ function renderLateAreaOnly(isNoHwActive = Boolean(window.__featuresApp?.isNoHom
     const hwMiniHtml = (!isNoHwActive && hwSt !== 'uncollected')
       ? `<span class="late-hw-pill ${hwSt === 'not_submitted' ? 'hw-miss' : 'hw-done'}">${hasScore ? `${escapeHtml(formatScoreVN(hwObj.score))}đ` : (hwSt === 'not_submitted' ? '× K.Nộp' : '✓ BTVN')}</span>`
       : '';
-    return `<div role="button" tabindex="0" class="late-token ${isActuallyLate ? '' : 'late-token-ontime'} ${isMakeup ? 'late-makeup' : ''}" data-late-key="${escapeHtml(id)}" aria-label="${escapeHtml(s.name)}; chạm rồi bấm bàn hoặc kéo vào bàn"><div class="late-token-main"><span class="late-name">${isMakeup ? '<span class="makeup-seat-badge">BÙ</span>' : ''}${escapeHtml(s.name)}${renderInlineTags(s)}${hwMiniHtml}</span><small>${subText}</small></div><button type="button" class="late-edit-mini-btn" data-edit-late-student="${escapeHtml(id)}" title="Sửa số phút muộn & trạng thái BTVN của ${escapeHtml(s.name)}" aria-label="Sửa ${escapeHtml(s.name)}">✎</button></div>`;
+    return `<div role="button" tabindex="0" class="late-token ${isActuallyLate ? '' : 'late-token-ontime'} ${isMakeup ? 'late-makeup' : ''}" data-late-key="${escapeHtml(id)}" aria-label="${escapeHtml(s.name)}; chạm rồi bấm bàn hoặc kéo vào bàn"><div class="late-token-main"><span class="late-name">${isMakeup ? '<span class="makeup-seat-badge">BÙ</span>' : ''}${escapeHtml(s.name)}${renderInlineTags(s)}${hwMiniHtml}</span><small>${subText}</small></div><button type="button" class="late-edit-mini-btn" data-edit-late-student="${escapeHtml(id)}" title="Sửa số phút muộn & trạng thái BTVN của ${escapeHtml(s.name)}" aria-label="Sửa ${escapeHtml(s.name)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button></div>`;
   }).join('') || '<span class="late-empty">Học sinh mới đến (đúng giờ hoặc đi muộn) sẽ chờ tại đây. Chạm vào học sinh rồi bấm vào bàn bất kỳ (hoặc kéo thả vào bàn).</span>';
 }
 
@@ -9015,6 +9160,11 @@ function updateSeatingBannerCountersOnly(occupantsArg = null, isNoHwActive = Boo
     }
   }
 }
+
+function patchDeskDOMImmediate(deskId, alsoPatchLate = true) {
+  return patchSingleDeskDOM(deskId, alsoPatchLate);
+}
+window.patchDeskDOMImmediate = patchDeskDOMImmediate;
 
 function patchSingleDeskDOM(deskId, alsoPatchLate = true) {
   markInactiveClassViewsDirty('seating');
@@ -9185,7 +9335,7 @@ function renderSeatingViewOnly() {
     btn.onclick = (e) => {
       e.stopPropagation();
       if (!isSeatingEditMode) {
-        toast('Hãy bật "✎ Sửa sơ đồ" để thu BTVN theo dãy.');
+        toast('Hãy bật "Sửa sơ đồ: BẬT" để thu BTVN theo dãy.');
         return;
       }
       collectAisleHomework(Number(btn.dataset.collectAisle));
@@ -10453,7 +10603,7 @@ classroom.addEventListener('click',e=>{
   const add=e.target.closest('[data-add-to-desk]');
   if(add){
     if (!isSeatingEditMode) {
-      toast('Hãy bật "✎ Sửa sơ đồ" để thêm chỗ ngồi mới vào bàn.');
+      toast('Hãy bật "Sửa sơ đồ: BẬT" để thêm chỗ ngồi mới vào bàn.');
       return;
     }
     addAnonymousToDesk(add.dataset.addToDesk,(deskItems[add.dataset.addToDesk]||[]).length,false);
@@ -10958,9 +11108,9 @@ function drawLatePicker(query=''){
     const checkLabel = s.id === selectedLateId
       ? '✓ Đang chọn'
       : inQueue
-        ? '✎ Sửa (Cuối lớp)'
+        ? 'Sửa (Cuối lớp)'
         : inSeat
-          ? '✎ Sửa (Đã ngồi)'
+          ? 'Sửa (Đã ngồi)'
           : 'Chọn';
     return `<button type="button" class="student-option ${s.id === selectedLateId ? 'selected-option' : ''}" data-late-student="${escapeHtml(s.id)}"><span class="student-option-name">${escapeHtml(s.name)}${studentSearchMeta(s)}</span><span class="student-check">${checkLabel}</span></button>`;
   }).join('')||`<div class="empty-list">${effQuery?'Không tìm thấy hồ sơ.':'Nhập tên để tìm học sinh.'}</div>`;
@@ -11681,25 +11831,74 @@ const realtimeController = initRealtimeSync((changedKeys, source) => {
 });
 
 realtimeController.onStatusChange(({ state, lastSyncTime }) => {
-  const badge = $('#realtime-sync-badge');
-  if (!badge) return;
-  const timeStr = new Date(lastSyncTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const modeLabel = state === 'realtime-server'
-    ? '● Đồng bộ LAN Real-time'
-    : state === 'realtime-cloud'
-      ? '● Đồng bộ Cloud Real-time'
-      : '● Đồng bộ Real-time';
-  badge.innerHTML = `<span class="rt-dot"></span><span>${modeLabel} · ${timeStr}</span>`;
-  badge.classList.add('rt-pulse');
-  clearTimeout(badge._pulseTimer);
-  badge._pulseTimer = setTimeout(() => badge.classList.remove('rt-pulse'), 600);
+  _updateSyncStatusBadge(state, lastSyncTime);
 });
+
+window.addEventListener('online', async () => {
+  _updateSyncStatusBadge('syncing', Date.now());
+  const q = _getOfflineQueue();
+  const keys = Object.keys(q);
+  if (keys.length > 0) {
+    keys.forEach(k => {
+      _scheduleFirebaseCloudPush(k, q[k].value, q[k].timestamp);
+    });
+    _clearOfflineQueue();
+    await _flushFirebaseCloudPush(false, true);
+  }
+  _updateSyncStatusBadge('synced', Date.now());
+});
+
+window.addEventListener('offline', () => {
+  _updateSyncStatusBadge('offline', Date.now());
+});
+
+_migrateStorageKeysToClassMgr();
+_updateSyncStatusBadge(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'synced', Date.now());
+
+async function handleRealtimeSyncButtonClick() {
+  const badge = $('#realtime-sync-badge');
+  const oldHtml = badge ? badge.innerHTML : '';
+  if (badge) {
+    badge.disabled = true;
+    badge.innerHTML = `<span class="rt-dot" style="background:#eab308; animation:pulse 0.8s infinite;"></span><span>• Đang đồng bộ chuẩn...</span>`;
+  }
+  toast('Đang đồng bộ dữ liệu 2 chiều: Tải lên thay đổi cục bộ & tải về dữ liệu chuẩn từ Cloud...');
+
+  try {
+    // 1. Tải lên (upload) tất cả thay đổi cục bộ nếu có
+    if (typeof _flushFirebaseCloudPush === 'function') {
+      await _flushFirebaseCloudPush(false, true);
+    }
+    // 2. Tải về (download) snapshot dữ liệu chuẩn mới nhất từ Firebase Realtime Database
+    if (typeof pullFromFirebaseCloudNow === 'function' && getConfiguredFirebaseDbUrl()) {
+      await pullFromFirebaseCloudNow('manual-reload');
+    }
+    // 3. Nạp lại kho dữ liệu
+    try {
+      window.__featuresApp?.loadMasterData?.();
+      window.__featuresApp?.loadClassCatalog?.();
+      window.__featuresApp?.loadStudentRecords?.();
+      window.__featuresApp?.loadSessionHistory?.();
+    } catch {}
+
+    toast('✓ Đã cập nhật dữ liệu chuẩn thành công! Đang tải lại trang...');
+    // 4. Tải lại trang để làm mới toàn diện dữ liệu và giao diện
+    setTimeout(() => {
+      window.location.reload();
+    }, 350);
+  } catch (err) {
+    toast(`✕ Lỗi đồng bộ: ${err.message || err}`);
+    if (badge) {
+      badge.disabled = false;
+      badge.innerHTML = oldHtml;
+    }
+  }
+}
 
 document.addEventListener('click', (e) => {
   const rtBadge = e.target.closest('#realtime-sync-badge');
   if (rtBadge) {
-    forceSyncNow('manual-click');
-    toast('✓ Đã đồng bộ dữ liệu thời gian thực.');
+    handleRealtimeSyncButtonClick();
     return;
   }
 
@@ -12410,7 +12609,7 @@ function renderScoresView() {
   const groupLabels = {
     1: '✓ Nhóm 1: Đã điểm danh & Đã thu BTVN',
     2: '! Nhóm 2: Đã điểm danh · Chưa thu / Không nộp BTVN',
-    3: '○ Nhóm 3: Chưa điểm danh / Vắng mặt'
+    3: 'Nhóm 3: Chưa điểm danh / Vắng mặt'
   };
 
   let lastGroup = null;
@@ -12747,7 +12946,7 @@ document.addEventListener('click', (e) => {
     document.querySelectorAll('.card-more-dropdown').forEach(m => { m.hidden = true; });
   }
 
-  // 1b. Quick edit button (✎) on late student token in Cuối lớp
+  // 1b. Quick edit button on late student token in Cuối lớp
   const editLateBtn = e.target.closest('[data-edit-late-student]');
   if (editLateBtn) {
     e.preventDefault();
