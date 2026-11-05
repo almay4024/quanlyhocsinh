@@ -16,7 +16,6 @@ export const GRID_COLUMN_ROLE_OPTIONS = [
   { value: 'fullName', label: 'Họ và tên đầy đủ' },
   { value: 'school', label: 'Trường học' },
   { value: 'classCode', label: 'Mã lớp' },
-  { value: 'phone', label: 'SĐT Phụ huynh' },
   { value: 'parentName', label: 'Tên Phụ huynh' },
   { value: 'status', label: 'Trạng thái' },
   { value: 'tag', label: 'Tag phân loại' }
@@ -488,7 +487,6 @@ export function extractStudentsFromGrid(rows = [], roles = [], options = {}, cla
       rawSchool = '';
     }
 
-    const parentPhone = firstNonEmpty(phoneCols);
     const parentName = firstNonEmpty(parentCols);
     const rawStatus = firstNonEmpty(statusCols);
     const enrollmentStatus = normalizeEnrollmentStatus(rawStatus);
@@ -526,8 +524,7 @@ export function extractStudentsFromGrid(rows = [], roles = [], options = {}, cla
       school: rawSchool,
       classIds,
       parentContact: {
-        name: parentName,
-        phone: parentPhone
+        name: parentName
       },
       enrollmentStatus,
       tag: rawTag,
@@ -1320,11 +1317,17 @@ function handleRequest(e) {
 
           var codeCol = findColIdx(['mã hs', 'mã học sinh', 'ma hs', 'student code', 'code', 'id']);
           var nameCol = findColIdx(['họ và tên', 'họ tên', 'tên học sinh', 'tên', 'name', 'full name']);
-          var statusCol = findColIdx(['trạng thái', 'tình trạng', 'status', 'enrollment status']);
+          var statusCol = findColIdx(['trạng thái', 'tình trạng', 'status']);
+          var classCol = findColIdx(['lớp', 'mã lớp', 'lop', 'class', 'class code']);
+          var schoolCol = findColIdx(['trường', 'truong', 'school']);
+          var parentCol = findColIdx(['phụ huynh', 'tên phụ huynh', 'ph', 'parent', 'parent name']);
           var tagCol = findColIdx(['tag', 'tags', 'thẻ', 'phân loại', 'nhãn']);
-          var classCol = findColIdx(['lớp', 'mã lớp', 'lớp học', 'class', 'class code']);
-          var schoolCol = findColIdx(['trường', 'trường học', 'school']);
-          var phoneCol = findColIdx(['sđt', 'số điện thoại', 'sđt phụ huynh', 'phụ huynh', 'phone']);
+          var attCol = findColIdx(['điểm danh', 'diem danh', 'attendance', 'chuyên cần']);
+          var hwCol = findColIdx(['btvn', 'bài tập về nhà', 'bai tap ve nha', 'homework', 'tình trạng btvn']);
+          var btvnScoreCol = findColIdx(['điểm btvn', 'diem btvn', 'btvn score', 'điểm bài tập']);
+          var testScoreCol = findColIdx(['điểm test', 'diem test', 'test score', 'điểm kiểm tra']);
+          var noteCol = findColIdx(['ghi chú buổi học', 'ghi chú', 'ghi chu', 'nhận xét buổi học', 'session note', 'note']);
+          var learningNotesCol = findColIdx(['ghi chú học lực', 'học lực', 'learning note', 'learning notes']);
 
           var codeRowMap = {};
           var nameRowMap = {};
@@ -1356,25 +1359,30 @@ function handleRequest(e) {
             }
 
             if (targetRow) {
-              // Cập nhật ngược lại các ô tương ứng trên Google Sheet (In-place cell update)
-              if (statusCol >= 0 && st.enrollmentStatus) {
-                syncSheet.getRange(targetRow, statusCol + 1).setValue(st.enrollmentStatus);
-              }
-              if (tagCol >= 0 && st.tags !== undefined) {
-                var tagStr = Array.isArray(st.tags) ? st.tags.join(', ') : String(st.tags || '');
+              // QUY TẮC BẤT BIẾN: Đồng bộ 2 chiều CHỈ diễn ra ở cột Tag và các cột thông tin buổi học
+              // (Tuyệt đối không đồng bộ / không ghi đè các cột thông tin chung học sinh: Tên, Mã HS, Trường, Lớp, Phụ huynh, Trạng thái)
+              if (tagCol >= 0 && (st.tags !== undefined || st.tag !== undefined)) {
+                var tagStr = Array.isArray(st.tags) ? st.tags.join(', ') : String(st.tags || st.tag || '');
                 syncSheet.getRange(targetRow, tagCol + 1).setValue(tagStr);
               }
-              if (codeCol >= 0 && st.studentCode && !sheetValues[targetRow - 1][codeCol]) {
-                syncSheet.getRange(targetRow, codeCol + 1).setValue(st.studentCode);
+              if (attCol >= 0 && st.attendance !== undefined && st.attendance !== '') {
+                syncSheet.getRange(targetRow, attCol + 1).setValue(st.attendance);
               }
-              if (classCol >= 0 && st.classCodes) {
-                syncSheet.getRange(targetRow, classCol + 1).setValue(st.classCodes);
+              if (hwCol >= 0 && (st.homeworkStatus !== undefined || st.homework !== undefined)) {
+                var hwVal = st.homeworkStatus !== undefined ? st.homeworkStatus : st.homework;
+                if (hwVal !== '') syncSheet.getRange(targetRow, hwCol + 1).setValue(hwVal);
               }
-              if (phoneCol >= 0 && st.parentPhone) {
-                syncSheet.getRange(targetRow, phoneCol + 1).setValue(st.parentPhone);
+              if (btvnScoreCol >= 0 && st.btvnScore !== undefined && st.btvnScore !== '') {
+                syncSheet.getRange(targetRow, btvnScoreCol + 1).setValue(st.btvnScore);
               }
-              if (schoolCol >= 0 && st.school) {
-                syncSheet.getRange(targetRow, schoolCol + 1).setValue(st.school);
+              if (testScoreCol >= 0 && st.testScore !== undefined && st.testScore !== '') {
+                syncSheet.getRange(targetRow, testScoreCol + 1).setValue(st.testScore);
+              }
+              if (noteCol >= 0 && st.sessionNote !== undefined && st.sessionNote !== '') {
+                syncSheet.getRange(targetRow, noteCol + 1).setValue(st.sessionNote);
+              }
+              if (learningNotesCol >= 0 && st.learningNotes !== undefined && st.learningNotes !== '') {
+                syncSheet.getRange(targetRow, learningNotesCol + 1).setValue(st.learningNotes);
               }
               updatedCount++;
             } else {
@@ -1394,7 +1402,7 @@ function handleRequest(e) {
               if (tagCol >= 0) rowData[tagCol] = Array.isArray(ust.tags) ? ust.tags.join(', ') : (ust.tags || '');
               if (classCol >= 0) rowData[classCol] = ust.classCodes || '';
               if (schoolCol >= 0) rowData[schoolCol] = ust.school || '';
-              if (phoneCol >= 0) rowData[phoneCol] = ust.parentPhone || '';
+              if (parentCol >= 0) rowData[parentCol] = ust.parentName || (ust.parentContact && ust.parentContact.name) || '';
               syncSheet.appendRow(rowData);
               insertedCount++;
             }
@@ -1624,11 +1632,11 @@ export function loadGoogleSheetsConfig(storage = localStorage) {
     colName: '',
     colClass: '',
     colSchool: '',
-    colPhone: '',
+    colParent: '',
     colStatus: '',
     colTag: '',
     twoWayMode: true,
-    appendNew: true,
+    appendNew: false,
     lastSyncedAt: null,
     syncStatus: 'idle',
     cohortSheets: DEFAULT_COHORTS
@@ -1682,7 +1690,7 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
     const timestamp = Date.now();
     const sheetName = String(config?.sheetName || '').trim() || 'DiemDanh';
     const headers = sessionData.headers || [
-      'Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh',
+      'Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh',
       'Trạng thái', 'Tag', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test',
       'Ghi chú buổi học', 'Ghi chú học lực'
     ];
@@ -1690,7 +1698,7 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
       ? sessionData.rows
       : (sessionData.students || []).map(r => [
           r.studentCode || '', r.familyName || '', r.givenName || '', r.fullName || '',
-          r.school || '', r.parentName || '', r.parentPhone || '', r.enrollmentStatus || 'Học',
+          r.school || '', r.parentName || '', r.enrollmentStatus || 'Học',
           r.tags || (Array.isArray(r.tag) ? r.tag.join(', ') : (r.tag || '')),
           r.classCodes || '', r.oldClassCodes || '', r.attendance || '', r.homeworkStatus || '',
           r.btvnScore ?? '', r.testScore ?? '', r.sessionNote || '', r.learningNotes || ''
@@ -1700,7 +1708,7 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
     const payload = {
       action: isTwoWay ? 'updateStudentsTwoWay' : 'syncStudentsByCode',
       mode: isTwoWay ? 'inplace' : 'overwrite',
-      appendNew: Boolean(config?.appendNew !== false),
+      appendNew: false,
       spreadsheetId,
       sheetName,
       gid: config?.gid || '',
@@ -1710,7 +1718,19 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
       className: sessionData.className || '',
       headers,
       rows,
-      students: sessionData.students || []
+      // Quy tắc: 2 chiều chỉ gửi Tag và thông tin buổi học (không gửi thông tin chung học sinh)
+      students: (sessionData.students || []).map(s => ({
+        studentCode: s.studentCode || '',
+        fullName: s.fullName || s.name || '',
+        tags: s.tags || s.tag || '',
+        tag: s.tag || (Array.isArray(s.tags) ? s.tags.join(', ') : ''),
+        attendance: s.attendance || '',
+        homeworkStatus: s.homeworkStatus || '',
+        btvnScore: s.btvnScore ?? '',
+        testScore: s.testScore ?? '',
+        sessionNote: s.sessionNote || '',
+        learningNotes: s.learningNotes || ''
+      }))
     };
 
     const resp = await fetch(scriptUrl, {
@@ -1849,6 +1869,7 @@ export async function syncSingleStudentToGoogleSheets(student) {
   }
 
   const spreadsheetId = extractSpreadsheetId(cfg.spreadsheetId || cfg.rawSheetUrl);
+  // Quy tắc bất biến: Đồng bộ 2 chiều chỉ gửi Tag (không ghi đè thông tin chung học sinh lên Sheet)
   const payload = {
     action: 'updateStudentsTwoWay',
     mode: 'inplace',
@@ -1859,11 +1880,8 @@ export async function syncSingleStudentToGoogleSheets(student) {
     students: [{
       studentCode: student.studentCode || '',
       fullName: student.name || '',
-      enrollmentStatus: student.enrollmentStatus || 'Học',
       tags: Array.isArray(student.tags) ? student.tags : (student.tags ? [student.tags] : []),
-      classCodes: (student.classIds || []).join(', '),
-      school: student.school || '',
-      parentPhone: student.parentContact?.phone || ''
+      tag: Array.isArray(student.tags) ? student.tags.join(', ') : (student.tags || '')
     }]
   };
 

@@ -1679,7 +1679,7 @@ export function setupFeatures(ctx) {
           <td><strong>${escapeHtml(giv || s.name)}</strong> ${renderStudentTagsBadges(s)}</td>
           <td>${escapeHtml(s.studentCode || '—')}</td>
           <td>${escapeHtml(s.school || '—')}</td>
-          <td>${escapeHtml([s.parentContact?.name, s.parentContact?.phone].filter(Boolean).join(' · ') || '—')}</td>
+          <td>${escapeHtml(s.parentContact?.name || '—')}</td>
           <td>
             <button type="button" class="text-danger" data-remove-from-roster="${escapeHtml(s.id)}" style="font-size:13.5px; padding:7px 12px;">Bỏ khỏi lớp</button>
           </td>
@@ -2157,10 +2157,10 @@ export function setupFeatures(ctx) {
     if (!student) return;
     const msg = buildParentZaloMessageForStudent(student, classId, dateStr);
     if (!msg) return;
-    const phoneHint = student.parentContact?.phone ? ` · SĐT PH: ${student.parentContact.phone}` : '';
+    const parentHint = student.parentContact?.name ? ` · PH: ${student.parentContact.name}` : '';
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(msg).then(() => {
-        toast(`✓ Đã copy tin nhắn Zalo báo phụ huynh em ${student.name}${phoneHint}`);
+        toast(`✓ Đã copy tin nhắn Zalo báo phụ huynh em ${student.name}${parentHint}`);
       }).catch(() => {
         toast(`Đã tạo tin nhắn báo phụ huynh em ${student.name}.`);
       });
@@ -2669,7 +2669,7 @@ export function setupFeatures(ctx) {
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school || '—'))}</td>
                     <td><strong class="text-danger">${escapeHtml(reason)}</strong></td>
                     <td>${escapeHtml(noteText || '—')}</td>
-                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">Báo PH</button></td>` : ''}
+                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.name ? ' (' + escapeHtml(s.parentContact.name) + ')' : ''}">Báo PH</button></td>` : ''}
                   </tr>
                 `;
               }).join('') : `<tr><td colspan="${colSpanMissing}" style="text-align:center; padding:18px; color:#497955;">Tuyệt vời! Tất cả học sinh có mặt đều đã nộp BTVN.</td></tr>`}
@@ -2704,7 +2704,7 @@ export function setupFeatures(ctx) {
                     <td>${escapeHtml(isMakeup ? `Bù từ: ${getMakeupSourceLabel(s)}` : (s.school || '—'))}</td>
                     <td><strong style="color:#ab5d18;">${escapeHtml(lateLabel)}</strong></td>
                     <td>${escapeHtml(noteText || '—')}</td>
-                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">Báo PH</button></td>` : ''}
+                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.name ? ' (' + escapeHtml(s.parentContact.name) + ')' : ''}">Báo PH</button></td>` : ''}
                   </tr>
                 `;
               }).join('') : `<tr><td colspan="${colSpanLate}" style="text-align:center; padding:18px; color:#497955;">Không có học sinh nào đi muộn trong ca học này.</td></tr>`}
@@ -2740,7 +2740,7 @@ export function setupFeatures(ctx) {
                     <td><span class="student-state ${isExcused ? 'state-late' : 'state-missing'}">${isExcused ? 'Có phép' : 'Không phép'}</span></td>
                     <td>${escapeHtml(s.attendance?.reason || 'Chưa ghi nhận')}</td>
                     <td>${escapeHtml(noteText || '—')}</td>
-                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.phone ? ' (' + escapeHtml(s.parentContact.phone) + ')' : ''}">Báo PH</button></td>` : ''}
+                    ${showParentZaloCol ? `<td style="text-align:center;"><button type="button" class="btn-copy-parent-zalo" data-copy-parent-zalo="${escapeHtml(s.id)}" title="Copy tin nhắn Zalo báo Phụ huynh${s.parentContact?.name ? ' (' + escapeHtml(s.parentContact.name) + ')' : ''}">Báo PH</button></td>` : ''}
                   </tr>
                 `;
               }).join('') : `<tr><td colspan="${colSpanAbsent}" style="text-align:center; padding:18px; color:#497955;">100% học sinh đã có mặt tại lớp!</td></tr>`}
@@ -3532,7 +3532,7 @@ export function setupFeatures(ctx) {
     confirmAddRosterBtn.onclick = () => {
       const name = $('#new-roster-student-name').value.trim();
       const school = $('#new-roster-student-school').value.trim();
-      const phone = $('#new-roster-parent-phone').value.trim();
+      const parentName = ($('#new-roster-parent-name')?.value || '').trim();
       const code = $('#new-roster-student-code').value.trim();
       const targetClassId = activeRosterClassId || getCurrentClassId();
       if (!name) {
@@ -3543,7 +3543,7 @@ export function setupFeatures(ctx) {
         name,
         school,
         studentCode: code || null,
-        parentContact: { name: '', phone },
+        parentContact: { name: parentName },
         classIds: [targetClassId],
         enrollmentStatus: 'Học',
         tags: ['Mới'],
@@ -3557,11 +3557,11 @@ export function setupFeatures(ctx) {
       getStudents().push(newStudent);
       saveStudentRecords(getStudents(), ctx.getMakeupStudents ? ctx.getMakeupStudents() : []);
       ctx.notifyUnmatchedStudentCreated?.(newStudent);
-      window.__logAdminSessionAction?.(`Thêm học sinh ${name} vào danh sách lớp gốc`, `Trường: ${school || '—'} · SĐT PH: ${phone || '—'}`, 'class', '', targetClassId, '_class_');
+      window.__logAdminSessionAction?.(`Thêm học sinh ${name} vào danh sách lớp gốc`, `Trường: ${school || '—'} · Phụ huynh: ${parentName || '—'}`, 'class', '', targetClassId, '_class_');
 
       $('#new-roster-student-name').value = '';
       $('#new-roster-student-school').value = '';
-      $('#new-roster-parent-phone').value = '';
+      if ($('#new-roster-parent-name')) $('#new-roster-parent-name').value = '';
       $('#new-roster-student-code').value = '';
       $('#roster-add-form').hidden = true;
 
@@ -3733,9 +3733,9 @@ export function setupFeatures(ctx) {
           sel.onchange = () => {
             const cIdx = Number(sel.dataset.gridColIdx);
             const newRole = sel.value;
-            // For single-instance roles (code, familyName, givenName, fullName, school, phone, parentName, status),
+            // For single-instance roles (code, familyName, givenName, fullName, school, parentName, status),
             // if user picks a role that was already on another column, keep it clean so user doesn't have to manually unset the old column
-            const singleRoles = new Set(['code', 'familyName', 'givenName', 'fullName', 'school', 'phone', 'parentName', 'status']);
+            const singleRoles = new Set(['code', 'familyName', 'givenName', 'fullName', 'school', 'parentName', 'status']);
             if (singleRoles.has(newRole)) {
               gridColumnRoles = gridColumnRoles.map((r, idx) => (idx !== cIdx && r === newRole) ? 'ignore' : r);
             }
@@ -3902,10 +3902,9 @@ export function setupFeatures(ctx) {
           existing.name = item.name || existing.name;
           if (item.school) existing.school = item.school;
           if (validCode) existing.studentCode = validCode;
-          if (item.parentContact?.phone || item.parentContact?.name) {
+          if (item.parentContact?.name) {
             existing.parentContact = {
-              name: item.parentContact?.name || existing.parentContact?.name || '',
-              phone: item.parentContact?.phone || existing.parentContact?.phone || ''
+              name: item.parentContact?.name || existing.parentContact?.name || ''
             };
           }
           if (finalClassIds.length) {
@@ -4296,7 +4295,7 @@ export function setupFeatures(ctx) {
       if (colFilters.given && !matchesAcronymOrText(s.givenName || s.name || '', colFilters.given)) return false;
       if (colFilters.school && !matchesAcronymOrText(s.school || '', colFilters.school)) return false;
       if (colFilters.parent) {
-        const pStr = `${s.parentContact?.name || ''} ${s.parentContact?.phone || ''}`;
+        const pStr = s.parentContact?.name || '';
         if (!matchesAcronymOrText(pStr, colFilters.parent)) return false;
       }
       if (colFilters.status && colFilters.status !== 'all') {
@@ -4357,7 +4356,7 @@ export function setupFeatures(ctx) {
         family: `<th><input type="text" class="master-inline-filter ${colFilters.family ? 'is-filtered' : ''}" data-col-filter="family" placeholder="Lọc họ..." value="${escapeHtml(colFilters.family || '')}" /></th>`,
         given: `<th><input type="text" class="master-inline-filter ${colFilters.given ? 'is-filtered' : ''}" data-col-filter="given" placeholder="Lọc tên..." value="${escapeHtml(colFilters.given || '')}" /></th>`,
         school: `<th><input type="text" class="master-inline-filter ${colFilters.school ? 'is-filtered' : ''}" data-col-filter="school" placeholder="Lọc trường..." value="${escapeHtml(colFilters.school || '')}" /></th>`,
-        parent: `<th><input type="text" class="master-inline-filter ${colFilters.parent ? 'is-filtered' : ''}" data-col-filter="parent" placeholder="Lọc PH/SĐT..." value="${escapeHtml(colFilters.parent || '')}" /></th>`,
+        parent: `<th><input type="text" class="master-inline-filter ${colFilters.parent ? 'is-filtered' : ''}" data-col-filter="parent" placeholder="Lọc Phụ huynh..." value="${escapeHtml(colFilters.parent || '')}" /></th>`,
         status: `<th>
           <select class="master-inline-filter ${colFilters.status !== 'Học' ? 'is-filtered' : ''}" data-col-filter="status">
             <option value="Học" ${colFilters.status === 'Học' ? 'selected' : ''}>Học (Mặc định)</option>
@@ -4511,7 +4510,7 @@ export function setupFeatures(ctx) {
               ? ` <span class="early-warning-pill warn-level-${ew.level || 1}" title="Cảnh báo sớm: ${escapeHtml(ew.tooltip)}">! ${escapeHtml(ew.badgeText)}</span>`
               : '';
           })();
-      const parentDisplay = [s.parentContact?.name, s.parentContact?.phone].filter(Boolean).join(' · ') || '—';
+      const parentDisplay = s.parentContact?.name || '—';
       const cohort = extractCohortFromStudentCode(s.studentCode);
       const cohortBadge = cohort
         ? `<span class="cohort-badge" style="display:inline-block; margin-right:4px; padding:1px 5px; border-radius:4px; font-size:11px; font-weight:800; background:#e0e7ff; color:#3730a3;" title="${formatCohortDisplayName(cohort)}">${escapeHtml(cohort)}</span>`
@@ -4623,7 +4622,7 @@ export function setupFeatures(ctx) {
         family: fam,
         given: giv,
         school: s.school || '',
-        parent: [s.parentContact?.name, s.parentContact?.phone].filter(Boolean).join(' - ') || '',
+        parent: s.parentContact?.name || '',
         status: s.enrollmentStatus || 'Học',
         classes: classNames,
         tags: Array.isArray(s.tags) ? s.tags.join(', ') : (s.tags || '')
@@ -5081,7 +5080,7 @@ export function setupFeatures(ctx) {
               </div>
               <div class="hero-meta-item">
                 <span class="hero-meta-label">Phụ huynh</span>
-                <strong class="hero-meta-value">${escapeHtml([student.parentContact?.name, student.parentContact?.phone].filter(Boolean).join(' · ') || 'Chưa cập nhật')}</strong>
+                <strong class="hero-meta-value">${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong>
               </div>
               <div class="hero-meta-item">
                 <span class="hero-meta-label">Các lớp đang học</span>
@@ -7250,7 +7249,7 @@ export function setupFeatures(ctx) {
     const colTag = ($('#sheets-col-tag')?.value || $('#panel-sheets-col-tag')?.value || '').trim();
     const colClass = ($('#sheets-col-class')?.value || $('#panel-sheets-col-class')?.value || '').trim();
     const colSchool = ($('#sheets-col-school')?.value || $('#panel-sheets-col-school')?.value || '').trim();
-    const colPhone = ($('#sheets-col-phone')?.value || $('#panel-sheets-col-phone')?.value || '').trim();
+    const colParent = ($('#sheets-col-parent')?.value || $('#panel-sheets-col-parent')?.value || '').trim();
     const colStatus = ($('#sheets-col-status')?.value || $('#panel-sheets-col-status')?.value || '').trim();
 
     const prevCfg = loadGoogleSheetsConfig();
@@ -7273,7 +7272,7 @@ export function setupFeatures(ctx) {
       colTag,
       colClass,
       colSchool,
-      colPhone,
+      colParent,
       colStatus,
       cohortSheets: prevCfg.cohortSheets || DEFAULT_COHORTS
     };
@@ -7311,7 +7310,7 @@ export function setupFeatures(ctx) {
     const colTag = ($('#panel-sheets-col-tag')?.value || $('#sheets-col-tag')?.value || '').trim();
     const colClass = ($('#panel-sheets-col-class')?.value || $('#sheets-col-class')?.value || '').trim();
     const colSchool = ($('#panel-sheets-col-school')?.value || $('#sheets-col-school')?.value || '').trim();
-    const colPhone = ($('#panel-sheets-col-phone')?.value || $('#sheets-col-phone')?.value || '').trim();
+    const colParent = ($('#panel-sheets-col-parent')?.value || $('#sheets-col-parent')?.value || '').trim();
     const colStatus = ($('#panel-sheets-col-status')?.value || $('#sheets-col-status')?.value || '').trim();
 
     const prevCfg = loadGoogleSheetsConfig();
@@ -7334,7 +7333,7 @@ export function setupFeatures(ctx) {
       colTag,
       colClass,
       colSchool,
-      colPhone,
+      colParent,
       colStatus,
       cohortSheets: prevCfg.cohortSheets || DEFAULT_COHORTS
     };
@@ -7365,7 +7364,7 @@ export function setupFeatures(ctx) {
       ['sheets-col-tag', cfg.colTag || ''],
       ['sheets-col-class', cfg.colClass || ''],
       ['sheets-col-school', cfg.colSchool || ''],
-      ['sheets-col-phone', cfg.colPhone || ''],
+      ['sheets-col-parent', cfg.colParent || ''],
       ['sheets-col-status', cfg.colStatus || ''],
 
       ['panel-sheets-spreadsheet-id', cfg.rawSheetUrl || cfg.spreadsheetId || ''],
@@ -7379,7 +7378,7 @@ export function setupFeatures(ctx) {
       ['panel-sheets-col-tag', cfg.colTag || ''],
       ['panel-sheets-col-class', cfg.colClass || ''],
       ['panel-sheets-col-school', cfg.colSchool || ''],
-      ['panel-sheets-col-phone', cfg.colPhone || ''],
+      ['panel-sheets-col-parent', cfg.colParent || ''],
       ['panel-sheets-col-status', cfg.colStatus || '']
     ];
 
@@ -8003,7 +8002,6 @@ export function setupFeatures(ctx) {
         fullName: s.name || '',
         school: s.school || '',
         parentName: s.parentContact?.name || '',
-        parentPhone: s.parentContact?.phone || '',
         enrollmentStatus: s.enrollmentStatus || 'Học',
         tags: tagsStr,
         classCodes,
@@ -8102,9 +8100,9 @@ export function setupFeatures(ctx) {
           item.school || item['Trường'] || item['Trường học'] || ''
         ).trim();
 
-        const parentPhone = String(
-          (cfg.colPhone && item[cfg.colPhone] !== undefined ? item[cfg.colPhone] : null) ||
-          item.parentPhone || item['SĐT Phụ huynh'] || item['SĐT'] || ''
+        const parentName = String(
+          (cfg.colParent && item[cfg.colParent] !== undefined ? item[cfg.colParent] : null) ||
+          item.parentName || item['Tên phụ huynh'] || item['Phụ huynh'] || ''
         ).trim();
 
         const rawStatus = (cfg.colStatus && item[cfg.colStatus] !== undefined ? item[cfg.colStatus] : null) ||
@@ -8119,8 +8117,7 @@ export function setupFeatures(ctx) {
           familyName,
           givenName,
           school,
-          parentName: String(item.parentName || item['Phụ huynh'] || '').trim(),
-          parentPhone,
+          parentName,
           enrollmentStatus: normalizeEnrollmentStatus(rawStatus),
           tags: rawTagVal ? String(rawTagVal).split(/[,;\n]+/).map(t => t.trim()).filter(Boolean) : [],
           tag: String(rawTagVal).trim(),
@@ -8175,7 +8172,7 @@ export function setupFeatures(ctx) {
     if (cfg.colTag) applyOverride(cfg.colTag, 'tag');
     if (cfg.colClass) applyOverride(cfg.colClass, 'classCode');
     if (cfg.colSchool) applyOverride(cfg.colSchool, 'school');
-    if (cfg.colPhone) applyOverride(cfg.colPhone, 'phone');
+    if (cfg.colParent) applyOverride(cfg.colParent, 'parentName');
     if (cfg.colStatus) applyOverride(cfg.colStatus, 'status');
 
     const startIdx = hasHeader ? 1 : 0;
@@ -8196,7 +8193,6 @@ export function setupFeatures(ctx) {
       let givenName = '';
       let fullName = '';
       let school = '';
-      let parentPhone = '';
       let parentName = '';
       let enrollmentStatus = 'Nghỉ';
       let rawTag = '';
@@ -8226,8 +8222,6 @@ export function setupFeatures(ctx) {
           if (!fullName) fullName = val;
         } else if (role === 'school') {
           if (!school) school = val;
-        } else if (role === 'phone') {
-          if (!parentPhone) parentPhone = val;
         } else if (role === 'parentName') {
           if (!parentName) parentName = val;
         } else if (role === 'status') {
@@ -8267,7 +8261,6 @@ export function setupFeatures(ctx) {
         givenName,
         school,
         parentName,
-        parentPhone,
         enrollmentStatus,
         tags: parsedTags,
         tag: rawTag,
@@ -8440,7 +8433,7 @@ export function setupFeatures(ctx) {
           </td>
           <td style="font-size:12.5px; color:#334155;">
             <div>${escapeHtml(item.school || '—')}</div>
-            ${item.parentPhone ? `<div style="color:#0369a1; font-weight:600;">ĐT: ${escapeHtml(item.parentPhone)}</div>` : ''}
+            ${item.parentName ? `<div style="color:#0369a1; font-weight:600;">PH: ${escapeHtml(item.parentName)}</div>` : ''}
           </td>
           <td>${classColumnHtml}</td>
           <td style="text-align:center;">
@@ -8538,7 +8531,7 @@ export function setupFeatures(ctx) {
       const composedName = row.fullName || [row.familyName, row.givenName].filter(Boolean).join(' ').trim();
       if (!codeNorm && !composedName) return;
 
-      // 1. Tìm học sinh trong danh sách tổng theo Mã HS trước, nếu chưa có mã HS trên hệ thống thì đối chiếu theo Họ tên + SĐT/Trường
+      // 1. Tìm học sinh trong danh sách tổng theo Mã HS trước, nếu chưa có mã HS trên hệ thống thì đối chiếu theo Họ tên + Tên PH/Trường
       let existingStu = null;
       if (codeNorm) {
         existingStu = allStudents.find(s => String(s.studentCode || '').trim().toUpperCase() === codeNorm);
@@ -8550,9 +8543,9 @@ export function setupFeatures(ctx) {
           const existingCode = String(s.studentCode || '').trim().toUpperCase();
           if (!existingCode) return true;
           if (!codeNorm) return true;
-          const rPhone = normPhone(row.parentPhone);
-          const sPhone = normPhone(s.parentContact?.phone);
-          if (rPhone && sPhone && rPhone.length >= 7 && rPhone === sPhone) return true;
+          const rParent = normName(row.parentName || '');
+          const sParent = normName(s.parentContact?.name || '');
+          if (rParent && sParent && rParent === sParent) return true;
           return false;
         });
       }
@@ -8580,7 +8573,6 @@ export function setupFeatures(ctx) {
           givenName: row.givenName,
           school: row.school,
           parentName: row.parentName,
-          parentPhone: row.parentPhone,
           enrollmentStatus: row.enrollmentStatus || (existingStu?.enrollmentStatus) || 'Học',
           tags: [...(row.tags || (row.tag ? [row.tag] : [])), 'Thiếu mã HS'],
           rawClassTexts: row.rawClassTexts || [],
@@ -8614,7 +8606,6 @@ export function setupFeatures(ctx) {
           givenName: row.givenName,
           school: row.school,
           parentName: row.parentName,
-          parentPhone: row.parentPhone,
           enrollmentStatus: row.enrollmentStatus || 'Học',
           tags: row.tags || (row.tag ? [row.tag] : []),
           rawClassTexts: row.rawClassTexts || [],
@@ -8649,7 +8640,7 @@ export function setupFeatures(ctx) {
         isStatusDifferent ||
         hasTagUpdate ||
         (row.school && row.school !== existingStu.school) ||
-        (row.parentPhone && row.parentPhone !== existingStu.parentContact?.phone) ||
+        (row.parentName && row.parentName !== existingStu.parentContact?.name) ||
         String(row.btvnScore ?? '').trim() !== '' ||
         String(row.testScore ?? '').trim() !== '' ||
         row.sessionNote
@@ -8670,7 +8661,6 @@ export function setupFeatures(ctx) {
           givenName: row.givenName || existingStu.givenName,
           school: row.school || existingStu.school || '',
           parentName: row.parentName || existingStu.parentContact?.name || '',
-          parentPhone: row.parentPhone || existingStu.parentContact?.phone || '',
           enrollmentStatus: row.enrollmentStatus || existingStu.enrollmentStatus || 'Học',
           tags: rowTags,
           isStatusDifferent,
@@ -8698,7 +8688,6 @@ export function setupFeatures(ctx) {
           givenName: row.givenName || existingStu.givenName,
           school: row.school || existingStu.school || '',
           parentName: row.parentName || existingStu.parentContact?.name || '',
-          parentPhone: row.parentPhone || existingStu.parentContact?.phone || '',
           enrollmentStatus: row.enrollmentStatus || existingStu.enrollmentStatus || 'Học',
           tags: rowTags,
           isStatusDifferent,
@@ -8802,8 +8791,7 @@ export function setupFeatures(ctx) {
           studentCode: item.studentCode || null,
           school: item.school || '',
           parentContact: {
-            name: item.parentName || '',
-            phone: item.parentPhone || ''
+            name: item.parentName || ''
           },
           classIds: finalTargetClassIds,
           enrollmentStatus: item.enrollmentStatus || 'Học',
@@ -8832,10 +8820,9 @@ export function setupFeatures(ctx) {
           stu.givenName = item.givenName || stu.givenName;
         }
         if (item.school) stu.school = item.school;
-        if (item.parentName || item.parentPhone) {
+        if (item.parentName) {
           stu.parentContact = {
-            name: item.parentName || stu.parentContact?.name || '',
-            phone: item.parentPhone || stu.parentContact?.phone || ''
+            name: item.parentName || stu.parentContact?.name || ''
           };
         }
         if (item.enrollmentStatus) stu.enrollmentStatus = item.enrollmentStatus;
@@ -8895,10 +8882,9 @@ export function setupFeatures(ctx) {
           stu.givenName = item.givenName || stu.givenName;
         }
         if (item.school) stu.school = item.school;
-        if (item.parentName || item.parentPhone) {
+        if (item.parentName) {
           stu.parentContact = {
-            name: item.parentName || stu.parentContact?.name || '',
-            phone: item.parentPhone || stu.parentContact?.phone || ''
+            name: item.parentName || stu.parentContact?.name || ''
           };
         }
         if (item.enrollmentStatus) stu.enrollmentStatus = item.enrollmentStatus;
@@ -8929,10 +8915,9 @@ export function setupFeatures(ctx) {
             stu.givenName = item.givenName || stu.givenName;
           }
           if (item.school) stu.school = item.school;
-          if (item.parentName || item.parentPhone) {
+          if (item.parentName) {
             stu.parentContact = {
-              name: item.parentName || stu.parentContact?.name || '',
-              phone: item.parentPhone || stu.parentContact?.phone || ''
+              name: item.parentName || stu.parentContact?.name || ''
             };
           }
           if (item.enrollmentStatus) stu.enrollmentStatus = item.enrollmentStatus;
@@ -8954,8 +8939,7 @@ export function setupFeatures(ctx) {
             studentCode: assignedCode,
             school: item.school || '',
             parentContact: {
-              name: item.parentName || '',
-              phone: item.parentPhone || ''
+              name: item.parentName || ''
             },
             classIds: finalTargetClassIds,
             enrollmentStatus: item.enrollmentStatus || 'Nghỉ',
@@ -9107,12 +9091,12 @@ export function setupFeatures(ctx) {
     readAndSaveSheetsConfigFromDialog();
     const targetCls = $('#sheets-sync-class-filter')?.value || 'all';
     const rows = buildStudentSyncRowsForClass(targetCls);
-    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh', 'Trạng thái', 'Tag', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
+    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'Trạng thái', 'Tag', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
     const tsvLines = [
       headers.join('\t'),
       ...rows.map(r => [
         r.studentCode, r.familyName, r.givenName, r.fullName, r.school,
-        r.parentName, r.parentPhone, r.enrollmentStatus, r.tags, r.classCodes, r.oldClassCodes,
+        r.parentName, r.enrollmentStatus, r.tags, r.classCodes, r.oldClassCodes,
         r.attendance, r.homeworkStatus, r.btvnScore, r.testScore,
         String(r.sessionNote || '').replace(/[\r\n\t]+/g, ' '),
         String(r.learningNotes || '').replace(/[\r\n\t]+/g, ' ')
@@ -9129,10 +9113,10 @@ export function setupFeatures(ctx) {
     readAndSaveSheetsConfigFromDialog();
     const targetCls = $('#sheets-sync-class-filter')?.value || 'all';
     const rows = buildStudentSyncRowsForClass(targetCls);
-    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'SĐT Phụ huynh', 'Trạng thái', 'Tag', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
+    const headers = ['Mã HS', 'Họ đệm', 'Tên', 'Họ và tên', 'Trường', 'Phụ huynh', 'Trạng thái', 'Tag', 'Mã lớp', 'Lớp cũ', 'Điểm danh', 'BTVN', 'Điểm BTVN', 'Điểm Test', 'Ghi chú buổi học', 'Ghi chú học lực'];
     const data = rows.map(r => [
       r.studentCode, r.familyName, r.givenName, r.fullName, r.school,
-      r.parentName, r.parentPhone, r.enrollmentStatus, r.tags, r.classCodes, r.oldClassCodes,
+      r.parentName, r.enrollmentStatus, r.tags, r.classCodes, r.oldClassCodes,
       r.attendance, r.homeworkStatus, r.btvnScore, r.testScore, r.sessionNote, r.learningNotes
     ]);
     const outName = exportToExcel(headers, data, `DongBoGoogleSheet_MaHS_${getChecklistDate()}.xlsx`);
@@ -9492,8 +9476,11 @@ export function setupFeatures(ctx) {
           <span style="color:#64748b;">Trạng thái:</span><span style="font-weight:700; color:${student.enrollmentStatus === 'Học' ? '#166534' : '#991b1b'};">${escapeHtml(student.enrollmentStatus || 'Học')}</span>
           <span style="color:#64748b;">Lớp học:</span><strong>${escapeHtml(classLabels)}</strong>
           <span style="color:#64748b;">Trường:</span><span>${escapeHtml(student.school || '—')}</span>
-          <span style="color:#64748b;">SĐT Phụ huynh:</span><span>${escapeHtml(student.parentContact?.phone || '—')}</span>
+          <span style="color:#64748b;">Phụ huynh:</span><span>${escapeHtml(student.parentContact?.name || '—')}</span>
           ${student.tags && student.tags.length ? `<span style="color:#64748b;">Tags:</span><span>${escapeHtml(Array.isArray(student.tags) ? student.tags.join(', ') : student.tags)}</span>` : ''}
+        </div>
+        <div style="margin-top:10px; font-size:12px; color:#64748b; font-style:italic; line-height:1.4;">
+          * Đồng bộ 2 chiều chỉ cập nhật cột Tag phân loại của học sinh lên Google Sheet (giữ nguyên các cột thông tin chung trên Sheet).
         </div>
       `;
     }
@@ -9563,7 +9550,7 @@ export function setupFeatures(ctx) {
     const tempNameNorm = String(tempStu.name || '').trim().toLocaleLowerCase('vi');
     const tempParts = splitVietnameseName(tempStu.name || '');
     const tempSchool = String(tempStu.school || '').trim().toLocaleLowerCase('vi');
-    const tempPhone = String(tempStu.parentContact?.phone || '').replace(/\D/g, '');
+    const tempParent = String(tempStu.parentContact?.name || '').trim().toLocaleLowerCase('vi');
 
     const scored = [];
     allStudents.forEach(cand => {
@@ -9572,14 +9559,14 @@ export function setupFeatures(ctx) {
       const candNameNorm = String(cand.name || '').trim().toLocaleLowerCase('vi');
       const candParts = splitVietnameseName(cand.name || '');
       const candSchool = String(cand.school || '').trim().toLocaleLowerCase('vi');
-      const candPhone = String(cand.parentContact?.phone || '').replace(/\D/g, '');
+      const candParent = String(cand.parentContact?.name || '').trim().toLocaleLowerCase('vi');
 
       if (candNameNorm === tempNameNorm) score += 60;
       else if (candParts.givenName && candParts.givenName.toLocaleLowerCase('vi') === tempParts.givenName.toLocaleLowerCase('vi')) {
         score += 30;
         if (candParts.familyName && candParts.familyName.toLocaleLowerCase('vi') === tempParts.familyName.toLocaleLowerCase('vi')) score += 15;
       }
-      if (tempPhone && candPhone && tempPhone === candPhone) score += 40;
+      if (tempParent && candParent && tempParent === candParent) score += 35;
       if (tempSchool && candSchool && (candSchool.includes(tempSchool) || tempSchool.includes(candSchool))) score += 15;
 
       if (score >= 25) {
@@ -9709,7 +9696,7 @@ export function setupFeatures(ctx) {
                   <div style="color:#475569; font-size:12.5px; line-height:1.5;">
                     <div><strong>Lớp tham gia:</strong> <span style="font-weight:700; color:#1e293b;">${escapeHtml(className)} (${escapeHtml(classCode)})</span></div>
                     <div><strong>Trường:</strong> ${escapeHtml(student.school || '—')}</div>
-                    ${student.parentContact?.phone ? `<div><strong>SĐT PH:</strong> ${escapeHtml(student.parentContact.phone)}</div>` : ''}
+                    ${student.parentContact?.name ? `<div><strong>Phụ huynh:</strong> ${escapeHtml(student.parentContact.name)}</div>` : ''}
                     ${student.notes ? `<div><strong>Ghi chú:</strong> ${escapeHtml(student.notes)}</div>` : ''}
                   </div>
                   <div style="margin-top:8px; padding-top:8px; border-top:1px solid #f1f5f9;">
@@ -9722,7 +9709,7 @@ export function setupFeatures(ctx) {
                 <!-- Cột phải: Gợi ý khớp -->
                 <div>
                   <div style="font-weight:700; font-size:12.5px; color:#334155; margin-bottom:6px;">
-                    Gợi ý hồ sơ gốc trùng tên / SĐT trong Danh bạ:
+                    Gợi ý hồ sơ gốc trùng tên / Phụ huynh trong Danh bạ:
                   </div>
                   ${suggestionsHtml}
                 </div>

@@ -3943,7 +3943,7 @@ function sessionMakeupStudents(placementsMap = null, lateSetOrArr = null) {
   return result;
 }
 const splitStudentName=name=>{const clean=String(name||'').normalize('NFC').trim();const parts=clean.split(/\s+/).filter(Boolean);return {familyName:parts.slice(0,-1).join(' '),givenName:parts.at(-1)||''};};
-function createStudentProfile({name,familyName=undefined,givenName=undefined,school='',kind='regular',parentContact={name:'',phone:''},studentCode=null,classIds=null,enrollmentStatus='Học',tags=[],isNew=undefined}){
+function createStudentProfile({name,familyName=undefined,givenName=undefined,school='',kind='regular',parentContact={name:''},studentCode=null,classIds=null,enrollmentStatus='Học',tags=[],isNew=undefined}){
   const makeup=kind==='makeup';
   const cleanCode=(studentCode&&String(studentCode).trim())?String(studentCode).trim().toUpperCase():null;
   const splitParts=splitStudentName(name);
@@ -3972,7 +3972,7 @@ function createStudentProfile({name,familyName=undefined,givenName=undefined,sch
     attendingSessionDate:makeup?checklistDate:null,
     classIds:resolvedClassIds,
     courseIds:[],
-    parentContact:{name:parentContact?.name||'',phone:parentContact?.phone||''},
+    parentContact:{name:parentContact?.name||''},
     enrollmentStatus: (enrollmentStatus && String(enrollmentStatus).trim()) ? String(enrollmentStatus).trim() : 'Học',
     photoURL:null,
     photoDriveFileId:null,
@@ -7392,15 +7392,14 @@ function mergeAssistantStudentIntoMasterStudent(tempStuId, masterStuId, classAct
     saveSessionNote(masterStu.id, combinedNote);
   }
 
-  // Bổ sung thông tin trường / SĐT phụ huynh nếu hồ sơ tổng chưa có
+  // Bổ sung thông tin trường / phụ huynh nếu hồ sơ tổng chưa có
   const isCleanSchool = (val) => Boolean(val && val !== '—' && !String(val).includes('Chưa rõ') && !String(val).includes('Chưa cập nhật'));
   if (!isCleanSchool(masterStu.school) && isCleanSchool(tempStu.school)) {
     masterStu.school = tempStu.school;
   }
-  if (tempStu.parentContact?.phone && !masterStu.parentContact?.phone) {
+  if (tempStu.parentContact?.name && !masterStu.parentContact?.name) {
     masterStu.parentContact = {
-      name: masterStu.parentContact?.name || tempStu.parentContact?.name || '',
-      phone: tempStu.parentContact.phone
+      name: tempStu.parentContact.name
     };
   }
 
@@ -7701,9 +7700,9 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
     if (tName && mName && tName === mName) score += 100;
     else if (tName && mName && (mName.includes(tName) || tName.includes(mName))) score += 60;
     if (tGiven && mGiven && tGiven === mGiven) score += 40;
-    const tPhone = String(tempStu.parentContact?.phone || '').replace(/\D/g, '');
-    const mPhone = String(masterStu.parentContact?.phone || '').replace(/\D/g, '');
-    if (tPhone && mPhone && tPhone.length >= 6 && (mPhone.includes(tPhone) || tPhone.includes(mPhone))) score += 90;
+    const tParent = norm(tempStu.parentContact?.name);
+    const mParent = norm(masterStu.parentContact?.name);
+    if (tParent && mParent && tParent.length >= 2 && (mParent.includes(tParent) || tParent.includes(mParent))) score += 50;
     const tSchool = norm(tempStu.school || tempStu.sourceClassName);
     const mSchool = norm(masterStu.school);
     if (tSchool && mSchool && tSchool.length >= 2 && (mSchool.includes(tSchool) || tSchool.includes(mSchool))) score += 20;
@@ -7761,7 +7760,7 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
             <div><strong>Phân loại:</strong> <span style="font-weight:800; color:${isMakeup ? '#6d28d9' : '#15803d'};">${isMakeup ? 'Học sinh học bù' : 'Học sinh mới'}</span></div>
             <div><strong>Lớp ghi nhận buổi học:</strong> <strong style="color:#1e3a8a;">${escapeHtml(originClsName)}</strong></div>
             <div><strong>Trường / Lớp gốc:</strong> ${escapeHtml(tempStu.school || tempStu.sourceClassName || '—')}</div>
-            <div><strong>SĐT Phụ huynh:</strong> ${escapeHtml(tempStu.parentContact?.phone || '—')}</div>
+            <div><strong>Phụ huynh:</strong> ${escapeHtml(tempStu.parentContact?.name || '—')}</div>
             <div><strong>Chỗ ngồi &amp; BTVN:</strong> ${escapeHtml(seatText)} · ${escapeHtml(hwText)}</div>
             <div style="grid-column: 1 / -1;"><strong>Ghi chú buổi học sẽ đính kèm:</strong> <span style="color:#0f766e; font-weight:700;">${escapeHtml(noteText)}</span></div>
             ${!isMakeup ? `<div style="grid-column: 1 / -1; margin-top:4px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding-top:6px; border-top:1px dashed #86efac;">
@@ -7774,10 +7773,10 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
         <div style="display:flex; flex-direction:column; gap:8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
             <label class="field-label" style="font-weight:700; margin:0;">2. Tìm &amp; chọn học sinh tương ứng trong Danh sách tổng của Trung tâm:</label>
-            <span style="font-size:12px; color:#475569;">Hệ thống tự động đẩy các học sinh trùng tên / SĐT lên đầu</span>
+            <span style="font-size:12px; color:#475569;">Hệ thống tự động đẩy các học sinh trùng tên / phụ huynh lên đầu</span>
           </div>
           <div style="display:grid; grid-template-columns:1fr 200px; gap:8px;">
-            <input type="search" id="match-master-search-input" placeholder="Tìm theo tên, mã HS (VD: HS001), SĐT PH, trường..." autocomplete="off" style="padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;" />
+            <input type="search" id="match-master-search-input" placeholder="Tìm theo tên, mã HS (VD: HS001), phụ huynh, trường..." autocomplete="off" style="padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;" />
             <select id="match-master-class-filter" style="padding:9px 10px; border:1px solid #cbd5e1; border-radius:8px;">
               <option value="all">Tất cả lớp trong trung tâm</option>
               ${(classCatalog || []).map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.code || c.id)} · ${escapeHtml(c.name)}</option>`).join('')}
@@ -7859,7 +7858,7 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
         const simScore = computeSimilarityScore(tempStu, masterStu);
         const isSuggested = simScore >= 40;
         const clsLabels = getClassLabelsForStudent(masterStu);
-        const phoneStr = masterStu.parentContact?.phone || 'Chưa có SĐT';
+        const parentNameStr = masterStu.parentContact?.name || '—';
         return `
           <div class="match-candidate-row" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 12px; border-radius:8px; background:${isSuggested ? '#eff6ff' : '#ffffff'}; border:1px solid ${isSuggested ? '#93c5fd' : '#e2e8f0'};">
             <div style="min-width:0; flex:1;">
@@ -7871,7 +7870,7 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
               <div style="font-size:12.5px; color:#475569; margin-top:2px;">
                 <span>Lớp: <strong style="color:#334155;">${escapeHtml(clsLabels)}</strong></span>
                 · <span>Trường: ${escapeHtml(masterStu.school || '—')}</span>
-                · <span>SĐT PH: ${escapeHtml(phoneStr)}</span>
+                · <span>Phụ huynh: ${escapeHtml(parentNameStr)}</span>
               </div>
             </div>
             <button type="button" class="primary-button" data-pick-master-to-match="${escapeHtml(masterStu.id)}" style="white-space:nowrap; padding:7px 12px; font-size:12.5px;">
@@ -8283,8 +8282,8 @@ function openStudentProfile(id, origin = null){
             <strong class="hero-meta-value">${escapeHtml(student.studentType === 'makeup' ? `Học bù (${student.sourceClassName || 'Lớp khác'})` : (student.school || 'Chưa cập nhật'))}</strong>
           </div>
           <div class="hero-meta-item">
-            <span class="hero-meta-label">Phụ huynh & SĐT</span>
-            <strong class="hero-meta-value">${escapeHtml([student.parentContact?.name, student.parentContact?.phone].filter(Boolean).join(' · ') || 'Chưa cập nhật')}</strong>
+            <span class="hero-meta-label">Phụ huynh</span>
+            <strong class="hero-meta-value">${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong>
           </div>
           <div class="hero-meta-item">
             <span class="hero-meta-label">Lớp theo học</span>
@@ -8304,8 +8303,7 @@ function openStudentProfile(id, origin = null){
       <label class="field-label">Tên<input id="profile-given-name" value="${escapeHtml(givenName)}" /></label>
       <label class="field-label">Trường học<input id="profile-school" value="${escapeHtml(student.school||'')}" /></label>
       <label class="field-label">Mã học sinh<input id="profile-code" value="${escapeHtml(student.studentCode||'')}" placeholder="Ví dụ: K09.3049 (Nếu đổi mã, tên file ảnh Drive tự đổi theo)" style="text-transform:uppercase;" /></label>
-      <label class="field-label">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" placeholder="Không bắt buộc" /></label>
-      <label class="field-label">SĐT phụ huynh<input id="profile-parent-phone" type="tel" value="${escapeHtml(student.parentContact?.phone||'')}" placeholder="Ví dụ: 0912345678" /></label>
+      <label class="field-label profile-wide">Tên phụ huynh<input id="profile-parent-name" value="${escapeHtml(student.parentContact?.name||'')}" placeholder="Ví dụ: Bác Hương, Chị Lan (Không bắt buộc)" /></label>
       <div class="field-label profile-wide">
         <span>Trạng thái theo học</span>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
@@ -8636,8 +8634,7 @@ $('#save-student-profile').onclick=async ()=>{
   student.name = name;
   student.school = $('#profile-school').value.trim();
   student.parentContact = {
-    name: ($('#profile-parent-name')?.value || '').trim(),
-    phone: ($('#profile-parent-phone')?.value ?? student.parentContact?.phone ?? '').trim()
+    name: ($('#profile-parent-name')?.value || '').trim()
   };
   const statusSelVal = $('#profile-enrollment-status-select')?.value || 'Học';
   const statusCustomVal = ($('#profile-enrollment-status-custom')?.value || '').trim();
@@ -8798,8 +8795,8 @@ function openStudentSessionProfile(studentId, classId = CURRENT_CLASS_ID, sessio
             <strong class="hero-meta-value">${escapeHtml((student.studentType === 'makeup' || !(student.classIds || []).includes(targetClassId)) ? `Học bù (${getMakeupSourceClassDisplay(student)})` : (student.school || 'Chưa cập nhật'))}</strong>
           </div>
           <div class="hero-meta-item">
-            <span class="hero-meta-label">Phụ huynh & SĐT</span>
-            <strong class="hero-meta-value">${escapeHtml([student.parentContact?.name, student.parentContact?.phone].filter(Boolean).join(' · ') || 'Chưa cập nhật')}</strong>
+            <span class="hero-meta-label">Phụ huynh</span>
+            <strong class="hero-meta-value">${escapeHtml(student.parentContact?.name || 'Chưa cập nhật')}</strong>
           </div>
           <div class="hero-meta-item">
             <span class="hero-meta-label">Lớp buổi này</span>
@@ -9994,8 +9991,7 @@ function showIdentityForm(kind='new'){
     const rawSchool = ($('#identity-school')?.value || '').trim();
     const school = rawSchool || (makeup ? 'Chưa rõ lớp' : 'Chưa cập nhật trường');
     const parentContact = {
-      name: $('#identity-parent-name')?.value?.trim() || '',
-      phone: $('#identity-parent-phone')?.value?.trim() || ''
+      name: $('#identity-parent-name')?.value?.trim() || ''
     };
     if (!name) {
       toast('Vui lòng nhập họ và tên học sinh.');
@@ -10462,8 +10458,7 @@ $('#save-homework').onclick=()=>{
     const idSchoolInp = $('#identity-school')?.value?.trim() || '';
     const isMakeup = Boolean($('#identity-school')?.placeholder?.includes('Toán'));
     const parentContact = {
-      name: $('#identity-parent-name')?.value?.trim() || '',
-      phone: $('#identity-parent-phone')?.value?.trim() || ''
+      name: $('#identity-parent-name')?.value?.trim() || ''
     };
     const student = createStudentProfile({
       name: idNameInp,
@@ -11286,8 +11281,7 @@ function showLateIdentityForm(kind='new'){
     const rawSchool = ($('#late-school')?.value || '').trim();
     const school = rawSchool || (makeup ? 'Chưa rõ lớp' : 'Chưa cập nhật trường');
     const parentContact = {
-      name: $('#late-parent-name')?.value?.trim() || '',
-      phone: $('#late-parent-phone')?.value?.trim() || ''
+      name: $('#late-parent-name')?.value?.trim() || ''
     };
     if (!name) {
       toast('Vui lòng nhập họ và tên học sinh.');
@@ -11529,8 +11523,7 @@ $('#save-late').onclick=()=>{
     const lateSchoolInp = $('#late-school')?.value?.trim() || 'Chưa rõ trường';
     const isMakeup = Boolean($('#late-school')?.placeholder?.includes('Toán'));
     const parentContact = {
-      name: $('#late-parent-name')?.value?.trim() || '',
-      phone: $('#late-parent-phone')?.value?.trim() || ''
+      name: $('#late-parent-name')?.value?.trim() || ''
     };
     const student = createStudentProfile({ name: lateNameInp, school: lateSchoolInp, kind: isMakeup ? 'makeup' : 'regular', parentContact, isNew: !isMakeup, tags: isMakeup ? [] : ['Mới'] });
     if (isMakeup) makeupStudents.push(student);

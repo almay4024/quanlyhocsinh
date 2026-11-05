@@ -247,8 +247,7 @@ Trên Firebase Realtime Database, dữ liệu được phân tách theo từng p
   },
   "enrollmentStatus": "Học",
   "parentContact": {
-    "name": "Chị Hương",
-    "phone": "0912345678"
+    "name": "Chị Hương"
   },
   "tags": ["Mới"],
   "isNew": true,
@@ -318,7 +317,7 @@ Trên Firebase Realtime Database, dữ liệu được phân tách theo từng p
 1. **Tài khoản Trợ giảng (`assistant`) & Giáo viên (`teacher`):**
    * Chỉ nhìn thấy và truy cập các lớp mà mình được phân công phụ trách (`assignedClassIds`).
    * Trong hộp thoại Điểm danh (`#seat-dialog`), Điểm danh muộn (`#late-dialog`) và Danh sách học sinh của lớp (`#students-view`), bộ máy tìm kiếm **chỉ truy vấn danh sách học sinh thuộc biên chế lớp đang mở**.
-   * Khi bấm nút **`+ Học sinh mới / Học bù`**, hệ thống **chỉ hiển thị Form nhập tay** (`Họ và tên`, `Trường học` hoặc `Học bù từ lớp nào`, `SĐT Phụ huynh`). **Nghiêm cấm** tự động gợi ý hay hiển thị danh sách học sinh của các lớp khác trong trung tâm.
+   * Khi bấm nút **`+ Học sinh mới / Học bù`**, hệ thống **chỉ hiển thị Form nhập tay** (`Họ và tên`, `Trường học` hoặc `Học bù từ lớp nào`, `Tên Phụ huynh`). **Nghiêm cấm** tự động gợi ý hay hiển thị danh sách học sinh của các lớp khác trong trung tâm.
    * Ẩn hoàn toàn menu `Danh bạ Học sinh toàn trung tâm`, `Hộp việc Văn phòng`, `Đồng bộ Google Sheets`, `Quản lý Nhân sự` và `Nhật ký Admin Log`.
 2. **Tài khoản Văn phòng (`office`):**
    * Truy cập toàn bộ các lớp học, Danh bạ Học sinh toàn trung tâm, Phòng học & Sơ đồ mẫu.
@@ -534,7 +533,7 @@ Dành riêng cho tài khoản **Văn phòng (`office`)** và **Admin (`admin`)**
 
 1. **Quy chuẩn Ghi Rõ Nguồn Lớp Gốc Khi Khớp Học Sinh Mới / Học Bù:**
    * Khi Trợ giảng ghi nhận học sinh tại bất kỳ ca học nào, hệ thống **bắt buộc ghi nhận và hiển thị rõ ràng thông tin nguồn gốc lớp học**:
-     * Thẻ ứng viên trong Hộp việc Văn phòng hiển thị nhãn nổi bật: **`📌 Khớp từ: Học sinh mới của lớp 2K9.H3.GIANGNH`** hoặc **`📌 Khớp từ: Học sinh học bù của lớp 2K9.H3.GIANGNH`**.
+     * Thẻ ứng viên trong Hộp việc Văn phòng hiển thị nhãn nổi bật: **`Khớp từ: Học sinh mới của lớp 2K9.H3.GIANGNH`** hoặc **`Khớp từ: Học sinh học bù của lớp 2K9.H3.GIANGNH`**.
      * Badge phân loại đi kèm: `[Mới (2K9.H3.GIANGNH)]` hoặc `[Học bù (2K9.H3.GIANGNH)]`.
      * Trong hộp thoại Khớp dữ liệu (`#match-student-master-dialog`), danh sách lựa chọn học sinh tạm hiển thị rõ tiền tố lớp: `[HS mới của lớp 2K9.H3.GIANGNH] Nguyễn Văn A — THPT Kim Liên`.
      * Trong hộp thoại xác nhận và thông báo Toast sau khi khớp: hiển thị rõ câu thông báo chuẩn: `✓ Đã khớp học sinh mới của lớp 2K9.H3.GIANGNH ("Nguyễn Văn A") vào hồ sơ gốc "Nguyễn Văn A" (K09.1234)`.
@@ -542,7 +541,7 @@ Dành riêng cho tài khoản **Văn phòng (`office`)** và **Admin (`admin`)**
    * Tự động gom toàn bộ các học sinh Mới (nhãn `[Mới]`) và Học bù (nhãn `[Học bù]`) do Trợ giảng nhập tay ở tất cả các ca học mà chưa được gắn với `Mã HS` trong danh sách tổng.
    * Hiển thị đối chiếu trực quan:
      * **Bên trái:** Thông tin do Trợ giảng ghi nhận tại lớp (Họ tên, Lớp ghi nhận buổi học, Ngày học, Vị trí ghế, Điểm danh/Phút muộn, Trạng thái BTVN, Điểm BTVN/Test, Ghi chú).
-     * **Bên phải:** Danh sách gợi ý thông minh các học sinh trong Danh bạ tổng / Google Sheets có tên, trường hoặc SĐT gần giống nhất.
+     * **Bên phải:** Danh sách gợi ý thông minh các học sinh trong Danh bạ tổng / Google Sheets có tên, trường hoặc Tên Phụ huynh gần giống nhất.
    * Khi Văn phòng bấm **`Khớp & Gộp vào Hồ sơ gốc`**:
      * Nếu là **Học sinh mới** mà hồ sơ gốc trên Google Sheets đang ở lớp khác, hệ thống hỏi Văn phòng: `Chuyển sang lớp mới này (Bảo lưu lịch sử lớp cũ)` hay `Học song song cả 2 lớp`.
      * Toàn bộ dữ liệu buổi học do Trợ giảng nhập được đính chính xác vào hồ sơ gốc có `Mã HS` chuẩn, đồng thời xóa bản ghi tạm để không bao giờ bị trùng tên.
@@ -566,9 +565,9 @@ Dành riêng cho tài khoản **Văn phòng (`office`)** và **Admin (`admin`)**
        * *Ai có quyền truy cập (Who has access):* **Bất kỳ ai (Anyone)**
      * Apps Script hoạt động như một REST API trung gian: nhận yêu cầu từ ứng dụng web, dùng quyền hạn nội bộ của tài khoản để đọc/ghi dữ liệu trên Google Sheets (hỗ trợ `readAllSheets`, `readSheetByCode`, `syncStudentsByCode`) và trả về JSON chuẩn cho ứng dụng mà không yêu cầu máy tính phòng học phải đăng nhập Google.
    * **Hỗ trợ Trực quan Trong Giao diện Ứng dụng:**
-     * Tích hợp tab **"📖 Hướng dẫn chi tiết: Dùng Google Apps Script khi Sheet bị giới hạn quyền truy cập"** ngay trong hộp thoại cấu hình.
-     * Cung cấp nút **`📋 Sao chép mã Google Apps Script mẫu`** (1-click copy toàn bộ template `Code.gs` chuẩn).
-     * Cung cấp nút **`🔍 Kiểm tra kết nối Apps Script ngay`** để kiểm tra tính khả dụng của Web App URL trong thời gian thực.
+     * Tích hợp tab **"Hướng dẫn chi tiết: Dùng Google Apps Script khi Sheet bị giới hạn quyền truy cập"** ngay trong hộp thoại cấu hình.
+     * Cung cấp nút **`Sao chép mã Google Apps Script mẫu`** (1-click copy toàn bộ template `Code.gs` chuẩn).
+     * Cung cấp nút **`Kiểm tra kết nối Apps Script ngay`** để kiểm tra tính khả dụng của Web App URL trong thời gian thực.
 3. **Quy tắc Duyệt Bán Tự Động & Bảo Toàn 100% Lịch Sử Học Sinh:**
    * Khi phát hiện học sinh đổi lớp trên Google Sheets, hệ thống hiển thị rõ trên Bảng Duyệt: **`Lớp gốc hiện tại (VD: TOAN9A) -> Lớp mới trên Sheet (VD: TOAN9B)`** kèm thông báo cho tài khoản Văn phòng / Admin.
    * Mặc định gắn tag **`Mới`** ở lớp chuyển đến (Văn phòng có thể tích/bỏ tích tag `Mới` ngay trên bảng duyệt trước khi bấm xác nhận).
@@ -591,7 +590,7 @@ Tab **`Báo cáo buổi học`** nằm trực tiếp trên thanh điều hướn
      * **`In / Lưu PDF A4`** & **`Xuất Ảnh PNG Sơ đồ lớp`**.
 2. **Khu vực 2 — Bảng Trực Quan Làm Nổi Bật 5 Nhóm Học Sinh Cần Chú Ý:**
    * Hiển thị ngay trên cùng một màn hình với tiêu đề rõ ràng và đường viền màu phân biệt nhẹ nhàng, chuyên nghiệp:
-     1. **1. Học sinh VẮNG MẶT** (Phân loại Vắng có phép / Không phép, Lý do, SĐT Phụ huynh, nút `Sao chép báo PH`).
+     1. **1. Học sinh VẮNG MẶT** (Phân loại Vắng có phép / Không phép, Lý do, Tên Phụ huynh, nút `Sao chép báo PH`).
      2. **2. Học sinh ĐI MUỘN** (Giờ đến thực tế, Số phút đi muộn, Ghi chú, nút `Sao chép báo PH`).
      3. **3. Học sinh CHƯA NỘP BTVN** (Lý do chưa nộp, Điểm làm bù nếu có, nút `Sao chép báo PH`).
      4. **4. Học sinh ĐIỂM THẤP DƯỚI MỐC** (Có nút chọn nhanh mốc `< 5`, `< 6`, `< 7` hoặc tự gõ mốc điểm; hiển thị Điểm BTVN, Điểm Test và Nhận xét).
@@ -703,7 +702,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 #### Nhóm 4: Bảo mật Phân quyền (Strict RBAC) & Luồng Học sinh Mới / Học bù
 - [x] **4.1. Bảo mật Đăng nhập Firebase Authentication & Thu hồi Phiên tức thì:** Đăng nhập an toàn kết nối Firebase Auth server-side (`[username].tct@gmail.com`), Realtime Database Rules khóa truy cập ở mức `"auth != null"`, Realtime Database Web SDK duy trì kết nối WebSocket bền vững, tự động cấp tài khoản Auth khi thêm nhân viên mới và hỗ trợ đổi mật khẩu an toàn ngay trên giao diện web.
 - [x] **4.2. Cô lập Dữ liệu theo Lớp Phụ Trách:** Tài khoản Trợ giảng (`assistant`) và Giáo viên (`teacher`) chỉ nhìn thấy các lớp mình được phân công và chỉ tìm kiếm được học sinh thuộc đúng lớp đang mở. Không thể xem Danh bạ Học sinh toàn trung tâm hay học sinh của các lớp khác.
-- [x] **4.3. Form Nhập tay Học sinh Mới / Học bù (Không lộ dữ liệu trung tâm):** Khi Trợ giảng bấm `+ Học sinh mới / Học bù` trong `#seat-dialog` hoặc `#late-dialog`, chỉ hiển thị form nhập tay (`Họ và tên`, `Trường học` / `Lớp gốc`, `Tên/SĐT Phụ huynh`). Tự động gắn tag `Mới` và ghi chú buổi học `Học sinh mới` cho học sinh mới tạo.
+- [x] **4.3. Form Nhập tay Học sinh Mới / Học bù (Không lộ dữ liệu trung tâm):** Khi Trợ giảng bấm `+ Học sinh mới / Học bù` trong `#seat-dialog` hoặc `#late-dialog`, chỉ hiển thị form nhập tay (`Họ và tên`, `Trường học` / `Lớp gốc`, `Tên Phụ huynh`). Tự động gắn tag `Mới` và ghi chú buổi học `Học sinh mới` cho học sinh mới tạo.
 - [x] **4.4. Xóa học sinh khỏi ghế (`#clear-seat`) & Đồng bộ Bất biến Sơ đồ $\leftrightarrow$ Điểm danh:**
   - Khi bấm nút thùng rác xóa học sinh khỏi ghế, hiển thị hộp thoại xác nhận rõ ràng.
   - Nếu là học sinh chính thức của lớp: xóa khỏi ghế và tự động đưa trạng thái buổi hôm đó về `Chưa điểm danh` (nhưng giữ nguyên 100% lịch sử các buổi trước).
@@ -733,14 +732,14 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 
 #### Nhóm 7: Hộp việc Văn phòng (Office Action Inbox), Đồng bộ Google Sheets Đa Khóa & Chuyển Lớp
 - [x] **7.1. Hộp việc Cần xử lý của Văn phòng (`Office Action Inbox`) & Khớp Hồ sơ Ghi Rõ Nguồn Gốc Lớp:**
-  - Tự động gom toàn bộ Học sinh mới & Học bù do Trợ giảng nhập tay trong các ca học để Văn phòng kiểm tra và bấm `Khớp & Lưu dữ liệu` vào đúng học sinh trong Danh sách tổng (tự động đẩy các hồ sơ trùng tên / SĐT phụ huynh / trường lên đầu danh sách gợi ý).
+  - Tự động gom toàn bộ Học sinh mới & Học bù do Trợ giảng nhập tay trong các ca học để Văn phòng kiểm tra và bấm `Khớp & Lưu dữ liệu` vào đúng học sinh trong Danh sách tổng (tự động đẩy các hồ sơ trùng tên / tên phụ huynh / trường lên đầu danh sách gợi ý).
   - Ghi nhận và hiển thị minh bạch nguồn gốc lớp khi khớp: ví dụ `Học sinh mới của lớp 2K9.H3.GIANGNH` hoặc `Học sinh học bù của lớp 2K9.H3.GIANGNH` trên danh sách, thanh công cụ, badge, dropdown và thông báo toast.
   - Sau khi bấm khớp: toàn bộ vị trí ngồi, trạng thái điểm danh, phút muộn, BTVN, điểm BTVN/Test và ghi chú của buổi học đó được gộp nguyên vẹn vào hồ sơ gốc có `Mã HS` chuẩn, đồng thời xóa bản ghi tạm do Trợ giảng tạo.
   - Nếu là Học sinh mới mà hồ sơ gốc đang ở lớp khác, hiển thị hộp thoại hỏi Văn phòng: `Chuyển lớp sang lớp mới này (Bảo lưu dữ liệu lớp cũ)`, `Thêm học song song cả 2 lớp`, hoặc `Chỉ đính dữ liệu buổi học`.
 - [x] **7.2. Đồng bộ Google Sheets Đa Khóa (`2K9`, `2K10`, `2K11`, `2K12`...) & Cầu Nối Google Apps Script API Bridge:**
   - Hỗ trợ cấu hình và quét dữ liệu từ nhiều trang tính (`Multi-Cohort Sheets`) theo từng khóa trong bảng tính.
   - Cung cấp mã nguồn Google Apps Script Web App và hướng dẫn 6 bước tích hợp trực quan trong menu để vượt qua 100% rào cản phân quyền cho tài khoản tổ chức/trường học.
-  - Tự động đối chiếu theo `Mã HS` (và tên + SĐT) để phát hiện 3 nhóm cần duyệt: `Học sinh mới`, `Khác lớp gốc (Chuyển lớp)` và `Cập nhật Mã HS / Thông tin`.
+  - Tự động đối chiếu theo `Mã HS` (và tên + Tên Phụ huynh) để phát hiện 3 nhóm cần duyệt: `Học sinh mới`, `Khác lớp gốc (Chuyển lớp)` và `Cập nhật Mã HS / Thông tin`.
   - Trên bảng duyệt của Văn phòng: mặc định gắn tag `Mới` cho học sinh mới và học sinh chuyển lớp, nhưng có nút tích chọn/bỏ chọn tag `Mới` cho từng em hoặc tất cả trước khi bấm `✓ Duyệt & Cập nhật`.
 - [x] **7.3. Bảo toàn 100% Dữ liệu Học sinh khi Chuyển lớp:** Khi học sinh chuyển từ lớp A sang lớp B (qua duyệt Google Sheets hoặc qua nút `Chuyển lớp`), mã lớp A được chuyển vào `previousClassIds` & `classTransferHistory`. Khi mở Hồ sơ học sinh theo lớp (`#student-class-profile-dialog`), vẫn hiển thị tab `Lớp cũ` để xem lại đầy đủ 100% lịch sử điểm danh, điểm BTVN/Test và nhận xét tại lớp A.
 
@@ -838,8 +837,12 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 
 #### 9. Cơ Chế Đồng Bộ & Cập Nhật 2 Chiều với Google Sheets (Two-Way Sync & In-Place Editing)
 - **Tổng quan luồng 2 chiều (Bidirectional Synchronization):**
-  - **Chiều thuận (Google Sheets ➡ Web App):** Hệ thống quét các trang tính trên Google Sheet (hỗ trợ cả quét đơn sheet theo GID/Tên sheet và quét đa khóa học sinh 2K9 – 2K13), tự động đối chiếu theo Mã HS để phát hiện học sinh mới, học sinh đổi lớp gốc, học sinh đổi trạng thái sang "Nghỉ" (hoặc ô trạng thái để trống) và tag mới để đưa vào Bảng duyệt của Văn phòng.
-  - **Chiều ngược (Web App ➡ Google Sheets - Edit ngược lại Sheet):** Mọi thao tác chỉnh sửa thông tin học sinh thực hiện trên Web (cấp Mã HS mới, sửa thông tin phụ huynh/trường học, chuyển lớp, thay đổi trạng thái sang "Nghỉ"/"Học", thêm/bớt Tag phân loại) đều có thể **cập nhật ngược lại trực tiếp vào từng ô/dòng tương ứng trên Google Sheet** mà không làm thay đổi cấu trúc bảng, không làm mất công thức tính toán và không ảnh hưởng đến các cột dữ liệu khác.
+  - **Chiều thuận (Google Sheets ➡ Web App):** Hệ thống quét các trang tính trên Google Sheet (hỗ trợ cả quét đơn sheet theo GID/Tên sheet và quét đa khóa học sinh 2K9 – 2K13), tự động đối chiếu theo Mã HS để phát hiện học sinh mới, học sinh đổi lớp gốc, học sinh đổi trạng thái sang "Nghỉ" (hoặc ô trạng thái để trống) và tag mới để đưa vào Bảng duyệt của Văn phòng. Cho phép người dùng tùy chỉnh cấu hình từng cột riêng biệt (Mã HS, Họ đệm, Tên, Họ và tên, Lớp học, Trường học, Tên Phụ huynh, Trạng thái, Tag).
+  - **Chiều ngược (Web App ➡ Google Sheets - Quy tắc an toàn dữ liệu bất biến):**
+    > [!IMPORTANT]
+    > **QUY TẮC BẤT BIẾN CỦA ĐỒNG BỘ 2 CHIỀU:**
+    > Đồng bộ 2 chiều (Web ➡ Google Sheets) **CHỈ diễn ra ở các cột Tag và các cột thông tin buổi học** (Điểm danh, BTVN, Điểm BTVN, Điểm Test, Ghi chú buổi học, Ghi chú học lực).
+    > Hệ thống **TUYỆT ĐỐI KHÔNG đồng bộ / không ghi đè vào các cột thông tin chung của học sinh trên Google Sheet** (Họ và tên, Mã học sinh, Trường học, Tên Phụ huynh, Lớp học, Trạng thái học sinh). Điều này bảo vệ toàn vẹn 100% dữ liệu gốc của học sinh trên Google Sheets của trung tâm, tránh mọi rủi ro làm xáo trộn hoặc ghi đè sai thông tin nhân khẩu học.
 
 - **Thuật toán In-Place Cell Update trên Google Apps Script Bridge:**
   - **Giao thức gọi API:** Web app gửi yêu cầu POST đến Google Apps Script Web App URL với cấu hình payload:
@@ -847,7 +850,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
     {
       "action": "updateStudentsTwoWay",
       "mode": "inplace",
-      "appendNew": true,
+      "appendNew": false,
       "spreadsheetId": "<ID>",
       "sheetName": "<Tên Sheet>",
       "gid": "<GID>",
@@ -855,11 +858,14 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
         {
           "studentCode": "2K9.001",
           "fullName": "Nguyễn Văn A",
-          "enrollmentStatus": "Nghỉ",
-          "tags": ["Mới", "VIP"],
-          "classCodes": "2K9.H1.LINH",
-          "school": "THCS Trưng Vương",
-          "parentPhone": "0912345678"
+          "tag": "Mới, Cần kèm thêm",
+          "tags": ["Mới", "Cần kèm thêm"],
+          "attendance": "Có mặt",
+          "homeworkStatus": "Đủ",
+          "btvnScore": 9.5,
+          "testScore": 8.0,
+          "sessionNote": "Hăng hái phát biểu",
+          "learningNotes": "Nắm vững lý thuyết phương trình"
         }
       ]
     }
@@ -867,20 +873,23 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - **Nhận diện cột động (Dynamic Column Discovery):** Apps Script phân tích dòng tiêu đề đầu tiên (Row 1) của trang tính để tự động tìm kiếm chỉ mục các cột:
     * `codeCol`: Cột Mã HS (`Mã HS`, `Mã học sinh`, `Ma HS`, `Code`, `ID`).
     * `nameCol`: Cột Họ và tên (`Họ và tên`, `Họ tên`, `Tên học sinh`, `Full Name`).
-    * `statusCol`: Cột Trạng thái (`Trạng thái`, `Tình trạng`, `Status`).
     * `tagCol`: Cột Tag (`Tag`, `Tags`, `Thẻ`, `Phân loại`, `Nhãn`).
-    * `classCol`: Cột Lớp (`Lớp`, `Mã lớp`, `Lớp học`, `Class`).
-    * `phoneCol`: Cột SĐT Phụ huynh (`SĐT`, `Số điện thoại`, `Phụ huynh`, `Phone`).
-    * `schoolCol`: Cột Trường học (`Trường`, `Trường học`, `School`).
+    * `attCol`: Cột Điểm danh (`Điểm danh`, `Attendance`, `Chuyên cần`).
+    * `hwCol`: Cột BTVN (`BTVN`, `Bài tập về nhà`, `Homework`, `Tình trạng BTVN`).
+    * `btvnScoreCol`: Cột Điểm BTVN (`Điểm BTVN`, `BTVN Score`, `Điểm bài tập`).
+    * `testScoreCol`: Cột Điểm Test (`Điểm Test`, `Test Score`, `Điểm kiểm tra`).
+    * `noteCol`: Cột Ghi chú buổi học (`Ghi chú buổi học`, `Ghi chú`, `Nhận xét buổi học`, `Session Note`).
+    * `learningNotesCol`: Cột Ghi chú học lực (`Ghi chú học lực`, `Học lực`, `Learning Notes`).
+    * `parentCol`: Cột Tên Phụ huynh (`Phụ huynh`, `Tên phụ huynh`, `PH`, `Parent`, `Parent Name`) — Dùng khi quét từ Sheet vào Web hoặc thêm dòng mới, không ghi đè 2 chiều.
+    * `classCol`, `schoolCol`, `statusCol`: Các cột thông tin chung — Dùng khi đọc từ Sheet vào Web, tuyệt đối không bị ghi đè khi đồng bộ 2 chiều.
   - **Định vị & Ghi đè chính xác từng ô (In-place cell writing):**
     * Lập bản đồ chỉ mục dòng theo `Mã HS` (ưu tiên tuyệt đối) và `Họ và tên` (dự phòng khi học sinh chưa có mã).
     * Với mỗi học sinh: xác định chính xác số thứ tự hàng `targetRow` trên Sheet. Sử dụng phương thức `syncSheet.getRange(targetRow, colIdx + 1).setValue(...)` để cập nhật riêng rẽ từng ô dữ liệu tương ứng:
-      + Ghi trạng thái học sinh mới vào cột Trạng thái.
-      + Ghi chuỗi tag mới (dạng nối dấu phẩy) vào cột Tag.
-      + Ghi mã học sinh mới vào cột Mã HS (nếu trên Sheet đang trống).
-      + Cập nhật mã lớp, SĐT phụ huynh, trường học nếu có thay đổi.
+      + Ghi chuỗi tag mới (dạng nối dấu phẩy) vào cột Tag (`tagCol`).
+      + Ghi nhận xét/thông tin buổi học vào các cột `attCol`, `hwCol`, `btvnScoreCol`, `testScoreCol`, `noteCol`, `learningNotesCol`.
+      + **Tuyệt đối KHÔNG ghi đè** vào `codeCol`, `nameCol`, `classCol`, `schoolCol`, `parentCol`, `statusCol`.
     * Tuyệt đối không gọi `clearContents()` khi đang ở chế độ 2 chiều `inplace`, bảo toàn 100% định dạng, màu sắc, phông chữ và các công thức tính toán có sẵn trên Sheet.
-  - **Tự động thêm mới (Append Mode):** Nếu học sinh trên Web chưa từng tồn tại trên Sheet và tùy chọn `appendNew` được bật, Apps Script tự động thêm dòng mới vào cuối trang tính với các trường thông tin được xếp đúng vị trí cột.
+  - **Tự động thêm mới (Append Mode):** Mặc định tắt (`appendNew: false`) để đảm bảo an toàn tuyệt đối cho trang tính. Chỉ khi người dùng chủ động cho phép thêm dòng mới, hệ thống mới thêm dòng mới với các cột thông tin tương ứng.
 
 - **Giải pháp bảo mật & Quyền truy cập (Restricted Google Drive Bypass):**
   - Khi Google Sheet bị giới hạn quyền truy cập (chỉ cho phép một số tài khoản Google cụ thể), nhân viên trung tâm hoặc trợ giảng dùng tài khoản khác vẫn có thể đọc và chỉnh sửa 2 chiều thông qua Google Apps Script Web App được triển khai ở chế độ:
@@ -889,8 +898,9 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - Nhờ cơ chế này, mọi thao tác đọc/ghi từ Web app đều thực thi dưới quyền của chủ sở hữu Sheet, loại bỏ hoàn toàn lỗi "Permission Denied" (Lỗi 403) trên Google Drive.
 
 - **Các phương thức dự phòng khi không kết nối trực tiếp Apps Script:**
-  - **Copy TSV chuẩn hóa 2 chiều (`#copy-sheets-tsv-btn`):** Sao chép toàn bộ bảng dữ liệu ra clipboard với đúng định dạng cột phân cách bằng tab (`	`) để người dùng có thể dán trực tiếp (Ctrl + V) đè lên vùng dữ liệu tương ứng trên Google Sheets.
-  - **Xuất file Excel chuẩn (`#export-sheets-xlsx-btn`):** Xuất toàn bộ danh sách ra tệp `.xlsx` có sẵn đầy đủ các cột Mã HS, Họ đệm, Tên, Trường, PH, Trạng thái, Tag, Mã lớp để nhập liệu thủ công.
+  - **Copy TSV chuẩn hóa 2 chiều (`#copy-sheets-tsv-btn`):** Sao chép toàn bộ bảng dữ liệu ra clipboard với đúng định dạng cột phân cách bằng tab (`\t`) để người dùng có thể dán trực tiếp (Ctrl + V) đè lên vùng dữ liệu tương ứng trên Google Sheets.
+  - **Xuất file Excel chuẩn (`#export-sheets-xlsx-btn`):** Xuất toàn bộ danh sách ra tệp `.xlsx` có sẵn đầy đủ các cột Mã HS, Họ đệm, Tên, Trường, Phụ huynh, Trạng thái, Tag, Mã lớp để nhập liệu thủ công.
+
 
 
 #### 10. Khắc Phục Lỗi Quản Lý Tài Khoản, Dropdown Nhân Sự & Hiển Thị Lớp Học Theo Phân Quyền
@@ -941,7 +951,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 #### 12. Hộp Thoại Hỏi Xác Nhận Đồng Bộ Ngược Lên Google Sheet Khi Có Chỉnh Sửa Trên Web (`#confirm-reverse-sheets-sync-dialog`)
 - **Nguyên lý kích hoạt (Triggering Condition):**
   - Bất cứ khi nào tài khoản có quyền (Admin hoặc Văn phòng) thực hiện chỉnh sửa hồ sơ học sinh trên Web qua hộp thoại `#student-profile-dialog` (hoặc qua các thao tác cập nhật hàng loạt):
-    * Sửa Họ và tên, Mã học sinh, Trường học, SĐT Phụ huynh.
+    * Sửa Họ và tên, Mã học sinh, Trường học, Tên Phụ huynh.
     * Đổi lớp học hoặc chuyển lớp.
     * Đổi trạng thái học tập (sang `Nghỉ`, `Tạm nghỉ` hoặc `Học`).
     * Thêm/bớt Tag phân loại học sinh.
@@ -953,7 +963,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
     * Mã học sinh: Mã hiện tại (hoặc "Chưa có").
     * Trạng thái học: Màu xanh nếu `Học`, màu đỏ nếu `Nghỉ` / `Tạm nghỉ`.
     * Lớp đang theo học: Mã các lớp học sinh trực thuộc.
-    * Trường học & SĐT Phụ huynh.
+    * Trường học & Tên Phụ huynh.
     * Tags phân loại.
   - **Hai lựa chọn quyết định:**
     1. **Nút `Chỉ lưu trên Web` (`#cancel-reverse-sheets-sync-btn`):** Đóng hộp thoại, giữ nguyên dữ liệu trên Web mà không tác động lên Google Sheet.
@@ -1073,7 +1083,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - Phân bổ Lớp học: Cho phép chỉ định lớp mục tiêu từ sheet hoặc chuyển sang lớp khác trong hệ thống.
 - **Xử lý khi bấm nút "Áp dụng đồng bộ":**
   - Nhánh xử lý `item.category === 'missing_code'` trong `applyApprovedSheetsSyncItems`:
-    * Nếu đối chiếu thấy đã có học sinh trên hệ thống (theo Tên + SĐT phụ huynh): Cập nhật mã mới (nếu được cấp), cập nhật trạng thái học vụ và phân lớp.
+    * Nếu đối chiếu thấy đã có học sinh trên hệ thống (theo Tên + Tên Phụ huynh/Trường): Cập nhật mã mới (nếu được cấp), cập nhật trạng thái học vụ và phân lớp.
     * Nếu là học sinh mới hoàn toàn: Tạo hồ sơ học sinh mới với mã được cấp (hoặc để trống nếu chưa cấp), gắn đúng trạng thái đã chọn (`Học` / `Nghỉ` / `Tạm nghỉ`), lưu vết thời gian và tăng `revision` chuẩn hóa.
 
 ---
@@ -1083,7 +1093,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - Trong môi trường phân tán nhiều thiết bị (máy văn phòng, máy giáo viên, điện thoại trợ giảng), có những trường hợp dữ liệu ca trực mới mở, phân lớp mới hoặc học sinh mới chưa kịp tải về do cache trình duyệt hoặc delay kết nối WebSocket.
 - **Quy trình 3 bước đảm bảo dữ liệu chuẩn 100%:**
   1. **Bước 1 - Phản hồi trực quan (Visual Feedback):**
-     * Khi người dùng bấm vào huy hiệu `#realtime-sync-badge` trên thanh tiêu đề, badge lập tức chuyển sang trạng thái chờ: `🔄 Đang đồng bộ chuẩn...`, vô hiệu hóa tạm thời để tránh bấm đúp liên tục.
+     * Khi người dùng bấm vào huy hiệu `#realtime-sync-badge` trên thanh tiêu đề, badge lập tức chuyển sang trạng thái chờ: `Đang đồng bộ chuẩn...`, vô hiệu hóa tạm thời để tránh bấm đúp liên tục.
   2. **Bước 2 - Đồng bộ hai chiều (Upload Flush & Download Snapshot):**
      * **Upload Flush (`_flushFirebaseCloudPush(false, true)`):** Đẩy ngay lập tức toàn bộ các thay đổi cục bộ còn nằm trong hàng đợi outbound queue lên Firebase Cloud Realtime Database, đảm bảo không bị thất thoát bất kỳ thao tác nào người dùng vừa thực hiện.
      * **Download Snapshot (`pullFromFirebaseCloudNow('manual-reload')`):** Kéo toàn bộ bản chụp snapshot dữ liệu mới nhất từ Firebase Cloud về ghi đè vào hệ thống lưu trữ chuẩn của trình duyệt.
