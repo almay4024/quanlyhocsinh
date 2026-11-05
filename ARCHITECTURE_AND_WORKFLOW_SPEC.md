@@ -522,6 +522,14 @@ Khi Giáo viên đứng trên bục giảng và bấm nút **`Góc nhìn Giáo v
      * `Chế độ Chép Sổ Giấy (Gọn nhất)`: Chỉ hiện `STT Sổ` | `Họ đệm` | `Tên` | `Điểm danh (✓/M15/VP/KP)` | `BTVN / Điểm` | `Điểm Test`.
      * `Đặt cột Điểm & BTVN sát cạnh Tên`: Đưa cột `Điểm BTVN` và `Điểm Test` nằm ngay sát cạnh cột `Tên`.
      * `Đầy đủ thông tin`: Hiện toàn bộ các cột (`Mã HS`, `Họ đệm`, `Tên`, `Trường`, `Vị trí ngồi`, `Điểm danh`, `BTVN`, `Điểm`, `Ghi chú`).
+2. **Bộ Lọc Nhanh Học Sinh Chưa Nhập Điểm Tại Tab Nhập Điểm (`#scores-view`):**
+   * Tích hợp thanh nút lọc nhanh (Filter Pills) và dropdown bộ lọc:
+     * `Tất cả`: Xem toàn bộ học sinh lớp và học bù, phân chia theo 3 nhóm ưu tiên.
+     * `Chưa nhập điểm`: Lọc nhanh các học sinh chưa có điểm BTVN (hoặc chưa có điểm Test nếu ca học có test) để trợ giảng / giáo viên tập trung chấm bài và nhập điểm thần tốc mà không phải cuộn tìm kiếm. Kèm huy hiệu số lượng học sinh còn thiếu điểm trong thời gian thực.
+     * `Chưa có điểm BTVN`: Lọc riêng các học sinh chưa có điểm bài tập về nhà.
+     * `Chưa có điểm Test`: Chỉ hiển thị khi ca học có bài Test, lọc nhanh các bạn chưa vào điểm kiểm tra.
+     * `Đã nhập điểm`: Xem danh sách các bạn đã hoàn tất nhập đủ điểm.
+   * Khi tất cả học sinh đã có điểm, hệ thống hiển thị thông báo trạng thái tích cực: `✓ Tuyệt vời! Tất cả học sinh đều đã được nhập điểm đầy đủ.`
 
 ---
 
@@ -717,6 +725,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 - [x] **5.2. Đổi vị trí cột & Ẩn/Hiện cột như Excel (`#column-order-dialog`):** Cho phép tích checkbox Ẩn/Hiện từng cột và đổi thứ tự cột linh hoạt (có nút đặt nhanh cột `Điểm & BTVN` sát cạnh cột `Tên`). Thứ tự cột được áp dụng đồng bộ cho cả bảng trên màn hình lẫn khi xuất file Excel (`.xlsx`).
 - [x] **5.3. Bảng Nhập điểm (`#scores-view`) & Nhập điểm Excel theo Mã HS:**
   - Sắp xếp thông minh hoặc theo thứ tự sổ giấy; hỗ trợ bật/tắt cột `Điểm Test` (đồng bộ với mục `Ca này có test` bên tab Checklist).
+  - Tích hợp thanh nút lọc nhanh (Filter Pills) và dropdown: `Tất cả`, `Chưa nhập điểm`, `Chưa có điểm BTVN`, `Chưa có điểm Test`, `Đã nhập điểm` kèm số đếm động thời gian thực, giúp lọc nhanh các bạn chưa có điểm để nhập bài không sót học sinh nào.
   - Bấm vào ô `Điểm 4 bài gần nhất` mở ngay hộp thoại chi tiết lịch sử điểm, trạng thái đi học và tên bài học từng buổi trước của học sinh đó.
   - Hỗ trợ xuất file mẫu Excel và nhập điểm hàng loạt bằng file `.xlsx` hoặc dán `Ctrl+V` 2 cột `Mã HS + Điểm` (tự động chuyển trạng thái BTVN từ `Chưa thu` sang `Đã nộp` khi có điểm).
 

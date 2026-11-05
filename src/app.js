@@ -12663,6 +12663,52 @@ function renderScoresView() {
   };
 
   let items = combinedStudents.map(buildScoreRowItem);
+
+  const isScoredHw = (item) => {
+    return item.hwScore !== null && item.hwScore !== undefined && String(item.hwScore).trim() !== '' && !isNaN(Number(String(item.hwScore).trim().replace(',', '.')));
+  };
+  const isScoredTest = (item) => {
+    return item.testScore !== null && item.testScore !== undefined && String(item.testScore).trim() !== '' && !isNaN(Number(String(item.testScore).trim().replace(',', '.')));
+  };
+  const isStudentUnscored = (item) => {
+    if (hasTest) {
+      return !isScoredHw(item) || !isScoredTest(item);
+    }
+    return !isScoredHw(item);
+  };
+
+  // Cập nhật số lượng học sinh cho các nút lọc nhanh (Filter Pills)
+  const countAll = items.length;
+  const countMissingHw = items.filter(r => !isScoredHw(r)).length;
+  const countMissingTest = hasTest ? items.filter(r => !isScoredTest(r)).length : 0;
+  const countUnscored = items.filter(isStudentUnscored).length;
+  const countScored = items.filter(r => !isStudentUnscored(r)).length;
+
+  const countAllEl = $('#scores-pill-count-all');
+  if (countAllEl) countAllEl.textContent = countAll;
+  const countUnscoredEl = $('#scores-pill-count-unscored');
+  if (countUnscoredEl) countUnscoredEl.textContent = countUnscored;
+  const countMissingHwEl = $('#scores-pill-count-missing-hw');
+  if (countMissingHwEl) countMissingHwEl.textContent = countMissingHw;
+  const countMissingTestEl = $('#scores-pill-count-missing-test');
+  if (countMissingTestEl) countMissingTestEl.textContent = countMissingTest;
+  const countScoredEl = $('#scores-pill-count-scored');
+  if (countScoredEl) countScoredEl.textContent = countScored;
+
+  const testOpt = $('#scores-filter-opt-test');
+  if (testOpt) testOpt.hidden = !hasTest;
+  const testPill = $('#scores-pill-missing-test');
+  if (testPill) testPill.hidden = !hasTest;
+
+  // Đồng bộ trạng thái active của Filter Pills với Dropdown
+  document.querySelectorAll('.scores-filter-pill').forEach(pill => {
+    if (pill.dataset.scoreFilter === filter) {
+      pill.classList.add('active');
+    } else {
+      pill.classList.remove('active');
+    }
+  });
+
   if (isTypingInsideScoresTbody) {
     items.forEach(item => {
       const sid = item.student.id;
@@ -12692,10 +12738,23 @@ function renderScoresView() {
     const matchedIds = new Set(searchStudents(items.map(r => r.student), query).map(s => s.id));
     items = items.filter(r => matchedIds.has(r.student.id));
   }
-  if (filter === 'group1') items = items.filter(r => r.priorityGroup === 1);
-  if (filter === 'group2') items = items.filter(r => r.priorityGroup === 2);
-  if (filter === 'group3') items = items.filter(r => r.priorityGroup === 3);
-  if (filter === 'makeup') items = items.filter(r => r.isMakeup);
+  if (filter === 'unscored') {
+    items = items.filter(isStudentUnscored);
+  } else if (filter === 'missing_hw') {
+    items = items.filter(r => !isScoredHw(r));
+  } else if (filter === 'missing_test') {
+    items = items.filter(r => !isScoredTest(r));
+  } else if (filter === 'scored') {
+    items = items.filter(r => !isStudentUnscored(r));
+  } else if (filter === 'group1') {
+    items = items.filter(r => r.priorityGroup === 1);
+  } else if (filter === 'group2') {
+    items = items.filter(r => r.priorityGroup === 2);
+  } else if (filter === 'group3') {
+    items = items.filter(r => r.priorityGroup === 3);
+  } else if (filter === 'makeup') {
+    items = items.filter(r => r.isMakeup);
+  }
 
   // Sort strictly by priorityGroup (1 -> 2 -> 3), then alphabetically by Vietnamese givenName
   items.sort((a, b) => {
@@ -12735,7 +12794,21 @@ function renderScoresView() {
 
   const colCount = activeScoreCols.length;
   if (!items.length) {
-    tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; padding:18px; color:#87968a;">Không có học sinh nào phù hợp với bộ lọc.</td></tr>`;
+    let emptyMsg = 'Không có học sinh nào phù hợp với bộ lọc.';
+    let isSuccessMsg = false;
+    if (filter === 'unscored') {
+      emptyMsg = '✓ Tuyệt vời! Tất cả học sinh đều đã được nhập điểm đầy đủ.';
+      isSuccessMsg = true;
+    } else if (filter === 'missing_hw') {
+      emptyMsg = '✓ Tất cả học sinh đã có điểm BTVN.';
+      isSuccessMsg = true;
+    } else if (filter === 'missing_test') {
+      emptyMsg = '✓ Tất cả học sinh đã có điểm Test.';
+      isSuccessMsg = true;
+    } else if (filter === 'scored') {
+      emptyMsg = 'Chưa có học sinh nào được nhập điểm trong ca này.';
+    }
+    tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; padding:24px; color:${isSuccessMsg ? '#15803d' : '#87968a'}; font-weight:${isSuccessMsg ? '700' : 'normal'}; font-size:14.5px;">${emptyMsg}</td></tr>`;
     return;
   }
 
@@ -12906,6 +12979,14 @@ $('#scores-tab-search')?.addEventListener('input', () => {
   _scoreTabSearchDebounce = setTimeout(renderScoresView, 120);
 });
 $('#scores-tab-filter')?.addEventListener('change', renderScoresView);
+document.querySelectorAll('.scores-filter-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    const fVal = pill.dataset.scoreFilter || 'all';
+    const sel = $('#scores-tab-filter');
+    if (sel) sel.value = fVal;
+    renderScoresView();
+  });
+});
 
 // Universal Clear "×" Button on All Search Inputs
 function initSearchClearButtons() {

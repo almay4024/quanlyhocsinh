@@ -1188,18 +1188,31 @@
             </div>
           </div>
 
-          <div class="student-list-tools" style="margin:12px 0;">
+          <div class="student-list-tools" style="margin:12px 0 8px;">
             <label class="student-list-search" style="flex:1;">
               <input id="scores-tab-search" type="search" autocomplete="off" placeholder="Tìm nhanh học sinh theo họ đệm, tên, trường hoặc #tag..." />
             </label>
             <select id="scores-tab-filter" aria-label="Lọc danh sách nhập điểm">
               <option value="all">Tất cả học sinh (Sắp xếp theo 3 nhóm ưu tiên)</option>
+              <option value="unscored">Chưa nhập điểm (Cần chấm / nhập điểm)</option>
+              <option value="missing_hw">Chưa có điểm BTVN</option>
+              <option value="missing_test" id="scores-filter-opt-test" hidden>Chưa có điểm Test</option>
+              <option value="scored">Đã nhập đủ điểm</option>
               <option value="group1">Nhóm 1: Đã điểm danh + Đã nộp BTVN</option>
               <option value="group2">Nhóm 2: Đã điểm danh - Chưa thu / Chưa nộp BTVN</option>
               <option value="group3">Nhóm 3: Chưa điểm danh / Vắng mặt</option>
               <option value="makeup">Chỉ học sinh Học bù</option>
             </select>
             <button type="button" class="outline-button" id="customize-scores-columns-btn" title="Đổi thứ tự cột bảng Nhập điểm (VD: đưa cột Điểm BTVN/Test sát cạnh cột Tên)">Đổi thứ tự cột</button>
+          </div>
+
+          <div class="scores-filter-pills-bar" id="scores-filter-pills-bar" role="group" aria-label="Thanh lọc nhanh học sinh cần nhập điểm">
+            <span class="scores-filter-label">Lọc nhanh:</span>
+            <button type="button" class="scores-filter-pill active" data-score-filter="all">Tất cả <span class="pill-count" id="scores-pill-count-all">0</span></button>
+            <button type="button" class="scores-filter-pill pill-unscored" data-score-filter="unscored" title="Lọc nhanh toàn bộ các bạn chưa có điểm để nhập">Chưa nhập điểm <span class="pill-count" id="scores-pill-count-unscored">0</span></button>
+            <button type="button" class="scores-filter-pill" data-score-filter="missing_hw" title="Lọc các bạn chưa có điểm BTVN">Chưa có điểm BTVN <span class="pill-count" id="scores-pill-count-missing-hw">0</span></button>
+            <button type="button" class="scores-filter-pill" data-score-filter="missing_test" id="scores-pill-missing-test" hidden title="Lọc các bạn chưa có điểm Test">Chưa có điểm Test <span class="pill-count" id="scores-pill-count-missing-test">0</span></button>
+            <button type="button" class="scores-filter-pill" data-score-filter="scored" title="Lọc các bạn đã nhập điểm">Đã nhập điểm <span class="pill-count" id="scores-pill-count-scored">0</span></button>
           </div>
 
           <div class="attendance-table-wrap">
