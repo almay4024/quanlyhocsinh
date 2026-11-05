@@ -691,6 +691,42 @@
                   </label>
                 </div>
 
+                <details style="margin-top:12px; background:#ffffff; border:1px solid #cbd5e1; border-radius:8px; padding:10px 14px; font-size:13px;">
+                  <summary style="cursor:pointer; font-weight:700; color:#1e293b;">Cấu hình Cột nâng cao trên Sheet (Tùy chọn chỉ định cột A, B, C... hoặc tiêu đề cột)</summary>
+                  <p style="margin:4px 0 8px 0; font-size:12px; color:#64748b;">
+                    Hệ thống tự động nhận diện nếu để trống. Bạn có thể nhập chữ cái cột (VD: A, B, C), số thứ tự cột (1, 2, 3) hoặc tên tiêu đề cột.
+                  </p>
+                  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px;">
+                    <label class="field-label" style="margin:0; font-size:12px;">Cột Mã học sinh (Mã HS):
+                      <input id="panel-sheets-col-code" placeholder="VD: A hoặc Mã HS" />
+                    </label>
+                    <label class="field-label" style="margin:0; font-size:12px;">Cột Họ đệm:
+                      <input id="panel-sheets-col-family" placeholder="VD: B hoặc Họ đệm" />
+                    </label>
+                    <label class="field-label" style="margin:0; font-size:12px;">Cột Tên:
+                      <input id="panel-sheets-col-given" placeholder="VD: C hoặc Tên" />
+                    </label>
+                    <label class="field-label" style="margin:0; font-size:12px;">Cột Họ và tên gộp:
+                      <input id="panel-sheets-col-name" placeholder="VD: C hoặc Họ tên" />
+                    </label>
+                    <label class="field-label" style="margin:0; font-size:12px;">Cột Tag / Phân loại:
+                      <input id="panel-sheets-col-tag" placeholder="VD: D hoặc Tag" />
+                    </label>
+                    <label class="field-label" style="margin:0; font-size:12px;">Cột Lớp / Mã lớp:
+                      <input id="panel-sheets-col-class" placeholder="VD: E hoặc Mã lớp" />
+                    </label>
+                    <label class="field-label" style="margin:0; font-size:12px;">Cột Trường học:
+                      <input id="panel-sheets-col-school" placeholder="VD: F hoặc Trường" />
+                    </label>
+                    <label class="field-label" style="margin:0; font-size:12px;">Cột SĐT Phụ huynh:
+                      <input id="panel-sheets-col-phone" placeholder="VD: G hoặc SĐT" />
+                    </label>
+                    <label class="field-label" style="margin:0; font-size:12px;">Cột Trạng thái học:
+                      <input id="panel-sheets-col-status" placeholder="VD: H hoặc Trạng thái" />
+                    </label>
+                  </div>
+                </details>
+
                 <!-- Cấu hình Đa Khóa -->
                 <div style="margin-top:14px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:10px 14px;">
                   <strong style="color:#166534; font-size:13.5px; display:block; margin-bottom:8px;">Quản lý Nhiều Trang Tính / Sheet (Hỗ trợ quét đa khóa: 2K9, 2K10, 2K11, 2K12, 2K13)</strong>
@@ -1952,27 +1988,33 @@
 
         <details style="margin-top:10px; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:13px;">
           <summary style="cursor:pointer; font-weight:700; color:#334155;">Cấu hình Cột nâng cao trên Sheet &amp; Google Drive (Tự động nhận diện nếu để trống)</summary>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; margin-top:8px;">
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; margin-top:8px;">
             <label class="field-label" style="margin:0; font-size:12px;">Cột Mã học sinh (Mã HS):
-              <input id="sheets-col-code" placeholder="Tự động (VD: B hoặc Mã HS)" />
+              <input id="sheets-col-code" placeholder="VD: A hoặc Mã HS" />
             </label>
-            <label class="field-label" style="margin:0; font-size:12px;">Cột Họ tên (hoặc Họ đệm + Tên):
-              <input id="sheets-col-name" placeholder="Tự động (VD: C, D)" />
+            <label class="field-label" style="margin:0; font-size:12px;">Cột Họ đệm:
+              <input id="sheets-col-family" placeholder="VD: B hoặc Họ đệm" />
             </label>
-            <label class="field-label" style="margin:0; font-size:12px;">Cột Lớp / Mã lớp (1 hoặc nhiều cột):
-              <input id="sheets-col-class" placeholder="Tự động (VD: G, H)" />
+            <label class="field-label" style="margin:0; font-size:12px;">Cột Tên:
+              <input id="sheets-col-given" placeholder="VD: C hoặc Tên" />
             </label>
-            <label class="field-label" style="margin:0; font-size:12px;">Cột Trường học:
-              <input id="sheets-col-school" placeholder="Tự động (VD: F)" />
-            </label>
-            <label class="field-label" style="margin:0; font-size:12px;">Cột SĐT Phụ huynh:
-              <input id="sheets-col-phone" placeholder="Tự động" />
-            </label>
-            <label class="field-label" style="margin:0; font-size:12px;">Cột Trạng thái học:
-              <input id="sheets-col-status" placeholder="Tự động (VD: A)" />
+            <label class="field-label" style="margin:0; font-size:12px;">Cột Họ và tên gộp:
+              <input id="sheets-col-name" placeholder="VD: C hoặc Họ tên" />
             </label>
             <label class="field-label" style="margin:0; font-size:12px;">Cột Tag / Phân loại:
-              <input id="sheets-col-tag" placeholder="Tự động (VD: Tag, Thẻ)" />
+              <input id="sheets-col-tag" placeholder="VD: D hoặc Tag" />
+            </label>
+            <label class="field-label" style="margin:0; font-size:12px;">Cột Lớp / Mã lớp:
+              <input id="sheets-col-class" placeholder="VD: E hoặc Mã lớp" />
+            </label>
+            <label class="field-label" style="margin:0; font-size:12px;">Cột Trường học:
+              <input id="sheets-col-school" placeholder="VD: F hoặc Trường" />
+            </label>
+            <label class="field-label" style="margin:0; font-size:12px;">Cột SĐT Phụ huynh:
+              <input id="sheets-col-phone" placeholder="VD: G hoặc SĐT" />
+            </label>
+            <label class="field-label" style="margin:0; font-size:12px;">Cột Trạng thái học:
+              <input id="sheets-col-status" placeholder="VD: H hoặc Trạng thái" />
             </label>
           </div>
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-top:8px; padding-top:8px; border-top:1px dashed #e2e8f0;">

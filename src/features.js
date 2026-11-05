@@ -7228,30 +7228,34 @@ export function setupFeatures(ctx) {
   }
 
   function readAndSaveSheetsConfigFromDialog() {
-    const rawSheetUrl = ($('#sheets-spreadsheet-id')?.value || '').trim();
+    const rawSheetUrl = ($('#sheets-spreadsheet-id')?.value || $('#panel-sheets-spreadsheet-id')?.value || '').trim();
     const spreadsheetId = extractSpreadsheetId(rawSheetUrl) || rawSheetUrl;
     const extractedGid = extractSheetGid(rawSheetUrl);
-    const gid = ($('#sheets-gid-input')?.value || extractedGid || '').trim();
+    const gid = ($('#sheets-gid-input')?.value || $('#panel-sheets-gid-input')?.value || extractedGid || '').trim();
     if ($('#sheets-gid-input') && !$('#sheets-gid-input').value && extractedGid) {
       $('#sheets-gid-input').value = extractedGid;
     }
-    const sheetName = ($('#sheets-tab-name')?.value || '').trim();
-    const scriptUrl = ($('#sheets-script-url-input')?.value || $('#drive-script-url-input')?.value || '').trim();
-    const autoSync = Boolean($('#sheets-autosync-toggle')?.checked);
-    const twoWayMode = $('#sheets-two-way-mode-toggle') ? Boolean($('#sheets-two-way-mode-toggle').checked) : true;
-    const defaultNewTag = $('#sheets-default-new-tag-toggle') ? Boolean($('#sheets-default-new-tag-toggle').checked) : true;
-    const classDiffMode = $('#sheets-class-diff-mode')?.value || 'transfer';
-    const hasHeader = $('#sheets-has-header-toggle') ? Boolean($('#sheets-has-header-toggle').checked) : true;
-    const colCode = ($('#sheets-col-code')?.value || '').trim();
-    const colName = ($('#sheets-col-name')?.value || '').trim();
-    const colClass = ($('#sheets-col-class')?.value || '').trim();
-    const colSchool = ($('#sheets-col-school')?.value || '').trim();
-    const colPhone = ($('#sheets-col-phone')?.value || '').trim();
-    const colStatus = ($('#sheets-col-status')?.value || '').trim();
-    const colTag = ($('#sheets-col-tag')?.value || '').trim();
+    const sheetName = ($('#sheets-tab-name')?.value || $('#panel-sheets-tab-name')?.value || '').trim();
+    const scriptUrl = ($('#sheets-script-url-input')?.value || $('#panel-sheets-script-url-input')?.value || $('#drive-script-url-input')?.value || '').trim();
+    const autoSync = Boolean($('#sheets-autosync-toggle')?.checked || $('#panel-sheets-autosync-toggle')?.checked);
+    const twoWayMode = $('#sheets-two-way-mode-toggle') ? Boolean($('#sheets-two-way-mode-toggle').checked) : ($('#panel-sheets-two-way-mode-toggle') ? Boolean($('#panel-sheets-two-way-mode-toggle').checked) : true);
+    const defaultNewTag = $('#sheets-default-new-tag-toggle') ? Boolean($('#sheets-default-new-tag-toggle').checked) : ($('#panel-sheets-default-new-tag-toggle') ? Boolean($('#panel-sheets-default-new-tag-toggle').checked) : true);
+    const classDiffMode = $('#sheets-class-diff-mode')?.value || $('#panel-sheets-class-diff-mode')?.value || 'transfer';
+    const hasHeader = $('#sheets-has-header-toggle') ? Boolean($('#sheets-has-header-toggle').checked) : ($('#panel-sheets-has-header-toggle') ? Boolean($('#panel-sheets-has-header-toggle').checked) : true);
+
+    const colCode = ($('#sheets-col-code')?.value || $('#panel-sheets-col-code')?.value || '').trim();
+    const colFamilyName = ($('#sheets-col-family')?.value || $('#panel-sheets-col-family')?.value || '').trim();
+    const colGivenName = ($('#sheets-col-given')?.value || $('#panel-sheets-col-given')?.value || '').trim();
+    const colName = ($('#sheets-col-name')?.value || $('#panel-sheets-col-name')?.value || '').trim();
+    const colTag = ($('#sheets-col-tag')?.value || $('#panel-sheets-col-tag')?.value || '').trim();
+    const colClass = ($('#sheets-col-class')?.value || $('#panel-sheets-col-class')?.value || '').trim();
+    const colSchool = ($('#sheets-col-school')?.value || $('#panel-sheets-col-school')?.value || '').trim();
+    const colPhone = ($('#sheets-col-phone')?.value || $('#panel-sheets-col-phone')?.value || '').trim();
+    const colStatus = ($('#sheets-col-status')?.value || $('#panel-sheets-col-status')?.value || '').trim();
 
     const prevCfg = loadGoogleSheetsConfig();
     const cfg = {
+      ...prevCfg,
       rawSheetUrl,
       spreadsheetId,
       sheetName,
@@ -7263,12 +7267,14 @@ export function setupFeatures(ctx) {
       classDiffMode,
       hasHeader,
       colCode,
+      colFamilyName,
+      colGivenName,
       colName,
+      colTag,
       colClass,
       colSchool,
       colPhone,
       colStatus,
-      colTag,
       cohortSheets: prevCfg.cohortSheets || DEFAULT_COHORTS
     };
     saveGoogleSheetsConfig(cfg);
@@ -7278,6 +7284,7 @@ export function setupFeatures(ctx) {
         saveGoogleDrivePhotoConfig({ ...driveCfg, scriptUrl });
       }
     }
+    populateSheetsConfigInputs();
     return cfg;
   }
 
@@ -7297,6 +7304,16 @@ export function setupFeatures(ctx) {
     const classDiffMode = $('#panel-sheets-class-diff-mode')?.value || $('#sheets-class-diff-mode')?.value || 'transfer';
     const hasHeader = $('#panel-sheets-has-header-toggle') ? Boolean($('#panel-sheets-has-header-toggle').checked) : ($('#sheets-has-header-toggle') ? Boolean($('#sheets-has-header-toggle').checked) : true);
 
+    const colCode = ($('#panel-sheets-col-code')?.value || $('#sheets-col-code')?.value || '').trim();
+    const colFamilyName = ($('#panel-sheets-col-family')?.value || $('#sheets-col-family')?.value || '').trim();
+    const colGivenName = ($('#panel-sheets-col-given')?.value || $('#sheets-col-given')?.value || '').trim();
+    const colName = ($('#panel-sheets-col-name')?.value || $('#sheets-col-name')?.value || '').trim();
+    const colTag = ($('#panel-sheets-col-tag')?.value || $('#sheets-col-tag')?.value || '').trim();
+    const colClass = ($('#panel-sheets-col-class')?.value || $('#sheets-col-class')?.value || '').trim();
+    const colSchool = ($('#panel-sheets-col-school')?.value || $('#sheets-col-school')?.value || '').trim();
+    const colPhone = ($('#panel-sheets-col-phone')?.value || $('#sheets-col-phone')?.value || '').trim();
+    const colStatus = ($('#panel-sheets-col-status')?.value || $('#sheets-col-status')?.value || '').trim();
+
     const prevCfg = loadGoogleSheetsConfig();
     const cfg = {
       ...prevCfg,
@@ -7310,6 +7327,15 @@ export function setupFeatures(ctx) {
       defaultNewTag,
       classDiffMode,
       hasHeader,
+      colCode,
+      colFamilyName,
+      colGivenName,
+      colName,
+      colTag,
+      colClass,
+      colSchool,
+      colPhone,
+      colStatus,
       cohortSheets: prevCfg.cohortSheets || DEFAULT_COHORTS
     };
     saveGoogleSheetsConfig(cfg);
@@ -7319,7 +7345,65 @@ export function setupFeatures(ctx) {
         saveGoogleDrivePhotoConfig({ ...driveCfg, scriptUrl });
       }
     }
+    populateSheetsConfigInputs();
     return cfg;
+  }
+
+  function populateSheetsConfigInputs() {
+    const cfg = loadGoogleSheetsConfig();
+    const driveCfg = loadGoogleDrivePhotoConfig();
+
+    const pairs = [
+      ['sheets-spreadsheet-id', cfg.rawSheetUrl || cfg.spreadsheetId || ''],
+      ['sheets-tab-name', cfg.sheetName || ''],
+      ['sheets-gid-input', cfg.gid || ''],
+      ['sheets-script-url-input', cfg.scriptUrl || driveCfg.scriptUrl || ''],
+      ['sheets-col-code', cfg.colCode || ''],
+      ['sheets-col-family', cfg.colFamilyName || ''],
+      ['sheets-col-given', cfg.colGivenName || ''],
+      ['sheets-col-name', cfg.colName || ''],
+      ['sheets-col-tag', cfg.colTag || ''],
+      ['sheets-col-class', cfg.colClass || ''],
+      ['sheets-col-school', cfg.colSchool || ''],
+      ['sheets-col-phone', cfg.colPhone || ''],
+      ['sheets-col-status', cfg.colStatus || ''],
+
+      ['panel-sheets-spreadsheet-id', cfg.rawSheetUrl || cfg.spreadsheetId || ''],
+      ['panel-sheets-tab-name', cfg.sheetName || ''],
+      ['panel-sheets-gid-input', cfg.gid || ''],
+      ['panel-sheets-script-url-input', cfg.scriptUrl || driveCfg.scriptUrl || ''],
+      ['panel-sheets-col-code', cfg.colCode || ''],
+      ['panel-sheets-col-family', cfg.colFamilyName || ''],
+      ['panel-sheets-col-given', cfg.colGivenName || ''],
+      ['panel-sheets-col-name', cfg.colName || ''],
+      ['panel-sheets-col-tag', cfg.colTag || ''],
+      ['panel-sheets-col-class', cfg.colClass || ''],
+      ['panel-sheets-col-school', cfg.colSchool || ''],
+      ['panel-sheets-col-phone', cfg.colPhone || ''],
+      ['panel-sheets-col-status', cfg.colStatus || '']
+    ];
+
+    pairs.forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val;
+    });
+
+    if ($('#sheets-two-way-mode-toggle')) $('#sheets-two-way-mode-toggle').checked = cfg.twoWayMode !== false;
+    if ($('#sheets-default-new-tag-toggle')) $('#sheets-default-new-tag-toggle').checked = cfg.defaultNewTag !== false;
+    if ($('#sheets-has-header-toggle')) $('#sheets-has-header-toggle').checked = cfg.hasHeader !== false;
+    if ($('#sheets-autosync-toggle')) $('#sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
+    if ($('#sheets-class-diff-mode')) $('#sheets-class-diff-mode').value = cfg.classDiffMode || 'transfer';
+
+    if ($('#panel-sheets-two-way-mode-toggle')) $('#panel-sheets-two-way-mode-toggle').checked = cfg.twoWayMode !== false;
+    if ($('#panel-sheets-default-new-tag-toggle')) $('#panel-sheets-default-new-tag-toggle').checked = cfg.defaultNewTag !== false;
+    if ($('#panel-sheets-has-header-toggle')) $('#panel-sheets-has-header-toggle').checked = cfg.hasHeader !== false;
+    if ($('#panel-sheets-autosync-toggle')) $('#panel-sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
+    if ($('#panel-sheets-class-diff-mode')) $('#panel-sheets-class-diff-mode').value = cfg.classDiffMode || 'transfer';
+
+    const driveFolderEl = $('#drive-folder-id-input');
+    if (driveFolderEl && driveCfg.folderId) driveFolderEl.value = driveCfg.folderId;
+    const driveScriptEl = $('#drive-script-url-input');
+    if (driveScriptEl && driveCfg.scriptUrl) driveScriptEl.value = driveCfg.scriptUrl;
   }
 
   function renderMultiCohortSheetsTable() {
@@ -7775,16 +7859,8 @@ export function setupFeatures(ctx) {
       dateInput.value = getChecklistDate() || new Date().toISOString().slice(0, 10);
     }
 
-    // Populate Subpanel 3 config inputs
-    if ($('#panel-sheets-spreadsheet-id')) $('#panel-sheets-spreadsheet-id').value = cfg.rawSheetUrl || cfg.spreadsheetId || '';
-    if ($('#panel-sheets-tab-name')) $('#panel-sheets-tab-name').value = cfg.sheetName || '';
-    if ($('#panel-sheets-gid-input')) $('#panel-sheets-gid-input').value = cfg.gid || '';
-    if ($('#panel-sheets-script-url-input')) $('#panel-sheets-script-url-input').value = cfg.scriptUrl || driveCfg.scriptUrl || '';
-    if ($('#panel-sheets-two-way-mode-toggle')) $('#panel-sheets-two-way-mode-toggle').checked = cfg.twoWayMode !== false;
-    if ($('#panel-sheets-default-new-tag-toggle')) $('#panel-sheets-default-new-tag-toggle').checked = cfg.defaultNewTag !== false;
-    if ($('#panel-sheets-has-header-toggle')) $('#panel-sheets-has-header-toggle').checked = cfg.hasHeader !== false;
-    if ($('#panel-sheets-autosync-toggle')) $('#panel-sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
-    if ($('#panel-sheets-class-diff-mode')) $('#panel-sheets-class-diff-mode').value = cfg.classDiffMode || 'transfer';
+    // Populate config inputs
+    populateSheetsConfigInputs();
 
     const filterSel = $('#panel-sheets-sync-class-filter');
     if (filterSel) {
@@ -7854,6 +7930,7 @@ export function setupFeatures(ctx) {
       switchMgmtTab(mgmtTabSheets, mgmtPanelSheets);
       renderGoogleSheetsManagementPanel(defaultScope, preferredSubTab);
     } else {
+      populateSheetsConfigInputs();
       $('#google-sheets-sync-dialog')?.showModal();
     }
   }
@@ -7945,7 +8022,9 @@ export function setupFeatures(ctx) {
     if (!specStr || !String(specStr).trim()) return [];
     const tokens = String(specStr).split(/[,;+]+/).map(t => t.trim()).filter(Boolean);
     const indices = [];
-    for (const tk of tokens) {
+    for (const rawTk of tokens) {
+      // Clean prefix if user typed "cột A" or "cot A" or "col A"
+      const tk = rawTk.replace(/^(?:cột|cot|col|column)\s+/i, '').trim();
       // 1. Excel column letter (A, B, C... Z, AA)
       if (/^[A-Za-z]{1,2}$/.test(tk)) {
         const up = tk.toUpperCase();
@@ -7963,7 +8042,7 @@ export function setupFeatures(ctx) {
         continue;
       }
       // 3. Header name match
-      const low = tk.toLowerCase();
+      const low = rawTk.toLowerCase();
       headerRow.forEach((h, i) => {
         if (h && (h === low || h.includes(low))) {
           indices.push(i);
@@ -7973,7 +8052,7 @@ export function setupFeatures(ctx) {
     return [...new Set(indices.filter(i => i >= 0))];
   }
 
-  function extractNormalizedSheetStudents(rawInputRows, cfg) {
+  function extractNormalizedSheetStudents(rawInputRows, cfg = {}) {
     const catalog = getClassCatalog();
     const matrixRows = Array.isArray(rawInputRows)
       ? rawInputRows
@@ -7984,24 +8063,67 @@ export function setupFeatures(ctx) {
     // Trường hợp mảng các object JSON từ Apps Script
     if (!Array.isArray(matrixRows[0]) && typeof matrixRows[0] === 'object') {
       return matrixRows.map(item => {
-        const rawCode = String(item.studentCode || item['Mã HS'] || item['Mã học sinh'] || item.code || '').trim().toUpperCase();
-        const fullName = String(item.fullName || item.name || item['Họ và tên'] || [item.familyName || item['Họ đệm'], item.givenName || item['Tên']].filter(Boolean).join(' ')).trim();
-        const sp = splitVietnameseName(fullName);
-        const rawClassStr = String(item.classCodes || item['Mã lớp'] || item['Lớp'] || '').trim();
+        const rawCode = String(
+          (cfg.colCode && item[cfg.colCode] !== undefined ? item[cfg.colCode] : null) ||
+          item.studentCode || item['Mã HS'] || item['Mã học sinh'] || item.code || ''
+        ).trim().toUpperCase();
+
+        let familyName = String(
+          (cfg.colFamilyName && item[cfg.colFamilyName] !== undefined ? item[cfg.colFamilyName] : null) ||
+          item.familyName || item['Họ đệm'] || ''
+        ).trim();
+
+        let givenName = String(
+          (cfg.colGivenName && item[cfg.colGivenName] !== undefined ? item[cfg.colGivenName] : null) ||
+          item.givenName || item['Tên'] || ''
+        ).trim();
+
+        let fullName = String(
+          (cfg.colName && item[cfg.colName] !== undefined ? item[cfg.colName] : null) ||
+          item.fullName || item.name || item['Họ và tên'] || ''
+        ).trim();
+
+        if (!fullName && (familyName || givenName)) {
+          fullName = [familyName, givenName].filter(Boolean).join(' ');
+        } else if (fullName && (!familyName && !givenName)) {
+          const sp = splitVietnameseName(fullName);
+          familyName = sp.familyName;
+          givenName = sp.givenName;
+        }
+
+        const rawClassStr = String(
+          (cfg.colClass && item[cfg.colClass] !== undefined ? item[cfg.colClass] : null) ||
+          item.classCodes || item['Mã lớp'] || item['Lớp'] || ''
+        ).trim();
         const resolvedClassIds = resolveClassIdsFromCell(rawClassStr, null, catalog);
+
+        const school = String(
+          (cfg.colSchool && item[cfg.colSchool] !== undefined ? item[cfg.colSchool] : null) ||
+          item.school || item['Trường'] || item['Trường học'] || ''
+        ).trim();
+
+        const parentPhone = String(
+          (cfg.colPhone && item[cfg.colPhone] !== undefined ? item[cfg.colPhone] : null) ||
+          item.parentPhone || item['SĐT Phụ huynh'] || item['SĐT'] || ''
+        ).trim();
+
+        const rawStatus = (cfg.colStatus && item[cfg.colStatus] !== undefined ? item[cfg.colStatus] : null) ||
+          item.enrollmentStatus || item['Trạng thái'] || item['Tình trạng'] || item['Trạng thái học'] || 'Học';
+
+        const rawTagVal = (cfg.colTag && item[cfg.colTag] !== undefined ? item[cfg.colTag] : null) ||
+          item.tags || item.tag || item['Tag'] || item['Tags'] || item['Thẻ'] || item['Phân loại'] || item['Nhãn'] || '';
+
         return {
           studentCode: rawCode && !isStatusWord(rawCode) ? rawCode : '',
           fullName,
-          familyName: String(item.familyName || item['Họ đệm'] || sp.familyName).trim(),
-          givenName: String(item.givenName || item['Tên'] || sp.givenName).trim(),
-          school: String(item.school || item['Trường'] || item['Trường học'] || '').trim(),
+          familyName,
+          givenName,
+          school,
           parentName: String(item.parentName || item['Phụ huynh'] || '').trim(),
-          parentPhone: String(item.parentPhone || item['SĐT Phụ huynh'] || item['SĐT'] || '').trim(),
-          enrollmentStatus: normalizeEnrollmentStatus(item.enrollmentStatus || item['Trạng thái'] || item['Tình trạng'] || item['Trạng thái học'] || 'Học'),
-          tags: (item.tags || item.tag || item['Tag'] || item['Tags'] || item['Thẻ'] || item['Phân loại'] || item['Nhãn'])
-            ? String(item.tags || item.tag || item['Tag'] || item['Tags'] || item['Thẻ'] || item['Phân loại'] || item['Nhãn']).split(/[,;\n]+/).map(t => t.trim()).filter(Boolean)
-            : [],
-          tag: String(item.tags || item.tag || item['Tag'] || item['Tags'] || item['Thẻ'] || item['Phân loại'] || item['Nhãn'] || '').trim(),
+          parentPhone,
+          enrollmentStatus: normalizeEnrollmentStatus(rawStatus),
+          tags: rawTagVal ? String(rawTagVal).split(/[,;\n]+/).map(t => t.trim()).filter(Boolean) : [],
+          tag: String(rawTagVal).trim(),
           rawClassTexts: rawClassStr ? [rawClassStr] : [],
           resolvedClassIds,
           btvnScore: item.btvnScore ?? item['Điểm BTVN'] ?? '',
@@ -8014,7 +8136,7 @@ export function setupFeatures(ctx) {
 
     // Trường hợp mảng 2 chiều (CSV / TSV / Excel / Google Sheet)
     const autoDetected = autoDetectGridColumnRoles(matrixRows, catalog);
-    const hasHeader = cfg.hasHeader !== undefined ? Boolean(cfg.hasHeader && autoDetected.hasHeader) : autoDetected.hasHeader;
+    const hasHeader = cfg.hasHeader !== undefined ? Boolean(cfg.hasHeader) : autoDetected.hasHeader;
     const roles = [...autoDetected.roles];
     const headerRow = (matrixRows[0] || []).map(c => String(c || '').trim().toLowerCase());
     const scoreRoles = autoDetectScoreColumnRoles(matrixRows, hasHeader);
@@ -8032,7 +8154,9 @@ export function setupFeatures(ctx) {
       });
     };
 
-    applyOverride(cfg.colCode, 'code');
+    if (cfg.colCode) applyOverride(cfg.colCode, 'code');
+    if (cfg.colFamilyName) applyOverride(cfg.colFamilyName, 'familyName');
+    if (cfg.colGivenName) applyOverride(cfg.colGivenName, 'givenName');
     if (cfg.colName) {
       const nameIdxs = resolveManualColIndices(cfg.colName, headerRow);
       if (nameIdxs.length >= 2) {
@@ -8048,11 +8172,11 @@ export function setupFeatures(ctx) {
         roles[nameIdxs[0]] = 'fullName';
       }
     }
-    applyOverride(cfg.colClass, 'classCode');
-    applyOverride(cfg.colSchool, 'school');
-    applyOverride(cfg.colPhone, 'phone');
-    applyOverride(cfg.colStatus, 'status');
-    applyOverride(cfg.colTag, 'tag');
+    if (cfg.colTag) applyOverride(cfg.colTag, 'tag');
+    if (cfg.colClass) applyOverride(cfg.colClass, 'classCode');
+    if (cfg.colSchool) applyOverride(cfg.colSchool, 'school');
+    if (cfg.colPhone) applyOverride(cfg.colPhone, 'phone');
+    if (cfg.colStatus) applyOverride(cfg.colStatus, 'status');
 
     const startIdx = hasHeader ? 1 : 0;
     const results = [];
@@ -9077,6 +9201,7 @@ export function setupFeatures(ctx) {
   });
   $('#sheets-subtab-btn-config')?.addEventListener('click', () => {
     switchSheetsSubpanel('sheets-subtab-btn-config', 'sheets-subpanel-config');
+    populateSheetsConfigInputs();
   });
   $('#sheets-subtab-btn-script')?.addEventListener('click', () => {
     switchSheetsSubpanel('sheets-subtab-btn-script', 'sheets-subpanel-script');

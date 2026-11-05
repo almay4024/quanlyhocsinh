@@ -140,14 +140,35 @@ export function resolveClassIdsFromCell(val, defaultId, classCatalog = []) {
       });
     }
 
-    // 3. Substring match on code or name
+    // 3. Substring match
     if (!found) {
+      // 3A. The token contains the class code (e.g. cell has "2K9.T5 - Thầy Công" containing "2K9.T5")
       found = classCatalog.find(c => {
         const codeNorm = normStr(c.code);
-        const nameNorm = normStr(c.name);
-        return (codeNorm && codeNorm.length >= 3 && (norm.includes(codeNorm) || codeNorm.includes(norm))) ||
-               (nameNorm && nameNorm.length >= 4 && (norm.includes(nameNorm) || nameNorm.includes(norm)));
+        return codeNorm && codeNorm.length >= 3 && norm.includes(codeNorm);
       });
+    }
+
+    if (!found) {
+      // 3B. The token contains the full class name (e.g. "Lớp Toán 9 Thứ 5" contains "Toán 9 Thứ 5")
+      found = classCatalog.find(c => {
+        const nameNorm = normStr(c.name);
+        return nameNorm && nameNorm.length >= 4 && norm.includes(nameNorm);
+      });
+    }
+
+    // 3C. Class name or code contains the token ONLY IF exactly ONE class in the catalog matches
+    // (Prevents generic "Toán 9" from falsely matching the first class "Toán 9 Thứ 2" when both T2 and T5 exist)
+    if (!found) {
+      const candidates = classCatalog.filter(c => {
+        const nameNorm = normStr(c.name);
+        const codeNorm = normStr(c.code);
+        return (nameNorm && nameNorm.length >= 4 && nameNorm.includes(norm)) ||
+               (codeNorm && codeNorm.length >= 3 && codeNorm.includes(norm));
+      });
+      if (candidates.length === 1) {
+        found = candidates[0];
+      }
     }
 
     if (found && !resolved.includes(found.id)) {
@@ -235,8 +256,6 @@ export function autoDetectGridColumnRoles(rows = [], classCatalog = []) {
         roles[idx] = 'ignore';
       } else if (h.includes('trạng thái') || h.includes('tình trạng') || h.includes('tt học') || h === 'status') {
         roles[idx] = 'status';
-      } else if (h.includes('mã lớp') || h.includes('lớp') || h === 'class' || h === 'đại' || h === 'hình') {
-        roles[idx] = 'classCode';
       } else if (h.includes('mã hs') || h.includes('mã học sinh') || h.includes('student code') || h === 'mã' || h === 'code') {
         roles[idx] = 'code';
       } else if (h.includes('sđt') || h.includes('điện thoại') || h.includes('phone') || h.includes('tel')) {
@@ -255,6 +274,18 @@ export function autoDetectGridColumnRoles(rows = [], classCatalog = []) {
         roles[idx] = 'tag';
       }
     });
+
+    // Detect classCode with priority: 'mã lớp' > 'lớp'
+    // This prevents generic "Lớp" (e.g. "Toán 9") from co-existing with explicit "Mã lớp" (e.g. "2K9.T5")
+    const maLopIdxs = lowerFirst.map((h, i) => (h.includes('mã lớp') || h === 'class code' || h.includes('mã lớp học') || h.includes('classcode')) ? i : -1).filter(i => i >= 0);
+    if (maLopIdxs.length > 0) {
+      maLopIdxs.forEach(i => { roles[i] = 'classCode'; });
+    } else {
+      const lopIdxs = lowerFirst.map((h, i) => ((h.includes('lớp') || h === 'class' || h === 'đại' || h === 'hình') && roles[i] === 'ignore') ? i : -1).filter(i => i >= 0);
+      if (lopIdxs.length > 0) {
+        roles[lopIdxs[0]] = 'classCode';
+      }
+    }
   }
 
   // 2. Content-based inspection for any column still marked 'ignore' (or all columns when hasHeader is false)
@@ -1588,6 +1619,8 @@ export function loadGoogleSheetsConfig(storage = localStorage) {
     classDiffMode: 'transfer',
     hasHeader: true,
     colCode: '',
+    colFamilyName: '',
+    colGivenName: '',
     colName: '',
     colClass: '',
     colSchool: '',
