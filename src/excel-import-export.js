@@ -1392,6 +1392,157 @@ function handleRequest(e) {
       return respondJson({ ok: true, success: true, mode: 'overwrite', updatedCount: newRows.length });
     }
 
+    // 5. Đẩy dữ liệu buổi học (Điểm danh kèm link web, BTVN, Test, Ghi chú) lên Google Sheet
+    if (action === 'uploadSessionData') {
+      var sSheet = null;
+      if (params.sheetName) {
+        sSheet = ss.getSheetByName(params.sheetName);
+      }
+      if (!sSheet && params.gid !== undefined && params.gid !== '') {
+        var shList = ss.getSheets();
+        for (var i = 0; i < shList.length; i++) {
+          if (String(shList[i].getSheetId()) === String(params.gid)) {
+            sSheet = shList[i];
+            break;
+          }
+        }
+      }
+      if (!sSheet) sSheet = ss.getSheets()[0];
+      if (!sSheet) return respondJson({ ok: false, message: 'Không tìm thấy trang tính nào trong Google Sheet.' });
+
+      var records = params.records || [];
+      var dateStr = params.dateStr || params.date || '';
+      var sessionUrl = params.sessionUrl || '';
+      var hasHomework = params.hasHomework !== false;
+      var hasTest = params.hasTest !== false;
+
+      var dataRange = sSheet.getDataRange();
+      var sheetValues = dataRange.getValues();
+      if (sheetValues.length === 0) {
+        return respondJson({ ok: false, message: 'Trang tính rỗng, vui lòng nhập danh sách học sinh trước khi đẩy dữ liệu buổi học.' });
+      }
+
+      var headerRow = sheetValues[0].map(function(h) { return String(h || '').trim(); });
+      var headerRowLower = headerRow.map(function(h) { return h.toLowerCase(); });
+
+      function findColIdx(candidates) {
+        for (var c = 0; c < candidates.length; c++) {
+          var idx = headerRowLower.indexOf(candidates[c].toLowerCase());
+          if (idx >= 0) return idx;
+        }
+        return -1;
+      }
+
+      var codeCol = findColIdx(['mã hs', 'mã học sinh', 'ma hs', 'student code', 'code', 'id']);
+      var nameCol = findColIdx(['họ và tên', 'họ tên', 'tên học sinh', 'tên', 'name', 'full name']);
+
+      // Chuẩn bị tiêu đề các cột buổi học
+      var attHeaderTitle = 'Điểm danh ' + dateStr + (sessionUrl ? ' (' + sessionUrl + ')' : '');
+      var hwHeaderTitle = 'BTVN ' + dateStr;
+      var testHeaderTitle = 'Test ' + dateStr;
+      var noteHeaderTitle = 'Ghi chú ' + dateStr;
+
+      function findColStartingWith(prefix) {
+        var pLower = prefix.toLowerCase();
+        for (var c = 0; c < headerRowLower.length; c++) {
+          if (headerRowLower[c].indexOf(pLower) === 0) return c;
+        }
+        return -1;
+      }
+
+      var attCol = findColStartingWith('điểm danh ' + dateStr);
+      var hwCol = findColStartingWith('btvn ' + dateStr);
+      var testCol = findColStartingWith('test ' + dateStr);
+      var noteCol = findColStartingWith('ghi chú ' + dateStr);
+
+      var nextCol = headerRow.length + 1; // 1-based
+      if (attCol < 0) {
+        attCol = nextCol - 1;
+        sSheet.getRange(1, nextCol).setValue(attHeaderTitle);
+        nextCol++;
+      } else {
+        sSheet.getRange(1, attCol + 1).setValue(attHeaderTitle);
+      }
+
+      if (hwCol < 0) {
+        hwCol = nextCol - 1;
+        sSheet.getRange(1, nextCol).setValue(hwHeaderTitle);
+        nextCol++;
+      } else {
+        sSheet.getRange(1, hwCol + 1).setValue(hwHeaderTitle);
+      }
+
+      if (testCol < 0) {
+        testCol = nextCol - 1;
+        sSheet.getRange(1, nextCol).setValue(testHeaderTitle);
+        nextCol++;
+      } else {
+        sSheet.getRange(1, testCol + 1).setValue(testHeaderTitle);
+      }
+
+      if (noteCol < 0) {
+        noteCol = nextCol - 1;
+        sSheet.getRange(1, nextCol).setValue(noteHeaderTitle);
+        nextCol++;
+      } else {
+        sSheet.getRange(1, noteCol + 1).setValue(noteHeaderTitle);
+      }
+
+      // Lập bản đồ dòng theo Mã HS và Họ tên
+      var codeRowMap = {};
+      var nameRowMap = {};
+      for (var r = 1; r < sheetValues.length; r++) {
+        if (codeCol >= 0) {
+          var cVal = String(sheetValues[r][codeCol] || '').trim().toUpperCase();
+          if (cVal) codeRowMap[cVal] = r + 1;
+        }
+        if (nameCol >= 0) {
+          var nVal = String(sheetValues[r][nameCol] || '').trim().toLowerCase();
+          if (nVal) nameRowMap[nVal] = r + 1;
+        }
+      }
+
+      var updatedCount = 0;
+      for (var k = 0; k < records.length; k++) {
+        var rec = records[k];
+        var sCode = String(rec.studentCode || '').trim().toUpperCase();
+        var sName = String(rec.name || rec.fullName || '').trim().toLowerCase();
+        var targetRow = (sCode && codeRowMap[sCode]) ? codeRowMap[sCode] : (sName && nameRowMap[sName] ? nameRowMap[sName] : null);
+
+        if (targetRow) {
+          // Điểm danh
+          if (attCol >= 0 && rec.attendance) {
+            sSheet.getRange(targetRow, attCol + 1).setValue(rec.attendance);
+          }
+          // BTVN (nếu không có BTVN ghi 'Không BTVN', nếu không nộp ghi 'Không nộp')
+          if (hwCol >= 0) {
+            var hwVal = !hasHomework ? 'Không BTVN' : (rec.homework !== undefined && rec.homework !== null && rec.homework !== '' ? String(rec.homework) : 'Không nộp');
+            sSheet.getRange(targetRow, hwCol + 1).setValue(hwVal);
+          }
+          // Test (nếu không có test ghi 'Không Test')
+          if (testCol >= 0) {
+            var testVal = !hasTest ? 'Không Test' : (rec.testScore !== undefined && rec.testScore !== null && rec.testScore !== '' ? String(rec.testScore) : '—');
+            sSheet.getRange(targetRow, testCol + 1).setValue(testVal);
+          }
+          // Ghi chú buổi học
+          if (noteCol >= 0 && rec.note) {
+            sSheet.getRange(targetRow, noteCol + 1).setValue(rec.note);
+          }
+          updatedCount++;
+        }
+      }
+
+      return respondJson({
+        ok: true,
+        success: true,
+        updatedCount: updatedCount,
+        totalRecords: records.length,
+        sheetName: sSheet.getName(),
+        dateStr: dateStr,
+        message: 'Đã đẩy dữ liệu buổi học ngày ' + dateStr + ' lên Google Sheet (' + sSheet.getName() + ') thành công: ' + updatedCount + '/' + records.length + ' học sinh đã được cập nhật.'
+      });
+    }
+
     return respondJson({ ok: false, error: 'Hành động không hợp lệ: ' + action });
   } catch (err) {
     return respondJson({ ok: false, error: err.toString() });
@@ -1579,6 +1730,121 @@ export async function syncSessionToGoogleSheets(sessionData, config) {
       message: `Lỗi kết nối khi đẩy lên Google Sheets: ${err?.message || err}`
     };
   }
+}
+
+/**
+ * Đẩy dữ liệu buổi học (Điểm danh, BTVN, Test, Ghi chú) lên Google Sheet qua Apps Script
+ */
+export async function uploadSessionDataToGoogleSheets({
+  scriptUrl,
+  spreadsheetId,
+  sheetName,
+  gid,
+  classId,
+  classCode,
+  date,
+  dateStr,
+  sessionUrl,
+  records = [],
+  hasHomework = true,
+  hasTest = true
+}) {
+  const cfg = loadGoogleSheetsConfig();
+  let targetScriptUrl = scriptUrl || cfg.scriptUrl;
+  if (!targetScriptUrl) {
+    try {
+      const driveCfg = JSON.parse(localStorage.getItem('lopvui.google-drive-photo-config.v1') || '{}') || {};
+      targetScriptUrl = driveCfg.scriptUrl || '';
+    } catch {}
+  }
+  if (!targetScriptUrl) {
+    throw new Error('Chưa cấu hình Google Apps Script Web App URL. Vui lòng vào màn hình Đồng bộ Google Sheets để nhập URL.');
+  }
+
+  const targetSpreadsheetId = extractSpreadsheetId(spreadsheetId || cfg.spreadsheetId || cfg.rawSheetUrl);
+  const targetSheetName = sheetName || cfg.sheetName || '';
+  const targetGid = gid !== undefined && gid !== '' ? String(gid) : (cfg.gid || '');
+  const formattedDate = dateStr || (date ? date.split('-').reverse().join('/') : '');
+
+  const payload = {
+    action: 'uploadSessionData',
+    spreadsheetId: targetSpreadsheetId,
+    sheetName: targetSheetName,
+    gid: targetGid,
+    classId,
+    classCode,
+    date,
+    dateStr: formattedDate,
+    sessionUrl: sessionUrl || '',
+    records,
+    hasHomework,
+    hasTest
+  };
+
+  const resp = await fetch(targetScriptUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!resp.ok) {
+    throw new Error(`Google Apps Script trả về lỗi HTTP ${resp.status}`);
+  }
+
+  const result = await resp.json().catch(() => ({ ok: true, message: 'Đã hoàn tất.' }));
+  if (result && result.ok === false) {
+    throw new Error(result.error || result.message || 'Lỗi không xác định từ Apps Script');
+  }
+  return result;
+}
+
+/**
+ * Đồng bộ ngược dữ liệu của 1 học sinh vừa được chỉnh sửa trên Web lên Google Sheet
+ */
+export async function syncSingleStudentToGoogleSheets(student) {
+  if (!student) return { ok: false, message: 'Không có dữ liệu học sinh.' };
+  const cfg = loadGoogleSheetsConfig();
+  let scriptUrl = cfg.scriptUrl;
+  if (!scriptUrl) {
+    try {
+      const driveCfg = JSON.parse(localStorage.getItem('lopvui.google-drive-photo-config.v1') || '{}') || {};
+      scriptUrl = driveCfg.scriptUrl || '';
+    } catch {}
+  }
+  if (!scriptUrl) {
+    throw new Error('Chưa cấu hình Google Apps Script Web App URL.');
+  }
+
+  const spreadsheetId = extractSpreadsheetId(cfg.spreadsheetId || cfg.rawSheetUrl);
+  const payload = {
+    action: 'updateStudentsTwoWay',
+    mode: 'inplace',
+    appendNew: false,
+    spreadsheetId,
+    sheetName: cfg.sheetName || '',
+    gid: cfg.gid || '',
+    students: [{
+      studentCode: student.studentCode || '',
+      fullName: student.name || '',
+      enrollmentStatus: student.enrollmentStatus || 'Học',
+      tags: Array.isArray(student.tags) ? student.tags : (student.tags ? [student.tags] : []),
+      classCodes: (student.classIds || []).join(', '),
+      school: student.school || '',
+      parentPhone: student.parentContact?.phone || ''
+    }]
+  };
+
+  const resp = await fetch(scriptUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!resp.ok) {
+    throw new Error(`Google Apps Script trả về lỗi HTTP ${resp.status}`);
+  }
+
+  return await resp.json();
 }
 
 export async function pullStudentsFromGoogleSheets(config) {

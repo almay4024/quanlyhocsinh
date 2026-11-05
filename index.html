@@ -227,6 +227,7 @@
             <button type="button" class="sub-nav-tab" id="mgmt-tab-staff" hidden>Quản lý Nhân sự (Admin)</button>
             <button type="button" class="sub-nav-tab" id="mgmt-tab-admin-log" hidden>Nhật ký Admin (Log)</button>
             <button type="button" class="sub-nav-tab" id="mgmt-tab-students">Danh bạ Học sinh toàn trung tâm</button>
+            <button type="button" class="sub-nav-tab" id="mgmt-tab-sheets" hidden>Đồng bộ Google Sheets (2 chiều)</button>
           </div>
 
           <!-- Subtab Classes -->
@@ -447,6 +448,317 @@
 
             <div class="admin-log-text-wrap" style="background:#0f172a; color:#f8fafc; border:1px solid #334155; border-radius:12px; padding:14px 16px; max-height:66vh; overflow-y:auto;">
               <pre id="mgmt-admin-log-text-output" style="margin:0; font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:13px; line-height:1.65; white-space:pre-wrap; word-break:break-word; color:#e2e8f0;">Đang tải nhật ký Admin...</pre>
+            </div>
+          </div>
+
+          <!-- Subtab Sheets: Màn hình riêng Quản lý & Đồng bộ Google Sheets 2 Chiều (Dành riêng cho Admin & Văn phòng) -->
+          <div id="mgmt-panel-sheets" hidden>
+            <div class="management-summary" style="flex-wrap:wrap; gap:10px;">
+              <span id="mgmt-sheets-status-badge" style="background:#dbeafe; color:#1e40af; font-weight:800; padding:4px 10px; border-radius:999px;">Google Sheets 2-Way Sync</span>
+              <span>Đồng bộ 2 chiều: Quét duyệt Mã học sinh theo danh sách Sheet và Đẩy dữ liệu buổi học (Điểm danh kèm Link web, BTVN, Test, Ghi chú)</span>
+              <div style="margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="outline-button" id="sheets-panel-save-config-btn" style="background:#f0fdf4; color:#15803d; border-color:#86efac; font-weight:700;">Lưu cấu hình</button>
+                <button type="button" class="primary-button" id="sheets-panel-quick-scan-btn" style="background:#1d4ed8; font-weight:700;">Quét Google Sheet ngay</button>
+              </div>
+            </div>
+
+            <!-- Sheets Module Sub-pills -->
+            <div class="office-filter-pills-group" style="margin-top:14px; margin-bottom:12px;">
+              <button type="button" class="office-filter-pill active" id="sheets-subtab-btn-session">1. Đẩy Dữ liệu Buổi học (Điểm danh, BTVN, Test)</button>
+              <button type="button" class="office-filter-pill" id="sheets-subtab-btn-students">2. Đồng bộ Danh bạ Học sinh (2 chiều)</button>
+              <button type="button" class="office-filter-pill" id="sheets-subtab-btn-config">3. Cấu hình Kết nối &amp; Đa Khóa</button>
+              <button type="button" class="office-filter-pill" id="sheets-subtab-btn-script">4. Hướng dẫn Google Apps Script</button>
+            </div>
+
+            <!-- Subpanel 1: Đẩy Dữ liệu Buổi học -->
+            <div id="sheets-subpanel-session" class="sheets-subpanel">
+              <div class="sheets-config-panel" style="padding:14px 16px; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:12px;">
+                <div style="margin-bottom:12px;">
+                  <strong style="font-size:15px; color:#1e3a8a;">Đồng bộ Dữ liệu Buổi học lên Google Sheet (Bán tự động)</strong>
+                  <p style="margin:3px 0 0; font-size:13px; color:#475569;">Ghi nhận điểm danh (đầu cột ghi ngày học và Link web truy cập trực tiếp), điểm BTVN (kèm ghi chú "Không nộp" / "Không BTVN"), điểm Test (kèm "Không Test") và Ghi chú.</p>
+                </div>
+
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px;">
+                  <label class="field-label" style="margin:0;">Lớp học cần đồng bộ:
+                    <select id="panel-session-class-select" style="font-weight:600;"></select>
+                  </label>
+                  <label class="field-label" style="margin:0;">Ngày buổi học:
+                    <input type="date" id="panel-session-date-input" />
+                  </label>
+                  <label class="field-label" style="margin:0;">Trang tính đích (Sheet Tab Name):
+                    <input id="panel-session-sheet-tab" placeholder="Tự động theo tên khóa/lớp (VD: 2K9, TOAN8A)" />
+                  </label>
+                </div>
+
+                <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin-top:12px; padding:10px 12px; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px;">
+                  <label class="time-toggle" style="margin:0; font-weight:700;">
+                    <input type="checkbox" id="panel-session-has-hw" checked /> Buổi này có BTVN (Bỏ chọn ghi: "Không BTVN")
+                  </label>
+                  <label class="time-toggle" style="margin:0; font-weight:700;">
+                    <input type="checkbox" id="panel-session-has-test" checked /> Buổi này có Test (Bỏ chọn ghi: "Không Test")
+                  </label>
+                  <label class="time-toggle" style="margin:0;">
+                    <input type="checkbox" id="panel-session-include-link" checked /> Ghi kèm Link web trực tiếp ở đầu cột Điểm danh
+                  </label>
+                </div>
+
+                <!-- Preview Link Web -->
+                <div style="margin-top:10px; font-size:12.5px; color:#334155; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                  <span>Link web ca học ở đầu cột Điểm danh:</span>
+                  <code id="panel-session-url-preview" style="background:#e2e8f0; padding:2px 8px; border-radius:4px; font-size:12px; word-break:break-all;"></code>
+                </div>
+
+                <!-- Preview Table Buổi học -->
+                <div style="margin-top:14px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+                    <strong style="font-size:13.5px; color:#0f172a;" id="panel-session-preview-count">Xem trước dữ liệu buổi học (0 học sinh)</strong>
+                    <div style="display:flex; gap:8px;">
+                      <button type="button" class="outline-button" id="panel-session-pull-scores-btn" style="padding:6px 12px; font-size:12.5px;">Đọc điểm từ Sheet về Web</button>
+                      <button type="button" class="primary-button" id="panel-session-upload-btn" style="background:#1d4ed8; font-weight:800; padding:7px 16px;">
+                        Đẩy dữ liệu buổi học lên Google Sheet
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="attendance-table-wrap" style="max-height:360px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff;">
+                    <table class="attendance-report-table" style="font-size:12.5px;">
+                      <thead>
+                        <tr style="background:#f1f5f9;">
+                          <th style="width:36px; text-align:center;">STT</th>
+                          <th style="min-width:90px;">Mã HS</th>
+                          <th style="min-width:140px;">Họ và tên</th>
+                          <th style="min-width:130px;" id="panel-col-preview-att">Điểm danh (Cột 1)</th>
+                          <th style="min-width:120px;" id="panel-col-preview-hw">BTVN (Cột 2)</th>
+                          <th style="min-width:110px;" id="panel-col-preview-test">Test (Cột 3)</th>
+                          <th style="min-width:140px;" id="panel-col-preview-note">Ghi chú (Cột 4)</th>
+                        </tr>
+                      </thead>
+                      <tbody id="panel-session-preview-tbody">
+                        <tr><td colspan="7" style="text-align:center; padding:18px; color:#879389;">Chọn lớp và ngày để xem trước dữ liệu ca học.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div id="panel-session-status-banner" style="margin-top:10px; font-size:12.5px; font-weight:700; color:#1d4ed8;" hidden></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Subpanel 2: Đồng bộ Danh bạ Học sinh (2 chiều) -->
+            <div id="sheets-subpanel-students" class="sheets-subpanel" hidden>
+              <!-- Các nút quét & đồng bộ học sinh -->
+              <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px 12px; background:#eff6ff; border:1.5px solid #93c5fd; border-radius:10px; align-items:center;">
+                <button type="button" class="primary-button" id="panel-pull-sheets-sync-btn" style="background:#1d4ed8; font-weight:800;">
+                  Quét Google Sheet: Tìm HS mới &amp; HS khác lớp gốc
+                </button>
+                <button type="button" class="primary-button" id="panel-pull-multi-cohort-sheets-btn" style="background:#047857; font-weight:800;" title="Quét toàn bộ các khóa học sinh (2K9, 2K10, 2K11, 2K12, 2K13)">
+                  Quét tất cả các khóa (2K9 - 2K13)
+                </button>
+                <button type="button" class="outline-button" id="panel-trigger-sheets-sync-btn" style="background:#f0fdf4; color:#15803d; border-color:#86efac; font-weight:700;" title="Cập nhật ngược lại dữ liệu từ Web lên Google Sheet theo Mã HS (Đồng bộ 2 chiều)">
+                  Đồng bộ 2 chiều lên Google Sheet (Cập nhật ngược lại Sheet)
+                </button>
+                <button type="button" class="outline-button" id="panel-copy-sheets-tsv-btn">
+                  Copy bảng dán vào Sheet
+                </button>
+                <button type="button" class="outline-button" id="panel-export-sheets-xlsx-btn">
+                  Xuất file Sheet (.xlsx)
+                </button>
+              </div>
+
+              <!-- Dán nhanh / tải file -->
+              <details style="margin-top:10px; padding:10px 12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px;">
+                <summary style="cursor:pointer; font-weight:700; color:#1e293b; font-size:13.5px;">
+                  Hoặc dán trực tiếp vùng dữ liệu từ Google Sheets (Ctrl + V) / Tải file (.xlsx, .csv) để quét &amp; duyệt theo Mã HS
+                </summary>
+                <div style="margin-top:8px;">
+                  <textarea id="panel-sheets-paste-sync-textarea" rows="3" placeholder="Copy các dòng từ Google Sheets (Ctrl+C) rồi dán vào đây (Ctrl+V)..." style="width:100%; font-family:monospace; font-size:12.5px;"></textarea>
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:8px;">
+                    <input type="file" id="panel-sheets-sync-file-input" accept=".xlsx, .csv, .tsv, .txt" style="font-size:12.5px;" />
+                    <button type="button" class="primary-button" id="panel-apply-sheets-paste-sync-btn" style="background:#1d4ed8; font-weight:700;">
+                      Quét dữ liệu đã dán &amp; Hiện bảng duyệt
+                    </button>
+                  </div>
+                </div>
+              </details>
+
+              <!-- Thông báo trạng thái quét -->
+              <div id="panel-sheets-sync-status-banner" class="checklist-log" style="margin-top:10px;">
+                Sẵn sàng đồng bộ. Nhấp <strong>"Quét Google Sheet"</strong> để kiểm tra Học sinh mới &amp; Học sinh chuyển lớp.
+              </div>
+
+              <!-- BẢNG DUYỆT HỌC SINH MỚI & HỌC SINH KHÁC LỚP GỐC -->
+              <section id="panel-sheets-approval-section" class="sheets-approval-section" style="margin-top:12px; padding:12px 14px; background:#ffffff; border:2px solid #3b82f6; border-radius:12px;" hidden>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+                  <div>
+                    <div class="eyebrow" style="color:#1d4ed8;">VĂN PHÒNG DUYỆT ĐỒNG BỘ MÃ HỌC SINH &amp; LỚP HỌC</div>
+                    <h3 id="panel-sheets-approval-title" style="margin:2px 0; font-size:16px; color:#0f172a;">Danh sách phát hiện từ Google Sheet chờ duyệt (0)</h3>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <label class="time-toggle" style="margin:0; padding:6px 10px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; font-weight:800; color:#166534; cursor:pointer;">
+                      <input type="checkbox" id="panel-sheets-approve-tag-all-cb" checked />
+                      <span>Gắn tag "Mới" cho tất cả (Bỏ tích để gỡ hàng loạt)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Bộ lọc nhanh trong bảng duyệt -->
+                <div class="office-filter-pills-group" style="margin-bottom:10px;">
+                  <button type="button" class="office-filter-pill active" data-panel-approve-filter="all">Tất cả cần duyệt <span class="pill-count" id="panel-sheets-count-all">0</span></button>
+                  <button type="button" class="office-filter-pill" data-panel-approve-filter="new_student">Học sinh mới <span class="pill-count" id="panel-sheets-count-new">0</span></button>
+                  <button type="button" class="office-filter-pill" data-panel-approve-filter="class_change">Khác lớp gốc (Chuyển lớp) <span class="pill-count" id="panel-sheets-count-diff-class">0</span></button>
+                  <button type="button" class="office-filter-pill" data-panel-approve-filter="code_update">Cập nhật Mã HS <span class="pill-count" id="panel-sheets-count-code">0</span></button>
+                </div>
+
+                <div class="attendance-table-wrap" style="max-height:48vh; overflow:auto; border:1px solid #cbd5e1; border-radius:8px;">
+                  <table class="attendance-report-table" style="font-size:13px;">
+                    <thead>
+                      <tr style="background:#f1f5f9;">
+                        <th style="width:36px; text-align:center;"><input type="checkbox" id="panel-sheets-approve-select-all" checked title="Chọn / Bỏ chọn tất cả" /></th>
+                        <th style="min-width:130px;">Phân loại</th>
+                        <th style="min-width:105px;">Mã HS</th>
+                        <th style="min-width:165px;">Họ và tên</th>
+                        <th style="min-width:135px;">Trường / SĐT PH</th>
+                        <th style="min-width:230px;">Lớp gốc ➡ Lớp trên Sheet</th>
+                        <th style="min-width:140px; text-align:center;">Tag "Mới" (Bật/Tắt)</th>
+                      </tr>
+                    </thead>
+                    <tbody id="panel-sheets-approval-tbody"></tbody>
+                  </table>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:12px;">
+                  <span id="panel-sheets-approval-selected-summary" style="font-size:13px; font-weight:700; color:#1e3a8a;">Đã chọn duyệt: 0 học sinh</span>
+                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="outline-button" id="panel-cancel-sheets-approval-btn">Ẩn bảng duyệt</button>
+                    <button type="button" class="primary-button" id="panel-confirm-sheets-approve-btn" style="background:#15803d; font-weight:800; padding:9px 16px;">
+                      ✓ Duyệt &amp; Thêm / Cập nhật vào Danh sách học sinh
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <!-- Subpanel 3: Cấu hình Kết nối & Đa Khóa -->
+            <div id="sheets-subpanel-config" class="sheets-subpanel" hidden>
+              <div class="sheets-config-panel" style="padding:14px 16px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                  <strong style="font-size:14px; color:#1e3a8a;">Cấu hình Kết nối Google Sheets &amp; Google Apps Script Web App</strong>
+                  <button type="button" class="outline-button" id="panel-save-config-btn-inline" style="padding:5px 12px; font-size:12.5px; font-weight:700; background:#eff6ff; color:#1d4ed8; border-color:#93c5fd;">Lưu cấu hình</button>
+                </div>
+
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+                  <label class="field-label" style="margin:0;">Link Google Sheets hoặc Spreadsheet ID: *
+                    <input id="panel-sheets-spreadsheet-id" placeholder="Dán link https://docs.google.com/spreadsheets/d/... hoặc ID" />
+                  </label>
+                  <label class="field-label" style="margin:0;">Tên trang tính (Sheet Tab Name):
+                    <input id="panel-sheets-tab-name" placeholder="VD: DanhSachHS, Sheet1 (Để trống = tab đầu tiên)" />
+                  </label>
+                  <label class="field-label" style="margin:0;">Sheet GID (Tự tách từ link):
+                    <input id="panel-sheets-gid-input" placeholder="VD: 0 hoặc 123456789" />
+                  </label>
+                </div>
+
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-top:10px;">
+                  <label class="field-label" style="margin:0;">Phạm vi lớp kiểm tra / đồng bộ:
+                    <select id="panel-sheets-sync-class-filter">
+                      <option value="all">Toàn bộ danh sách tổng của Trung tâm</option>
+                    </select>
+                  </label>
+                  <label class="field-label" style="margin:0;">Khi học sinh có lớp trên Sheet khác lớp gốc:
+                    <select id="panel-sheets-class-diff-mode">
+                      <option value="transfer">⇄ Chuyển sang lớp trên Sheet (Bảo lưu dữ liệu lớp cũ)</option>
+                      <option value="add">+ Thêm học song song lớp trên Sheet (Giữ cả lớp gốc)</option>
+                    </select>
+                  </label>
+                  <label class="field-label" style="margin:0;">Google Apps Script Web App URL (Đọc/Ghi 2 chiều):
+                    <input id="panel-sheets-script-url-input" placeholder="https://script.google.com/macros/s/.../exec" />
+                  </label>
+                </div>
+
+                <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-top:10px; padding-top:8px; border-top:1px dashed #cbd5e1;">
+                  <label class="time-toggle" style="margin:0; font-weight:700; color:#1d4ed8;">
+                    <input type="checkbox" id="panel-sheets-two-way-mode-toggle" checked /> Đồng bộ 2 chiều (Cập nhật ngược lại các dòng tương ứng trên Google Sheet)
+                  </label>
+                  <label class="time-toggle" style="margin:0; font-weight:700; color:#15803d;">
+                    <input type="checkbox" id="panel-sheets-default-new-tag-toggle" checked /> Mặc định gắn tag "Mới" cho HS mới &amp; HS chuyển lớp
+                  </label>
+                  <label class="time-toggle" style="margin:0;">
+                    <input type="checkbox" id="panel-sheets-has-header-toggle" checked /> Dòng đầu tiên trong Sheet là tiêu đề cột
+                  </label>
+                  <label class="time-toggle" style="margin:0;">
+                    <input type="checkbox" id="panel-sheets-autosync-toggle" /> Tự động đẩy lên Sheet khi Kết ca
+                  </label>
+                </div>
+
+                <!-- Cấu hình Đa Khóa -->
+                <div style="margin-top:14px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:10px 14px;">
+                  <strong style="color:#166534; font-size:13.5px; display:block; margin-bottom:8px;">Quản lý Nhiều Trang Tính / Sheet (Hỗ trợ quét đa khóa: 2K9, 2K10, 2K11, 2K12, 2K13)</strong>
+                  <div class="attendance-table-wrap" style="max-height:220px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff;">
+                    <table style="width:100%; font-size:12.5px; border-collapse:collapse;">
+                      <thead>
+                        <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0; text-align:left;">
+                          <th style="padding:6px 10px;">Tên Khóa / Sheet</th>
+                          <th style="padding:6px 10px;">Tên Tab (Sheet Name)</th>
+                          <th style="padding:6px 10px;">GID</th>
+                          <th style="padding:6px 10px;">Link / Spreadsheet ID</th>
+                          <th style="padding:6px 10px; text-align:center; width:140px;">Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody id="panel-sheets-multi-cohort-tbody"></tbody>
+                    </table>
+                  </div>
+                  <!-- Form thêm khóa mới -->
+                  <div style="display:grid; grid-template-columns:120px 140px 90px 1fr auto; gap:8px; margin-top:8px; align-items:center;">
+                    <input id="panel-sheets-new-cohort-name" placeholder="Tên (VD: 2K14)" style="padding:6px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px;" />
+                    <input id="panel-sheets-new-cohort-tab" placeholder="Tab (VD: 2K14)" style="padding:6px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px;" />
+                    <input id="panel-sheets-new-cohort-gid" placeholder="GID (0)" style="padding:6px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px;" />
+                    <input id="panel-sheets-new-cohort-url" placeholder="Link/ID riêng (để trống = link chung)" style="padding:6px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px;" />
+                    <button type="button" class="outline-button" id="panel-sheets-add-cohort-btn" style="padding:6px 12px; font-size:12px; font-weight:700; background:#ffffff; color:#15803d; border-color:#86efac;">+ Thêm Sheet</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Subpanel 4: Hướng dẫn Google Apps Script -->
+            <div id="sheets-subpanel-script" class="sheets-subpanel" hidden>
+              <div style="padding:14px 16px; background:#fffbeb; border:1.5px solid #fde68a; border-radius:10px; font-size:13px; color:#451a03; line-height:1.55;">
+                <div style="background:#ffffff; border:1px solid #fef08a; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+                  <strong>Tại sao cần dùng Google Apps Script Web App?</strong>
+                  <p style="margin:4px 0 0; color:#78350f; font-size:12.5px;">Google Apps Script Web App đóng vai trò một API bridge an toàn chạy dưới quyền tài khoản Google của bạn, tự động đọc hoặc ghi dữ liệu 2 chiều (bao gồm điểm danh, BTVN, test và thông tin học sinh) mà không yêu cầu máy tính tại phòng học phải đăng nhập Google và hoàn toàn vượt qua lỗi 401/403 trên các tài khoản Google bị giới hạn miền tổ chức.</p>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <div><strong>Bước 1:</strong> Mở Google Sheet &gt; Chọn <strong>Tiện ích mở rộng (Extensions)</strong> &gt; <strong>Apps Script</strong>.</div>
+                  <div><strong>Bước 2:</strong> Xóa toàn bộ mã mặc định trong <code>Code.gs</code>, bấm nút sao chép bên dưới và dán vào:
+                    <div style="margin-top:6px; display:flex; gap:8px; align-items:center;">
+                      <button type="button" class="primary-button" id="panel-copy-apps-script-btn" style="padding:6px 14px; font-size:12px; background:#b45309;">
+                        📋 Sao chép mã Google Apps Script chuẩn
+                      </button>
+                      <span id="panel-copy-apps-script-status" style="font-size:12px; color:#15803d; font-weight:700;" hidden>✓ Đã copy vào bộ nhớ tạm!</span>
+                    </div>
+                  </div>
+                  <div><strong>Bước 3:</strong> Bấm <strong>Triển khai (Deploy)</strong> &gt; <strong>Tùy chọn triển khai mới (New deployment)</strong>.</div>
+                  <div><strong>Bước 4:</strong> Chọn loại <strong>Ứng dụng web (Web app)</strong>:
+                    <ul style="margin:4px 0 6px 20px; font-size:12.5px;">
+                      <li><em>Thực thi dưới dạng:</em> <strong>Tôi (Me / email của bạn)</strong></li>
+                      <li><em>Ai có quyền truy cập:</em> <strong>Bất kỳ ai (Anyone)</strong> <em>(Bắt buộc để phần mềm gọi được API)</em></li>
+                    </ul>
+                  </div>
+                  <div><strong>Bước 5:</strong> Bấm <strong>Triển khai</strong> &gt; <strong>Ủy quyền truy cập (Authorize access)</strong> &gt; Sao chép <strong>URL ứng dụng web (Web app URL)</strong> dán vào ô URL ở Tab Cấu hình.
+                    <div style="margin-top:6px; display:flex; gap:8px; align-items:center;">
+                      <button type="button" class="outline-button" id="panel-test-apps-script-btn" style="padding:5px 12px; font-size:12px; font-weight:700; background:#ffffff; border-color:#d97706; color:#b45309;">
+                        🔍 Kiểm tra kết nối Apps Script ngay
+                      </button>
+                      <span id="panel-test-apps-script-result" style="font-size:12px; font-weight:700;"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <details style="margin-top:12px; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px;">
+                  <summary style="cursor:pointer; font-weight:700; font-size:12px; color:#334155;">Xem trước mã nguồn Google Apps Script (Code.gs)</summary>
+                  <pre id="panel-apps-script-preview-code" style="margin:8px 0 0; padding:8px; background:#0f172a; color:#f8fafc; border-radius:6px; font-size:11.5px; font-family:monospace; max-height:220px; overflow-y:auto; white-space:pre;"></pre>
+                </details>
+              </div>
             </div>
           </div>
         </section>
@@ -1127,6 +1439,51 @@
   </div>
 
   <!-- DIALOGS -->
+
+  <!-- HỘP THOẠI XÁC NHẬN ĐỒNG BỘ NGƯỢC LÊN GOOGLE SHEET KHI EDIT TRÊN WEB -->
+  <dialog id="confirm-reverse-sheets-sync-dialog" class="class-config-dialog" style="width:min(480px, calc(100vw - 24px));">
+    <div class="dialog-form">
+      <button type="button" class="close-button" id="close-confirm-reverse-sheets-sync" aria-label="Đóng"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+      <div class="eyebrow" style="color:#047857;">ĐỒNG BỘ 2 CHIỀU GOOGLE SHEETS</div>
+      <h2>Đồng bộ ngược lên Google Sheet?</h2>
+      <p id="confirm-reverse-sheets-sync-desc" class="dialog-hint">Dữ liệu học sinh đã được cập nhật thành công trên Web. Bạn có muốn đồng bộ ngược các thay đổi này lên Google Sheet ngay bây giờ không?</p>
+      <div id="confirm-reverse-sheets-sync-preview" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:10px 12px; font-size:13px; margin:10px 0;"></div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" class="outline-button" id="cancel-reverse-sheets-sync-btn">Chỉ lưu trên Web</button>
+        <button type="button" class="primary-button" id="agree-reverse-sheets-sync-btn" style="background:#047857; font-weight:700;">✓ Đồng bộ ngược lên Sheet</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- HỘP THOẠI ĐẨY DỮ LIỆU BUỔI HỌC TỪ BÁO CÁO LÊN GOOGLE SHEET -->
+  <dialog id="upload-session-sheets-dialog" class="class-config-dialog" style="width:min(540px, calc(100vw - 24px));">
+    <div class="dialog-form">
+      <button type="button" class="close-button" id="close-upload-session-sheets" aria-label="Đóng"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+      <div class="eyebrow" style="color:#1d4ed8;">BÁO CÁO BUỔI HỌC ➡ GOOGLE SHEETS</div>
+      <h2>Đẩy dữ liệu buổi học lên Google Sheet</h2>
+      <p class="dialog-hint">Ghi nhận điểm danh (đầu cột ghi ngày và link web buổi học), điểm BTVN, kiểm tra và ghi chú vào các cột tương ứng trên Google Sheet.</p>
+      <div id="upload-session-sheets-info" style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:10px 12px; font-size:13px; margin-bottom:12px;"></div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <label class="time-toggle" style="margin:0; font-weight:700;">
+          <input type="checkbox" id="session-upload-has-hw-cb" checked /> Buổi học này có BTVN (Bỏ chọn ghi "Không BTVN")
+        </label>
+        <label class="time-toggle" style="margin:0; font-weight:700;">
+          <input type="checkbox" id="session-upload-has-test-cb" checked /> Buổi học này có kiểm tra (Bỏ chọn ghi "Không Test")
+        </label>
+        <label class="time-toggle" style="margin:0;">
+          <input type="checkbox" id="session-upload-include-link-cb" checked /> Ghi kèm Link web trực tiếp ở đầu cột Điểm danh
+        </label>
+      </div>
+      <div id="upload-session-sheets-status" style="margin-top:10px; font-size:12.5px; font-weight:700;" hidden></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <button type="button" class="outline-button" id="open-full-sheets-manager-btn">Mở Màn hình Quản lý Sheets</button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="outline-button" id="cancel-upload-session-sheets-btn">Đóng</button>
+          <button type="button" class="primary-button" id="confirm-upload-session-sheets-btn" style="background:#1d4ed8; font-weight:700;">✓ Đẩy lên Google Sheet ngay</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
 
   <!-- HỘP THOẠI XEM KỸ ĐIỂM HỌC SINH CÁC BUỔI TRƯỚC (STUDENT SCORE HISTORY DIALOG) -->
   <dialog id="student-score-history-dialog" class="roster-admin-dialog">

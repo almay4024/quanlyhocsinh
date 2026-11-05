@@ -42,7 +42,9 @@ import {
   exportSessionReportToGoogleDocs,
   DEFAULT_COHORTS,
   getGoogleAppsScriptTemplate,
-  testGoogleAppsScriptConnection
+  testGoogleAppsScriptConnection,
+  uploadSessionDataToGoogleSheets,
+  syncSingleStudentToGoogleSheets
 } from './excel-import-export.js?v=4.5.0';
 import {
   loadSessionHistory,
@@ -330,12 +332,28 @@ export function setupFeatures(ctx) {
       }
     }
 
-    if (!emp) {
+    if (!emp && (cleanCode === 'CONGNT' || cleanCode.toLowerCase() === 'congnt')) {
       emp = {
-        id: `employee-${cleanCode.toLowerCase()}`,
+        id: 'employee-teacher-congnt',
+        code: 'CONGNT',
+        name: 'Thầy Công',
+        role: 'teacher',
+        isActive: true,
+        authVersion: 1
+      };
+      if (!employees.some(e => e.id === emp.id || normalizeAccountCode(e.code) === 'CONGNT')) {
+        master.employees = [...(master.employees || []), emp];
+        if (ctx.setMasterData) ctx.setMasterData(master);
+      }
+    }
+
+    if (!emp) {
+      const deducedRole = cleanCode.startsWith('GV') ? 'teacher' : cleanCode.startsWith('VP') ? 'office' : 'assistant';
+      emp = {
+        id: `employee-${deducedRole}-${cleanCode.toLowerCase()}`,
         code: cleanCode,
         name: cleanCode,
-        role: 'assistant',
+        role: deducedRole,
         isActive: true,
         authVersion: 1
       };
@@ -3128,10 +3146,12 @@ export function setupFeatures(ctx) {
   const mgmtPanelStaff = $('#mgmt-panel-staff');
   const mgmtPanelAdminLog = $('#mgmt-panel-admin-log');
   const mgmtPanelStudents = $('#mgmt-panel-students');
+  const mgmtTabSheets = $('#mgmt-tab-sheets');
+  const mgmtPanelSheets = $('#mgmt-panel-sheets');
 
   function switchMgmtTab(activeTab, activePanel) {
-    [mgmtTabClasses, mgmtTabTemplates, mgmtTabStaff, mgmtTabAdminLog, mgmtTabStudents].forEach(t => t?.classList.remove('active'));
-    [mgmtPanelClasses, mgmtPanelTemplates, mgmtPanelStaff, mgmtPanelAdminLog, mgmtPanelStudents].forEach(p => { if (p) p.hidden = true; });
+    [mgmtTabClasses, mgmtTabTemplates, mgmtTabStaff, mgmtTabAdminLog, mgmtTabStudents, mgmtTabSheets].forEach(t => t?.classList.remove('active'));
+    [mgmtPanelClasses, mgmtPanelTemplates, mgmtPanelStaff, mgmtPanelAdminLog, mgmtPanelStudents, mgmtPanelSheets].forEach(p => { if (p) p.hidden = true; });
     activeTab?.classList.add('active');
     if (activePanel) activePanel.hidden = false;
   }
@@ -3175,6 +3195,17 @@ export function setupFeatures(ctx) {
       }
       switchMgmtTab(mgmtTabStudents, mgmtPanelStudents);
       renderMasterStudentDirectory();
+    };
+  }
+  if (mgmtTabSheets) {
+    mgmtTabSheets.onclick = () => {
+      const role = getSignedInAccount()?.role;
+      if (role === 'assistant' || role === 'teacher') {
+        toast('Trợ giảng và Giáo viên không có quyền truy cập màn hình Đồng bộ Google Sheets.');
+        return;
+      }
+      switchMgmtTab(mgmtTabSheets, mgmtPanelSheets);
+      renderGoogleSheetsManagementPanel();
     };
   }
 
@@ -6283,7 +6314,7 @@ export function setupFeatures(ctx) {
   $('#inline-export-doc-btn')?.addEventListener('click', exportCurrentSessionReportToDoc);
   $('#inline-export-xlsx-btn')?.addEventListener('click', exportReportAsCsv);
   $('#inline-sync-sheets-btn')?.addEventListener('click', () => {
-    openGoogleSheetsSyncModal(getCurrentClassId() || 'all');
+    openUploadSessionSheetsDialog();
   });
   $('#inline-print-report-btn')?.addEventListener('click', () => window.print());
 
@@ -6857,13 +6888,18 @@ export function setupFeatures(ctx) {
   let activeSheetsApproveFilter = 'all';
 
   function setSheetsSyncStatus(message, isError = false) {
-    const banner = $('#sheets-sync-status-banner') || $('#sheets-sync-status-box');
-    if (!banner) return;
-    banner.hidden = false;
-    banner.style.background = isError ? '#fef2f2' : '#f0fdf4';
-    banner.style.borderColor = isError ? '#fecaca' : '#bbf7d0';
-    banner.style.color = isError ? '#991b1b' : '#166534';
-    banner.innerHTML = message;
+    const banners = [
+      $('#sheets-sync-status-banner'),
+      $('#sheets-sync-status-box'),
+      $('#panel-sheets-sync-status-banner')
+    ].filter(Boolean);
+    banners.forEach(banner => {
+      banner.hidden = false;
+      banner.style.background = isError ? '#fef2f2' : '#f0fdf4';
+      banner.style.borderColor = isError ? '#fecaca' : '#bbf7d0';
+      banner.style.color = isError ? '#991b1b' : '#166534';
+      banner.innerHTML = message;
+    });
   }
 
   function populateSheetsSyncClassFilter(defaultScope = null) {
@@ -6930,12 +6966,53 @@ export function setupFeatures(ctx) {
     return cfg;
   }
 
+  function readAndSaveSheetsConfigFromPanel() {
+    const rawSheetUrl = ($('#panel-sheets-spreadsheet-id')?.value || $('#sheets-spreadsheet-id')?.value || '').trim();
+    const spreadsheetId = extractSpreadsheetId(rawSheetUrl) || rawSheetUrl;
+    const extractedGid = extractSheetGid(rawSheetUrl);
+    const gid = ($('#panel-sheets-gid-input')?.value || $('#sheets-gid-input')?.value || extractedGid || '').trim();
+    if ($('#panel-sheets-gid-input') && !$('#panel-sheets-gid-input').value && extractedGid) {
+      $('#panel-sheets-gid-input').value = extractedGid;
+    }
+    const sheetName = ($('#panel-sheets-tab-name')?.value || $('#sheets-tab-name')?.value || '').trim();
+    const scriptUrl = ($('#panel-sheets-script-url-input')?.value || $('#sheets-script-url-input')?.value || $('#drive-script-url-input')?.value || '').trim();
+    const autoSync = Boolean($('#panel-sheets-autosync-toggle')?.checked || $('#sheets-autosync-toggle')?.checked);
+    const twoWayMode = $('#panel-sheets-two-way-mode-toggle') ? Boolean($('#panel-sheets-two-way-mode-toggle').checked) : ($('#sheets-two-way-mode-toggle') ? Boolean($('#sheets-two-way-mode-toggle').checked) : true);
+    const defaultNewTag = $('#panel-sheets-default-new-tag-toggle') ? Boolean($('#panel-sheets-default-new-tag-toggle').checked) : ($('#sheets-default-new-tag-toggle') ? Boolean($('#sheets-default-new-tag-toggle').checked) : true);
+    const classDiffMode = $('#panel-sheets-class-diff-mode')?.value || $('#sheets-class-diff-mode')?.value || 'transfer';
+    const hasHeader = $('#panel-sheets-has-header-toggle') ? Boolean($('#panel-sheets-has-header-toggle').checked) : ($('#sheets-has-header-toggle') ? Boolean($('#sheets-has-header-toggle').checked) : true);
+
+    const prevCfg = loadGoogleSheetsConfig();
+    const cfg = {
+      ...prevCfg,
+      rawSheetUrl,
+      spreadsheetId,
+      sheetName,
+      gid,
+      scriptUrl,
+      autoSync,
+      twoWayMode,
+      defaultNewTag,
+      classDiffMode,
+      hasHeader,
+      cohortSheets: prevCfg.cohortSheets || DEFAULT_COHORTS
+    };
+    saveGoogleSheetsConfig(cfg);
+    if (scriptUrl) {
+      const driveCfg = loadGoogleDrivePhotoConfig();
+      if (!driveCfg.scriptUrl) {
+        saveGoogleDrivePhotoConfig({ ...driveCfg, scriptUrl });
+      }
+    }
+    return cfg;
+  }
+
   function renderMultiCohortSheetsTable() {
-    const tbody = $('#sheets-multi-cohort-tbody');
-    if (!tbody) return;
+    const tbodies = [$('#sheets-multi-cohort-tbody'), $('#panel-sheets-multi-cohort-tbody')].filter(Boolean);
+    if (!tbodies.length) return;
     const cfg = loadGoogleSheetsConfig();
     const cohorts = Array.isArray(cfg.cohortSheets) ? cfg.cohortSheets : DEFAULT_COHORTS;
-    tbody.innerHTML = cohorts.map((c, idx) => `
+    const rowsHtml = cohorts.map((c, idx) => `
       <tr style="border-bottom:1px solid #f1f5f9;">
         <td style="padding:6px 10px;"><strong>${escapeHtml(c.cohortName)}</strong></td>
         <td style="padding:6px 10px;"><code>${escapeHtml(c.sheetName || c.cohortName)}</code></td>
@@ -6956,32 +7033,36 @@ export function setupFeatures(ctx) {
       </tr>
     `).join('') || `<tr><td colspan="5" style="text-align:center; padding:12px; color:#64748b;">Chưa có sheet nào trong danh sách.</td></tr>`;
 
-    // Wire single scan
-    tbody.querySelectorAll('[data-scan-single-cohort]').forEach(btn => {
-      btn.onclick = async () => {
-        const cohortName = btn.dataset.scanSingleCohort;
-        setSheetsSyncStatus(`Đang quét riêng trang tính "${cohortName}"...`, false);
-        const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg, cohortName);
-        if (!res.success) {
-          setSheetsSyncStatus(escapeHtml(res.message), true);
-          toast(res.message);
-          return;
-        }
-        scanIncomingSheetsRowsForApproval(res.rows, `Google Sheet (${cohortName})`);
-        toast(`✓ Đã quét ${res.rows.length} dòng từ sheet "${cohortName}".`);
-      };
-    });
+    tbodies.forEach(tbody => {
+      tbody.innerHTML = rowsHtml;
 
-    // Wire delete
-    tbody.querySelectorAll('[data-delete-single-cohort]').forEach(btn => {
-      btn.onclick = () => {
-        const idx = Number(btn.dataset.deleteSingleCohort);
-        if (!cohorts[idx]) return;
-        if (!confirm(`Xóa sheet "${cohorts[idx].cohortName}" khỏi danh sách quét?`)) return;
-        cohorts.splice(idx, 1);
-        saveGoogleSheetsConfig({ ...cfg, cohortSheets: cohorts });
-        renderMultiCohortSheetsTable();
-      };
+      // Wire single scan
+      tbody.querySelectorAll('[data-scan-single-cohort]').forEach(btn => {
+        btn.onclick = async () => {
+          const cohortName = btn.dataset.scanSingleCohort;
+          setSheetsSyncStatus(`Đang quét riêng trang tính "${cohortName}"...`, false);
+          const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg, cohortName);
+          if (!res.success) {
+            setSheetsSyncStatus(escapeHtml(res.message), true);
+            toast(res.message);
+            return;
+          }
+          scanIncomingSheetsRowsForApproval(res.rows, `Google Sheet (${cohortName})`);
+          toast(`✓ Đã quét ${res.rows.length} dòng từ sheet "${cohortName}".`);
+        };
+      });
+
+      // Wire delete
+      tbody.querySelectorAll('[data-delete-single-cohort]').forEach(btn => {
+        btn.onclick = () => {
+          const idx = Number(btn.dataset.deleteSingleCohort);
+          if (!cohorts[idx]) return;
+          if (!confirm(`Xóa sheet "${cohorts[idx].cohortName}" khỏi danh sách quét?`)) return;
+          cohorts.splice(idx, 1);
+          saveGoogleSheetsConfig({ ...cfg, cohortSheets: cohorts });
+          renderMultiCohortSheetsTable();
+        };
+      });
     });
   }
 
@@ -7051,40 +7132,415 @@ export function setupFeatures(ctx) {
     toast(result.ok ? '✓ Kết nối Google Apps Script thành công!' : `✕ Lỗi: ${result.message}`);
   });
 
-  function openGoogleSheetsSyncModal(defaultScope = 'all') {
+  function switchSheetsSubpanel(pillId, subpanelId) {
+    const pills = [
+      $('#sheets-subtab-btn-session'),
+      $('#sheets-subtab-btn-students'),
+      $('#sheets-subtab-btn-config'),
+      $('#sheets-subtab-btn-script')
+    ].filter(Boolean);
+
+    const subpanels = [
+      $('#sheets-subpanel-session'),
+      $('#sheets-subpanel-students'),
+      $('#sheets-subpanel-config'),
+      $('#sheets-subpanel-script')
+    ].filter(Boolean);
+
+    pills.forEach(p => p.classList.toggle('active', p.id === pillId));
+    subpanels.forEach(sp => { sp.hidden = (sp.id !== subpanelId); });
+  }
+
+  function getSessionStudentRows(classId, date, hasHomework = true, hasTest = true, includeLink = true) {
+    const catalog = getClassCatalog();
+    const cls = catalog.find(c => c.id === classId) || getActiveClassConfig();
+    const isCurrentActiveSession = classId === getCurrentClassId() && date === getChecklistDate();
+
+    const classStudents = getStudents().filter(s => (s.classIds || []).includes(classId));
+    const makeupList = (isCurrentActiveSession && ctx.sessionMakeupStudents) ? ctx.sessionMakeupStudents() : [];
+    const pool = [...classStudents];
+    makeupList.forEach(m => {
+      if (!pool.some(s => s.id === m.id)) pool.push(m);
+    });
+
+    const entries = isCurrentActiveSession ? allEntries() : [];
+    const lateQueueIds = isCurrentActiveSession ? getLateQueue() : [];
+
+    let savedChk = {};
+    try {
+      savedChk = JSON.parse(localStorage.getItem(`lopvui.checklist.v1.${classId}.${date}`) || '{}') || {};
+    } catch {}
+
+    return pool.map(student => {
+      const seated = entries.find(p => p.entry.studentId === student.id);
+      const attHist = (student.attendanceHistory || []).find(h => (!h.classId || h.classId === classId) && h.date === date);
+      const sessNoteObj = (student.sessionNotes || []).find(n => (!n.classId || n.classId === classId) && n.date === date);
+      const btvnScoreObj = (student.scores || []).find(sc => (!sc.classId || sc.classId === classId) && sc.date === date && (!sc.type || sc.type === 'BTVN'));
+      const testScoreObj = (student.scores || []).find(sc => (!sc.classId || sc.classId === classId) && sc.date === date && sc.type && sc.type !== 'BTVN');
+
+      const isOnSeatingMap = Boolean(seated || lateQueueIds.includes(student.id));
+      const candStoredAtt = (isCurrentActiveSession ? student.attendance?.status : null) || attHist?.status || '';
+      const isExplicitAbsent = candStoredAtt === 'absent' || candStoredAtt === 'absent_excused' || candStoredAtt === 'absent_unexcused';
+      const rawAttStatus = seated?.entry.attendance?.status
+        || (lateQueueIds.includes(student.id) ? (student.attendance?.status || 'present') : null)
+        || (isExplicitAbsent ? candStoredAtt : (!isCurrentActiveSession ? candStoredAtt : ''))
+        || '';
+
+      const isLate = isOnSeatingMap && (ctx.isStudentLateInSession
+        ? ctx.isStudentLateInSession(student, seated?.entry || (attHist ? { attendance: attHist } : null), cls, date)
+        : (rawAttStatus === 'late'));
+      const isPresent = Boolean(isOnSeatingMap || (!isCurrentActiveSession && rawAttStatus === 'present'));
+
+      let attendanceStr = 'Chưa điểm danh';
+      if (isLate) {
+        attendanceStr = 'Đi muộn';
+      } else if (isPresent) {
+        attendanceStr = 'Có mặt';
+      } else if (rawAttStatus === 'absent_excused') {
+        attendanceStr = 'Vắng có phép';
+      } else if (rawAttStatus === 'absent_unexcused' || rawAttStatus === 'absent') {
+        attendanceStr = 'Vắng không phép';
+      }
+
+      // Homework
+      let hwText = '';
+      if (!hasHomework) {
+        hwText = 'Không BTVN';
+      } else {
+        const hwObj = seated?.entry.homework
+          || (isCurrentActiveSession && student.homework?.status && student.homework.status !== 'uncollected' ? student.homework : null)
+          || (sessNoteObj?.homeworkStatus ? { status: sessNoteObj.homeworkStatus, reason: sessNoteObj.homeworkReason, score: sessNoteObj.homeworkScore } : null)
+          || attHist?.homework
+          || { status: 'uncollected' };
+        const score = hwObj?.score ?? sessNoteObj?.homeworkScore ?? btvnScoreObj?.score;
+        if (score !== null && score !== undefined && score !== '') {
+          hwText = String(score);
+        } else if (hwObj?.status === 'not_submitted') {
+          hwText = hwObj.reason ? `Không nộp (${hwObj.reason})` : 'Không nộp';
+        } else if (hwObj?.status === 'submitted' || hwObj?.status === 'graded') {
+          hwText = 'Đã nộp';
+        } else {
+          hwText = 'Không nộp';
+        }
+      }
+
+      // Test
+      let testText = '';
+      if (!hasTest) {
+        testText = 'Không Test';
+      } else {
+        const score = seated?.entry.testScore
+          ?? savedChk.testScores?.[student.id]
+          ?? (isCurrentActiveSession ? student.testScore : null)
+          ?? sessNoteObj?.testScore
+          ?? testScoreObj?.score;
+        if (score !== null && score !== undefined && score !== '') {
+          testText = String(score);
+        } else {
+          testText = '';
+        }
+      }
+
+      // Session Note
+      const sessionNote = (isCurrentActiveSession && ctx.sessionNoteFor ? ctx.sessionNoteFor(student.id) : null)
+        || sessNoteObj?.note
+        || student.sessionNote
+        || '';
+
+      return {
+        studentCode: student.studentCode || '',
+        fullName: student.name || '',
+        attendance: attendanceStr,
+        homework: hwText,
+        test: testText,
+        sessionNote: sessionNote
+      };
+    });
+  }
+
+  function renderPanelSessionPreview() {
+    const catalog = getClassCatalog();
+    const classSelect = $('#panel-session-class-select');
+    const targetClassId = classSelect?.value || getCurrentClassId() || catalog[0]?.id;
+    const targetCls = catalog.find(c => c.id === targetClassId) || getActiveClassConfig();
+    const dateInput = $('#panel-session-date-input');
+    const dateStr = dateInput?.value || getChecklistDate() || new Date().toISOString().slice(0, 10);
+    if (dateInput && !dateInput.value) dateInput.value = dateStr;
+
+    const hasHomework = $('#panel-session-has-hw') ? Boolean($('#panel-session-has-hw').checked) : true;
+    const hasTest = $('#panel-session-has-test') ? Boolean($('#panel-session-has-test').checked) : true;
+    const includeLink = $('#panel-session-include-link') ? Boolean($('#panel-session-include-link').checked) : true;
+
+    // Web link preview
+    const sessionUrl = includeLink
+      ? `${window.location.origin}${window.location.pathname}#class/${targetCls.code || targetCls.id}/history/${dateStr}/map`
+      : '';
+    const urlEl = $('#panel-session-url-preview');
+    if (urlEl) urlEl.textContent = sessionUrl || '(Không ghi kèm link)';
+
+    const formattedDate = dateStr.split('-').reverse().join('/');
+    if ($('#panel-col-preview-att')) {
+      $('#panel-col-preview-att').innerHTML = `Điểm danh <strong>${formattedDate}</strong>${includeLink ? ' <span style="font-size:11px; color:#1d4ed8;">(+Link web)</span>' : ''}`;
+    }
+    if ($('#panel-col-preview-hw')) {
+      $('#panel-col-preview-hw').innerHTML = `Điểm BTVN <strong>${formattedDate}</strong><div style="font-size:11px; font-weight:normal; color:#475569;">${hasHomework ? '(Số điểm hoặc Không nộp)' : '<span style="color:#b91c1c;">(Khóa: Không BTVN)</span>'}</div>`;
+    }
+    if ($('#panel-col-preview-test')) {
+      $('#panel-col-preview-test').innerHTML = `Điểm Test <strong>${formattedDate}</strong><div style="font-size:11px; font-weight:normal; color:#475569;">${hasTest ? '(Số điểm test)' : '<span style="color:#b91c1c;">(Khóa: Không Test)</span>'}</div>`;
+    }
+    if ($('#panel-col-preview-note')) {
+      $('#panel-col-preview-note').innerHTML = `Ghi chú <strong>${formattedDate}</strong>`;
+    }
+
+    const rows = getSessionStudentRows(targetCls.id, dateStr, hasHomework, hasTest, includeLink);
+    if ($('#panel-session-preview-count')) {
+      $('#panel-session-preview-count').textContent = `(${rows.length} học sinh)`;
+    }
+
+    const tbody = $('#panel-session-preview-tbody');
+    if (!tbody) return;
+
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:20px; color:#64748b;">Lớp này hiện chưa có học sinh nào.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = rows.map((r, idx) => {
+      const attStyle = r.attendance.includes('Có mặt') ? 'background:#dcfce7; color:#166534;'
+        : r.attendance.includes('Đi muộn') ? 'background:#fef9c3; color:#854d0e;'
+        : r.attendance.includes('Vắng') ? 'background:#fee2e2; color:#991b1b;'
+        : 'background:#f1f5f9; color:#475569;';
+
+      const hwStyle = r.homework === 'Không BTVN' ? 'background:#f1f5f9; color:#64748b; font-style:italic;'
+        : r.homework.includes('Không nộp') ? 'background:#fee2e2; color:#991b1b; font-weight:700;'
+        : r.homework ? 'background:#eff6ff; color:#1d4ed8; font-weight:700;'
+        : 'color:#64748b;';
+
+      const testStyle = r.test === 'Không Test' ? 'background:#f1f5f9; color:#64748b; font-style:italic;'
+        : r.test ? 'background:#f0fdf4; color:#15803d; font-weight:700;'
+        : 'color:#64748b;';
+
+      return `
+        <tr style="border-bottom:1px solid #e2e8f0;">
+          <td style="text-align:center; font-weight:600; color:#64748b;">${idx + 1}</td>
+          <td><strong style="color:#0f172a;">${escapeHtml(r.studentCode || '—')}</strong></td>
+          <td><strong style="color:#1e293b;">${escapeHtml(r.fullName)}</strong></td>
+          <td><span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:700; ${attStyle}">${escapeHtml(r.attendance)}</span></td>
+          <td><span style="display:inline-block; padding:2px 8px; border-radius:4px; font-size:12px; ${hwStyle}">${escapeHtml(r.homework || '—')}</span></td>
+          <td><span style="display:inline-block; padding:2px 8px; border-radius:4px; font-size:12px; ${testStyle}">${escapeHtml(r.test || '—')}</span></td>
+          <td style="font-size:12px; color:#475569;">${escapeHtml(r.sessionNote || '—')}</td>
+          <td style="text-align:center;">
+            <span style="color:#16a34a; font-weight:800; font-size:12px;">Sẵn sàng</span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  async function handlePanelSessionUpload() {
+    const role = getSignedInAccount()?.role;
+    if (role === 'assistant' || role === 'teacher') {
+      toast('Trợ giảng và Giáo viên không có quyền đẩy dữ liệu lên Google Sheets.');
+      return;
+    }
+    const cfg = readAndSaveSheetsConfigFromPanel();
+    if (!cfg.scriptUrl) {
+      toast('Chưa cấu hình Google Apps Script URL. Vui lòng chuyển sang tab 3 (Cấu hình) để nhập URL.');
+      switchSheetsSubpanel('sheets-subtab-btn-config', 'sheets-subpanel-config');
+      return;
+    }
+
+    const catalog = getClassCatalog();
+    const classSelect = $('#panel-session-class-select');
+    const targetClassId = classSelect?.value || getCurrentClassId() || catalog[0]?.id;
+    const targetCls = catalog.find(c => c.id === targetClassId) || getActiveClassConfig();
+    const dateInput = $('#panel-session-date-input');
+    const dateStr = dateInput?.value || getChecklistDate();
+
+    const hasHomework = $('#panel-session-has-hw') ? Boolean($('#panel-session-has-hw').checked) : true;
+    const hasTest = $('#panel-session-has-test') ? Boolean($('#panel-session-has-test').checked) : true;
+    const includeLink = $('#panel-session-include-link') ? Boolean($('#panel-session-include-link').checked) : true;
+
+    const targetSheetTab = ($('#panel-session-sheet-tab')?.value || '').trim() || cfg.sheetName || targetCls.code || targetCls.name;
+    const sessionUrl = includeLink
+      ? `${window.location.origin}${window.location.pathname}#class/${targetCls.code || targetCls.id}/history/${dateStr}/map`
+      : '';
+
+    const rows = getSessionStudentRows(targetCls.id, dateStr, hasHomework, hasTest, includeLink);
+
+    const statusBanner = $('#panel-session-status-banner');
+    if (statusBanner) {
+      statusBanner.hidden = false;
+      statusBanner.style.background = '#eff6ff';
+      statusBanner.style.borderColor = '#93c5fd';
+      statusBanner.style.color = '#1e40af';
+      statusBanner.innerHTML = `Đang kết nối Google Sheets và đẩy dữ liệu buổi học ngày ${dateStr} cho lớp [${targetCls.code || targetCls.id}] (Tab: "${escapeHtml(targetSheetTab)}")...`;
+    }
+
+    const uploadBtn = $('#panel-session-upload-btn');
+    if (uploadBtn) { uploadBtn.disabled = true; uploadBtn.textContent = 'Đang đẩy dữ liệu...'; }
+
+    try {
+      const res = await uploadSessionDataToGoogleSheets({
+        scriptUrl: cfg.scriptUrl,
+        spreadsheetId: cfg.spreadsheetId,
+        sheetName: targetSheetTab,
+        gid: cfg.gid,
+        classId: targetCls.id,
+        classCode: targetCls.code || targetCls.id,
+        date: dateStr,
+        dateStr: dateStr.split('-').reverse().join('/'),
+        sessionUrl,
+        records: rows,
+        hasHomework,
+        hasTest
+      });
+
+      if (statusBanner) {
+        statusBanner.style.background = '#f0fdf4';
+        statusBanner.style.borderColor = '#86efac';
+        statusBanner.style.color = '#166534';
+        statusBanner.innerHTML = `✓ ${escapeHtml(res.message || `Đã đẩy thành công dữ liệu buổi học ngày ${dateStr} lên Google Sheet!`)}`;
+      }
+      toast(`✓ Đã đẩy thành công dữ liệu buổi học lớp [${targetCls.code || targetCls.id}] lên Google Sheet!`);
+
+      ctx.recordAdminLog?.(
+        'sheets_upload_session',
+        `Đẩy dữ liệu buổi học ngày ${dateStr} lớp ${targetCls.code || targetCls.id} lên Google Sheet: Điểm danh (kèm Link), BTVN, Test cho ${rows.length} HS`,
+        'session'
+      );
+    } catch (err) {
+      if (statusBanner) {
+        statusBanner.style.background = '#fef2f2';
+        statusBanner.style.borderColor = '#fecaca';
+        statusBanner.style.color = '#991b1b';
+        statusBanner.innerHTML = `✕ Lỗi đẩy dữ liệu: ${escapeHtml(err.message || String(err))}`;
+      }
+      toast(`✕ Lỗi đẩy dữ liệu lên Google Sheet: ${err.message || err}`);
+    } finally {
+      if (uploadBtn) {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = '✓ Đẩy Dữ liệu Buổi học Lên Google Sheet';
+      }
+    }
+  }
+
+  function renderGoogleSheetsManagementPanel(defaultScope = 'all', preferredSubTab = 'session') {
+    const role = getSignedInAccount()?.role;
+    if (role === 'assistant' || role === 'teacher') {
+      toast('Trợ giảng và Giáo viên không có quyền truy cập màn hình Đồng bộ Google Sheets.');
+      return;
+    }
+
+    if (preferredSubTab === 'students') {
+      switchSheetsSubpanel('sheets-subtab-btn-students', 'sheets-subpanel-students');
+    } else if (preferredSubTab === 'config') {
+      switchSheetsSubpanel('sheets-subtab-btn-config', 'sheets-subpanel-config');
+    } else if (preferredSubTab === 'script') {
+      switchSheetsSubpanel('sheets-subtab-btn-script', 'sheets-subpanel-script');
+    } else {
+      switchSheetsSubpanel('sheets-subtab-btn-session', 'sheets-subpanel-session');
+    }
+
+    const cfg = loadGoogleSheetsConfig();
+    const driveCfg = loadGoogleDrivePhotoConfig();
+    const catalog = getClassCatalog();
+
+    // Populate Subpanel 1 class select
+    const classSel = $('#panel-session-class-select');
+    if (classSel) {
+      const curVal = defaultScope !== 'all' ? defaultScope : (getCurrentClassId() || catalog[0]?.id || '');
+      classSel.innerHTML = catalog.map(c =>
+        `<option value="${escapeHtml(c.id)}" ${c.id === curVal ? 'selected' : ''}>[${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)}</option>`
+      ).join('');
+    }
+
+    const dateInput = $('#panel-session-date-input');
+    if (dateInput && !dateInput.value) {
+      dateInput.value = getChecklistDate() || new Date().toISOString().slice(0, 10);
+    }
+
+    // Populate Subpanel 3 config inputs
+    if ($('#panel-sheets-spreadsheet-id')) $('#panel-sheets-spreadsheet-id').value = cfg.rawSheetUrl || cfg.spreadsheetId || '';
+    if ($('#panel-sheets-tab-name')) $('#panel-sheets-tab-name').value = cfg.sheetName || '';
+    if ($('#panel-sheets-gid-input')) $('#panel-sheets-gid-input').value = cfg.gid || '';
+    if ($('#panel-sheets-script-url-input')) $('#panel-sheets-script-url-input').value = cfg.scriptUrl || driveCfg.scriptUrl || '';
+    if ($('#panel-sheets-two-way-mode-toggle')) $('#panel-sheets-two-way-mode-toggle').checked = cfg.twoWayMode !== false;
+    if ($('#panel-sheets-default-new-tag-toggle')) $('#panel-sheets-default-new-tag-toggle').checked = cfg.defaultNewTag !== false;
+    if ($('#panel-sheets-has-header-toggle')) $('#panel-sheets-has-header-toggle').checked = cfg.hasHeader !== false;
+    if ($('#panel-sheets-autosync-toggle')) $('#panel-sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
+    if ($('#panel-sheets-class-diff-mode')) $('#panel-sheets-class-diff-mode').value = cfg.classDiffMode || 'transfer';
+
+    const filterSel = $('#panel-sheets-sync-class-filter');
+    if (filterSel) {
+      filterSel.innerHTML = `<option value="all">Toàn bộ danh sách tổng của Trung tâm (${getStudents().length} HS)</option>` +
+        catalog.map(c => `<option value="${escapeHtml(c.id)}">Lớp [${escapeHtml(c.code || c.id)}] ${escapeHtml(c.name)}</option>`).join('');
+    }
+
+    renderMultiCohortSheetsTable();
+
+    if ($('#panel-apps-script-preview-code')) {
+      $('#panel-apps-script-preview-code').textContent = getGoogleAppsScriptTemplate();
+    }
+
+    renderPanelSessionPreview();
+  }
+
+  function openUploadSessionSheetsDialog() {
+    const role = getSignedInAccount()?.role;
+    if (role === 'assistant' || role === 'teacher') {
+      toast('Trợ giảng và Giáo viên không có quyền tải lên hoặc truy cập Google Sheets.');
+      return;
+    }
+    const dialog = $('#upload-session-sheets-dialog');
+    if (!dialog) return;
+
+    const currentCls = getActiveClassConfig();
+    const date = getChecklistDate();
+    const students = getStudents().filter(s => (s.classIds || []).includes(currentCls.id));
+    const infoEl = $('#upload-session-sheets-info');
+    if (infoEl) {
+      infoEl.innerHTML = `
+        <strong>Lớp:</strong> [${escapeHtml(currentCls.code || currentCls.id)}] ${escapeHtml(currentCls.name)}<br>
+        <strong>Ngày buổi học:</strong> ${escapeHtml(date)} (${date.split('-').reverse().join('/')})<br>
+        <strong>Sĩ số kiểm tra:</strong> ${students.length} học sinh
+      `;
+    }
+    const stEl = $('#upload-session-sheets-status');
+    if (stEl) { stEl.hidden = true; stEl.textContent = ''; }
+
+    dialog.showModal();
+  }
+
+  function openGoogleSheetsSyncModal(defaultScope = 'all', preferredSubTab = 'students') {
     if (!canAccessCrossClass()) {
       toast('Chỉ tài khoản Văn phòng hoặc Admin mới được đồng bộ Google Sheets toàn trung tâm.');
       return;
     }
-    const driveCfg = loadGoogleDrivePhotoConfig();
-    const cfg = loadGoogleSheetsConfig();
-    if ($('#drive-script-url-input')) $('#drive-script-url-input').value = driveCfg.scriptUrl || cfg.scriptUrl || '';
-    if ($('#drive-folder-id-input')) $('#drive-folder-id-input').value = driveCfg.folderId || '';
-    if ($('#sheets-spreadsheet-id')) $('#sheets-spreadsheet-id').value = cfg.rawSheetUrl || cfg.spreadsheetId || '';
-    if ($('#sheets-tab-name')) $('#sheets-tab-name').value = cfg.sheetName || '';
-    if ($('#sheets-gid-input')) $('#sheets-gid-input').value = cfg.gid || '';
-    if ($('#sheets-script-url-input')) $('#sheets-script-url-input').value = cfg.scriptUrl || driveCfg.scriptUrl || '';
-    if ($('#sheets-autosync-toggle')) $('#sheets-autosync-toggle').checked = Boolean(cfg.autoSync);
-    if ($('#sheets-two-way-mode-toggle')) $('#sheets-two-way-mode-toggle').checked = cfg.twoWayMode !== false;
-    if ($('#sheets-default-new-tag-toggle')) $('#sheets-default-new-tag-toggle').checked = cfg.defaultNewTag !== false;
-    if ($('#sheets-class-diff-mode')) $('#sheets-class-diff-mode').value = cfg.classDiffMode || 'transfer';
-    if ($('#sheets-has-header-toggle')) $('#sheets-has-header-toggle').checked = cfg.hasHeader !== false;
-    if ($('#sheets-col-code')) $('#sheets-col-code').value = cfg.colCode || '';
-    if ($('#sheets-col-name')) $('#sheets-col-name').value = cfg.colName || '';
-    if ($('#sheets-col-class')) $('#sheets-col-class').value = cfg.colClass || '';
-    if ($('#sheets-col-school')) $('#sheets-col-school').value = cfg.colSchool || '';
-    if ($('#sheets-col-phone')) $('#sheets-col-phone').value = cfg.colPhone || '';
-    if ($('#sheets-col-status')) $('#sheets-col-status').value = cfg.colStatus || '';
-    if ($('#sheets-col-tag')) $('#sheets-col-tag').value = cfg.colTag || '';
-
-    const previewPre = $('#apps-script-preview-code');
-    if (previewPre) {
-      previewPre.textContent = getGoogleAppsScriptTemplate();
+    const role = getSignedInAccount()?.role;
+    if (role === 'assistant' || role === 'teacher') {
+      toast('Trợ giảng và Giáo viên không có quyền truy cập màn hình Đồng bộ Google Sheets.');
+      return;
     }
-    renderMultiCohortSheetsTable();
-
-    populateSheetsSyncClassFilter(defaultScope);
-    $('#google-sheets-sync-dialog')?.showModal();
+    if (ctx.setMainMenuPanel) {
+      ctx.setMainMenuPanel('management');
+    } else if ($('#management-menu-nav')) {
+      $('#management-menu-nav').click();
+    }
+    const mgmtTabSheets = $('#mgmt-tab-sheets');
+    const mgmtPanelSheets = $('#mgmt-panel-sheets');
+    if (mgmtTabSheets && mgmtPanelSheets) {
+      const switchMgmtTab = window.__switchMgmtTab || ((tab, pnl) => {
+        document.querySelectorAll('.management-nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.management-subpanel').forEach(p => p.hidden = true);
+        tab.classList.add('active');
+        pnl.hidden = false;
+      });
+      switchMgmtTab(mgmtTabSheets, mgmtPanelSheets);
+      renderGoogleSheetsManagementPanel(defaultScope, preferredSubTab);
+    } else {
+      $('#google-sheets-sync-dialog')?.showModal();
+    }
   }
 
   // Auto-extract GID when user pastes full Google Sheets URL into #sheets-spreadsheet-id
@@ -7404,30 +7860,26 @@ export function setupFeatures(ctx) {
   }
 
   function renderSheetsApprovalTable() {
-    const section = $('#sheets-approval-section');
-    const tbody = $('#sheets-approval-tbody');
-    const titleEl = $('#sheets-approval-title');
-    const summaryEl = $('#sheets-approval-selected-summary');
-    const tagAllCb = $('#sheets-approve-tag-all-cb');
-    const selectAllCb = $('#sheets-approve-select-all');
-    if (!section || !tbody) return;
+    const sections = [$('#sheets-approval-section'), $('#panel-sheets-approval-section')].filter(Boolean);
+    const tbodies = [$('#sheets-approval-tbody'), $('#panel-sheets-approval-tbody')].filter(Boolean);
+    if (!sections.length && !tbodies.length) return;
 
     if (!pendingSheetsApprovalItems.length) {
-      section.hidden = true;
+      sections.forEach(s => { s.hidden = true; });
       return;
     }
-    section.hidden = false;
+    sections.forEach(s => { s.hidden = false; });
 
     const newCount = pendingSheetsApprovalItems.filter(i => i.category === 'new_student').length;
     const diffClassCount = pendingSheetsApprovalItems.filter(i => i.category === 'class_change').length;
     const codeUpdateCount = pendingSheetsApprovalItems.filter(i => i.category === 'code_update').length;
 
-    if ($('#sheets-count-all')) $('#sheets-count-all').textContent = String(pendingSheetsApprovalItems.length);
-    if ($('#sheets-count-new')) $('#sheets-count-new').textContent = String(newCount);
-    if ($('#sheets-count-diff-class')) $('#sheets-count-diff-class').textContent = String(diffClassCount);
-    if ($('#sheets-count-code')) $('#sheets-count-code').textContent = String(codeUpdateCount);
+    ['sheets-count-all', 'panel-sheets-count-all'].forEach(id => { const el = $('#' + id); if (el) el.textContent = String(pendingSheetsApprovalItems.length); });
+    ['sheets-count-new', 'panel-sheets-count-new'].forEach(id => { const el = $('#' + id); if (el) el.textContent = String(newCount); });
+    ['sheets-count-diff-class', 'panel-sheets-count-diff-class'].forEach(id => { const el = $('#' + id); if (el) el.textContent = String(diffClassCount); });
+    ['sheets-count-code', 'panel-sheets-count-code'].forEach(id => { const el = $('#' + id); if (el) el.textContent = String(codeUpdateCount); });
 
-    section.querySelectorAll('[data-sheets-approve-filter]').forEach(btn => {
+    document.querySelectorAll('[data-sheets-approve-filter]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.sheetsApproveFilter === activeSheetsApproveFilter);
     });
 
@@ -7438,27 +7890,33 @@ export function setupFeatures(ctx) {
     const approvedCount = pendingSheetsApprovalItems.filter(i => i.approved).length;
     const taggedNewCount = pendingSheetsApprovalItems.filter(i => i.approved && i.addNewTag).length;
 
-    if (titleEl) {
-      titleEl.textContent = `Danh sách phát hiện từ Google Sheet chờ Văn phòng duyệt (${pendingSheetsApprovalItems.length} học sinh)`;
-    }
-    if (summaryEl) {
-      summaryEl.innerHTML = `Đã chọn duyệt: <strong>${approvedCount}/${pendingSheetsApprovalItems.length}</strong> học sinh · Gắn tag <strong>"Mới"</strong>: <strong>${taggedNewCount}</strong> học sinh`;
-    }
-    if (selectAllCb) {
-      selectAllCb.checked = visibleItems.length > 0 && visibleItems.every(i => i.approved);
-    }
-    if (tagAllCb) {
-      tagAllCb.checked = visibleItems.length > 0 && visibleItems.every(i => i.addNewTag);
-    }
+    ['sheets-approval-title', 'panel-sheets-approval-title'].forEach(id => {
+      const el = $('#' + id);
+      if (el) el.textContent = `Danh sách phát hiện từ Google Sheet chờ Văn phòng duyệt (${pendingSheetsApprovalItems.length} học sinh)`;
+    });
+    ['sheets-approval-selected-summary', 'panel-sheets-approval-selected-summary'].forEach(id => {
+      const el = $('#' + id);
+      if (el) el.innerHTML = `Đã chọn duyệt: <strong>${approvedCount}/${pendingSheetsApprovalItems.length}</strong> học sinh · Gắn tag <strong>"Mới"</strong>: <strong>${taggedNewCount}</strong> học sinh`;
+    });
+    ['sheets-approve-select-all', 'panel-sheets-approve-select-all'].forEach(id => {
+      const el = $('#' + id);
+      if (el) el.checked = visibleItems.length > 0 && visibleItems.every(i => i.approved);
+    });
+    ['sheets-approve-tag-all-cb', 'panel-sheets-approve-tag-all-cb'].forEach(id => {
+      const el = $('#' + id);
+      if (el) el.checked = visibleItems.length > 0 && visibleItems.every(i => i.addNewTag);
+    });
 
     const catalog = getClassCatalog();
 
     if (!visibleItems.length) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:18px; color:#64748b;">Không có học sinh nào trong nhóm lọc này.</td></tr>`;
+      tbodies.forEach(tb => {
+        tb.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:18px; color:#64748b;">Không có học sinh nào trong nhóm lọc này.</td></tr>`;
+      });
       return;
     }
 
-    tbody.innerHTML = visibleItems.map(item => {
+    const renderedApprovalRows = visibleItems.map(item => {
       const catBadge = item.category === 'new_student'
         ? `<span style="display:inline-block; padding:3px 8px; border-radius:999px; background:#dcfce7; color:#166534; font-weight:800; font-size:11.5px;">🆕 Học sinh mới</span>`
         : item.category === 'class_change'
@@ -7582,7 +8040,49 @@ export function setupFeatures(ctx) {
       });
     });
 
-    tbody.querySelectorAll('[data-approve-class-action]').forEach(sel => {
+    tbodies.forEach(tb => {
+      tb.innerHTML = renderedApprovalRows;
+    });
+
+    // Wire events across all approval tbodies
+    document.querySelectorAll('[data-approve-item-cb]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const it = pendingSheetsApprovalItems.find(x => x.tempId === cb.dataset.approveItemCb);
+        if (it) it.approved = cb.checked;
+        renderSheetsApprovalTable();
+      });
+    });
+
+    document.querySelectorAll('[data-approve-new-tag-cb]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const it = pendingSheetsApprovalItems.find(x => x.tempId === cb.dataset.approveNewTagCb);
+        if (it) it.addNewTag = cb.checked;
+        renderSheetsApprovalTable();
+      });
+    });
+
+    document.querySelectorAll('[data-approve-code-input]').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const it = pendingSheetsApprovalItems.find(x => x.tempId === inp.dataset.approveCodeInput);
+        if (it) it.studentCode = inp.value.trim().toUpperCase();
+      });
+    });
+
+    document.querySelectorAll('[data-approve-target-class]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const it = pendingSheetsApprovalItems.find(x => x.tempId === sel.dataset.approveTargetClass);
+        if (!it) return;
+        const val = sel.value;
+        if (val.startsWith('create_new:')) {
+          it.customClassChoice = val;
+        } else if (val) {
+          it.customClassChoice = '';
+          it.targetClassIds = [val];
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-approve-class-action]').forEach(sel => {
       sel.addEventListener('change', () => {
         const it = pendingSheetsApprovalItems.find(x => x.tempId === sel.dataset.approveClassAction);
         if (it) it.classAction = sel.value;
@@ -8178,6 +8678,343 @@ export function setupFeatures(ctx) {
     setSheetsSyncStatus('✓ Đã lưu toàn bộ cấu hình kết nối Google Sheets, quy tắc đồng bộ Mã HS & Google Drive.', false);
     toast('✓ Đã lưu cấu hình kết nối Google Sheets & Google Drive.');
   });
+
+  // ====================================================
+  // SỰ KIỆN GIAO DIỆN MÀN HÌNH QUẢN LÝ GOOGLE SHEETS (#mgmt-panel-sheets)
+  // ====================================================
+
+  // Sheets Management Sub-pills
+  $('#sheets-subtab-btn-session')?.addEventListener('click', () => {
+    switchSheetsSubpanel('sheets-subtab-btn-session', 'sheets-subpanel-session');
+    renderPanelSessionPreview();
+  });
+  $('#sheets-subtab-btn-students')?.addEventListener('click', () => {
+    switchSheetsSubpanel('sheets-subtab-btn-students', 'sheets-subpanel-students');
+  });
+  $('#sheets-subtab-btn-config')?.addEventListener('click', () => {
+    switchSheetsSubpanel('sheets-subtab-btn-config', 'sheets-subpanel-config');
+  });
+  $('#sheets-subtab-btn-script')?.addEventListener('click', () => {
+    switchSheetsSubpanel('sheets-subtab-btn-script', 'sheets-subpanel-script');
+  });
+
+  // Top buttons in #mgmt-panel-sheets
+  $('#sheets-panel-save-config-btn')?.addEventListener('click', () => {
+    readAndSaveSheetsConfigFromPanel();
+    toast('✓ Đã lưu toàn bộ cấu hình Google Sheets thành công!');
+  });
+  $('#sheets-panel-quick-scan-btn')?.addEventListener('click', () => {
+    switchSheetsSubpanel('sheets-subtab-btn-students', 'sheets-subpanel-students');
+    $('#panel-pull-sheets-sync-btn')?.click();
+  });
+
+  // Subpanel 1 controls: Buổi học & Upload
+  $('#panel-session-class-select')?.addEventListener('change', () => renderPanelSessionPreview());
+  $('#panel-session-date-input')?.addEventListener('change', () => renderPanelSessionPreview());
+  $('#panel-session-has-hw')?.addEventListener('change', () => renderPanelSessionPreview());
+  $('#panel-session-has-test')?.addEventListener('change', () => renderPanelSessionPreview());
+  $('#panel-session-include-link')?.addEventListener('change', () => renderPanelSessionPreview());
+  $('#panel-session-pull-scores-btn')?.addEventListener('click', () => {
+    renderPanelSessionPreview();
+    toast('✓ Đã làm mới bảng xem trước buổi học.');
+  });
+  $('#panel-session-upload-btn')?.addEventListener('click', handlePanelSessionUpload);
+
+  // Subpanel 2 controls: Học sinh & Duyệt
+  $('#panel-pull-sheets-sync-btn')?.addEventListener('click', () => {
+    $('#pull-sheets-sync-btn')?.click();
+  });
+  $('#panel-pull-multi-cohort-sheets-btn')?.addEventListener('click', () => {
+    $('#pull-multi-cohort-sheets-btn')?.click();
+  });
+  $('#panel-trigger-sheets-sync-btn')?.addEventListener('click', () => {
+    $('#trigger-sheets-sync-btn')?.click();
+  });
+  $('#panel-copy-sheets-tsv-btn')?.addEventListener('click', () => {
+    $('#copy-sheets-tsv-btn')?.click();
+  });
+  $('#panel-export-sheets-xlsx-btn')?.addEventListener('click', () => {
+    $('#export-sheets-xlsx-btn')?.click();
+  });
+
+  $('#panel-apply-sheets-paste-sync-btn')?.addEventListener('click', () => {
+    if (!canAccessCrossClass()) { toast('Chỉ Văn phòng hoặc Admin mới có quyền đồng bộ Google Sheets.'); return; }
+    const raw = ($('#panel-sheets-paste-sync-textarea')?.value || '').trim();
+    if (!raw) {
+      toast('Vui lòng dán vùng dữ liệu từ Google Sheets (có cột Mã HS) vào ô bên trên.');
+      return;
+    }
+    const parsed = parseRawTable(raw);
+    scanIncomingSheetsRowsForApproval(parsed.rows || parsed, 'Bảng dán Google Sheets');
+  });
+
+  $('#panel-sheets-sync-file-input')?.addEventListener('change', (e) => {
+    if (!canAccessCrossClass()) { toast('Chỉ Văn phòng hoặc Admin mới có quyền đồng bộ Google Sheets.'); return; }
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    const reader = new FileReader();
+    if (isExcel) {
+      reader.onload = async (ev) => {
+        try {
+          const rows = await parseXlsxArrayBuffer(ev.target.result);
+          scanIncomingSheetsRowsForApproval(rows, `File "${file.name}"`);
+        } catch (err) {
+          toast(`Lỗi đọc file: ${err.message || err}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (ev) => {
+        const parsed = parseRawTable(String(ev.target.result || ''));
+        scanIncomingSheetsRowsForApproval(parsed.rows || parsed, `File "${file.name}"`);
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+  });
+
+  $('#panel-confirm-sheets-approve-btn')?.addEventListener('click', () => {
+    applyApprovedSheetsSyncItems();
+  });
+  $('#panel-cancel-sheets-approval-btn')?.addEventListener('click', () => {
+    pendingSheetsApprovalItems = [];
+    renderSheetsApprovalTable();
+  });
+
+  $('#panel-sheets-approve-select-all')?.addEventListener('change', (e) => {
+    const checked = Boolean(e.target.checked);
+    pendingSheetsApprovalItems.forEach(item => {
+      if (activeSheetsApproveFilter === 'all' || item.category === activeSheetsApproveFilter) {
+        item.approved = checked;
+      }
+    });
+    renderSheetsApprovalTable();
+  });
+
+  $('#panel-sheets-approve-tag-all-cb')?.addEventListener('change', (e) => {
+    const checked = Boolean(e.target.checked);
+    pendingSheetsApprovalItems.forEach(item => {
+      if (activeSheetsApproveFilter === 'all' || item.category === activeSheetsApproveFilter) {
+        item.addNewTag = checked;
+      }
+    });
+    renderSheetsApprovalTable();
+  });
+
+  // Subpanel 3 controls: Cấu hình
+  $('#panel-save-config-btn-inline')?.addEventListener('click', () => {
+    readAndSaveSheetsConfigFromPanel();
+    toast('✓ Đã lưu cấu hình Google Sheets thành công!');
+  });
+
+  $('#panel-sheets-spreadsheet-id')?.addEventListener('input', (e) => {
+    const val = e.target.value || '';
+    const gid = extractSheetGid(val);
+    if (gid && $('#panel-sheets-gid-input')) {
+      $('#panel-sheets-gid-input').value = gid;
+    }
+  });
+
+  $('#panel-sheets-add-cohort-btn')?.addEventListener('click', () => {
+    const nameInp = $('#panel-sheets-new-cohort-name');
+    const tabInp = $('#panel-sheets-new-cohort-tab');
+    const gidInp = $('#panel-sheets-new-cohort-gid');
+    const urlInp = $('#panel-sheets-new-cohort-url');
+    const name = (nameInp?.value || '').trim();
+    if (!name) { toast('Vui lòng nhập tên khóa (VD: 2K14).'); return; }
+    const rawUrl = (urlInp?.value || '').trim();
+    const spreadsheetId = extractSpreadsheetId(rawUrl) || rawUrl;
+    const extractedGid = extractSheetGid(rawUrl);
+    const gid = (gidInp?.value || extractedGid || '0').trim();
+
+    const cfg = loadGoogleSheetsConfig();
+    const cohorts = Array.isArray(cfg.cohortSheets) ? [...cfg.cohortSheets] : [...DEFAULT_COHORTS];
+    cohorts.push({
+      cohortName: name,
+      sheetName: (tabInp?.value || '').trim() || name,
+      gid,
+      sheetUrl: rawUrl,
+      spreadsheetId
+    });
+    saveGoogleSheetsConfig({ ...cfg, cohortSheets: cohorts });
+    if (nameInp) nameInp.value = '';
+    if (tabInp) tabInp.value = '';
+    if (gidInp) gidInp.value = '';
+    if (urlInp) urlInp.value = '';
+    renderMultiCohortSheetsTable();
+    toast(`✓ Đã thêm trang tính "${name}" vào danh sách.`);
+  });
+
+  // Subpanel 4 controls: Apps Script
+  $('#panel-copy-apps-script-btn')?.addEventListener('click', () => {
+    const code = getGoogleAppsScriptTemplate();
+    navigator.clipboard?.writeText(code).then(() => {
+      const st = $('#panel-copy-apps-script-status');
+      if (st) {
+        st.hidden = false;
+        setTimeout(() => { st.hidden = true; }, 3000);
+      }
+      toast('✓ Đã sao chép toàn bộ mã Google Apps Script mẫu vào bộ nhớ tạm.');
+    });
+  });
+
+  $('#panel-test-apps-script-btn')?.addEventListener('click', async () => {
+    const scriptUrl = ($('#panel-sheets-script-url-input')?.value || $('#sheets-script-url-input')?.value || '').trim();
+    const spreadsheetId = extractSpreadsheetId($('#panel-sheets-spreadsheet-id')?.value || $('#sheets-spreadsheet-id')?.value || '') || '';
+    const resEl = $('#panel-test-apps-script-result');
+    if (!scriptUrl) {
+      if (resEl) { resEl.style.color = '#b91c1c'; resEl.textContent = 'Chưa nhập URL Apps Script'; }
+      toast('Vui lòng nhập Google Apps Script Web App URL trước khi kiểm tra.');
+      return;
+    }
+    if (resEl) { resEl.style.color = '#3b82f6'; resEl.textContent = 'Đang kiểm tra kết nối...'; }
+    const result = await testGoogleAppsScriptConnection(scriptUrl, spreadsheetId);
+    if (resEl) {
+      resEl.style.color = result.ok ? '#15803d' : '#b91c1c';
+      resEl.textContent = result.ok ? '✓ Kết nối thành công!' : `✕ ${result.message}`;
+    }
+    toast(result.ok ? '✓ Kết nối Google Apps Script thành công!' : `✕ Lỗi: ${result.message}`);
+  });
+
+  // ====================================================
+  // HỘP THOẠI ĐẨY BUỔI HỌC TỪ BÁO CÁO LÊN GOOGLE SHEETS (#upload-session-sheets-dialog)
+  // ====================================================
+  $('#confirm-upload-session-sheets-btn')?.addEventListener('click', async () => {
+    const btn = $('#confirm-upload-session-sheets-btn');
+    const stEl = $('#upload-session-sheets-status');
+    const currentCls = getActiveClassConfig();
+    const date = getChecklistDate();
+    const cfg = loadGoogleSheetsConfig();
+    if (!cfg.scriptUrl) {
+      toast('Chưa cấu hình Google Apps Script URL. Vui lòng vào màn hình Quản lý Sheets để nhập URL.');
+      return;
+    }
+    const hasHomework = Boolean($('#session-upload-has-hw-cb')?.checked);
+    const hasTest = Boolean($('#session-upload-has-test-cb')?.checked);
+    const includeLink = Boolean($('#session-upload-include-link-cb')?.checked);
+
+    const sessionUrl = includeLink
+      ? `${window.location.origin}${window.location.pathname}#class/${currentCls.code || currentCls.id}/history/${date}/map`
+      : '';
+    const rows = getSessionStudentRows(currentCls.id, date, hasHomework, hasTest, includeLink);
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang đẩy dữ liệu...'; }
+    if (stEl) {
+      stEl.hidden = false;
+      stEl.style.color = '#1d4ed8';
+      stEl.textContent = 'Đang đẩy dữ liệu lên Google Sheet...';
+    }
+
+    try {
+      const res = await uploadSessionDataToGoogleSheets({
+        scriptUrl: cfg.scriptUrl,
+        spreadsheetId: cfg.spreadsheetId,
+        sheetName: cfg.sheetName || currentCls.code || currentCls.name,
+        gid: cfg.gid,
+        classId: currentCls.id,
+        classCode: currentCls.code || currentCls.id,
+        date: date,
+        dateStr: date.split('-').reverse().join('/'),
+        sessionUrl,
+        records: rows,
+        hasHomework,
+        hasTest
+      });
+      toast(`✓ Đã đẩy dữ liệu buổi học ngày ${date} của lớp [${currentCls.code || currentCls.id}] lên Google Sheet!`);
+      ctx.recordAdminLog?.(
+        'sheets_upload_session',
+        `Đẩy dữ liệu buổi học ${date} lớp ${currentCls.code || currentCls.id} từ Báo cáo lên Google Sheet (${rows.length} HS)`,
+        'session'
+      );
+      $('#upload-session-sheets-dialog')?.close();
+    } catch (err) {
+      if (stEl) {
+        stEl.hidden = false;
+        stEl.style.color = '#b91c1c';
+        stEl.textContent = `✕ Lỗi: ${err.message || err}`;
+      }
+      toast(`✕ Lỗi: ${err.message || err}`);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '✓ Đẩy lên Google Sheet ngay'; }
+    }
+  });
+
+  $('#open-full-sheets-manager-btn')?.addEventListener('click', () => {
+    $('#upload-session-sheets-dialog')?.close();
+    openGoogleSheetsSyncModal(getCurrentClassId(), 'session');
+  });
+
+  $('#close-upload-session-sheets')?.addEventListener('click', () => $('#upload-session-sheets-dialog')?.close());
+  $('#cancel-upload-session-sheets-btn')?.addEventListener('click', () => $('#upload-session-sheets-dialog')?.close());
+
+  // ====================================================
+  // HỘP THOẠI XÁC NHẬN ĐỒNG BỘ NGƯỢC KHI EDIT TRÊN WEB (#confirm-reverse-sheets-sync-dialog)
+  // ====================================================
+  let lastEditedStudentForReverseSync = null;
+
+  window.__promptReverseSheetsSync = function(student) {
+    if (!student) return;
+    const account = getSignedInAccount();
+    if (!account || (account.role !== 'admin' && account.role !== 'office')) return;
+    const cfg = loadGoogleSheetsConfig();
+    if (cfg.twoWayMode === false || (!cfg.scriptUrl && !cfg.spreadsheetId)) return;
+
+    lastEditedStudentForReverseSync = student;
+    const dialog = $('#confirm-reverse-sheets-sync-dialog');
+    if (!dialog) return;
+
+    const descEl = $('#confirm-reverse-sheets-sync-desc');
+    if (descEl) {
+      descEl.textContent = `Dữ liệu học sinh "${student.name}" (Mã: ${student.studentCode || 'Chưa có'}) vừa được cập nhật trên Web. Bạn có muốn đồng bộ ngược các thay đổi này lên Google Sheet ngay bây giờ không?`;
+    }
+
+    const previewEl = $('#confirm-reverse-sheets-sync-preview');
+    if (previewEl) {
+      const catalog = getClassCatalog();
+      const classLabels = (student.classIds || []).map(cid => {
+        const c = catalog.find(x => x.id === cid);
+        return c ? `[${c.code || c.id}] ${c.name}` : cid;
+      }).join(', ') || 'Chưa xếp lớp';
+
+      previewEl.innerHTML = `
+        <div style="display:grid; grid-template-columns:110px 1fr; gap:6px; line-height:1.5;">
+          <span style="color:#64748b;">Họ và tên:</span><strong>${escapeHtml(student.name)}</strong>
+          <span style="color:#64748b;">Mã HS:</span><code>${escapeHtml(student.studentCode || 'Chưa có')}</code>
+          <span style="color:#64748b;">Trạng thái:</span><span style="font-weight:700; color:${student.enrollmentStatus === 'Học' ? '#166534' : '#991b1b'};">${escapeHtml(student.enrollmentStatus || 'Học')}</span>
+          <span style="color:#64748b;">Lớp học:</span><strong>${escapeHtml(classLabels)}</strong>
+          <span style="color:#64748b;">Trường:</span><span>${escapeHtml(student.school || '—')}</span>
+          <span style="color:#64748b;">SĐT Phụ huynh:</span><span>${escapeHtml(student.parentContact?.phone || '—')}</span>
+          ${student.tags && student.tags.length ? `<span style="color:#64748b;">Tags:</span><span>${escapeHtml(Array.isArray(student.tags) ? student.tags.join(', ') : student.tags)}</span>` : ''}
+        </div>
+      `;
+    }
+
+    dialog.showModal();
+  };
+
+  $('#agree-reverse-sheets-sync-btn')?.addEventListener('click', async () => {
+    const btn = $('#agree-reverse-sheets-sync-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang đồng bộ...'; }
+    try {
+      if (lastEditedStudentForReverseSync) {
+        await syncSingleStudentToGoogleSheets(lastEditedStudentForReverseSync);
+        toast(`✓ Đã đồng bộ ngược thông tin học sinh "${lastEditedStudentForReverseSync.name}" lên Google Sheet!`);
+        ctx.recordAdminLog?.(
+          'sheets_sync_reverse',
+          `Đồng bộ ngược dữ liệu học sinh [${lastEditedStudentForReverseSync.studentCode || '—'}] ${lastEditedStudentForReverseSync.name} lên Google Sheet`,
+          'student'
+        );
+      }
+    } catch (err) {
+      toast(`✕ Lỗi đồng bộ ngược lên Google Sheet: ${err.message || err}`);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '✓ Đồng bộ ngược lên Sheet'; }
+      $('#confirm-reverse-sheets-sync-dialog')?.close();
+    }
+  });
+
+  $('#close-confirm-reverse-sheets-sync')?.addEventListener('click', () => $('#confirm-reverse-sheets-sync-dialog')?.close());
+  $('#cancel-reverse-sheets-sync-btn')?.addEventListener('click', () => $('#confirm-reverse-sheets-sync-dialog')?.close());
 
   // ====================================================
   // HỘP VIỆC CẦN XỬ LÝ CỦA VĂN PHÒNG (OFFICE ACTION INBOX) - TASK 5
@@ -9177,7 +10014,11 @@ export function setupFeatures(ctx) {
       window.__forceSyncSessionHistoryNow?.();
     },
     updateOfficeInboxBadge,
-    openOfficeInboxDialog
+    openOfficeInboxDialog,
+    renderGoogleSheetsManagementPanel,
+    renderPanelSessionPreview,
+    openUploadSessionSheetsDialog,
+    openGoogleSheetsSyncModal
   };
 }
 

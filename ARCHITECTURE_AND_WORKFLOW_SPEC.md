@@ -24,6 +24,21 @@
 10. [Đặc tả Tab Báo cáo Buổi học Trực quan (`#report-view`) & Xuất Google Docs / Sheets / Excel / Zalo](#10-đặc-tả-tab-báo-cáo-buổi-học-trực-quan-report-view--xuất-google-docs--sheets--excel--zalo)
 11. [Đặc tả Cơ chế "Đóng Ca Học" (Vẫn Cho Phép Chỉnh Sửa 100%), Lớp Bổ trợ, Chấm công & Nhật ký Admin](#11-đặc-tả-cơ-chế-đóng-ca-học-vẫn-cho-phép-chỉnh-sửa-100-lớp-bổ-trợ-chấm-công--nhật-ký-admin)
 12. [Lộ trình Triển khai & Bộ Tiêu chí Nghiệm thu Toàn diện (Implementation Roadmap & Comprehensive DoD)](#12-lộ-trình-triển-khai--bộ-tiêu-chí-nghiệm-thu-toàn-diện-implementation-roadmap--comprehensive-dod)
+13. [Phần Bổ Sung Đặc Tả Chi Tiết (Cập Nhật Mới Nhất & Toàn Diện v6.4)](#phần-bổ-sung-đặc-tả-chi-tiết-cập-nhật-mới-nhất)
+    - 13.1. [Cơ chế Tự động Nhận diện & Đồng bộ Trạng thái "Nghỉ" từ Google Sheets](#1-cơ-chế-tự-động-nhận-diện--đồng-bộ-trạng-thái-nghỉ-từ-google-sheets)
+    - 13.2. [Đồng bộ 2 Chiều Cột Tag Phân Loại với Google Sheets](#2-đồng-bộ-2-chiều-cột-tag-phân-loại-với-google-sheets)
+    - 13.3. [Bảng Danh Bạ Toàn Trung Tâm: Bộ Lọc Đa Cột & Thao Tác Hàng Loạt Nâng Cao](#3-bảng-danh-bạ-toàn-trung-tâm-bộ-lọc-đa-cột--thao-tác-hàng-loạt-nâng-cao)
+    - 13.4. [Đặc Tả Lớp Bổ Trợ & Gia Sư 1-1](#4-đặc-tả-lớp-bổ-trợ--gia-sư-1-1-hiển-thị-dạng-ca-học-bù-ẩn-khỏi-danh-bạ-tổng)
+    - 13.5. [Mở Hồ Sơ Học Sinh Trong Buổi Học Từ Danh Sách Học Sinh & Nhập Điểm](#5-mở-hồ-sơ-học-sinh-trong-buổi-học-session-profile-từ-danh-sách-học-sinh--nhập-điểm)
+    - 13.6. [Quy Trình Đóng Ca & Mở Lại Ca Học, Nút Header & Đồng Bộ Tức Thì](#6-quy-trình-đóng-ca--mở-lại-ca-học-nút-header--đồng-bộ-tức-thì)
+    - 13.7. [Điều Hướng Thẻ Lớp Tại Tab "Đi Làm": Mở Trang Quản Lý Chung](#7-điều-hướng-thẻ-lớp-tại-tab-đi-làm-mở-trang-quản-lý-chung-general-view)
+    - 13.8. [Quy Ước Đồng Bộ & Lọc Trạng Thái Học Sinh (Trạng Thái Trống = 'Nghỉ')](#8-quy-ước-đồng-bộ--lọc-trạng-thái-học-sinh-trạng-thái-trống--nghỉ-mặc-định-chỉ-hiện-học)
+    - 13.9. [Cơ Chế Đồng Bộ & Cập Nhật 2 Chiều với Google Sheets](#9-cơ-chế-đồng-bộ--cập-nhật-2-chiều-với-google-sheets-two-way-sync--in-place-editing)
+    - 13.10. [Khắc Phục Lỗi Quản Lý Tài Khoản, Dropdown Nhân Sự & Hiển Thị Lớp Phân Quyền](#10-khắc-phục-lỗi-quản-lý-tài-khoản-dropdown-nhân-sự--hiển-thị-lớp-học-theo-phân-quyền)
+    - 13.11. [Màn Hình Trung Tâm Đồng Bộ Google Sheets Chuyên Biệt (`#mgmt-panel-sheets`)](#11-màn-hình-trung-tâm-đồng-bộ-google-sheets-chuyên-biệt-dedicated-google-sheets-hub-mgmt-panel-sheets-thay-vì-cửa-sổ-pop-up)
+    - 13.12. [Hộp Thoại Hỏi Xác Nhận Đồng Bộ Ngược Lên Sheet Khi Có Chỉnh Sửa Trên Web](#12-hộp-thoại-hỏi-xác-nhận-đồng-bộ-ngược-lên-google-sheet-khi-có-chỉnh-sửa-trên-web-confirm-reverse-sheets-sync-dialog)
+    - 13.13. [Nút & Cơ Chế Đẩy Dữ Liệu Buổi Học Lên Google Sheet (Điểm Danh Kèm Link Web, BTVN, Test, Ghi Chú)](#13-nút--cơ-chế-đẩy-dữ-liệu-buổi-học-lên-google-sheet-điểm-danh-có-link-web-btvn-có-cú-pháp-cụ-thể-điểm-test-ghi-chú)
+    - 13.14. [Phân Quyền Nghiêm Ngặt & Cơ Chế Đồng Bộ Bán Tự Động (Strict RBAC & Semi-Auto Sync)](#14-phân-quyền-nghiêm-ngặt--cơ-chế-đồng-bộ-bán-tự-động-semi-automatic-access-control)
 
 ---
 
@@ -876,3 +891,124 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 - **Các phương thức dự phòng khi không kết nối trực tiếp Apps Script:**
   - **Copy TSV chuẩn hóa 2 chiều (`#copy-sheets-tsv-btn`):** Sao chép toàn bộ bảng dữ liệu ra clipboard với đúng định dạng cột phân cách bằng tab (`	`) để người dùng có thể dán trực tiếp (Ctrl + V) đè lên vùng dữ liệu tương ứng trên Google Sheets.
   - **Xuất file Excel chuẩn (`#export-sheets-xlsx-btn`):** Xuất toàn bộ danh sách ra tệp `.xlsx` có sẵn đầy đủ các cột Mã HS, Họ đệm, Tên, Trường, PH, Trạng thái, Tag, Mã lớp để nhập liệu thủ công.
+
+
+#### 10. Khắc Phục Lỗi Quản Lý Tài Khoản, Dropdown Nhân Sự & Hiển Thị Lớp Học Theo Phân Quyền
+- **Nguyên nhân gốc rễ (Root Cause Analysis):**
+  - Trước đây, dữ liệu nhân sự mặc định trong `masterDefaults.employees` chỉ có duy nhất 1 tài khoản quản trị (`AD001`). Khi người dùng tạo nhân viên mới hoặc đăng nhập bằng các tài khoản giáo viên/trợ giảng được bàn giao (ví dụ `CONGNT` - Thầy Công), các hàm dựng dropdown trong Quản lý lớp (`renderEmployeeOptions`, `renderStaffSearchPicker`) bị lọc theo `role === 'teacher'` hoặc `role === 'assistant'`, dẫn đến dropdown nhân sự bị rỗng.
+  - Hàm kiểm tra phân quyền hiển thị lớp `isClassAssignedToCurrentAccount` trước đây chỉ so khớp `currentEmployeeId` dạng UUID/ID nội bộ với mảng ID trong lớp, không so khớp với mã nhân viên (`code` như `CONGNT`, `TA001`, `GV001`) hoặc tên đăng nhập (`username`), dẫn đến khi đăng nhập tài khoản nhân viên thì màn hình "Đi làm" và "Quản lý lớp" không hiển thị bất kỳ lớp học nào.
+- **Giải pháp khắc phục toàn diện:**
+  1. **Khôi phục đầy đủ nhân sự trung tâm:** Cung cấp sẵn danh sách nhân sự mặc định chuẩn hóa trong `masterDefaults.employees` gồm:
+     * Quản trị viên: `AD001` (Admin Tổng).
+     * Giáo viên: `CONGNT` (Thầy Công - Toán THCS/THPT), `GV001` (Cô Minh Anh), `GV002` (Thầy Quang), `GV003` (Cô Hương).
+     * Trợ giảng: `TA001` (Anh Linh), `TA002` (Mai Anh), `TA003` (Minh Khoa).
+     * Văn phòng: `VP001` (Lan Phương), `VP002` (Hoàng Nam).
+  2. **Cơ chế tự động hợp nhất nhân sự (Auto-merge Defaults):** Trong `loadMasterData()`, hệ thống luôn đối chiếu và tự động hợp nhất các nhân sự mặc định còn thiếu vào `saved.employees`. Đảm bảo ngay cả khi trình duyệt đã có dữ liệu `localStorage` cũ, danh sách nhân viên vẫn luôn đầy đủ và không bị mất tài khoản.
+  3. **Khôi phục danh mục lớp mẫu phân công đầy đủ (`seedClasses`):** Tạo sẵn các lớp học chuẩn (`TOAN8A`, `ANH7B`, `TOAN9C`) với phân công Giáo viên (`CONGNT`, `GV001`) và Trợ giảng (`TA001`), khởi tạo tự động khi danh mục lớp rỗng.
+  4. **So khớp lớp linh hoạt đa tiêu chí (`isClassAssignedToCurrentAccount`):**
+     * So khớp linh hoạt theo ID nội bộ, Mã nhân sự (`code` viết hoa/thường), Tên hiển thị (`displayName`) và Username.
+     * Kiểm tra trên tất cả các nguồn phân công: `teacherIds`, `teacherName`, `assistantIds`, `assistantName` và các thay đổi ca linh hoạt (`sessionChanges`).
+     * Nhờ đó, khi đăng nhập bất kỳ tài khoản nhân viên nào (`CONGNT`, `TA001`, `GV001`), hệ thống lập tức hiển thị chính xác toàn bộ các lớp mà nhân sự đó phụ trách.
+  5. **Đảm bảo Dropdown & Search Pickers luôn hiển thị:** Hàm `renderEmployeeOptions` và `renderStaffSearchPicker` cho phép tài khoản Admin và Office thấy toàn bộ nhân sự phù hợp theo vai trò, không bao giờ bị rơi vào trạng thái rỗng hoặc thiếu nhân viên.
+
+#### 11. Màn Hình Trung Tâm Đồng Bộ Google Sheets Chuyên Biệt (Dedicated Google Sheets Hub `#mgmt-panel-sheets`) Thay Vì Cửa Sổ Pop-up
+- **Mục tiêu tái cấu trúc UX:**
+  - Chuyển toàn bộ luồng nghiệp vụ đồng bộ Google Sheets từ cửa sổ pop-up dạng modal (`#google-sheets-sync-dialog`) sang một **màn hình độc lập chuyên biệt (Dedicated Screen / Tab)** đặt tại `#mgmt-panel-sheets` trong Phân hệ Quản trị (`#management-view`).
+  - Mọi thao tác bấm nút `Đồng bộ Google Sheets` từ Menu Tổng, Danh bạ học sinh toàn trung tâm hay Hộp việc văn phòng đều chuyển hướng mượt mà vào Màn hình Quản lý Sheets Hub thay vì bật cửa sổ pop-up che khuất màn hình làm việc.
+- **Cấu trúc 4 Tiểu phân hệ (Subpanels) với Tabs Sub-pills trực quan:**
+  1. **Subpanel 1 - Đẩy Dữ Liệu Buổi Học (`#sheets-subpanel-session`):**
+     * Chọn lớp học cần đồng bộ từ danh mục lớp trung tâm.
+     * Chọn ngày buổi học (`<input type="date">`), mặc định ngày hôm nay hoặc ngày buổi học hiện tại.
+     * Cấu hình tên Sheet Tab đích (tự động gợi ý theo mã lớp / mã khóa).
+     * Các tùy chọn linh hoạt: Có BTVN hay không, Có Test hay không, Ghi kèm link web hay không.
+     * Xem trước URL truy cập web trực tiếp sẽ được ghi vào đầu cột.
+     * Bảng xem trước (Preview Table) đầy đủ học sinh của buổi học với trạng thái Điểm danh, Điểm BTVN, Điểm Test, Ghi chú trước khi đẩy lên Sheet.
+     * Nút `✓ Đẩy Dữ liệu Buổi học Lên Google Sheet` (`#panel-session-upload-btn`).
+  2. **Subpanel 2 - Đồng Bộ Danh Bạ Học Sinh 2 Chiều (`#sheets-subpanel-students`):**
+     * Các nút hành động chính: Quét Google Sheet đơn, Quét tất cả các khóa (2K9 - 2K13), Đồng bộ 2 chiều (cập nhật ngược lại Sheet), Copy bảng dán vào Sheet (TSV), Xuất file `.xlsx`.
+     * Vùng dán trực tiếp dữ liệu từ Google Sheets (Ctrl + V) hoặc tải tệp `.xlsx`, `.csv`.
+     * Bảng duyệt học sinh phát hiện từ Google Sheets với bộ lọc phân loại (`HS Mới`, `Chuyển lớp`, `Cập nhật Mã HS`) và nút `✓ Duyệt & Áp dụng`.
+  3. **Subpanel 3 - Cấu Hình Kết Nối & Đa Khóa (`#sheets-subpanel-config`):**
+     * Nhập link Google Sheets hoặc Spreadsheet ID (tự động bóc tách ID và GID).
+     * Nhập URL Google Apps Script Web App (Đọc/Ghi 2 chiều).
+     * Bật/tắt chế độ đồng bộ 2 chiều (`twoWayMode`), tự động gắn tag "Mới" (`defaultNewTag`), quy tắc xử lý khi học sinh khác lớp gốc (`classDiffMode`: chuyển lớp hoặc thêm lớp song song).
+     * Bảng quản lý cấu hình các khóa học sinh (2K9, 2K10, 2K11, 2K12, 2K13): Hỗ trợ thêm mới khóa, cấu hình Tên tab riêng, GID riêng, link Sheet riêng và quét riêng từng khóa.
+  4. **Subpanel 4 - Hướng Dẫn & Mã Mẫu Google Apps Script (`#sheets-subpanel-script`):**
+     * Trình bày hướng dẫn 4 bước triển khai Apps Script Web App để vượt rào giới hạn quyền (Bypass 403 Google Drive).
+     * Khung xem trước mã nguồn JavaScript chuẩn (`GoogleAppsScriptBridge`) kèm nút `Sao chép Toàn bộ Mã Script mẫu` (`#panel-copy-apps-script-btn`).
+     * Nút `Kiểm tra kết nối Apps Script ngay` (`#panel-test-apps-script-btn`) với phản hồi trạng thái tức thời.
+
+#### 12. Hộp Thoại Hỏi Xác Nhận Đồng Bộ Ngược Lên Google Sheet Khi Có Chỉnh Sửa Trên Web (`#confirm-reverse-sheets-sync-dialog`)
+- **Nguyên lý kích hoạt (Triggering Condition):**
+  - Bất cứ khi nào tài khoản có quyền (Admin hoặc Văn phòng) thực hiện chỉnh sửa hồ sơ học sinh trên Web qua hộp thoại `#student-profile-dialog` (hoặc qua các thao tác cập nhật hàng loạt):
+    * Sửa Họ và tên, Mã học sinh, Trường học, SĐT Phụ huynh.
+    * Đổi lớp học hoặc chuyển lớp.
+    * Đổi trạng thái học tập (sang `Nghỉ`, `Tạm nghỉ` hoặc `Học`).
+    * Thêm/bớt Tag phân loại học sinh.
+  - Sau khi dữ liệu đã được lưu thành công vào cơ sở dữ liệu nội bộ và Firebase, hệ thống tự động kiểm tra nếu chế độ Đồng bộ 2 chiều đang được bật (`cfg.twoWayMode !== false`) và có cấu hình Google Apps Script URL.
+- **Giao diện & Trải nghiệm Hộp thoại Xác nhận (`#confirm-reverse-sheets-sync-dialog`):**
+  - **Tiêu đề & Nhãn nhận diện:** `ĐỒNG BỘ 2 CHIỀU GOOGLE SHEETS` - `Đồng bộ ngược lên Google Sheet?`
+  - **Khung xem trước dữ liệu (Data Diff Preview):** Hiển thị trực quan tóm tắt thông tin học sinh vừa được chỉnh sửa:
+    * Họ và tên: Tên học sinh.
+    * Mã học sinh: Mã hiện tại (hoặc "Chưa có").
+    * Trạng thái học: Màu xanh nếu `Học`, màu đỏ nếu `Nghỉ` / `Tạm nghỉ`.
+    * Lớp đang theo học: Mã các lớp học sinh trực thuộc.
+    * Trường học & SĐT Phụ huynh.
+    * Tags phân loại.
+  - **Hai lựa chọn quyết định:**
+    1. **Nút `Chỉ lưu trên Web` (`#cancel-reverse-sheets-sync-btn`):** Đóng hộp thoại, giữ nguyên dữ liệu trên Web mà không tác động lên Google Sheet.
+    2. **Nút `✓ Đồng bộ ngược lên Sheet` (`#agree-reverse-sheets-sync-btn`):** Lập tức gửi yêu cầu POST đến Apps Script Bridge (`syncSingleStudentToGoogleSheets`), định vị đúng dòng của học sinh trên Sheet theo Mã HS (hoặc Họ tên) và ghi đè chính xác các ô dữ liệu tương ứng.
+  - Ghi nhận đầy đủ thao tác vào Nhật ký Admin Log (`sheets_sync_reverse`) để truy vết kiểm toán.
+
+#### 13. Nút & Cơ Chế Đẩy Dữ Liệu Buổi Học Lên Google Sheet (Điểm Danh Có Link Web, BTVN Có Cú Pháp Cụ Thể, Điểm Test, Ghi Chú)
+- **Điểm truy cập tính năng (Access Points):**
+  1. **Nút chuyên dụng tại Màn hình Quản lý Sheets Hub:** Nút `✓ Đẩy Dữ liệu Buổi học Lên Google Sheet` (`#panel-session-upload-btn`) đặt trong Subpanel 1. Cho phép Văn phòng/Admin chọn bất kỳ lớp nào và bất kỳ ngày học nào để đẩy dữ liệu.
+  2. **Nút đẩy nhanh tại Tab Báo cáo Buổi học (`#report-view`):** Nút `Đẩy lên Google Sheets` (`#inline-sync-sheets-btn`) trên thanh công cụ Báo cáo. Mở hộp thoại modal `#upload-session-sheets-dialog` để đẩy tức thời dữ liệu ca học hiện tại lên Google Sheet.
+- **Đặc tả 4 Cột Dữ Liệu Buổi Học Được Đẩy Lên Google Sheet:**
+  - **Cột 1: Điểm danh (Kèm Link Web truy cập trực tiếp):**
+    * **Tiêu đề cột (Header):** Ghi rõ ngày học và link trực tiếp vào ca học trên web.
+      - Cú pháp chuẩn: `Điểm danh DD/MM/YYYY (Link: https://[domain]/#class/[classCode]/history/YYYY-MM-DD/map)`
+      - Giúp phụ huynh hoặc quản lý khi xem Google Sheet chỉ cần nhấp vào link ở đầu cột là mở thẳng sơ đồ lớp và báo cáo chi tiết của buổi học đó trên Web.
+    * **Nội dung từng dòng học sinh:**
+      - Học sinh đi đúng giờ: Ghi `Có mặt`.
+      - Học sinh đi muộn: Ghi `Đi muộn` (hoặc `Đi muộn (15p)`).
+      - Học sinh nghỉ có phép: Ghi `Vắng có phép`.
+      - Học sinh nghỉ không phép: Ghi `Vắng không phép`.
+      - Chưa có thông tin điểm danh: Ghi `Chưa điểm danh`.
+  - **Cột 2: Điểm BTVN (Bài Tập Về Nhà):**
+    * **Trường hợp buổi học không có BTVN:**
+      - Nếu buổi học được cấu hình không giao BTVN (hoặc bỏ chọn ô "Buổi này có BTVN"): ghi thống nhất theo cú pháp chuẩn: `Không BTVN`.
+    * **Trường hợp buổi học có BTVN:**
+      - Học sinh đã nộp và có điểm: Ghi số điểm chuẩn hóa (ví dụ: `8`, `9.5`).
+      - Học sinh không nộp BTVN: Ghi rõ `Không nộp` (kèm lý do nếu có: `Không nộp (Quên vở)`).
+      - Học sinh nộp nhưng chưa chấm: Ghi `Đã nộp`.
+  - **Cột 3: Điểm Test (Kiểm Tra Trong Buổi):**
+    * **Trường hợp buổi học không có kiểm tra:**
+      - Nếu buổi học không có bài test (hoặc bỏ chọn ô "Buổi này có Test"): ghi thống nhất theo cú pháp chuẩn: `Không Test`.
+    * **Trường hợp buổi học có kiểm tra:**
+      - Học sinh đã có điểm: Ghi điểm số kiểm tra (ví dụ: `7.5`, `10`).
+      - Học sinh vắng hoặc chưa kiểm tra: Để trống hoặc ghi theo điểm số ghi nhận được.
+  - **Cột 4: Ghi chú Buổi học:**
+    * Ghi nhận xét của Trợ giảng / Giáo viên về ý thức, mức độ hiểu bài hoặc lời nhắn gửi phụ huynh của buổi học đó cho từng học sinh.
+- **Cơ chế ghi thông minh trên Apps Script Bridge (`uploadSessionData` action):**
+  - Apps Script quét dòng tiêu đề để kiểm tra xem các cột của ngày hôm đó đã tồn tại hay chưa.
+  - Nếu đã có cột của ngày học: cập nhật đè nội dung mới vào đúng các cột đó.
+  - Nếu chưa có: tự động chèn thêm 4 cột mới vào bên phải của bảng tính với đúng định dạng tiêu đề và độ rộng phù hợp.
+  - Định vị dòng từng học sinh theo `Mã HS` (hoặc `Họ và tên`), chỉ cập nhật ô tương ứng mà không làm lệch các dòng khác.
+
+#### 14. Phân Quyền Nghiêm Ngặt & Cơ Chế Đồng Bộ Bán Tự Động (Semi-Automatic Access Control)
+- **Bản chất của Cơ chế Bán Tự Động (Semi-Automatic Sync):**
+  - Mọi hoạt động đồng bộ với Google Sheets (cả đọc về và đẩy lên) đều **phải có sự kích hoạt và phê duyệt chủ động từ nhân sự có thẩm quyền** thông qua bảng xem trước hoặc hộp thoại xác nhận.
+  - Tuyệt đối không tự động ghi ngầm (silent push) lên Google Sheets khi Trợ giảng đang thao tác chấm bài hay điểm danh trong lớp để tránh lỗi ghi đè dữ liệu, tắc nghẽn mạng hay xung đột phiên làm việc.
+- **Ma trận Phân quyền Bảo mật Tuyệt đối (Strict Security RBAC Matrix):**
+  - **Quản trị viên (`admin`) & Nhân viên Văn phòng (`office`):**
+    * Được quyền toàn diện truy cập Phân hệ Quản lý Sheets Hub (`#mgmt-tab-sheets` / `#mgmt-panel-sheets`).
+    * Được quyền xem và chỉnh sửa link Google Sheet, Spreadsheet ID, Sheet GID, Apps Script Web App URL.
+    * Được quyền bấm nút quét danh bạ, xem bảng duyệt và áp dụng đồng bộ học sinh.
+    * Được quyền bấm nút đẩy dữ liệu buổi học (Điểm danh kèm link, BTVN, Test, Ghi chú) lên Google Sheet.
+    * Được xem và bấm xác nhận hộp thoại đồng bộ ngược khi chỉnh sửa học sinh.
+  - **Trợ giảng (`assistant`) & Giáo viên (`teacher`):**
+    * **CẤM TUYỆT ĐỐI XEM LINK GOOGLE SHEET:** Trên tất cả các màn hình, form cấu hình, báo cáo hay thông tin ca học của Trợ giảng và Giáo viên, đường link Google Sheet, Spreadsheet ID và Google Apps Script URL bị ẩn hoàn toàn (không render ra DOM).
+    * **CẤM TUYỆT ĐỐI VÀO MENU GOOGLE SHEETS:** Tab `#mgmt-tab-sheets` và toàn bộ panel `#mgmt-panel-sheets` bị ẩn hoàn toàn đối với vai trò Trợ giảng và Giáo viên.
+    * Nút đồng bộ từ Báo cáo buổi học (`#inline-sync-sheets-btn`) bị ẩn khỏi thanh công cụ của Trợ giảng/Giáo viên.
+    * Nếu tài khoản Trợ giảng/Giáo viên cố tình gọi hàm đồng bộ hoặc mở URL trực tiếp, hệ thống sẽ lập tức chặn lại bằng lớp kiểm tra phân quyền bảo mật tầng logic (`canAccessCrossClass()` / vai trò kiểm tra) và hiển thị thông báo lỗi từ chối truy cập.

@@ -4504,19 +4504,48 @@ function isClassAssignedToCurrentAccount(item) {
   if (!item) return false;
   const role = selectedRole();
   if (role === 'admin' || role === 'office' || !currentEmployeeId) return true;
+
+  const currentEmp = (masterData.employees || []).find(e => e && e.id === currentEmployeeId) || null;
+  const targetIds = new Set([currentEmployeeId].filter(Boolean));
+  if (currentEmp?.id) targetIds.add(currentEmp.id);
+
+  const targetCodes = new Set();
+  if (currentEmp?.code) targetCodes.add(normalizeAccountCode(currentEmp.code));
+  if (signedInAccount?.code) targetCodes.add(normalizeAccountCode(signedInAccount.code));
+  if (signedInAccount?.username) targetCodes.add(normalizeAccountCode(signedInAccount.username));
+
+  const targetNames = [currentEmp?.name, signedInAccount?.name].filter(Boolean).map(n => n.toLowerCase().trim());
+
+  function matchesStaff(ids = [], nameStr = '', singleId = '') {
+    if (singleId && targetIds.has(singleId)) return true;
+    for (const id of (ids || [])) {
+      if (targetIds.has(id)) return true;
+      const emp = (masterData.employees || []).find(e => e && e.id === id);
+      if (emp && emp.code && targetCodes.has(normalizeAccountCode(emp.code))) return true;
+    }
+    const cleanName = String(nameStr || '').toLowerCase();
+    for (const code of targetCodes) {
+      if (code && cleanName.includes(code.toLowerCase())) return true;
+    }
+    for (const n of targetNames) {
+      if (n && cleanName.includes(n)) return true;
+    }
+    return false;
+  }
+
   if (role === 'teacher') {
-    if ((item.teacherIds || []).includes(currentEmployeeId) || item.teacherId === currentEmployeeId) return true;
+    if (matchesStaff(item.teacherIds, item.teacherName, item.teacherId)) return true;
     for (const ch of Object.values(sessionChanges || {})) {
-      if (ch && ch.classId === item.id && ((ch.teacherIds || []).includes(currentEmployeeId) || ch.teacherId === currentEmployeeId)) {
+      if (ch && ch.classId === item.id && matchesStaff(ch.teacherIds, ch.teacherName, ch.teacherId)) {
         return true;
       }
     }
     return false;
   }
-  const inRegular = (item.assistantIds || []).includes(currentEmployeeId);
+  const inRegular = matchesStaff(item.assistantIds, item.assistantName);
   if (inRegular) return true;
   for (const ch of Object.values(sessionChanges || {})) {
-    if (ch && ch.classId === item.id && (ch.assistantIds || []).includes(currentEmployeeId)) {
+    if (ch && ch.classId === item.id && matchesStaff(ch.assistantIds, ch.assistantName)) {
       return true;
     }
   }
@@ -4672,9 +4701,12 @@ function renderMainMenu(){
   const canViewStudentDir = role !== 'assistant';
   if($('#mgmt-tab-students')){$('#mgmt-tab-students').hidden=!canViewStudentDir;$('#mgmt-tab-students').style.display=canViewStudentDir?'':'none';}
   if(!canViewStudentDir&&$('#mgmt-panel-students')&&!$('#mgmt-panel-students').hidden){$('#mgmt-panel-students').hidden=true;if($('#student-dir-tbody'))$('#student-dir-tbody').innerHTML='';$('#mgmt-tab-classes')?.click();}
-  const canSyncGoogleSheets = canAccessCrossClassData();
+  const canSyncGoogleSheets = role === 'admin' || role === 'office';
+  if($('#mgmt-tab-sheets')){$('#mgmt-tab-sheets').hidden=!canSyncGoogleSheets;$('#mgmt-tab-sheets').style.display=canSyncGoogleSheets?'':'none';}
+  if(!canSyncGoogleSheets&&$('#mgmt-panel-sheets')&&!$('#mgmt-panel-sheets').hidden){$('#mgmt-panel-sheets').hidden=true;$('#mgmt-tab-classes')?.click();}
   if($('#google-sheets-sync-btn')){$('#google-sheets-sync-btn').hidden=!canSyncGoogleSheets;$('#google-sheets-sync-btn').style.display=canSyncGoogleSheets?'':'none';}
   if($('#master-google-sheets-sync-btn')){$('#master-google-sheets-sync-btn').hidden=!canSyncGoogleSheets;$('#master-google-sheets-sync-btn').style.display=canSyncGoogleSheets?'':'none';}
+  if($('#inline-sync-sheets-btn')){$('#inline-sync-sheets-btn').hidden=!canSyncGoogleSheets;$('#inline-sync-sheets-btn').style.display=canSyncGoogleSheets?'':'none';}
   if($('#add-makeup-from-other-class-btn')){$('#add-makeup-from-other-class-btn').hidden=!canSyncGoogleSheets;$('#add-makeup-from-other-class-btn').style.display=canSyncGoogleSheets?'':'none';}
   if(role!=='admin'&&$('#mgmt-panel-staff')&&!$('#mgmt-panel-staff').hidden){$('#mgmt-panel-staff').hidden=true;if($('#staff-table-tbody'))$('#staff-table-tbody').innerHTML='';$('#mgmt-tab-classes')?.click();}
 }
@@ -5936,7 +5968,7 @@ function renderStaffSearchPicker(role, query = '') {
 
   const optionsHost = $(cfg.optionsSel);
   if (!optionsHost) return;
-  const pool = (masterData.employees || []).filter(emp => emp.role === role && !cfg.ids.includes(emp.id));
+  const pool = (masterData.employees || []).filter(emp => emp.isActive !== false && (emp.role === role || emp.role === 'admin' || (role === 'teacher' && emp.role === 'office')) && !cfg.ids.includes(emp.id));
   const trimmed = String(query || '').trim();
   const matches = trimmed
     ? searchRecords(pool, trimmed, {
@@ -6038,8 +6070,8 @@ function initClassConfigStaffSearchAndTime() {
 
 let selectedTeacherIds=[],selectedAssistantIds=[],selectedOfficeIds=[];
 function renderStaffSelection(){for(const [ids,hostId,role] of [[selectedTeacherIds,'config-teachers-selected','teacher'],[selectedAssistantIds,'config-assistants-selected','assistant'],[selectedOfficeIds,'config-office-selected','office']]){const host=$('#'+hostId);host.innerHTML=ids.map(id=>{const employee=masterData.employees.find(item=>item.id===id);return employee?`<span class="staff-chip">${escapeHtml(employee.name)} <small>${escapeHtml(employee.code)}</small><button type="button" data-remove-staff="${escapeHtml(id)}" data-staff-role="${role}" aria-label="Bỏ ${escapeHtml(employee.name)}">×</button></span>`:'';}).join('')||'<small class="staff-picker-empty">Chưa chọn nhân viên</small>';}}
-function renderEmployeeOptions(select,role,selected){const available=masterData.employees.filter(employee=>employee.role===role&&!selected.includes(employee.id));select.innerHTML='<option value="">Chọn nhân viên…</option>'+available.map(employee=>`<option value="${escapeHtml(employee.id)}">${escapeHtml(employee.name)} · ${escapeHtml(employee.code)}</option>`).join('');}
-function renderMasterDataChoices(item){$('#config-class-subject').innerHTML=masterData.subjects.map(subject=>`<option value="${escapeHtml(subject.id)}">${escapeHtml(subject.name)}</option>`).join('');if(item?.subjectId)$('#config-class-subject').value=item.subjectId;selectedTeacherIds=item?.teacherIds?.slice()||(item?.teacherId?[item.teacherId]:[]);selectedAssistantIds=item?.assistantIds?.slice()||((selectedRole()==='assistant'?[currentEmployeeId]:[]));selectedOfficeIds=item?.officeIds?.slice()||((selectedRole()==='office'?[currentEmployeeId]:[]));renderStaffSelection();renderEmployeeOptions($('#config-teacher-choice'),'teacher',selectedTeacherIds);renderEmployeeOptions($('#config-assistant-choice'),'assistant',selectedAssistantIds);renderEmployeeOptions($('#config-office-choice'),'office',selectedOfficeIds);}
+function renderEmployeeOptions(select,role,selected){if(!select)return;const available=(masterData.employees||[]).filter(employee=>employee.isActive!==false&&(employee.role===role||employee.role==='admin'||(role==='teacher'&&employee.role==='office'))&&!selected.includes(employee.id));select.innerHTML='<option value="">Chọn nhân viên…</option>'+available.map(employee=>`<option value="${escapeHtml(employee.id)}">${escapeHtml(employee.name)} · ${escapeHtml(employee.code)} (${({assistant:'TA',teacher:'GV',office:'VP',admin:'Admin'})[employee.role]||employee.role})</option>`).join('');}
+function renderMasterDataChoices(item){masterData=loadMasterData();$('#config-class-subject').innerHTML=masterData.subjects.map(subject=>`<option value="${escapeHtml(subject.id)}">${escapeHtml(subject.name)}</option>`).join('');if(item?.subjectId)$('#config-class-subject').value=item.subjectId;selectedTeacherIds=item?.teacherIds?.slice()||(item?.teacherId?[item.teacherId]:[]);selectedAssistantIds=item?.assistantIds?.slice()||((selectedRole()==='assistant'?[currentEmployeeId]:[]));selectedOfficeIds=item?.officeIds?.slice()||((selectedRole()==='office'?[currentEmployeeId]:[]));renderStaffSelection();renderEmployeeOptions($('#config-teacher-choice'),'teacher',selectedTeacherIds);renderEmployeeOptions($('#config-assistant-choice'),'assistant',selectedAssistantIds);renderEmployeeOptions($('#config-office-choice'),'office',selectedOfficeIds);}
 function readConfigNotifications(){return [...document.querySelectorAll('.config-notification-row')].map(row=>({id:row.dataset.ruleId||`rule-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,anchor:row.querySelector('[data-rule-anchor]').value,offsetMinutes:Number(row.querySelector('[data-rule-offset]').value)||0,title:row.querySelector('[data-rule-title]').value.trim(),body:row.querySelector('[data-rule-body]').value.trim()})).filter(rule=>rule.title||rule.body);}
 function renderConfigNotifications(rules){$('#config-notification-list').innerHTML=rules.map((rule,index)=>`<div class="config-notification-row reminder-subcard" data-rule-id="${escapeHtml(rule.id||`notice-${index+1}`)}"><div class="reminder-subcard-header"><span class="reminder-subcard-title">Mốc nhắc nhở #${index+1}</span><button type="button" class="remove-config-notification" data-remove-notification="${index}" aria-label="Xóa mốc nhắc nhở" title="Xóa mốc nhắc nhở này">×</button></div><div class="reminder-subcard-grid2"><label class="field-label">Mốc thời gian<select data-rule-anchor aria-label="Mốc tính thông báo"><option value="start" ${rule.anchor==='start'?'selected':''}>Giờ bắt đầu</option><option value="end" ${rule.anchor==='end'?'selected':''}>Giờ kết thúc</option></select></label><label class="field-label">Lệch phút (âm = trước, dương = sau)<input data-rule-offset type="number" value="${Number(rule.offsetMinutes)||0}" aria-label="Số phút lệch mốc" /></label></div><label class="field-label reminder-full-row">Tiêu đề nhắc nhở<input data-rule-title required value="${escapeHtml(rule.title||'')}" placeholder="Ví dụ: Thu BTVN đầu giờ" /></label><label class="field-label reminder-full-row">Nội dung chi tiết<input data-rule-body value="${escapeHtml(rule.body||'')}" placeholder="Nhập trọn vẹn nội dung cần nhắc (VD: Kiểm tra phòng và bật điều hòa)..." /></label></div>`).join('')||'<div class="notification-config-empty">Chưa có mốc thông báo. Thêm mốc nếu lớp cần nhắc tự động.</div>';}
 function openClassConfig(id=''){
@@ -8397,6 +8429,9 @@ $('#save-student-profile').onclick=async ()=>{
   refreshAllActiveViews();
   closeDialogSafely('#student-profile-dialog');
   toast(`✓ Đã lưu thông tin hồ sơ của ${student.name}.`);
+
+  // Hỏi xác nhận đồng bộ ngược lên Google Sheet nếu đang đăng nhập Admin/Văn phòng
+  try { window.__promptReverseSheetsSync?.(student); } catch {}
 
   // Đồng bộ đổi tên ảnh trên Google Drive dưới nền (không chặn giao diện)
   syncStudentDrivePhotoRename(student, classCatalog).then(renameRes => {
