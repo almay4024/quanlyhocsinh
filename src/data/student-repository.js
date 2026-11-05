@@ -1,6 +1,15 @@
 // Storage boundary for student records. Synchronizes automatically via localStorage + realtime-sync.js.
+import { isBirthYearOrCohortTag, cleanStudentTags } from './class-catalog-repository.js?v=4.5.0';
+
 const STUDENTS_KEY = 'lopvui.students.v9';
 const MAKEUP_KEY = 'lopvui.makeup-students.v1';
+
+const STATUS_WORDS = new Set(['HỌC', 'HOC', 'NGHỈ', 'NGHI', 'TẠM NGHỈ', 'TAM NGHI', 'CHƯA NHẬP HỌC', 'TRÙNG']);
+const isStatusWord = (str) => {
+  if (!str) return false;
+  const up = String(str).trim().toUpperCase();
+  return STATUS_WORDS.has(up);
+};
 
 const getStorage = () => (typeof localStorage !== 'undefined' ? localStorage : null);
 
@@ -24,6 +33,194 @@ const splitName = student => {
 export const seedStudents = [];
 
 export const seedMakeupStudents = [];
+
+
+export function mergeTwoStudentProfiles(primary, secondary) {
+  if (!primary) return secondary;
+  if (!secondary) return primary;
+  if (primary.id === secondary.id) return primary;
+
+  const now = Date.now();
+  const studentCode = (primary.studentCode || secondary.studentCode || '').trim().toUpperCase();
+
+  const pName = (primary.name || '').trim();
+  const sName = (secondary.name || '').trim();
+  let name = pName;
+  if (!name || name === studentCode) {
+    name = sName || studentCode;
+  } else if (sName && sName !== studentCode && sName.length > name.length && !name.includes(' ')) {
+    name = sName;
+  }
+  const familyName = primary.familyName || secondary.familyName || '';
+  const givenName = primary.givenName || secondary.givenName || '';
+
+  const school = (primary.school && primary.school !== '—')
+    ? primary.school
+    : (secondary.school || '');
+
+  const parentName = primary.parentContact?.name || secondary.parentContact?.name || '';
+  const parentContact = { name: parentName };
+
+  let enrollmentStatus = 'Học';
+  if (primary.enrollmentStatus === 'Học' || secondary.enrollmentStatus === 'Học') {
+    enrollmentStatus = 'Học';
+  } else if (primary.enrollmentStatus && primary.enrollmentStatus !== 'Nghỉ') {
+    enrollmentStatus = primary.enrollmentStatus;
+  } else {
+    enrollmentStatus = secondary.enrollmentStatus || primary.enrollmentStatus || 'Nghỉ';
+  }
+
+  const pClasses = Array.isArray(primary.classIds) ? primary.classIds : [];
+  const sClasses = Array.isArray(secondary.classIds) ? secondary.classIds : [];
+  const classIds = [...new Set([...pClasses, ...sClasses])].filter(Boolean);
+
+  const pPrevClasses = Array.isArray(primary.previousClassIds) ? primary.previousClassIds : [];
+  const sPrevClasses = Array.isArray(secondary.previousClassIds) ? secondary.previousClassIds : [];
+  const previousClassIds = [...new Set([...pPrevClasses, ...sPrevClasses])].filter(cid => cid && !classIds.includes(cid));
+
+  const pTransHistory = Array.isArray(primary.classTransferHistory) ? primary.classTransferHistory : [];
+  const sTransHistory = Array.isArray(secondary.classTransferHistory) ? secondary.classTransferHistory : [];
+  const classTransferHistory = [...pTransHistory, ...sTransHistory];
+
+  const pTags = Array.isArray(primary.tags) ? primary.tags : (primary.tag ? [primary.tag] : []);
+  const sTags = Array.isArray(secondary.tags) ? secondary.tags : (secondary.tag ? [secondary.tag] : []);
+  const combinedRawTags = [...new Set([...pTags, ...sTags])].filter(Boolean);
+  const cleanTags = cleanStudentTags(combinedRawTags);
+
+  const attMap = new Map();
+  (secondary.attendanceHistory || []).forEach(h => {
+    if (h && h.date) attMap.set(`${h.classId || ''}_${h.date}`, h);
+  });
+  (primary.attendanceHistory || []).forEach(h => {
+    if (h && h.date) {
+      const key = `${h.classId || ''}_${h.date}`;
+      const existing = attMap.get(key);
+      if (!existing || (h.status && h.status !== 'unrecorded')) attMap.set(key, h);
+    }
+  });
+  const attendanceHistory = Array.from(attMap.values());
+
+  const seatMap = new Map();
+  (secondary.seatingHistory || []).forEach(s => {
+    if (s && s.date) seatMap.set(`${s.classId || ''}_${s.date}`, s);
+  });
+  (primary.seatingHistory || []).forEach(s => {
+    if (s && s.date) seatMap.set(`${s.classId || ''}_${s.date}`, s);
+  });
+  const seatingHistory = Array.from(seatMap.values());
+
+  const scoreMap = new Map();
+  (secondary.scores || []).forEach(sc => {
+    if (sc) scoreMap.set(`${sc.classId || ''}_${sc.date || ''}_${sc.type || ''}`, sc);
+  });
+  (primary.scores || []).forEach(sc => {
+    if (sc) scoreMap.set(`${sc.classId || ''}_${sc.date || ''}_${sc.type || ''}`, sc);
+  });
+  const scores = Array.from(scoreMap.values());
+
+  const noteMap = new Map();
+  (secondary.sessionNotes || []).forEach(n => {
+    if (n && n.date) noteMap.set(`${n.classId || ''}_${n.date}`, n);
+  });
+  (primary.sessionNotes || []).forEach(n => {
+    if (n && n.date) {
+      const key = `${n.classId || ''}_${n.date}`;
+      const existing = noteMap.get(key);
+      if (!existing) {
+        noteMap.set(key, n);
+      } else {
+        const n1 = String(n.note || '').trim();
+        const n2 = String(existing.note || '').trim();
+        const mergedNote = (n1 && n2 && n1 !== n2) ? `${n1} | ${n2}` : (n1 || n2);
+        noteMap.set(key, { ...existing, ...n, note: mergedNote });
+      }
+    }
+  });
+  const sessionNotes = Array.from(noteMap.values());
+
+  const pLearn = String(primary.learningNotes || '').trim();
+  const sLearn = String(secondary.learningNotes || '').trim();
+  let learningNotes = pLearn;
+  if (!learningNotes) {
+    learningNotes = sLearn;
+  } else if (sLearn && !pLearn.includes(sLearn)) {
+    learningNotes = `${pLearn}; ${sLearn}`;
+  }
+
+  const classLearningNotes = {
+    ...(secondary.classLearningNotes || {}),
+    ...(primary.classLearningNotes || {})
+  };
+
+  const paperOrderIndex = {
+    ...(secondary.paperOrderIndex || {}),
+    ...(primary.paperOrderIndex || {})
+  };
+
+  const officeNotes = primary.officeNotes || secondary.officeNotes || '';
+  const photoURL = primary.photoURL || secondary.photoURL || null;
+  const photoDriveFileId = primary.photoDriveFileId || secondary.photoDriveFileId || null;
+  const createdAt = Math.min(primary.createdAt || now, secondary.createdAt || now);
+  const updatedAt = Math.max(primary.updatedAt || 0, secondary.updatedAt || 0, now);
+  const revision = (Number(primary.revision) || 1) + (Number(secondary.revision) || 1);
+
+  return {
+    ...secondary,
+    ...primary,
+    id: primary.id,
+    studentCode,
+    name,
+    familyName,
+    givenName,
+    school,
+    parentContact,
+    enrollmentStatus,
+    classIds,
+    previousClassIds,
+    classTransferHistory,
+    tags: cleanTags,
+    isNew: cleanTags.includes('Mới'),
+    attendanceHistory,
+    seatingHistory,
+    scores,
+    sessionNotes,
+    learningNotes,
+    classLearningNotes,
+    paperOrderIndex,
+    officeNotes,
+    photoURL,
+    photoDriveFileId,
+    createdAt,
+    updatedAt,
+    revision
+  };
+}
+
+export function deduplicateStudentsByCode(studentsList) {
+  if (!Array.isArray(studentsList)) return [];
+  const map = new Map();
+  const result = [];
+  for (const s of studentsList) {
+    if (!s) continue;
+    const student = {
+      ...s,
+      tags: cleanStudentTags(s.tags || [])
+    };
+    const rawCode = student.studentCode ? String(student.studentCode).trim().toUpperCase() : '';
+    if (!rawCode) {
+      result.push(student);
+      continue;
+    }
+    if (map.has(rawCode)) {
+      const existingIdx = map.get(rawCode);
+      result[existingIdx] = mergeTwoStudentProfiles(result[existingIdx], student);
+    } else {
+      map.set(rawCode, result.length);
+      result.push(student);
+    }
+  }
+  return result;
+}
 
 export function loadStudentRecords(currentClassId, storage = getStorage()) {
   let stored = read(STUDENTS_KEY, null, storage);
@@ -90,9 +287,11 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
       : (seedMatch?.tags?.length
           ? [...seedMatch.tags]
           : (student.isNew && !isRemovedNew && Date.now() - (student.createdAt || 0) < 21 * 86400000 ? ['Mới'] : []));
-    const cleanResolvedTags = rawResolvedTags
-      .filter(Boolean)
-      .filter(t => !(isRemovedNew && String(t).trim().toLowerCase() === 'mới'));
+    const cleanResolvedTags = cleanStudentTags(
+      rawResolvedTags
+        .filter(Boolean)
+        .filter(t => !(isRemovedNew && String(t).trim().toLowerCase() === 'mới'))
+    );
 
     return {
       ...student,
@@ -100,8 +299,7 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
       studentCode,
       classIds: Array.isArray(student.classIds) ? student.classIds : (currentClassId ? [currentClassId] : []),
       parentContact: {
-        name: student.parentContact?.name || '',
-        phone: student.parentContact?.phone || ''
+        name: student.parentContact?.name || ''
       },
       photoURL: student.photoURL || null,
       courseIds: student.courseIds || [],
@@ -144,8 +342,7 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
       attendingClassId: student.attendingClassId || currentClassId,
       attendingSessionDate: student.attendingSessionDate || student.attendanceHistory?.[0]?.date || student.sessionNotes?.[0]?.date || student.scores?.[0]?.date || null,
       parentContact: {
-        name: student.parentContact?.name || '',
-        phone: student.parentContact?.phone || ''
+        name: student.parentContact?.name || ''
       },
       photoURL: student.photoURL || null,
       courseIds: student.courseIds || [],
@@ -154,7 +351,7 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
       sessionNotes: sessNotes,
       scores: scoreList,
       notes: student.notes || [],
-      tags: Array.isArray(student.tags) ? student.tags : [],
+      tags: cleanStudentTags(Array.isArray(student.tags) ? student.tags : []),
       learningNotes: student.learningNotes || seedMk?.learningNotes || '',
       studentType: 'makeup',
       classIds: []
@@ -169,7 +366,8 @@ export function loadStudentRecords(currentClassId, storage = getStorage()) {
   const photoStore = loadPhotoStore(storage);
   normalized.forEach(s => hydrateStudentPhoto(s, photoStore));
   makeupRecords.forEach(s => hydrateStudentPhoto(s, photoStore));
-  return { students: normalized, makeupStudents: makeupRecords };
+  const dedupedRegular = deduplicateStudentsByCode(normalized);
+  return { students: dedupedRegular, makeupStudents: makeupRecords };
 }
 
 const PHOTOS_KEY = 'lopvui.student-photos.v1';
@@ -243,7 +441,8 @@ export function hydrateStudentPhoto(student, photoStore) {
 export function saveStudentRecords(students, makeupStudents, storage = getStorage()) {
   const photoStore = loadPhotoStore(storage);
   const prevPhotoJson = JSON.stringify(photoStore);
-  const cleanStudents = (students || []).filter(Boolean).map(s => sanitizeStudentForStorage(s, photoStore)).filter(Boolean);
+  const deduped = deduplicateStudentsByCode(students || []);
+  const cleanStudents = deduped.map(s => sanitizeStudentForStorage(s, photoStore)).filter(Boolean);
   const cleanMakeups = (makeupStudents || []).filter(Boolean).map(s => sanitizeStudentForStorage(s, photoStore)).filter(Boolean);
 
   if (storage) {

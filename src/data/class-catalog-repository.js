@@ -74,35 +74,114 @@ export function isMockEmployee(emp) {
 }
 
 /**
- * Trích xuất khối / khóa từ tiền tố mã học sinh (VD: K9.001 -> K9, K10.123 -> K10, 2K9.001 -> 2K9)
+ * Kiểm tra xem một chuỗi tag có phải là tag năm sinh / khóa học sinh hay không (VD: 2K9, 2K10, 2009, 2010, K9, K10...)
+ * Theo quy chuẩn mới: KHÔNG gắn tag theo năm sinh vào mảng tags của học sinh; chỉ phân loại năm sinh theo Mã học sinh.
+ */
+export function isBirthYearOrCohortTag(tagStr) {
+  if (!tagStr) return false;
+  const clean = String(tagStr).trim().toLowerCase();
+  // 1. Khóa dạng 2K (2k6 -> 2k16)
+  if (/^2k\d{1,2}$/i.test(clean)) return true;
+  // 2. Khóa dạng K (k6 -> k15, k09)
+  if (/^k0?(?:[5-9]|1[0-5])$/i.test(clean)) return true;
+  // 3. Năm sinh 4 chữ số (2005 - 2025)
+  if (/^20(0[5-9]|1[0-9]|2[0-5])$/.test(clean)) return true;
+  // 4. Các nhãn tiền tố: "Khối X", "Lớp X", "Năm sinh XXXX"
+  if (/^(?:khối|lớp|năm\s*sinh)\s*(?:2k\d+|\d+)/i.test(clean)) return true;
+  return false;
+}
+
+/**
+ * Lọc bỏ toàn bộ tag năm sinh / khóa khỏi mảng tags của học sinh
+ */
+export function cleanStudentTags(tags) {
+  if (!Array.isArray(tags)) return [];
+  return tags.filter(t => t && !isBirthYearOrCohortTag(t));
+}
+
+/**
+ * Trích xuất khối / khóa chuẩn hóa từ tiền tố mã học sinh (VD: 2K9.001 -> 2K9, K9.001 -> 2K9, 2009.001 -> 2K9, 2K10.012 -> 2K10)
  */
 export function extractCohortFromStudentCode(code) {
   if (!code) return '';
   const trimmed = String(code).trim().toUpperCase();
+
+  // 1. Khớp 2K9, 2K10, 2K11, 2K12, 2K13, 2K14...
+  const m2K = trimmed.match(/(?:^|[^A-Z0-9])(2K\d{1,2})(?:[^A-Z0-9]|$)/i);
+  if (m2K) return m2K[1].toUpperCase();
+
+  // 2. Khớp K9, K09, K10, K11... -> chuẩn hóa sang 2K9, 2K10...
+  const mK = trimmed.match(/(?:^|[^A-Z0-9])K0?([5-9]|1[0-5])(?:[^A-Z0-9]|$)/i);
+  if (mK) {
+    return `2K${mK[1]}`;
+  }
+
+  // 3. Khớp năm sinh 4 chữ số (2005 - 2025) như 2009.001 -> chuẩn hóa sang 2K9
+  const mYear = trimmed.match(/\b20(0[5-9]|1[0-9]|2[0-5])\b/);
+  if (mYear) {
+    const y = Number(mYear[1]);
+    return `2K${y}`;
+  }
+
+  // 4. Fallback: match đầu chuỗi
   const m = trimmed.match(/^(2?K\d+)/i);
   if (m) {
-    return m[1].toUpperCase();
+    const raw = m[1].toUpperCase();
+    if (raw.startsWith('K') && !raw.startsWith('2K')) {
+      const num = raw.replace(/^K0?/, '');
+      return `2K${num}`;
+    }
+    return raw;
   }
   return '';
 }
 
 /**
- * Hiển thị tên khối rõ nghĩa: K9 -> Khối 9 (K9), K10 -> Khối 10 (K10), 2K9 -> Khối 9 (2K9)
+ * Phân tích số năm sinh / khóa từ chuỗi (VD: 2K9 -> 9, K9 -> 9, 2009 -> 9, 2K10 -> 10, 2010 -> 10)
  */
-export function formatCohortDisplayName(cohortPrefix) {
-  if (!cohortPrefix) return '';
-  const up = cohortPrefix.toUpperCase();
-  const numMatch = up.match(/\d+/);
-  if (numMatch) {
-    let num = Number(numMatch[0]);
-    if (num >= 2000) num = num - 2000;
-    return `Khối ${num} (${up})`;
+export function parseCohortNumber(str) {
+  if (!str) return null;
+  const s = String(str).trim().toUpperCase();
+  const m2k = s.match(/2K(\d+)/i);
+  if (m2k) return Number(m2k[1]);
+  const mk = s.match(/(?:^|[^A-Z0-9])K0?(\d+)/i);
+  if (mk) return Number(mk[1]);
+  const mYear = s.match(/20(\d{2})/);
+  if (mYear) return Number(mYear[1]);
+  const mDigit = s.match(/\d+/);
+  if (mDigit) {
+    let n = Number(mDigit[0]);
+    if (n >= 2000) n = n - 2000;
+    return n;
   }
-  return up;
+  return null;
 }
 
 /**
- * Kiểm tra xem học sinh có thuộc khối / khóa đang lọc hay không
+ * Trích xuất năm sinh 4 chữ số từ mã học sinh (VD: 2K9.001 -> 2009, 2K10.012 -> 2010)
+ */
+export function extractBirthYearFromStudentCode(code) {
+  const ch = extractCohortFromStudentCode(code);
+  if (!ch) return '';
+  const num = parseCohortNumber(ch);
+  if (num === null) return '';
+  return String(2000 + num);
+}
+
+/**
+ * Hiển thị tên năm sinh & khóa rõ nghĩa cho người dùng (VD: 2K9 -> Năm sinh 2009 (2K9))
+ */
+export function formatCohortDisplayName(cohortPrefix) {
+  if (!cohortPrefix) return '';
+  const num = parseCohortNumber(cohortPrefix);
+  if (num !== null) {
+    return `Năm sinh ${2000 + num} (2K${num})`;
+  }
+  return String(cohortPrefix).toUpperCase();
+}
+
+/**
+ * Kiểm tra xem học sinh có thuộc năm sinh / khóa đang lọc hay không (chỉ phân loại theo Mã học sinh)
  */
 export function isStudentInCohort(student, targetCohort) {
   if (!targetCohort || targetCohort === 'all') return true;
@@ -110,25 +189,15 @@ export function isStudentInCohort(student, targetCohort) {
   const codeCohort = extractCohortFromStudentCode(sCode);
   const targetUp = String(targetCohort).trim().toUpperCase();
 
-  // 1. So khớp trực tiếp tiền tố mã HS (K9 === K9, 2K9 === 2K9, v.v.)
-  if (codeCohort && (codeCohort === targetUp || targetUp.includes(codeCohort) || codeCohort.includes(targetUp))) {
-    return true;
-  }
+  if (!codeCohort) return false;
 
-  // 2. So khớp theo số khối (VD: K9 và Khối 9 hoặc 2K9 và 2009)
-  const codeNum = codeCohort.match(/\d+/)?.[0];
-  const targetNum = targetUp.match(/\d+/)?.[0];
-  if (codeNum && targetNum) {
-    let cN = Number(codeNum);
-    let tN = Number(targetNum);
-    if (cN >= 2000) cN = cN - 2000;
-    if (tN >= 2000) tN = tN - 2000;
-    if (cN === tN) return true;
-  }
+  // 1. So khớp trực tiếp tiền tố mã HS chuẩn hóa (2K9 === 2K9)
+  if (codeCohort === targetUp) return true;
 
-  // 3. Fallback theo student.cohort hoặc student.grade
-  const sCohort = String(student?.cohort || student?.grade || '').trim().toUpperCase();
-  if (sCohort && (sCohort === targetUp || sCohort.includes(targetUp) || targetUp.includes(sCohort))) {
+  // 2. So khớp theo số năm sinh (VD: target 2009 và codeCohort 2K9, hoặc target K9 và codeCohort 2K9)
+  const cN = parseCohortNumber(codeCohort);
+  const tN = parseCohortNumber(targetUp);
+  if (cN !== null && tN !== null && cN === tN) {
     return true;
   }
 

@@ -3,8 +3,8 @@ import { matchesAcronymOrText } from './student-search.js?v=4.5.0';
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
 import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.5.0';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature, extractCohortFromStudentCode, formatCohortDisplayName, isStudentInCohort } from './data/class-catalog-repository.js?v=4.5.0';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls } from './data/student-repository.js?v=4.5.0';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature, extractCohortFromStudentCode, formatCohortDisplayName, isStudentInCohort, isBirthYearOrCohortTag, cleanStudentTags } from './data/class-catalog-repository.js?v=4.5.0';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, mergeTwoStudentProfiles, deduplicateStudentsByCode } from './data/student-repository.js?v=4.5.0';
 import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth, createStaffAuthAccount, updateSelfPassword } from './data/firebase-auth.js?v=4.5.0';
 
 function formatBirthYearLabel(val) {
@@ -1721,7 +1721,7 @@ export function setupFeatures(ctx) {
     const makeupsInSess = ctx.sessionMakeupStudents
       ? ctx.sessionMakeupStudents()
       : (ctx.getMakeupStudents ? ctx.getMakeupStudents().filter(m => m.attendingClassId === currentClass.id && m.attendingSessionDate === curDate) : []);
-    const roster = [...classStudents(), ...makeupsInSess];
+    const roster = [...classStudents().filter(s => !s.enrollmentStatus || s.enrollmentStatus === 'Học' || s.enrollmentStatus.trim().toLowerCase() === 'học'), ...makeupsInSess];
     const assignedIdsSet = new Set(occupants.map(x => x.entry.studentId).filter(Boolean));
     const lateQueueList = getLateQueue();
 
@@ -3911,14 +3911,16 @@ export function setupFeatures(ctx) {
             const merged = new Set([...(existing.classIds || []), ...finalClassIds]);
             existing.classIds = [...merged];
           }
-          if (item.tag) {
-            existing.tags = Array.isArray(existing.tags) ? existing.tags : [];
-            if (!existing.tags.includes(item.tag)) existing.tags.push(item.tag);
+          const cleanTag = (item.tag && !isBirthYearOrCohortTag(item.tag)) ? String(item.tag).trim() : '';
+          if (cleanTag) {
+            existing.tags = cleanStudentTags(Array.isArray(existing.tags) ? existing.tags : []);
+            if (!existing.tags.includes(cleanTag)) existing.tags.push(cleanTag);
           }
           existing.enrollmentStatus = item.enrollmentStatus || existing.enrollmentStatus || 'Học';
           updatedCount++;
         } else {
-          const tagsArr = (item.tag && String(item.tag).trim().toLowerCase() !== 'mới') ? [String(item.tag).trim()] : [];
+          const cleanTag = (item.tag && !isBirthYearOrCohortTag(item.tag)) ? String(item.tag).trim() : '';
+          const tagsArr = (cleanTag && cleanTag.toLowerCase() !== 'mới') ? [cleanTag] : [];
           const newStudent = createStudentProfile({
             name: item.name,
             familyName: item.familyName,
@@ -3944,6 +3946,7 @@ export function setupFeatures(ctx) {
         }
       });
 
+      currentStudents = deduplicateStudentsByCode(currentStudents);
       saveStudentRecords(currentStudents, currentMakeups);
       ctx.closeDialogSafely ? ctx.closeDialogSafely('#import-roster-dialog') : $('#import-roster-dialog')?.close();
       if (activeRosterClassId) renderRosterAdminTable(activeRosterClassId);
@@ -4237,13 +4240,13 @@ export function setupFeatures(ctx) {
         const ch = extractCohortFromStudentCode(s.studentCode);
         if (ch) detectedCohorts.add(ch);
       });
-      ['K12', 'K11', 'K10', 'K9', 'K8', 'K7', 'K6', '2K9', '2K10', '2K11', '2K12', '2K13'].forEach(c => detectedCohorts.add(c));
+      ['2K6', '2K7', '2K8', '2K9', '2K10', '2K11', '2K12', '2K13', '2K14', '2K15'].forEach(c => detectedCohorts.add(c));
       const sortedCohorts = Array.from(detectedCohorts).sort((a, b) => {
         const na = a.match(/\d+/)?.[0] || 0;
         const nb = b.match(/\d+/)?.[0] || 0;
         return Number(nb) - Number(na);
       });
-      gradeFilter.innerHTML = '<option value="all">Tất cả các khối / khóa</option>' + sortedCohorts.map(c =>
+      gradeFilter.innerHTML = '<option value="all">Tất cả năm sinh / khóa</option>' + sortedCohorts.map(c =>
         `<option value="${escapeHtml(c)}">${escapeHtml(formatCohortDisplayName(c))}</option>`
       ).join('');
       if (prevGrade === 'all' || sortedCohorts.includes(prevGrade)) {
@@ -5642,7 +5645,7 @@ export function setupFeatures(ctx) {
 
     const currentClass = getActiveClassConfig();
     const date = getChecklistDate();
-    const roster = classStudents();
+    const roster = classStudents().filter(s => !s.enrollmentStatus || s.enrollmentStatus === 'Học' || s.enrollmentStatus.trim().toLowerCase() === 'học');
     const entries = allEntries();
     const lateQueueIds = getLateQueue();
     const noHw = isNoHomeworkSession();
@@ -5855,7 +5858,7 @@ export function setupFeatures(ctx) {
     const date = getChecklistDate();
     const entries = allEntries();
     const lateQueueIds = getLateQueue();
-    const regularRoster = classStudents();
+    const regularRoster = classStudents().filter(s => !s.enrollmentStatus || s.enrollmentStatus === 'Học' || s.enrollmentStatus.trim().toLowerCase() === 'học');
     const allMakeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
     const sessionMakeups = ctx.sessionMakeupStudents ? ctx.sessionMakeupStudents() : allMakeups.filter(m =>
       (m.attendingClassId === currentClass.id && m.attendingSessionDate === date) ||
@@ -5979,7 +5982,7 @@ export function setupFeatures(ctx) {
     const date = getChecklistDate();
     const entries = allEntries();
     const lateQueueIds = getLateQueue();
-    const regularRoster = classStudents();
+    const regularRoster = classStudents().filter(s => !s.enrollmentStatus || s.enrollmentStatus === 'Học' || s.enrollmentStatus.trim().toLowerCase() === 'học');
     const allMakeups = ctx.getMakeupStudents ? ctx.getMakeupStudents() : [];
     const sessionMakeups = ctx.sessionMakeupStudents ? ctx.sessionMakeupStudents() : allMakeups.filter(m =>
       (m.attendingClassId === currentClass.id && m.attendingSessionDate === date) ||
@@ -8119,7 +8122,7 @@ export function setupFeatures(ctx) {
           school,
           parentName,
           enrollmentStatus: normalizeEnrollmentStatus(rawStatus),
-          tags: rawTagVal ? String(rawTagVal).split(/[,;\n]+/).map(t => t.trim()).filter(Boolean) : [],
+          tags: rawTagVal ? cleanStudentTags(String(rawTagVal).split(/[,;\n]+/).map(t => t.trim()).filter(Boolean)) : [],
           tag: String(rawTagVal).trim(),
           rawClassTexts: rawClassStr ? [rawClassStr] : [],
           resolvedClassIds,
@@ -8253,7 +8256,7 @@ export function setupFeatures(ctx) {
       if (!studentCode && !fullName) continue;
       if (fullName && (isStatusWord(fullName) || /^\d+$/.test(fullName))) continue;
 
-      const parsedTags = rawTag ? rawTag.split(/[,;\n]+/).map(t => t.trim()).filter(Boolean) : [];
+      const parsedTags = rawTag ? cleanStudentTags(rawTag.split(/[,;\n]+/).map(t => t.trim()).filter(Boolean)) : [];
       results.push({
         studentCode,
         fullName,
@@ -8783,34 +8786,54 @@ export function setupFeatures(ctx) {
 
       if (item.category === 'new_student') {
         const sheetTags = Array.isArray(item.tags) ? item.tags : [];
-        const tagsArr = [...new Set([...(item.addNewTag ? ['Mới'] : []), ...sheetTags])];
-        const newStu = createStudentProfile({
-          name: item.fullName,
-          familyName: item.familyName,
-          givenName: item.givenName,
-          studentCode: item.studentCode || null,
-          school: item.school || '',
-          parentContact: {
-            name: item.parentName || ''
-          },
-          classIds: finalTargetClassIds,
-          enrollmentStatus: item.enrollmentStatus || 'Học',
-          tags: tagsArr,
-          isNew: Boolean(item.addNewTag),
-          kind: 'regular'
-        });
-        newStu.studentCode = item.studentCode || null;
-        newStu.classIds = finalTargetClassIds;
-        newStu.isNew = Boolean(item.addNewTag);
-        newStu.tags = tagsArr;
-        if (!item.addNewTag) {
-          newStu.sessionNotes = [];
+        const tagsArr = cleanStudentTags([...new Set([...(item.addNewTag ? ['Mới'] : []), ...sheetTags])]);
+        const itemCode = (item.studentCode && String(item.studentCode).trim())
+          ? String(item.studentCode).trim().toUpperCase()
+          : null;
+
+        const duplicateStu = itemCode ? allStudents.find(s => s.studentCode && s.studentCode.toUpperCase() === itemCode) : null;
+        if (duplicateStu) {
+          if (finalTargetClassIds.length) {
+            duplicateStu.classIds = [...new Set([...(duplicateStu.classIds || []), ...finalTargetClassIds])];
+          }
+          if (tagsArr.length) {
+            duplicateStu.tags = cleanStudentTags([...new Set([...(duplicateStu.tags || []), ...tagsArr])]);
+          }
+          if (item.learningNotes && !duplicateStu.learningNotes?.includes(item.learningNotes)) {
+            duplicateStu.learningNotes = duplicateStu.learningNotes ? `${duplicateStu.learningNotes}; ${item.learningNotes}` : item.learningNotes;
+          }
+          duplicateStu.updatedAt = now;
+          duplicateStu.revision = (Number(duplicateStu.revision) || 0) + 1;
+          transferredCount++;
+        } else {
+          const newStu = createStudentProfile({
+            name: item.fullName,
+            familyName: item.familyName,
+            givenName: item.givenName,
+            studentCode: itemCode,
+            school: item.school || '',
+            parentContact: {
+              name: item.parentName || ''
+            },
+            classIds: finalTargetClassIds,
+            enrollmentStatus: item.enrollmentStatus || 'Học',
+            tags: tagsArr,
+            isNew: Boolean(item.addNewTag),
+            kind: 'regular'
+          });
+          newStu.studentCode = itemCode;
+          newStu.classIds = finalTargetClassIds;
+          newStu.isNew = Boolean(item.addNewTag);
+          newStu.tags = tagsArr;
+          if (!item.addNewTag) {
+            newStu.sessionNotes = [];
+          }
+          if (item.learningNotes) newStu.learningNotes = item.learningNotes;
+          newStu.updatedAt = now;
+          newStu.revision = 1;
+          allStudents.push(newStu);
+          addedCount++;
         }
-        if (item.learningNotes) newStu.learningNotes = item.learningNotes;
-        newStu.updatedAt = now;
-        newStu.revision = 1;
-        allStudents.push(newStu);
-        addedCount++;
       } else if (item.category === 'class_change' && item.existingStudent) {
         const stu = item.existingStudent;
         if (item.studentCode) stu.studentCode = item.studentCode;
@@ -8985,6 +9008,7 @@ export function setupFeatures(ctx) {
     const approvedIds = new Set(approvedItems.map(i => i.tempId));
     pendingSheetsApprovalItems = pendingSheetsApprovalItems.filter(i => !approvedIds.has(i.tempId));
 
+    allStudents = deduplicateStudentsByCode(allStudents);
     saveStudentRecords(allStudents, makeups);
     let scoresUpdated = 0;
     if (scoreItems.length && ctx.applyBatchImportedScores) {

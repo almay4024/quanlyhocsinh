@@ -1158,3 +1158,45 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - Áp dụng chuẩn `scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.45) transparent;` trên tất cả dialog popup.
   - Thêm quy tắc `margin: 16px 0 !important;` trên `::-webkit-scrollbar-track` cho tất cả các phần tử dialog, modal, dialog-body và bảng biểu popup: giữ cho vệt cuộn và con trượt luôn cách mép trên và mép dưới tối thiểu 16px.
   - Kết quả: Giữ trọn vẹn 100% đường cong bo tròn tinh tế của cả 4 góc popup, không bao giờ bị thanh cuộn cắt góc vuông.
+
+
+---
+
+### 16.7. Quy Trình Tự Động Ghép Hồ Sơ Khi 2 Học Sinh Chung Một Mã Học Sinh (Student Code Unification & Profile Merging)
+- **Yêu cầu nghiệp vụ:**
+  - Khi hai học sinh có chung một mã học sinh (`studentCode`), hệ thống sẽ ghép 2 bộ hồ sơ đó làm một (gộp toàn bộ dữ liệu của cả hai học sinh vào nhau mà không làm thất thoát bất kỳ thông tin nào).
+- **Quy tắc gộp dữ liệu (`mergeTwoStudentProfiles(primary, secondary)`):**
+  1. **Lớp học (`classIds` & `previousClassIds`):** Gộp hợp nhất mảng lớp học (`classIds = [...new Set([...s1.classIds, ...s2.classIds])]`). Toàn bộ lớp cũ trước đó (`previousClassIds`) và lịch sử chuyển lớp (`classTransferHistory`) từ cả 2 hồ sơ được giữ nguyên vẹn.
+  2. **Lịch sử điểm danh (`attendanceHistory`):** Ghép nối theo cặp khóa duy nhất `classId_date`. Nếu có bản ghi trạng thái có mặt thực tế, ưu tiên bản ghi có dữ liệu chi tiết hơn.
+  3. **Lịch sử vị trí ngồi (`seatingHistory`):** Ghép nối toàn bộ dữ liệu vị trí ngồi theo từng buổi học.
+  4. **Điểm số (`scores`):** Ghép nối toàn diện theo bộ ba `classId_date_type` (BTVN, Test, Thi giữa kỳ, Thi cuối kỳ...).
+  5. **Ghi chú buổi học (`sessionNotes`):** Ghép nối theo `classId_date`. Nếu cả hai hồ sơ đều có ghi chú trong cùng buổi, hệ thống tự động nối chuỗi bằng ký tự ngăn cách ` | ` để không làm mất nhận xét của giáo viên/trợ giảng.
+  6. **Ghi chú học lực dài hạn (`learningNotes`):** Nối ghi chú của cả hai học sinh nếu nội dung không trùng lặp (`${note1}; ${note2}`).
+  7. **Tag chuyên môn (`tags`):** Gộp toàn bộ tag phân loại học sinh từ cả hai bộ hồ sơ, đồng thời tự động loại bỏ triệt để các tag năm sinh/khóa bằng `cleanStudentTags`.
+  8. **Thông tin liên hệ & trường học:** Giữ lại thông tin trường học (`school`) và tên phụ huynh (`parentContact.name`) từ hồ sơ đầy đủ nhất.
+  9. **Tái trỏ ghế ngồi và danh sách đi muộn trong ca:**
+     - Các bàn ghế trên sơ đồ lớp học (`deskItems`) đang trỏ đến ID học sinh bị gộp sẽ được tự động đổi sang ID học sinh còn lại, loại bỏ ghế trùng nếu có.
+     - Danh sách học sinh đi muộn (`lateQueue`) và điểm trong ca (`checklist.hwScores`, `checklist.testScores`) được tự động cập nhật sang ID hồ sơ sống.
+  10. **Bảo toàn thời gian và phiên bản:** Thời gian tạo hồ sơ (`createdAt`) lấy mốc thời gian sớm nhất; thời gian cập nhật (`updatedAt`) lấy mốc mới nhất; số phiên bản (`revision`) được cộng dồn để kích hoạt đồng bộ chuẩn xác.
+- **Phạm vi tự động thực thi:**
+  - **Khi nạp dữ liệu (`loadStudentRecords`):** Tự động phát hiện và gộp mọi hồ sơ trùng mã HS có trong bộ nhớ.
+  - **Khi lưu dữ liệu (`saveStudentRecords`):** Đảm bảo danh sách học sinh luôn được deduplicate và gộp dữ liệu trước khi ghi xuống `localStorage` hoặc đồng bộ Firebase.
+  - **Khi chỉnh sửa hồ sơ (`#save-student-profile`):** Nếu người dùng nhập mã HS trùng với một học sinh khác, hệ thống tự động gộp 2 hồ sơ làm một và thông báo: *"✓ Đã ghép 2 bộ hồ sơ có chung mã HS '[Mã HS]' làm một."*
+  - **Khi duyệt Google Sheets (`applyApprovedSheetRows`):** Nếu học sinh mới duyệt có mã trùng với học sinh đã tồn tại, dữ liệu lớp học, tag và ghi chú sẽ được gộp trực tiếp vào hồ sơ hiện có.
+  - **Khi nhập file Excel/CSV (`importStudents`):** Tự động hợp nhất dữ liệu vào hồ sơ đã có nếu trùng mã học sinh.
+
+
+---
+
+### 16.8. Quy Chuẩn Thống Kê Sĩ Số & Điểm Danh Tại Đầu Tab Danh Sách Học Sinh
+- **Nguyên lý tính Sĩ số lớp (Active Headcount):**
+  - Trong thẻ tỉ lệ `#list-roster-attendance-count` (`Đã điểm danh / Sĩ số lớp`) và nhãn tổng `#session-student-total`:
+    * Sĩ số lớp (`activeCount`) **chỉ tính trên tổng số học sinh đang theo học** (học sinh có trạng thái `enrollmentStatus === 'Học'` hoặc chưa có trạng thái).
+    * Tuyệt đối không tính các học sinh đã nghỉ học, tạm nghỉ (`Nghỉ`, `Tạm nghỉ`, `Chưa nhập học`, `Trùng`) vào sĩ số lớp của ca học.
+- **Tổng số học sinh Vắng mặt bao gồm cả Chưa điểm danh:**
+  - Tại thẻ đếm `#list-absent-count` (`Vắng mặt`) và bộ lọc vắng mặt `filter === 'absent'`:
+    * Hệ thống đếm toàn bộ các học sinh trong danh sách lớp đang theo học mà chưa có mặt và chưa đi muộn trong buổi học:
+      - Học sinh có trạng thái vắng mặt cụ thể (`absent`, `absent_excused`, `absent_unexcused`).
+      - Học sinh có trạng thái chưa điểm danh (`unrecorded`, `unmarked`, hoặc chưa có trạng thái điểm danh).
+    * Công thức tổng quát: `Vắng mặt = Sĩ số đang học - (Có mặt + Đi muộn trong DS lớp)`.
+    * Giúp giáo viên và trợ giảng nắm bắt ngay tức thì số lượng học sinh chưa đến lớp / không đi học mà không cần chờ thao tác chốt ca thủ công.

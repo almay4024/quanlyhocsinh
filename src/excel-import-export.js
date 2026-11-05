@@ -1,3 +1,4 @@
+import { isBirthYearOrCohortTag } from './data/class-catalog-repository.js?v=4.5.0';
 // Utilities for importing/exporting roster data, Interactive Data Grid column mapping, CSV/Excel export & Google Sheets sync.
 
 export const ENROLLMENT_STATUS_PRESETS = [
@@ -491,6 +492,7 @@ export function extractStudentsFromGrid(rows = [], roles = [], options = {}, cla
     const rawStatus = firstNonEmpty(statusCols);
     const enrollmentStatus = normalizeEnrollmentStatus(rawStatus);
     const rawTag = firstNonEmpty(tagCols);
+    const cleanTag = isBirthYearOrCohortTag(rawTag) ? '' : rawTag;
 
     // Resolve class IDs from all columns marked as 'classCode'
     const classIds = [];
@@ -527,7 +529,7 @@ export function extractStudentsFromGrid(rows = [], roles = [], options = {}, cla
         name: parentName
       },
       enrollmentStatus,
-      tag: rawTag,
+      tag: cleanTag,
       isNew: false
     });
   }
@@ -1869,6 +1871,7 @@ export async function syncSingleStudentToGoogleSheets(student) {
   }
 
   const spreadsheetId = extractSpreadsheetId(cfg.spreadsheetId || cfg.rawSheetUrl);
+  const filteredTags = (Array.isArray(student.tags) ? student.tags : (student.tags ? [student.tags] : [])).filter(t => !isBirthYearOrCohortTag(t));
   // Quy tắc bất biến: Đồng bộ 2 chiều chỉ gửi Tag (không ghi đè thông tin chung học sinh lên Sheet)
   const payload = {
     action: 'updateStudentsTwoWay',
@@ -1880,8 +1883,8 @@ export async function syncSingleStudentToGoogleSheets(student) {
     students: [{
       studentCode: student.studentCode || '',
       fullName: student.name || '',
-      tags: Array.isArray(student.tags) ? student.tags : (student.tags ? [student.tags] : []),
-      tag: Array.isArray(student.tags) ? student.tags.join(', ') : (student.tags || '')
+      tags: filteredTags,
+      tag: filteredTags.join(', ')
     }]
   };
 

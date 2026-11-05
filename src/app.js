@@ -6,9 +6,9 @@ const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomewor
 let previousStudentProfileOrigin = null;
 import { setupFeatures } from './features.js?v=4.5.0';
 import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.5.0';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive } from './data/student-repository.js?v=4.5.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive, mergeTwoStudentProfiles, deduplicateStudentsByCode } from './data/student-repository.js?v=4.5.0';
 import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.5.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature } from './data/class-catalog-repository.js?v=4.5.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature, isBirthYearOrCohortTag, cleanStudentTags, extractCohortFromStudentCode, isStudentInCohort } from './data/class-catalog-repository.js?v=4.5.0';
 import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=4.5.0';
 
 function formatBirthYearBadge(gradeVal) {
@@ -3951,7 +3951,7 @@ function createStudentProfile({name,familyName=undefined,givenName=undefined,sch
     ? []
     : (Array.isArray(classIds) ? [...new Set(classIds.filter(Boolean))] : [CURRENT_CLASS_ID]);
   const isNewStudent = isNew !== undefined ? Boolean(isNew) : !makeup;
-  const baseTags = (Array.isArray(tags) ? [...tags] : []).filter(t => String(t || '').trim().toLowerCase() !== 'học bù');
+  const baseTags = cleanStudentTags((Array.isArray(tags) ? [...tags] : []).filter(t => String(t || '').trim().toLowerCase() !== 'học bù'));
   if (!makeup && isNewStudent && !baseTags.includes('Mới')) {
     baseTags.unshift('Mới');
   }
@@ -4139,7 +4139,7 @@ window.addEventListener('storage',event=>{if(event.key!==`lopvui.class-communica
 function scheduleDefaultNotifications(){const sessionDate=new Date(`${checklistDate}T00:00:00`),start=classScheduleStamp(configClass,sessionDate),end=new Date(`${checklistDate}T${configClass.endTime}:00`),now=new Date();for(const rule of configClass.defaultNotifications||[]){const anchor=rule.anchor==='end'?end:start,due=new Date(anchor.getTime()+Number(rule.offsetMinutes||0)*60000),key=`class-rule-${CURRENT_CLASS_ID}-${checklistDate}-${rule.id}`;if(classCommunication.notifications.some(item=>item.key===key))continue;const notify=()=>{createClassNotification(rule.title||'Nhắc việc theo ca',rule.body||rule.title||'Đến mốc công việc của lớp.','reminder',key);addClassActivity(`Thông báo theo lịch lớp: ${rule.title||rule.body||'Nhắc việc'}`,'system');};if(now>=due&&now<new Date(due.getTime()+15*60*1000))notify();else if(now<due)setTimeout(()=>{if(new Date().toLocaleDateString('sv-SE')===checklistDate)notify();},due-now);}}
 scheduleDefaultNotifications();
 function studentTagList(student){
-  const list = (Array.isArray(student?.tags) ? [...student.tags].filter(Boolean) : []).filter(t => String(t || '').trim().toLowerCase() !== 'học bù');
+  const list = cleanStudentTags((Array.isArray(student?.tags) ? [...student.tags].filter(Boolean) : []).filter(t => String(t || '').trim().toLowerCase() !== 'học bù'));
   if (student?.isNew && !student?._newTagRemoved && student?.studentType !== 'makeup' && !list.some(t => String(t).trim().toLowerCase() === 'mới')) {
     list.unshift('Mới');
   }
@@ -4154,6 +4154,7 @@ function applyStudentTagsMutation(student, rawNextTags) {
   for (const raw of (Array.isArray(rawNextTags) ? rawNextTags : [])) {
     const trimmed = String(raw || '').trim();
     if (!trimmed) continue;
+    if (isBirthYearOrCohortTag(trimmed)) continue;
     const lower = trimmed.toLowerCase();
     if (lower === 'học bù' || seenLower.has(lower)) continue;
     seenLower.add(lower);
@@ -6525,20 +6526,30 @@ function renderStudentList(){
     return { student, familyName, givenName, isMakeupRow: isMakeupRow || student.studentType === 'makeup' || !(student.classIds || []).includes(CURRENT_CLASS_ID), originalIndex: idx + 1, attendance, homework, seat, testScore, note };
   };
 
+  const isEnrolledActiveStudent = (s) => {
+    const st = String(s?.enrollmentStatus || 'Học').trim().toLowerCase();
+    return st === 'học' || st === 'hoc';
+  };
+
   const records=roster.map((s, idx)=>buildRecord(s, idx, false));
   const makeupRecords=classMakeups.map((s, idx)=>buildRecord(s, idx, true));
   const allSessionRecords=[...records, ...makeupRecords];
 
+  // Chỉ tính trên tổng số học sinh đang theo học (loại trừ học sinh đã nghỉ học / tạm nghỉ)
+  const activeRecords = records.filter(r => isEnrolledActiveStudent(r.student));
+  const activeCount = activeRecords.length;
+
   const present=allSessionRecords.filter(r=>r.attendance?.status==='present').length;
   const late=allSessionRecords.filter(r=>r.attendance?.status==='late').length;
-  const absent=records.filter(r=>r.attendance?.status==='absent'||r.attendance?.status==='absent_excused'||r.attendance?.status==='absent_unexcused').length;
+  // Tổng số học sinh vắng mặt: đếm cả trạng thái chưa điểm danh của học sinh trong danh sách lớp đang theo học
+  const absent=activeRecords.filter(r=>r.attendance?.status!=='present'&&r.attendance?.status!=='late').length;
   const noHomework=allSessionRecords.filter(r=>r.homework.status==='not_submitted').length;
-  const attendedRegularCount=records.filter(r=>r.attendance?.status==='present'||r.attendance?.status==='late').length;
+  const attendedRegularCount=activeRecords.filter(r=>r.attendance?.status==='present'||r.attendance?.status==='late').length;
   const attendedTotalCount=present+late;
 
-  $('#session-student-total').textContent=`Đã điểm danh ${attendedRegularCount}/${records.length} học sinh trong danh sách${makeupRecords.length ? ` (+${makeupRecords.length} học bù)` : ''}`;
+  $('#session-student-total').textContent=`Đã điểm danh ${attendedRegularCount}/${activeCount} học sinh trong danh sách${makeupRecords.length ? ` (+${makeupRecords.length} học bù)` : ''}`;
   if ($('#list-roster-attendance-count')) {
-    $('#list-roster-attendance-count').textContent = `${attendedRegularCount} / ${records.length}`;
+    $('#list-roster-attendance-count').textContent = `${attendedRegularCount} / ${activeCount}`;
   }
   if ($('#list-roster-attendance-sub')) {
     $('#list-roster-attendance-sub').textContent = makeupRecords.length
@@ -6623,7 +6634,7 @@ function renderStudentList(){
     }
     if(filter==='present')items=items.filter(r=>r.attendance?.status==='present');
     if(filter==='late')items=items.filter(r=>r.attendance?.status==='late');
-    if(filter==='absent')items=items.filter(r=>r.attendance?.status==='absent'||r.attendance?.status==='absent_excused'||r.attendance?.status==='absent_unexcused');
+    if(filter==='absent')items=items.filter(r=>r.attendance?.status!=='present'&&r.attendance?.status!=='late');
     if(filter==='unmarked')items=items.filter(r=>!r.attendance?.status);
     if(filter==='homework')items=items.filter(r=>r.homework.status==='not_submitted');
     if(filter==='warning')items=items.filter(r=>evaluateStudentEarlyWarning(r.student, CURRENT_CLASS_ID).hasWarning);
@@ -8627,6 +8638,7 @@ $('#save-student-profile').onclick=async ()=>{
   const rawCode = $('#profile-code').value.trim();
   const prevCode = student.studentCode || '';
   const prevName = student.name || '';
+  const prevTags = Array.isArray(student.tags) ? [...student.tags] : [];
 
   student.studentCode = rawCode ? rawCode.toUpperCase() : null;
   student.familyName = familyName;
@@ -8658,14 +8670,91 @@ $('#save-student-profile').onclick=async ()=>{
   student.updatedAt = Date.now();
   student.revision = (Number(student.revision) || 0) + 1;
 
+  let mergedWithOther = false;
+  if (student.studentCode) {
+    const targetCode = student.studentCode.toUpperCase();
+    const duplicateStu = students.find(s => s.id !== student.id && s.studentCode && s.studentCode.toUpperCase() === targetCode);
+    if (duplicateStu) {
+      // 2 học sinh chung 1 mã học sinh -> ghép 2 bộ hồ sơ đó làm 1
+      const mergedProfile = mergeTwoStudentProfiles(student, duplicateStu);
+      Object.assign(student, mergedProfile);
+      // Xoá hồ sơ trùng duplicateStu khỏi danh sách học sinh
+      const dupIdx = students.findIndex(s => s.id === duplicateStu.id);
+      if (dupIdx >= 0) students.splice(dupIdx, 1);
+
+      // Re-point any desk seating from duplicateStu.id to student.id
+      for (const { desk } of desks()) {
+        const list = deskItems[desk.id] || [];
+        for (let i = 0; i < list.length; i++) {
+          if (list[i]?.studentId === duplicateStu.id) {
+            list[i].studentId = student.id;
+            list[i]._updatedAt = Date.now();
+          }
+        }
+        let seenPrimary = false;
+        deskItems[desk.id] = (deskItems[desk.id] || []).filter(ent => {
+          if (ent?.studentId !== student.id) return true;
+          if (!seenPrimary) {
+            seenPrimary = true;
+            return true;
+          }
+          return false;
+        });
+      }
+
+      // Re-point lateQueue
+      if (lateQueue.includes(duplicateStu.id)) {
+        lateQueue = lateQueue.map(id => (id === duplicateStu.id ? student.id : id));
+        lateQueue = [...new Set(lateQueue)];
+      }
+
+      // Re-point checklist scores if present
+      if (checklist) {
+        if (checklist.hwScores && duplicateStu.id in checklist.hwScores) {
+          if (checklist.hwScores[student.id] === undefined || checklist.hwScores[student.id] === '') {
+            checklist.hwScores[student.id] = checklist.hwScores[duplicateStu.id];
+          }
+          delete checklist.hwScores[duplicateStu.id];
+        }
+        if (checklist.testScores && duplicateStu.id in checklist.testScores) {
+          if (checklist.testScores[student.id] === undefined || checklist.testScores[student.id] === '') {
+            checklist.testScores[student.id] = checklist.testScores[duplicateStu.id];
+          }
+          delete checklist.testScores[duplicateStu.id];
+        }
+        if (Array.isArray(checklist.tests)) {
+          checklist.tests.forEach(t => {
+            if (t?.scores && duplicateStu.id in t.scores) {
+              if (t.scores[student.id] === undefined || t.scores[student.id] === '') {
+                t.scores[student.id] = t.scores[duplicateStu.id];
+              }
+              delete t.scores[duplicateStu.id];
+            }
+          });
+        }
+      }
+
+      mergedWithOther = true;
+    }
+  }
+
   saveStudentRecords(students, makeupStudents);
   save();
   refreshAllActiveViews();
   closeDialogSafely('#student-profile-dialog');
-  toast(`✓ Đã lưu thông tin hồ sơ của ${student.name}.`);
+  if (mergedWithOther) {
+    toast(`✓ Đã ghép 2 bộ hồ sơ có chung mã HS "${student.studentCode}" làm một.`);
+  } else {
+    toast(`✓ Đã lưu thông tin hồ sơ của ${student.name}.`);
+  }
 
-  // Hỏi xác nhận đồng bộ ngược lên Google Sheet nếu đang đăng nhập Admin/Văn phòng
-  try { window.__promptReverseSheetsSync?.(student); } catch {}
+  // Bỏ hộp thoại hỏi đồng bộ web khi sửa thông tin học sinh (trừ khi sửa tag)
+  const prevTagsNorm = prevTags.map(t => String(t).trim().toLowerCase()).sort().join(',');
+  const nextTagsNorm = (Array.isArray(student.tags) ? student.tags : []).map(t => String(t).trim().toLowerCase()).sort().join(',');
+  const tagsChanged = prevTagsNorm !== nextTagsNorm;
+  if (tagsChanged) {
+    try { window.__promptReverseSheetsSync?.(student); } catch {}
+  }
 
   // Đồng bộ đổi tên ảnh trên Google Drive dưới nền (không chặn giao diện)
   syncStudentDrivePhotoRename(student, classCatalog).then(renameRes => {
@@ -11766,6 +11855,8 @@ const features = setupFeatures({
   saveSessionNote: (id, val) => saveSessionNote(id, val),
   syncLiveSessionData: () => syncLiveSessionData(),
   createStudentProfile: (p) => createStudentProfile(p),
+  mergeTwoStudentProfiles: (p, s) => mergeTwoStudentProfiles(p, s),
+  deduplicateStudentsByCode: (arr) => deduplicateStudentsByCode(arr),
   render: () => render(),
   renderMainMenu: () => renderMainMenu(),
   setMainMenuPanel: (p) => setMainMenuPanel(p),
