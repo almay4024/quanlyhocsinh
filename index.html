@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm (v5.2)</title>
+  <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm (v5.5)</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
@@ -69,12 +69,12 @@
   </script>
   <link rel="preload" href="/src/fonts/plus-jakarta-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/src/fonts/plus-jakarta-sans-normal-vietnamese.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/src/styles.css?v=5.2.0" />
+  <link rel="stylesheet" href="/src/styles.css?v=5.6.0" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v5.2</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v5.5</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -110,8 +110,8 @@
             </section>
           </div>
           <div class="user user-clickable" id="user-profile-button" role="button" tabindex="0" aria-haspopup="dialog" title="Bấm để mở Tài khoản & Đăng xuất">
-            <span class="user-avatar-chip" id="current-user-avatar">AL</span>
-            <span class="user-name" id="current-user-name">Anh Linh<small id="current-user-role">Trợ giảng · TA001</small></span>
+            <span class="user-avatar-chip" id="current-user-avatar">NV</span>
+            <span class="user-name" id="current-user-name">Nhân viên<small id="current-user-role">Đang tải...</small></span>
             <span class="chevron" title="Tài khoản & Đăng xuất">▾</span>
           </div>
         </div>
@@ -606,8 +606,9 @@
                   <button type="button" class="office-filter-pill active" data-panel-approve-filter="all">Tất cả cần duyệt <span class="pill-count" id="panel-sheets-count-all">0</span></button>
                   <button type="button" class="office-filter-pill" data-panel-approve-filter="new_student">Học sinh mới <span class="pill-count" id="panel-sheets-count-new">0</span></button>
                   <button type="button" class="office-filter-pill" data-panel-approve-filter="class_change">Khác lớp gốc (Chuyển lớp) <span class="pill-count" id="panel-sheets-count-diff-class">0</span></button>
-                  <button type="button" class="office-filter-pill" data-panel-approve-filter="code_update">Cập nhật Mã HS <span class="pill-count" id="panel-sheets-count-code">0</span></button>
+                  <button type="button" class="office-filter-pill" data-panel-approve-filter="code_update">Cập nhật thông tin <span class="pill-count" id="panel-sheets-count-code">0</span></button>
                   <button type="button" class="office-filter-pill" data-panel-approve-filter="missing_code">Thiếu Mã HS <span class="pill-count" id="panel-sheets-count-missing-code">0</span></button>
+                  <button type="button" class="office-filter-pill" data-panel-approve-filter="missing_class" style="color:#b91c1c; border-color:#fca5a5;">Lớp không tồn tại <span class="pill-count" id="panel-sheets-count-missing-class">0</span></button>
                 </div>
 
                 <div class="attendance-table-wrap" style="max-height:48vh; overflow:auto; border:1px solid #cbd5e1; border-radius:8px;">
@@ -2184,9 +2185,10 @@
         <div id="sheets-approval-filter-pills" class="office-filter-pills-group" style="margin-bottom:10px;">
           <button type="button" class="office-filter-pill active" data-sheets-approve-filter="all">Tất cả cần duyệt <span class="pill-count" id="sheets-count-all">0</span></button>
           <button type="button" class="office-filter-pill" data-sheets-approve-filter="new_student">Học sinh mới <span class="pill-count" id="sheets-count-new">0</span></button>
-          <button type="button" class="office-filter-pill" data-sheets-approve-filter="class_change">⇄ Khác lớp gốc (Chuyển lớp) <span class="pill-count" id="sheets-count-diff-class">0</span></button>
-          <button type="button" class="office-filter-pill" data-sheets-approve-filter="code_update">Cập nhật Mã HS / Thông tin <span class="pill-count" id="sheets-count-code">0</span></button>
+          <button type="button" class="office-filter-pill" data-sheets-approve-filter="class_change">Khác lớp gốc (Chuyển lớp) <span class="pill-count" id="sheets-count-diff-class">0</span></button>
+          <button type="button" class="office-filter-pill" data-sheets-approve-filter="code_update">Cập nhật thông tin <span class="pill-count" id="sheets-count-code">0</span></button>
           <button type="button" class="office-filter-pill" data-sheets-approve-filter="missing_code">Thiếu Mã HS <span class="pill-count" id="sheets-count-missing-code">0</span></button>
+          <button type="button" class="office-filter-pill" data-sheets-approve-filter="missing_class" style="color:#b91c1c; border-color:#fca5a5;">Lớp không tồn tại <span class="pill-count" id="sheets-count-missing-class">0</span></button>
         </div>
 
         <div class="attendance-table-wrap" style="max-height:42vh; overflow:auto; border:1px solid #cbd5e1; border-radius:8px;">
@@ -3123,7 +3125,7 @@ function jsonOut_(obj) {
       <div class="login-header">
         <div class="login-brand">
           <div>
-            <strong style="font:600 20px var(--font-sans); color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v5.2</span></strong>
+            <strong style="font:600 20px var(--font-sans); color:#233d31;">Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v5.5</span></strong>
             <small style="display:block; font-size:12.5px; letter-spacing:normal; color:#859388; font-weight:600;">HỆ THỐNG QUẢN LÝ TRUNG TÂM HỌC TẬP</small>
           </div>
         </div>
@@ -3396,6 +3398,6 @@ function jsonOut_(obj) {
     </div>
   </dialog>
 
-  <script type="module" src="/src/app.js?v=5.2.0"></script>
+  <script type="module" src="/src/app.js?v=5.6.0"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v5.2)
+# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v5.5)
 
 * **Mã dự án (Project Namespace):** `edu_center` / `class_mgr`
 * **Loại tài liệu:** Universal System Architecture & Product Specification (chuẩn GitHub Spec Kit dành cho mọi AI Coding Agent: Cursor, Claude Code, Windsurf, GitHub Copilot Workspace, Google Antigravity, Devin...)
@@ -1284,3 +1284,118 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 ### 18.3. Quy Chuẩn Đồng Bộ Phiên Bản v5.2
 - Hệ thống được nâng cấp đồng bộ lên phiên bản **v5.2** (`v5.2.0`) trên toàn bộ các tệp cấu hình, giao diện và mã nguồn (`index.html`, `src/app.js`, `src/features.js`, `src/data/class-catalog-repository.js`, `ARCHITECTURE_AND_WORKFLOW_SPEC.md`).
 - Tuân thủ tuyệt đối quy tắc Zero-Emoji (chỉ dùng chữ và ký hiệu đơn sắc chuẩn), hiệu năng tức thì (0ms) và bảo mật dữ liệu cao nhất.
+
+---
+
+## 19. ĐẶC TẢ KIẾN TRÚC ĐỒNG BỘ GOOGLE SHEETS & DUYỆT THÔNG TIN PHIÊN BẢN 5.3 (v5.3 RELEASE SPECIFICATION)
+
+### 19.1. Quy Tắc Phân Loại Học Sinh Mới (`new_student`)
+- **Điều kiện hiển thị:** Chỉ những học sinh có Mã học sinh hợp lệ trên Google Sheet và Mã học sinh này **chưa từng tồn tại trong cơ sở dữ liệu** (`!existingStuByCode`) mới được xếp vào nhóm "Học sinh mới".
+- **Không tự động coi là mới nếu thiếu mã:** Nếu dòng dữ liệu trên Sheet thiếu Mã học sinh, hệ thống chuyển sang nhóm "Thiếu Mã HS" (`missing_code`) để Văn phòng rà soát, không tự động đưa vào "Học sinh mới" tránh tạo trùng lặp hồ sơ.
+- **Bảo toàn dữ liệu đã có:** Nếu Mã học sinh đã có trong database, học sinh đó **tuyệt đối không bao giờ** xuất hiện trong nhóm "Học sinh mới".
+
+### 19.2. Quy Tắc Khác Lớp Gốc / Chuyển Lớp (`class_change`)
+- **Điều kiện hiển thị:** Chỉ kích hoạt khi lớp học của học sinh trên Sheet **thực sự khác với lớp gốc** đã được phân công trong cơ sở dữ liệu (`hasSheetClassInfo && hasNewClass`).
+- **Nghiệp vụ lớp gốc:**
+  - Nếu học sinh trong database đang học lớp T5, và trên Sheet cũng ghi lớp T5 -> Cùng lớp gốc -> **Không xem là chuyển lớp** (`isClassDifferent = false`).
+  - Nếu học sinh trong database học 2 lớp [T2, T5], và trên Sheet ghi lớp T5 -> Lớp T5 đã nằm trong danh sách lớp gốc của học sinh -> **Không xem là chuyển lớp**.
+  - Nếu học sinh trong database học lớp T2, nhưng trên Sheet ghi lớp T5 -> Lớp T5 chưa có trong lớp gốc -> **Xác định là Chuyển lớp / Khác lớp gốc** (`class_change`).
+  - Nếu dòng trên Sheet không có cột lớp hoặc để trống thông tin lớp -> Giữ nguyên lớp gốc trong database, không báo chuyển lớp.
+
+### 19.3. Chuyển Đổi "Cập Nhật Mã HS" Thành "Cập Nhật Thông Tin" (`code_update`)
+- **Đổi tên toàn diện trên UI & Mã:** Toàn bộ nút lọc, tab duyệt, badge phân loại và thông báo tóm tắt được đổi từ *"Cập nhật Mã HS"* thành **"Cập nhật thông tin"**.
+- **Chỉ hiển thị khi có thông tin khác biệt:** Hệ thống đối soát từng trường dữ liệu giữa Google Sheet và Database:
+  1. **Mã học sinh:** Khác mã hoặc gán mã mới cho học sinh chưa có mã.
+  2. **Họ và tên:** Tên trên Sheet khác với tên trong database.
+  3. **Trạng thái học:** Sheet có trạng thái học khác với database (chỉ so sánh khi Sheet có cung cấp trạng thái thực tế).
+  4. **Tags:** Sheet có các tag mới chưa có trong database.
+  5. **Trường học & Phụ huynh:** Khác tên trường hoặc khác tên phụ huynh.
+  6. **Điểm số & Buổi học:** Có cập nhật điểm BTVN, điểm Test hoặc ghi chú buổi học.
+- **Tự động bỏ qua 100% học sinh đã khớp:** Nếu một học sinh cùng lớp gốc và tất cả thông tin trên Sheet trùng khớp 100% với database, hệ thống tự động bỏ qua (`unchangedCount++`), hoàn toàn không đưa vào bảng duyệt.
+
+### 19.4. Khắc Phục Lỗi Mặc Định Trạng Thái Học (`enrollmentStatus`)
+- Khi Sheet không có cột trạng thái học tập, biến phân tích mặc định là chuỗi rỗng `''` (thay vì `'Nghỉ'`), giúp loại bỏ hoàn toàn hiện tượng 100% học sinh bị báo sai lệch trạng thái sang "Nghỉ".
+
+---
+
+## 20. ĐẶC TẢ PHẦN "CÁC LỚP ĐÃ HỌC & LỊCH SỬ HỌC TẬP" TRONG HỒ SƠ THÔNG TIN CHUNG (v5.4 RELEASE SPECIFICATION)
+
+### 20.1. Mục Tiêu & Vị Trí Giao Diện
+- **Vị trí tích hợp:** Ngay bên dưới trường *"Các lớp đang theo học"* trong hộp thoại Hồ sơ thông tin chung học sinh (`#student-profile-dialog` - hàm `openStudentProfile()` trong [`src/app.js`](file:///d:/OneDrive%20-%20Hanoi%20University%20of%20Science%20and%20Technology/Documents/t-i-bi-t-m-i-2/src/app.js)).
+- **Mục tiêu:** Cung cấp cho Ban giám đốc, Giáo viên và Nhân sự văn phòng cái nhìn toàn diện 360 độ về lộ trình học tập của học sinh tại trung tâm từ trước đến nay, bao gồm:
+  1. Các lớp cũ từng theo học (lớp đã chuyển hoặc hoàn thành).
+  2. Các ca bổ trợ & gia sư (1 kèm 1 hoặc nhóm nhỏ).
+  3. Các ca học bù tại lớp khác.
+
+### 20.2. Cấu Trúc Dữ Liệu & Nguồn Tổng Hợp
+- **Nhóm 1: Lớp cũ từng theo học (`old_class`):**
+  - Nguồn tổng hợp: `student.previousClassIds`, `student.classTransferHistory`, `student.attendanceHistory`, `student.scores`. Loại trừ tất cả các lớp học sinh đang trực tiếp theo học (`enrolledClassIds`) và lớp bổ trợ ảo.
+  - Thông tin hiển thị: Mã lớp, Tên lớp, Khối/Năm sinh, Ngày chuyển lớp (nếu có lịch sử chuyển lớp).
+  - Tương tác nhanh: Nút liên kết `↗` cho phép mở thẳng sang Hồ sơ học sinh theo lớp chuyên sâu (`openStudentClassProfile`) để tra cứu lịch sử bảng điểm và điểm danh chi tiết của lớp cũ.
+- **Nhóm 2: Ca bổ trợ & Gia sư (`tutoring`):**
+  - Nguồn tổng hợp: Kho ca bổ trợ trung tâm `loadTutoringSessions()`, đối soát tự động theo ID học sinh, Mã học sinh hoặc Họ tên.
+  - Thông tin hiển thị: Ngày học, Khung giờ / Thời lượng ca học, Nhân sự phụ trách (Trợ giảng / Gia sư), Nội dung kiến thức bổ trợ / ghi chú học tập.
+- **Nhóm 3: Học bù lớp khác (`makeup`):**
+  - Nguồn tổng hợp: Danh sách ca học bù của học sinh (`student.makeupSessions`), danh sách học sinh học bù của ca làm (`makeupStudents`), và lịch sử điểm danh ghi nhận diện học bù (`attendanceHistory.status === 'makeup'`).
+  - Thông tin hiển thị: Lớp học bù (Mã lớp & Tên lớp), Ngày học bù, Lớp gốc của học sinh, Ghi chú lý do học bù.
+
+### 20.3. Cơ Chế Cập Nhật Tự Động & Trạng Thái Rỗng
+- **Đồng bộ khi chỉnh sửa lớp:** Khi Văn phòng gỡ một lớp khỏi mục *"Các lớp đang theo học"* trong chế độ chỉnh sửa, lớp đó sẽ tự động được ghi nhận vào `student.previousClassIds` và chuyển sang danh mục *"Lớp cũ từng học"*.
+- **Trạng thái rỗng:** Nếu học sinh là học sinh mới chưa từng có lịch sử lớp cũ, bổ trợ hay học bù, hệ thống hiển thị dòng thông báo tinh tế: *"Chưa ghi nhận lớp cũ từng học, ca bổ trợ hay ca học bù nào."*
+
+---
+
+## 21. ĐẶC TẢ SỬA LỖI PHÂN QUYỀN VAI TRÒ NHÂN SỰ & HIỂN THỊ LỚP HỌC (v5.5 RELEASE SPECIFICATION)
+
+### 21.1. Khắc Phục Lỗi Sai Vai Trò Nhân Sự (Role Misclassification & Inversion)
+- **Nguyên nhân gốc rễ:**
+  - Logic suy đoán vai trò cũ căn cứ theo tiền tố mã nhân viên (`VP...` cho Văn phòng, `GV...` cho Giáo viên, `TA...` cho Trợ giảng). Các tài khoản viết tắt tên thực tế (`LINHBMP`, `SANGHN`, `GIANGNH`) không có các tiền tố này nên đều bị rơi vào fallback mặc định là `assistant` (Trợ giảng).
+  - Tài khoản trợ giảng `CONGNT` bị gán nhầm mã cứng `role: 'teacher'` trong `features.js`, dẫn đến việc Trợ giảng biến thành Giáo viên.
+  - Các bản ghi bị lỗi được lưu vào `localStorage` (`lopvui.signed-in-account.v1`, `lopvui.master-data.v3`) và Firebase mà không có cơ chế tự phục hồi (Self-Healing).
+- **Quy chuẩn vai trò chuẩn hóa trung tâm:**
+  - `LINHBMP`: Văn phòng (`office`) - Tên hiển thị: **Linh BMP**
+  - `SANGHN`: Văn phòng (`office`) - Tên hiển thị: **Sáng HN**
+  - `CONGNT`: Trợ giảng (`assistant`) - Tên hiển thị: **Thầy Công**
+  - `GIANGNH`: Giáo viên (`teacher`) - Tên hiển thị: **Cô Giang**
+  - `AD001` / `ADMIN`: Quản trị viên (`admin`) - Tên hiển thị: **Quản trị hệ thống**
+- **Cơ chế tự phục hồi (Self-Healing):**
+  - Trong `normalizeEmployeeAccount` (`src/data/class-catalog-repository.js`), bất kỳ khi nào nạp hoặc chuẩn hóa tài khoản có mã trên, hệ thống tự động cưỡng chế vai trò và tên chính xác.
+  - Trong `resolveVerifiedSignedInAccount` (`src/app.js`), khi người dùng đăng nhập hoặc tải lại trang, bản ghi lưu trữ phiên làm việc cũ bị hỏng sẽ được tự động sửa và ghi đè lại vào `localStorage`.
+  - Trong `handleLoginByCredentials` (`src/features.js`), loại bỏ hoàn toàn đoạn gán nhầm `CONGNT` là giáo viên, tự động nạp vai trò đúng khi xác thực thành công.
+
+### 21.2. Khắc Phục Triệt Để Lỗi Không Thấy Lớp Học Cho Tài Khoản Không Phải Admin
+- **Nguyên nhân gốc rễ:**
+  - Tài khoản Văn phòng (`LINHBMP`, `SANGHN`) bị gán nhầm `assistant`. Theo phân quyền, trợ giảng chỉ xem lớp mình được phân công dạy kèm. Do văn phòng không đứng lớp, hệ thống lọc ra 0 lớp học.
+  - Tài khoản Giáo viên (`GIANGNH`) bị gán nhầm `assistant`, trong khi các lớp học phân công `GIANGNH` ở vị trí Giáo viên.
+  - Hàm kiểm tra phân công `isClassAssignedToCurrentAccount()` chỉ kiểm tra ID nhân sự trong mảng `teacherIds`/`assistantIds` mà **hoàn toàn không kiểm tra Mã lớp, Tên lớp** (như `2K9.H4.GIANGNH`, `2K9.H3.GIANGNH`).
+  - Hàm so khớp tên `matchesStaff()` so sánh chuỗi chặt chẽ, không xử lý các danh xưng ("Cô Giang" vs "GIANGNH", "Thầy Công" vs "CONGNT").
+- **Giải pháp xử lý:**
+  1. **Quyền hạn Văn phòng (`office`):** Có toàn quyền xem và quản lý tất cả các lớp học như Admin (`selectedRole() === 'admin' || selectedRole() === 'office' => return true`).
+  2. **So khớp trực tiếp theo Mã/Tên/ID lớp:** Tách các token trong `item.code`, `item.name`, `item.id`. Nếu chứa mã nhân viên (VD: `2K9.H4.GIANGNH` chứa `GIANGNH`), lớp đó lập tức được xác định là thuộc về nhân sự đó.
+  3. **Làm sạch danh xưng tiếng Việt:** Tự động loại bỏ các từ xưng hô (`thầy`, `cô`, `gv`, `ta`, `tro giang`, `giao vien`, `anh`, `chi`, `em`, `bac`, `vp`) trước khi so khớp tên hoặc tiền tố mã nhân sự.
+  4. **Nạp lại dữ liệu lớp khi đăng nhập:** Trong `setSignedInAccount()`, gọi lại `loadClassCatalog()` sau khi đã tải `masterData` chuẩn hóa, giúp danh sách lớp lập tức xuất hiện ngay trên giao diện Đi làm và Quản lý.
+
+### 21.3. Nâng Cấp Phiên Bản v5.5 (Cache-Busting)
+- Cập nhật toàn bộ phiên bản hệ thống lên **v5.5** (`v5.5.0`) trên `index.html`, `src/app.js`, `src/features.js` và `src/data/class-catalog-repository.js` để trình duyệt người dùng tự động xóa bộ nhớ đệm và nhận mã nguồn mới nhất.
+
+---
+
+## 22. ĐẶC TẢ XỬ LÝ LỚP HỌC KHÔNG TỒN TẠI KHI ĐỒNG BỘ GOOGLE SHEETS (v5.6 RELEASE SPECIFICATION)
+
+### 22.1. Yêu cầu & Nguyên tắc Thiết kế
+1. **Tuyệt đối KHÔNG tự tạo lớp mới khi mã lớp không tồn tại trong database:**
+   - Xóa bỏ hoàn toàn cơ chế tự sinh lớp `ensureCustomClassCreated` và tùy chọn `create_new:<Mã lớp>`.
+   - Khi Google Sheet có mã lớp không khớp với bất kỳ lớp nào trong danh mục lớp học (`classCatalog`), hệ thống không được phép thêm lớp mới vào cơ sở dữ liệu.
+2. **Báo lỗi lớp không tồn tại rõ ràng trong bảng preview để duyệt:**
+   - Cột Phân loại hiển thị badge lỗi: `Lớp không tồn tại`.
+   - Cột Lớp hiển thị khối cảnh báo nền đỏ nổi bật: `Lỗi: Mã lớp [...] không tồn tại trong hệ thống! Không tự tạo lớp mới · Đã chuyển trạng thái về: Nghỉ`.
+   - Cột Thông tin học sinh hiển thị thông báo chi tiết: `Lỗi: Lớp [...] không tồn tại trong HT → Tự động chuyển về Nghỉ`.
+   - Cho phép người duyệt lựa chọn gán học sinh vào một lớp có sẵn trong database hoặc giữ nguyên không gán lớp.
+3. **Tự động chuyển trạng thái học sinh về "Nghỉ":**
+   - Trong bảng preview, trường trạng thái của học sinh có lớp không tồn tại mặc định chuyển sang `Trạng thái: Nghỉ` (chữ đỏ `#b91c1c`).
+   - Tag "Mới" tự động bỏ tích để không đánh dấu học sinh đã nghỉ là học sinh mới.
+   - Thêm bộ lọc nhanh `Lớp không tồn tại` trên thanh công cụ duyệt của Văn phòng để dễ dàng lọc riêng các trường hợp này.
+4. **Áp dụng khi duyệt (Approval Execution):**
+   - Học sinh mới có mã lớp không tồn tại sẽ được tạo hồ sơ với `enrollmentStatus: 'Nghỉ'` và `classIds: []` (không sinh lớp mới).
+   - Học sinh cũ sẽ được cập nhật trạng thái `enrollmentStatus: 'Nghỉ'` mà không làm thay đổi hay gán vào lớp rác.
+   - Thông báo kết quả và nhật ký admin ghi nhận rõ ràng số lượng học sinh chuyển về Nghỉ do lớp không tồn tại.

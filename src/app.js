@@ -1,15 +1,15 @@
-const APP_VERSION = "5.2.0";
+const APP_VERSION = "5.6.0";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=5.2.0';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=5.2.0';
+import { TUTORING_CLASS_CONFIG, TUTORING_CLASS_ID, loadTutoringSessions } from './data/tutoring-repository.js?v=5.6.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=5.6.0';
 const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=5.2.0';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=5.2.0';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.2.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=5.2.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature, isBirthYearOrCohortTag, cleanStudentTags, extractCohortFromStudentCode, isStudentInCohort, normalizeLeadingZerosToken, foldAccountIdentifier, compactAccountToken } from './data/class-catalog-repository.js?v=5.2.0';
-import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=5.2.0';
+import { setupFeatures } from './features.js?v=5.6.0';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=5.6.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.6.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=5.6.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature, isBirthYearOrCohortTag, cleanStudentTags, extractCohortFromStudentCode, isStudentInCohort, normalizeLeadingZerosToken, foldAccountIdentifier, compactAccountToken } from './data/class-catalog-repository.js?v=5.6.0';
+import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=5.6.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -2720,18 +2720,32 @@ function resolveVerifiedSignedInAccount(rawAcc) {
     const rawRole = String(rawAcc.role || '').toLowerCase().trim();
     let deducedRole = ['admin', 'office', 'teacher', 'assistant'].includes(rawRole) ? rawRole : null;
     const c = normTargetCode || normalizeAccountCode(rawAcc.code || targetId || '');
-    if (!deducedRole) {
+    if (c === 'LINHBMP' || c === 'SANGHN') deducedRole = 'office';
+    else if (c === 'CONGNT') deducedRole = 'assistant';
+    else if (c === 'GIANGNH') deducedRole = 'teacher';
+    else if (c === 'AD001' || c === 'ADMIN') deducedRole = 'admin';
+    else if (!deducedRole) {
       if (c.startsWith('AD') || c.startsWith('ADMIN')) deducedRole = 'admin';
       else if (c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG')) deducedRole = 'office';
       else if (c.startsWith('GV') || c.startsWith('TEACHER') || c.startsWith('GIAOVIEN')) deducedRole = 'teacher';
       else if (c.startsWith('TA') || c.startsWith('TG') || c.startsWith('TROGIANG')) deducedRole = 'assistant';
       else deducedRole = 'assistant';
     }
+    let defaultName = rawAcc.name;
+    if (!defaultName || defaultName === c) {
+      if (c === 'LINHBMP') defaultName = 'Bùi Minh Phương Linh';
+      else if (c === 'SANGHN') defaultName = 'Hoàng Ngọc Sáng';
+      else if (c === 'CONGNT') defaultName = 'Nguyễn Thành Công';
+      else if (c === 'GIANGNH') defaultName = 'Nguyễn Thị Hương Giang';
+      else if (c === 'AD001') defaultName = 'Quản trị hệ thống';
+      else defaultName = c;
+    }
+    defaultName = String(defaultName).replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
     const safeEmpId = targetId || `employee-${deducedRole}-${c.toLowerCase()}`;
     emp = normalizeEmployeeAccount({
       id: safeEmpId,
       code: c || 'NV000',
-      name: rawAcc.name || (c === 'CONGNT' ? 'Thầy Công' : c === 'AD001' ? 'Quản trị hệ thống' : c) || 'Nhân viên',
+      name: defaultName,
       role: deducedRole,
       isActive: true,
       authVersion: Number(rawAcc.authVersion) || 1
@@ -2744,14 +2758,47 @@ function resolveVerifiedSignedInAccount(rawAcc) {
 
   if (!emp || emp.isActive === false) return null;
 
-  // Strict role integrity & Office role preservation:
+  // Clean name: strip any "Thầy/Cô" prefix; keep full name as configured in admin staff management
   const c = normalizeAccountCode(emp.code);
-  const isOfficeCode = c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG') || rawAcc.role === 'office';
-  if (isOfficeCode && emp.role !== 'admin') {
-    emp.role = 'office';
+  let cleanName = String(emp.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
+  if (cleanName === 'Công' || cleanName === 'Thầy Công') cleanName = 'Nguyễn Thành Công';
+  if (cleanName === 'Giang' || cleanName === 'Cô Giang') cleanName = 'Nguyễn Thị Hương Giang';
+  if (!cleanName || cleanName === c || cleanName === 'Nhân sự' || cleanName === 'Chưa đăng nhập') {
+    if (c === 'LINHBMP') cleanName = 'Bùi Minh Phương Linh';
+    else if (c === 'SANGHN') cleanName = 'Hoàng Ngọc Sáng';
+    else if (c === 'CONGNT') cleanName = 'Nguyễn Thành Công';
+    else if (c === 'GIANGNH') cleanName = 'Nguyễn Thị Hương Giang';
+    else if (c === 'AD001') cleanName = 'Quản trị hệ thống';
+    else cleanName = c;
   }
-  const effectiveRole = emp.role || rawAcc.role || 'assistant';
+  let empUpdated = false;
+  if (cleanName !== emp.name) {
+    emp.name = cleanName;
+    empUpdated = true;
+  }
+
+  // The role configured in tab quản lý nhân sự (masterData.employees) is respected.
+  // Only deduce if role is completely missing or invalid:
+  if (!['admin', 'office', 'teacher', 'assistant'].includes(emp.role)) {
+    if (c === 'LINHBMP' || c === 'SANGHN') emp.role = 'office';
+    else if (c === 'CONGNT') emp.role = 'assistant';
+    else if (c === 'GIANGNH') emp.role = 'teacher';
+    else if (c === 'AD001' || c === 'ADMIN') emp.role = 'admin';
+    else emp.role = 'assistant';
+    empUpdated = true;
+  }
+
+  if (empUpdated && masterData?.employees) {
+    const idx = masterData.employees.findIndex(e => e.id === emp.id || normalizeAccountCode(e.code) === c);
+    if (idx >= 0) {
+      masterData.employees[idx] = { ...masterData.employees[idx], role: emp.role, name: emp.name };
+      try { saveMasterData(masterData); } catch {}
+    }
+  }
+
+  const effectiveRole = emp.role || 'assistant';
   rawAcc.role = effectiveRole;
+  rawAcc.name = emp.name;
 
   const freshSig = computeSessionAuthSignature(emp);
   const resolved = {
@@ -2765,7 +2812,7 @@ function resolveVerifiedSignedInAccount(rawAcc) {
   };
 
   try {
-    if (rawAcc.authSig !== freshSig || rawAcc.employeeId !== emp.id) {
+    if (rawAcc.authSig !== freshSig || rawAcc.employeeId !== emp.id || rawAcc.role !== effectiveRole || rawAcc.name !== emp.name) {
       localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(resolved));
     }
   } catch {}
@@ -4729,7 +4776,7 @@ function employeeNames(ids, fallback = 'Chưa phân công'){
 function isClassAssignedToCurrentAccount(item) {
   if (!item) return false;
   const role = selectedRole();
-  if (role === 'admin' || role === 'office') return true;
+  if (role === 'admin') return true;
   if (!currentEmployeeId && !signedInAccount?.employeeId && !signedInAccount?.code) return true;
 
   const empList = masterData?.employees || [];
@@ -4740,17 +4787,38 @@ function isClassAssignedToCurrentAccount(item) {
     (currentEmployeeId && normalizeAccountCode(e.code) === normalizeAccountCode(currentEmployeeId))
   ) || null;
 
-  const targetIds = new Set([currentEmployeeId, signedInAccount?.employeeId, currentEmp?.id].filter(Boolean));
   const targetCodes = new Set([currentEmp?.code, signedInAccount?.code, signedInAccount?.username, currentEmployeeId]
     .filter(Boolean)
     .map(c => normalizeAccountCode(c)));
 
+  const targetIds = new Set([currentEmployeeId, signedInAccount?.employeeId, currentEmp?.id].filter(Boolean));
+  for (const e of empList) {
+    if (e && e.code && targetCodes.has(normalizeAccountCode(e.code))) {
+      if (e.id) targetIds.add(e.id);
+    }
+  }
+
   const targetZeroTokens = new Set([...targetCodes].map(normalizeLeadingZerosToken).filter(Boolean));
+
+  // Match directly by class code, class name, or class id (e.g., 2K9.H4.GIANGNH, TSA2.QUANBM, TOAN8A.CONGNT)
+  const classText = [item.code, item.name, item.id].filter(Boolean).join(' ').toUpperCase();
+  const classTokens = classText.split(/[^A-Z0-9]+/);
+  for (const c of targetCodes) {
+    if (c && (classTokens.includes(c) || classText.includes(c))) return true;
+  }
+
+  function cleanStaffName(str) {
+    if (!str) return '';
+    let folded = foldAccountIdentifier(str);
+    folded = folded.replace(/\b(tro giang|giao vien|thay|co|anh|chi|em|bac|gv|ta|vp)\b/gi, ' ').trim();
+    return folded.replace(/\s+/g, ' ');
+  }
 
   const targetNames = [currentEmp?.name, signedInAccount?.name]
     .filter(Boolean)
     .map(n => n.toLowerCase().trim())
     .filter(n => n.length >= 2);
+  const targetCleanNames = targetNames.map(cleanStaffName).filter(Boolean);
 
   function matchesStaff(ids = [], nameStr = '', singleId = '') {
     if (singleId) {
@@ -4774,12 +4842,19 @@ function isClassAssignedToCurrentAccount(item) {
     const rawNames = String(nameStr || '').split(/[,;/+]+/).map(s => s.trim().toLowerCase()).filter(s => s.length >= 2);
     for (const namePart of rawNames) {
       const foldedPart = foldAccountIdentifier(namePart);
+      const cleanPart = cleanStaffName(namePart);
       for (const code of targetCodes) {
-        if (code && (namePart.includes(code.toLowerCase()) || foldedPart.includes(code.toLowerCase()))) return true;
+        if (!code) continue;
+        const codeLower = code.toLowerCase();
+        if (namePart.includes(codeLower) || foldedPart.includes(codeLower)) return true;
+        if (cleanPart && cleanPart.length >= 3 && (codeLower.startsWith(cleanPart) || codeLower.includes(cleanPart))) return true;
       }
       for (const n of targetNames) {
         const foldedTarget = foldAccountIdentifier(n);
         if (foldedPart === foldedTarget || foldedPart.includes(foldedTarget) || foldedTarget.includes(foldedPart)) return true;
+      }
+      for (const cn of targetCleanNames) {
+        if (cn && cleanPart && (cleanPart === cn || cleanPart.includes(cn) || cn.includes(cleanPart))) return true;
       }
     }
     return false;
@@ -4803,8 +4878,12 @@ function isClassAssignedToCurrentAccount(item) {
 }
 function getVisibleClassesForAccount() {
   const role = selectedRole();
-  if (role === 'admin' || role === 'office' || (!currentEmployeeId && !signedInAccount?.employeeId && !signedInAccount?.code)) return classCatalog;
-  return classCatalog.filter(isClassAssignedToCurrentAccount);
+  if (role === 'admin' || (!currentEmployeeId && !signedInAccount?.employeeId && !signedInAccount?.code)) return classCatalog;
+  const assigned = classCatalog.filter(isClassAssignedToCurrentAccount);
+  if (role === 'office') {
+    return assigned.length > 0 ? assigned : classCatalog;
+  }
+  return assigned;
 }
 function assignedShiftInstances(role){
   const results=[];
@@ -4882,7 +4961,17 @@ function scheduleCard(classInfo, dateArg, changeArg) {
 }
 function renderMainMenu(){
   const role=selectedRole(),workPanel=$('#work-menu-panel'),managed=$('#managed-class-list');
-  const _curEmp=masterData?.employees?.find(e=>e.id===currentEmployeeId);if(document.querySelector('.user-name small'))document.querySelector('.user-name small').textContent=({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role]+(_curEmp?.code?' · '+_curEmp.code:'');window.__featuresApp?.updateCurrentUserDisplay?.();
+  const _curEmp=masterData?.employees?.find(e=>e.id===currentEmployeeId);
+  const _cleanName = String(_curEmp?.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
+  const _code = _curEmp?.code || '';
+  const _roleName = ({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role] || 'Trợ giảng';
+  const _userNameEl = document.querySelector('.user-name');
+  if (_userNameEl && _cleanName) {
+    _userNameEl.innerHTML = `${escapeHtml(_cleanName)}${_code ? ` <span class="staff-code-pill" style="font-size:11.5px; font-weight:700; padding:1px 6px; background:#eaf5ec; color:#235732; border-radius:4px; margin-left:3px; vertical-align:middle;">${escapeHtml(_code)}</span>` : ''}<small id="current-user-role">${escapeHtml(_roleName)}${_code ? ' · ' + escapeHtml(_code) : ''}</small>`;
+  } else if (document.querySelector('.user-name small')) {
+    document.querySelector('.user-name small').textContent = _roleName + (_code ? ' · ' + _code : '');
+  }
+  window.__featuresApp?.updateCurrentUserDisplay?.();
   $('#main-menu-title').textContent=$('#management-menu-panel').hidden?'Ca làm & Lớp phụ trách':'Quản lý lớp học';
   $('#main-menu-description').textContent=$('#management-menu-panel').hidden?'Chọn ca làm hôm nay hoặc lớp phụ trách để mở trang tổng quan lớp học.':'Cập nhật người phụ trách, lịch học, phòng và thiết lập mặc định cho từng lớp.';
   $('#work-menu-tab').classList.toggle('active',workPanel&&!workPanel.hidden);
@@ -8366,6 +8455,14 @@ function openStudentProfile(id, origin = null){
       </div>
 
       <div class="field-label profile-wide">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+          <span>Các lớp đã học &amp; Lịch sử học tập <small style="font-weight:500; color:#5b7760;">(Lớp cũ từng học / Ca bổ trợ &amp; Gia sư / Học bù lớp khác)</small></span>
+          <span id="profile-past-classes-count-badge" style="font-size:11.5px; padding:2px 8px; border-radius:999px; background:#f1f5f9; color:#475569; font-weight:700;">0 mục</span>
+        </div>
+        <div id="profile-past-classes-wrap" style="margin-top:6px; padding:10px 12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px;"></div>
+      </div>
+
+      <div class="field-label profile-wide">
         <span>Tag phân loại</span>
         <div id="profile-tag-readonly-chips" class="profile-chip-list" style="margin-top:6px;">${tagBadges}</div>
         <div id="profile-tag-input-wrap" style="margin-top:6px;" hidden>
@@ -8438,7 +8535,12 @@ function openStudentProfile(id, origin = null){
         const cid = btn.dataset.removeClassChip;
         enrolledClassIds = enrolledClassIds.filter(id => id !== cid);
         activeProfileEnrolledClassIds = enrolledClassIds;
+        if (!student.previousClassIds) student.previousClassIds = [];
+        if (!student.previousClassIds.includes(cid)) {
+          student.previousClassIds.push(cid);
+        }
         renderEnrolledClassesUI();
+        renderPastClassesUI();
       };
     });
 
@@ -8452,13 +8554,243 @@ function openStudentProfile(id, origin = null){
         if (selectedClassId && !enrolledClassIds.includes(selectedClassId)) {
           enrolledClassIds.push(selectedClassId);
           activeProfileEnrolledClassIds = enrolledClassIds;
+          if (Array.isArray(student.previousClassIds)) {
+            student.previousClassIds = student.previousClassIds.filter(id => id !== selectedClassId);
+          }
           renderEnrolledClassesUI();
+          renderPastClassesUI();
         }
       };
     }
   }
 
+  function renderPastClassesUI() {
+    const wrap = $('#profile-past-classes-wrap');
+    const badge = $('#profile-past-classes-count-badge');
+    if (!wrap) return;
+
+    const currentEnrolled = new Set(enrolledClassIds);
+    const oldClassMap = new Map();
+    const rawOldIds = new Set(Array.isArray(student.previousClassIds) ? student.previousClassIds : []);
+
+    (student.classTransferHistory || []).forEach(tr => {
+      if (tr?.fromClassId && !currentEnrolled.has(tr.fromClassId)) {
+        rawOldIds.add(tr.fromClassId);
+        if (!oldClassMap.has(tr.fromClassId)) {
+          oldClassMap.set(tr.fromClassId, { classId: tr.fromClassId, transferDates: [], attendanceCount: 0 });
+        }
+        if (tr.date) oldClassMap.get(tr.fromClassId).transferDates.push(tr.date);
+      }
+    });
+
+    (student.attendanceHistory || []).forEach(a => {
+      if (a?.classId && !currentEnrolled.has(a.classId) && a.classId !== TUTORING_CLASS_ID) {
+        rawOldIds.add(a.classId);
+        if (!oldClassMap.has(a.classId)) {
+          oldClassMap.set(a.classId, { classId: a.classId, transferDates: [], attendanceCount: 0 });
+        }
+        oldClassMap.get(a.classId).attendanceCount++;
+      }
+    });
+
+    (student.scores || []).forEach(sc => {
+      if (sc?.classId && !currentEnrolled.has(sc.classId) && sc.classId !== TUTORING_CLASS_ID) {
+        rawOldIds.add(sc.classId);
+      }
+    });
+
+    rawOldIds.forEach(cid => {
+      if (cid && !currentEnrolled.has(cid) && cid !== TUTORING_CLASS_ID) {
+        if (!oldClassMap.has(cid)) {
+          oldClassMap.set(cid, { classId: cid, transferDates: [], attendanceCount: 0 });
+        }
+      }
+    });
+
+    const oldClasses = Array.from(oldClassMap.values()).map(item => {
+      const cls = classCatalog.find(c => c.id === item.classId) || { id: item.classId, code: item.classId, name: item.classId };
+      return {
+        classId: item.classId,
+        code: cls.code || cls.id,
+        name: cls.name || cls.id,
+        grade: cls.grade ? formatBirthYearInline(cls.grade) : '',
+        transferDates: item.transferDates,
+        attendanceCount: item.attendanceCount
+      };
+    });
+
+    // 2. Ca bổ trợ & gia sư
+    const allTutoring = typeof loadTutoringSessions === 'function' ? loadTutoringSessions() : [];
+    const sNameClean = String(student.name || '').trim().toLowerCase();
+    const sCodeClean = String(student.studentCode || '').trim().toUpperCase();
+
+    const tutoringSessions = allTutoring.filter(t => {
+      if (!t) return false;
+      if (t.studentId && t.studentId === student.id) return true;
+      if (sCodeClean && t.studentCode && String(t.studentCode).trim().toUpperCase() === sCodeClean) return true;
+      if (t.studentName && String(t.studentName).trim().toLowerCase() === sNameClean) return true;
+      return false;
+    });
+
+    // 3. Học bù lớp khác
+    const makeupList = [];
+    const seenMakeupKey = new Set();
+
+    (student.makeupSessions || []).forEach(ms => {
+      if (!ms || !ms.classId) return;
+      const key = `${ms.classId}_${ms.date || ''}`;
+      if (seenMakeupKey.has(key)) return;
+      seenMakeupKey.add(key);
+
+      const targetCls = classCatalog.find(c => c.id === ms.classId);
+      makeupList.push({
+        classId: ms.classId,
+        code: targetCls?.code || ms.classId,
+        name: targetCls?.name || ms.classId,
+        date: ms.date || '',
+        sourceClassName: ms.sourceClassName || '',
+        note: ms.note || ''
+      });
+    });
+
+    if (Array.isArray(makeupStudents)) {
+      makeupStudents.forEach(ms => {
+        const match = ms.id === student.id || ms.originalStudentId === student.id || (sCodeClean && ms.studentCode && String(ms.studentCode).trim().toUpperCase() === sCodeClean);
+        if (match && ms.attendingClassId) {
+          const key = `${ms.attendingClassId}_${ms.attendingSessionDate || ''}`;
+          if (!seenMakeupKey.has(key)) {
+            seenMakeupKey.add(key);
+            const targetCls = classCatalog.find(c => c.id === ms.attendingClassId);
+            makeupList.push({
+              classId: ms.attendingClassId,
+              code: targetCls?.code || ms.attendingClassId,
+              name: targetCls?.name || ms.attendingClassId,
+              date: ms.attendingSessionDate || '',
+              sourceClassName: ms.sourceClassName || '',
+              note: ms.sessionNote || ''
+            });
+          }
+        }
+      });
+    }
+
+    (student.attendanceHistory || []).forEach(att => {
+      if (att && (att.status === 'makeup' || att.isMakeup)) {
+        const key = `${att.classId}_${att.date || ''}`;
+        if (!seenMakeupKey.has(key)) {
+          seenMakeupKey.add(key);
+          const targetCls = classCatalog.find(c => c.id === att.classId);
+          makeupList.push({
+            classId: att.classId,
+            code: targetCls?.code || att.classId,
+            name: targetCls?.name || att.classId,
+            date: att.date || '',
+            sourceClassName: '',
+            note: att.note || ''
+          });
+        }
+      }
+    });
+
+    const totalCount = oldClasses.length + tutoringSessions.length + makeupList.length;
+    if (badge) badge.textContent = `${totalCount} mục`;
+
+    if (totalCount === 0) {
+      wrap.innerHTML = `<div style="font-size:12.5px; color:#64748b; font-style:italic; padding:4px 0;">Chưa ghi nhận lớp cũ từng học, ca bổ trợ hay ca học bù nào.</div>`;
+      return;
+    }
+
+    let html = `<div style="display:flex; flex-direction:column; gap:8px;">`;
+
+    // A. Lớp cũ từng học
+    if (oldClasses.length > 0) {
+      html += `
+        <div>
+          <div style="font-size:12px; font-weight:800; color:#475569; text-transform:uppercase; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+            <span style="display:inline-block; padding:1px 6px; border-radius:4px; background:#e2e8f0; color:#334155; font-size:11px;">Lớp cũ từng học (${oldClasses.length})</span>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            ${oldClasses.map(oc => {
+              const transferInfo = oc.transferDates?.length ? ` · Chuyển ngày ${escapeHtml(oc.transferDates[0])}` : '';
+              return `
+                <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:#fff; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;">
+                  <strong style="color:#0f172a;">${escapeHtml(oc.code)}</strong>
+                  <span style="color:#64748b;">(${escapeHtml(oc.grade || oc.name)}${transferInfo})</span>
+                  <button type="button" data-open-past-class-drilldown="${escapeHtml(oc.classId)}" style="border:0; background:transparent; padding:0; color:#1d4ed8; font-weight:700; cursor:pointer;" title="Bấm để mở hồ sơ lớp cũ này">↗</button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // B. Ca bổ trợ & gia sư
+    if (tutoringSessions.length > 0) {
+      html += `
+        <div style="${oldClasses.length > 0 ? 'border-top:1px dashed #cbd5e1; padding-top:6px;' : ''}">
+          <div style="font-size:12px; font-weight:800; color:#6b21a8; text-transform:uppercase; margin-bottom:4px;">
+            <span style="display:inline-block; padding:1px 6px; border-radius:4px; background:#f3e8ff; color:#7e22ce; font-size:11px;">Ca bổ trợ &amp; Gia sư (${tutoringSessions.length})</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            ${tutoringSessions.map(ts => {
+              const dateText = ts.date || 'Chưa ghi ngày';
+              const timeText = (ts.startTime && ts.endTime) ? ` (${ts.startTime} - ${ts.endTime})` : (ts.duration ? ` (${ts.duration}p)` : '');
+              const staffText = ts.assistantName || ts.teacherName ? ` · Phụ trách: ${escapeHtml(ts.assistantName || ts.teacherName)}` : '';
+              const topicText = ts.topic || ts.notes || 'Bổ trợ kiến thức';
+              return `
+                <div style="padding:5px 8px; background:#fff; border:1px solid #e9d5ff; border-radius:6px; font-size:12px; line-height:1.4;">
+                  <strong style="color:#6b21a8;">• Ngày ${escapeHtml(dateText)}${timeText}</strong>${staffText}
+                  <div style="color:#334155; margin-top:2px;">Nội dung: <em>${escapeHtml(topicText)}</em></div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // C. Học bù lớp khác
+    if (makeupList.length > 0) {
+      html += `
+        <div style="${(oldClasses.length > 0 || tutoringSessions.length > 0) ? 'border-top:1px dashed #cbd5e1; padding-top:6px;' : ''}">
+          <div style="font-size:12px; font-weight:800; color:#b45309; text-transform:uppercase; margin-bottom:4px;">
+            <span style="display:inline-block; padding:1px 6px; border-radius:4px; background:#fef3c7; color:#92400e; font-size:11px;">Học bù lớp khác (${makeupList.length})</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            ${makeupList.map(mk => {
+              const dateText = mk.date ? `Ngày: ${escapeHtml(mk.date)}` : '';
+              const srcText = mk.sourceClassName ? ` · Lớp gốc: ${escapeHtml(mk.sourceClassName)}` : '';
+              const noteText = mk.note ? ` · Ghi chú: ${escapeHtml(mk.note)}` : '';
+              return `
+                <div style="padding:5px 8px; background:#fff; border:1px solid #fde68a; border-radius:6px; font-size:12px; line-height:1.4;">
+                  <strong style="color:#b45309;">• Lớp học bù: [${escapeHtml(mk.code)}] ${escapeHtml(mk.name)}</strong>
+                  <div style="color:#475569; margin-top:2px;">${dateText}${srcText}${noteText}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    html += `</div>`;
+    wrap.innerHTML = html;
+
+    wrap.querySelectorAll('[data-open-past-class-drilldown]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const targetClassId = btn.dataset.openPastClassDrilldown;
+        $('#student-profile-dialog').close();
+        if (window.__featuresApp?.openStudentClassProfile) {
+          window.__featuresApp.openStudentClassProfile(student.id, targetClassId);
+        }
+      };
+    });
+  }
+
   renderEnrolledClassesUI();
+  renderPastClassesUI();
   const statusSelectEl = $('#profile-enrollment-status-select');
   const statusCustomEl = $('#profile-enrollment-status-custom');
   if (statusSelectEl && statusCustomEl) {
@@ -11848,6 +12180,7 @@ const features = setupFeatures({
   },
   getSignedInAccount: () => signedInAccount,
   setSignedInAccount: (acc) => {
+    masterData = loadMasterData();
     const verified = resolveVerifiedSignedInAccount(acc);
     signedInAccount = verified || { employeeId: null, role: null };
     currentEmployeeId = verified?.employeeId || null;

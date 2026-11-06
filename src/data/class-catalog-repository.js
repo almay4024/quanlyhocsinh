@@ -48,7 +48,11 @@ const masterDefaults = {
     { id: 'subject-science', name: 'Khoa học tự nhiên' }
   ],
   employees: [
-    { id: 'employee-admin-001', code: 'AD001', name: 'Quản trị hệ thống', role: 'admin', password: 'admin123', isActive: true, authVersion: 1 }
+    { id: 'employee-admin-001', code: 'AD001', name: 'Quản trị hệ thống', role: 'admin', password: 'admin123', isActive: true, authVersion: 1 },
+    { id: 'employee-office-linhbmp', code: 'LINHBMP', name: 'Bùi Minh Phương Linh', role: 'office', password: '123456', isActive: true, authVersion: 1 },
+    { id: 'employee-office-sanghn', code: 'SANGHN', name: 'Hoàng Ngọc Sáng', role: 'office', password: '123456', isActive: true, authVersion: 1 },
+    { id: 'employee-assistant-congnt', code: 'CONGNT', name: 'Nguyễn Thành Công', role: 'assistant', password: '123456', isActive: true, authVersion: 1 },
+    { id: 'employee-teacher-giangnh', code: 'GIANGNH', name: 'Nguyễn Thị Hương Giang', role: 'teacher', password: '123456', isActive: true, authVersion: 1 }
   ]
 };
 
@@ -204,7 +208,106 @@ const startNotifications = [
   { id: 'end-test-collection', anchor: 'end', offsetMinutes: -15, title: 'Thu bài kiểm tra cuối giờ', body: 'Bắt đầu thu bài kiểm tra và chuẩn bị bàn giao.' }
 ];
 
-export const seedClasses = [];
+export const seedClasses = [
+  {
+    id: 'class-2k9-h4-giangnh',
+    code: '2K9.H4.GIANGNH',
+    name: '2K9.H4.GIANGNH',
+    grade: '2009',
+    subjectId: 'subject-chemistry',
+    subject: 'Hóa học',
+    weekday: 4,
+    startTime: '18:00',
+    endTime: '19:30',
+    room: 'P1-T3-CS1',
+    teacherId: 'employee-teacher-giangnh',
+    teacherIds: ['employee-teacher-giangnh'],
+    teacherName: 'Nguyễn Thị Hương Giang',
+    assistantId: 'employee-assistant-congnt',
+    assistantIds: ['employee-assistant-congnt'],
+    assistantName: 'Nguyễn Thành Công',
+    officeIds: ['employee-office-linhbmp', 'employee-office-sanghn'],
+    defaultLayout: makeDesks('class-2k9-h4-giangnh', [3, 3, 2], [2]),
+    defaultChecklist: {
+      startItems: ['Kiểm tra máy chiếu / điều hòa', 'Thu bài tập về nhà đầu giờ', 'Chốt điểm danh sau 15 phút'],
+      endItems: ['Thu bài kiểm tra định kỳ', 'Nhắc nhở học sinh dọn rác', 'Tắt thiết bị điện']
+    },
+    defaultNotifications: structuredClone(startNotifications)
+  },
+  {
+    id: 'class-2k9-h3-giangnh',
+    code: '2K9.H3.GIANGNH',
+    name: '2K9.H3.GIANGNH',
+    grade: '2009',
+    subjectId: 'subject-chemistry',
+    subject: 'Hóa học',
+    weekday: 3,
+    startTime: '18:00',
+    endTime: '19:30',
+    room: 'P2-T3-CS1',
+    teacherId: 'employee-teacher-giangnh',
+    teacherIds: ['employee-teacher-giangnh'],
+    teacherName: 'Nguyễn Thị Hương Giang',
+    assistantId: 'employee-assistant-congnt',
+    assistantIds: ['employee-assistant-congnt'],
+    assistantName: 'Nguyễn Thành Công',
+    officeIds: ['employee-office-linhbmp', 'employee-office-sanghn'],
+    defaultLayout: makeDesks('class-2k9-h3-giangnh', [3, 3, 2], [2]),
+    defaultChecklist: {
+      startItems: ['Kiểm tra máy chiếu / điều hòa', 'Thu bài tập về nhà đầu giờ', 'Chốt điểm danh sau 15 phút'],
+      endItems: ['Thu bài kiểm tra định kỳ', 'Nhắc nhở học sinh dọn rác', 'Tắt thiết bị điện']
+    },
+    defaultNotifications: structuredClone(startNotifications)
+  },
+  {
+    id: 'class-tsa2-quanbm',
+    code: 'TSA2.QUANBM',
+    name: 'TSA2.QUANBM',
+    grade: '2009',
+    subjectId: 'subject-math',
+    subject: 'Toán',
+    weekday: 2,
+    startTime: '18:00',
+    endTime: '19:30',
+    room: 'P3-T3-CS1',
+    teacherName: 'Bùi Minh Quân',
+    assistantId: 'employee-assistant-congnt',
+    assistantIds: ['employee-assistant-congnt'],
+    assistantName: 'Nguyễn Thành Công',
+    officeIds: ['employee-office-linhbmp', 'employee-office-sanghn'],
+    defaultLayout: makeDesks('class-tsa2-quanbm', [3, 3, 2], [2]),
+    defaultChecklist: {
+      startItems: ['Kiểm tra máy chiếu / điều hòa', 'Thu bài tập về nhà đầu giờ'],
+      endItems: ['Nhắc nhở học sinh', 'Tắt thiết bị điện']
+    },
+    defaultNotifications: structuredClone(startNotifications)
+  },
+  {
+    id: 'class-math-8a',
+    code: 'TOAN8A',
+    name: 'Toán 8A',
+    grade: '2011',
+    subjectId: 'subject-math',
+    subject: 'Toán',
+    weekday: 1,
+    startTime: '17:30',
+    endTime: '19:00',
+    room: 'P1-T3-CS1',
+    teacherId: 'employee-teacher-giangnh',
+    teacherIds: ['employee-teacher-giangnh'],
+    teacherName: 'Nguyễn Thị Hương Giang',
+    assistantId: 'employee-assistant-congnt',
+    assistantIds: ['employee-assistant-congnt'],
+    assistantName: 'Nguyễn Thành Công',
+    officeIds: ['employee-office-linhbmp', 'employee-office-sanghn'],
+    defaultLayout: makeDesks('class-math-8a', [3, 3, 2], [2]),
+    defaultChecklist: {
+      startItems: ['Kiểm tra máy chiếu / điều hòa', 'Thu bài tập về nhà đầu giờ'],
+      endItems: ['Nhắc nhở học sinh', 'Tắt thiết bị điện']
+    },
+    defaultNotifications: structuredClone(startNotifications)
+  }
+];
 
 function resolveClass(classInfo, masters, storage = localStorage) {
   const seed = seedClasses.find(item => item.id === classInfo.id);
@@ -504,24 +607,42 @@ export function decryptStaffPasswordForAdmin(emp, callerRole = 'assistant') {
 export function normalizeEmployeeAccount(emp) {
   if (!emp || typeof emp !== 'object') return null;
   const code = normalizeAccountCode(emp.code) || 'NV000';
+  const upperCode = code.toUpperCase();
   let role = String(emp.role || '').trim().toLowerCase();
   if (role === 'vanphong' || role === 'vp') role = 'office';
   else if (role === 'giaovien' || role === 'gv') role = 'teacher';
   else if (role === 'trogiang' || role === 'tg') role = 'assistant';
   else if (role === 'quantri' || role === 'quantrivien') role = 'admin';
 
-  // If role is explicitly provided and valid, RESPECT IT! Never mutate an existing teacher to assistant or assistant to teacher
+  // Role in tab quản lý nhân sự is source of truth. If valid, respect it!
   if (!['admin', 'office', 'teacher', 'assistant'].includes(role)) {
-    if (code.startsWith('AD') || code.startsWith('ADMIN')) role = 'admin';
-    else if (code.startsWith('VP') || code.startsWith('OFFICE') || code.startsWith('VANPHONG') || code.includes('VANPHONG')) role = 'office';
-    else if (code.startsWith('GV') || code.startsWith('TEACHER') || code.startsWith('GIAOVIEN')) role = 'teacher';
-    else if (code.startsWith('TA') || code.startsWith('TG') || code.startsWith('TROGIANG')) role = 'assistant';
-    else role = 'assistant';
-  } else {
-    // Role is valid. Only enforce office if code explicitly indicates VP and role is not admin
-    if ((code.startsWith('VP') || code.startsWith('OFFICE') || code.startsWith('VANPHONG') || code.includes('VANPHONG')) && role !== 'admin') {
+    if (upperCode === 'LINHBMP' || upperCode === 'SANGHN') {
       role = 'office';
-    }
+    } else if (upperCode === 'CONGNT') {
+      role = 'assistant';
+    } else if (upperCode === 'GIANGNH') {
+      role = 'teacher';
+    } else if (upperCode === 'AD001' || upperCode === 'ADMIN') {
+      role = 'admin';
+    } else if (upperCode.startsWith('AD') || upperCode.startsWith('ADMIN')) role = 'admin';
+    else if (upperCode.startsWith('VP') || upperCode.startsWith('OFFICE') || upperCode.startsWith('VANPHONG') || upperCode.includes('VANPHONG')) role = 'office';
+    else if (upperCode.startsWith('GV') || upperCode.startsWith('TEACHER') || upperCode.startsWith('GIAOVIEN')) role = 'teacher';
+    else if (upperCode.startsWith('TA') || upperCode.startsWith('TG') || upperCode.startsWith('TROGIANG')) role = 'assistant';
+    else role = 'assistant';
+  }
+
+  let name = String(emp.name || '').normalize('NFC').trim();
+  // Strip any accidental title prefix (Thầy, Cô, Anh, Chị, Em, GV, TA)
+  name = name.replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
+  if (name === 'Công') name = 'Nguyễn Thành Công';
+  if (name === 'Giang') name = 'Nguyễn Thị Hương Giang';
+  if (!name || name === code || name === 'Nhân sự' || name === 'Chưa đăng nhập') {
+    if (upperCode === 'LINHBMP') name = 'Bùi Minh Phương Linh';
+    else if (upperCode === 'SANGHN') name = 'Hoàng Ngọc Sáng';
+    else if (upperCode === 'CONGNT') name = 'Nguyễn Thành Công';
+    else if (upperCode === 'GIANGNH') name = 'Nguyễn Thị Hương Giang';
+    else if (upperCode === 'AD001') name = 'Quản trị hệ thống';
+    else name = code;
   }
   const defaultPwd = role === 'admin' ? 'admin123' : '123456';
 
@@ -553,7 +674,7 @@ export function normalizeEmployeeAccount(emp) {
   const copy = {
     ...emp,
     code,
-    name: String(emp.name || '').normalize('NFC').trim(),
+    name: name || code,
     role,
     passwordHash,
     passwordCipher,
@@ -612,8 +733,25 @@ export function loadMasterData(storage = localStorage) {
         }
       }
 
-      // If any mock employees were purged, write clean data back to storage
-      if (employees.length !== saved.employees.length) {
+      // 3. Ensure core staff accounts exist and have self-healed roles
+      let modified = false;
+      for (const defEmp of masterDefaults.employees) {
+        const existing = employees.find(e => normalizeAccountCode(e.code) === normalizeAccountCode(defEmp.code) || e.id === defEmp.id);
+        if (!existing) {
+          employees.push(normalizeEmployeeAccount(defEmp));
+          modified = true;
+        } else {
+          const norm = normalizeEmployeeAccount(existing);
+          if (existing.role !== norm.role || existing.name !== norm.name) {
+            existing.role = norm.role;
+            existing.name = norm.name;
+            modified = true;
+          }
+        }
+      }
+
+      // If any mock employees were purged or roles corrected, write clean data back to storage
+      if (modified || employees.length !== saved.employees.length) {
         saveMasterData({ ...saved, employees }, storage);
       }
 
@@ -651,13 +789,20 @@ export function loadClassCatalog(storage = localStorage, masters = loadMasterDat
       saved = JSON.parse(raw);
     }
   } catch {}
-  if (!hasStoredKey || !Array.isArray(saved)) {
-    saved = [];
+  if (!hasStoredKey || !Array.isArray(saved) || saved.length === 0) {
+    saved = structuredClone(seedClasses);
+    try {
+      if (saved.length) storage.setItem(CATALOG_KEY, JSON.stringify(saved));
+    } catch {}
   } else {
     // Purge mock seed classes completely
     const filtered = saved.filter(c => !MOCK_SEED_CLASS_IDS.has(c.id));
     if (filtered.length !== saved.length) {
       saved = filtered;
+      saveClassCatalog(saved, storage);
+    }
+    if (saved.length === 0 && seedClasses.length > 0) {
+      saved = structuredClone(seedClasses);
       saveClassCatalog(saved, storage);
     }
   }
