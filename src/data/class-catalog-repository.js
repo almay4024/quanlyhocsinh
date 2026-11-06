@@ -614,17 +614,17 @@ export function normalizeEmployeeAccount(emp) {
   else if (role === 'trogiang' || role === 'tg') role = 'assistant';
   else if (role === 'quantri' || role === 'quantrivien') role = 'admin';
 
-  // Role in tab quản lý nhân sự is source of truth. If valid, respect it!
-  if (!['admin', 'office', 'teacher', 'assistant'].includes(role)) {
-    if (upperCode === 'LINHBMP' || upperCode === 'SANGHN') {
-      role = 'office';
-    } else if (upperCode === 'CONGNT') {
-      role = 'assistant';
-    } else if (upperCode === 'GIANGNH') {
-      role = 'teacher';
-    } else if (upperCode === 'AD001' || upperCode === 'ADMIN') {
-      role = 'admin';
-    } else if (upperCode.startsWith('AD') || upperCode.startsWith('ADMIN')) role = 'admin';
+  // Core known staff accounts have authoritative canonical roles
+  if (upperCode === 'LINHBMP' || upperCode === 'SANGHN') {
+    role = 'office';
+  } else if (upperCode === 'CONGNT') {
+    role = 'assistant';
+  } else if (upperCode === 'GIANGNH') {
+    role = 'teacher';
+  } else if (upperCode === 'AD001' || upperCode === 'ADMIN') {
+    role = 'admin';
+  } else if (!['admin', 'office', 'teacher', 'assistant'].includes(role)) {
+    if (upperCode.startsWith('AD') || upperCode.startsWith('ADMIN')) role = 'admin';
     else if (upperCode.startsWith('VP') || upperCode.startsWith('OFFICE') || upperCode.startsWith('VANPHONG') || upperCode.includes('VANPHONG')) role = 'office';
     else if (upperCode.startsWith('GV') || upperCode.startsWith('TEACHER') || upperCode.startsWith('GIAOVIEN')) role = 'teacher';
     else if (upperCode.startsWith('TA') || upperCode.startsWith('TG') || upperCode.startsWith('TROGIANG')) role = 'assistant';

@@ -373,14 +373,27 @@ export function setupFeatures(ctx) {
       master.employees = [...(master.employees || []), emp];
       if (ctx.setMasterData) ctx.setMasterData(master);
     } else {
-      // Clean title prefixes in emp.name if any; respect the role configured in master.employees (tab quản lý nhân sự)
+      // Clean title prefixes in emp.name if any; self-heal core employee roles if needed
       let cleanName = String(emp.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
       if (cleanName === 'Công' || cleanName === 'Thầy Công') cleanName = 'Nguyễn Thành Công';
       if (cleanName === 'Giang' || cleanName === 'Cô Giang') cleanName = 'Nguyễn Thị Hương Giang';
+      let empNeedsUpdate = false;
       if (cleanName && cleanName !== emp.name) {
         emp.name = cleanName;
+        empNeedsUpdate = true;
+      }
+      if (upperCode === 'LINHBMP' || upperCode === 'SANGHN') {
+        if (emp.role !== 'office') { emp.role = 'office'; empNeedsUpdate = true; }
+      } else if (upperCode === 'CONGNT') {
+        if (emp.role !== 'assistant') { emp.role = 'assistant'; empNeedsUpdate = true; }
+      } else if (upperCode === 'GIANGNH') {
+        if (emp.role !== 'teacher') { emp.role = 'teacher'; empNeedsUpdate = true; }
+      } else if (upperCode === 'AD001' || upperCode === 'ADMIN') {
+        if (emp.role !== 'admin') { emp.role = 'admin'; empNeedsUpdate = true; }
+      }
+      if (empNeedsUpdate) {
         const idx = (master.employees || []).findIndex(e => e.id === emp.id || normalizeAccountCode(e.code) === upperCode);
-        if (idx >= 0) master.employees[idx] = { ...master.employees[idx], name: cleanName };
+        if (idx >= 0) master.employees[idx] = { ...master.employees[idx], role: emp.role, name: emp.name };
         if (ctx.setMasterData) ctx.setMasterData(master);
       }
     }

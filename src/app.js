@@ -2689,6 +2689,7 @@ const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fa
 })();
 let masterData=loadMasterData();
 let sessionChanges=loadClassSessionChanges();
+let currentEmployeeId=null;
 function resolveVerifiedSignedInAccount(rawAcc) {
   if (!rawAcc || typeof rawAcc !== 'object') return null;
   const targetId = rawAcc.employeeId || rawAcc.id || null;
@@ -2777,14 +2778,17 @@ function resolveVerifiedSignedInAccount(rawAcc) {
     empUpdated = true;
   }
 
-  // The role configured in tab quản lý nhân sự (masterData.employees) is respected.
-  // Only deduce if role is completely missing or invalid:
-  if (!['admin', 'office', 'teacher', 'assistant'].includes(emp.role)) {
-    if (c === 'LINHBMP' || c === 'SANGHN') emp.role = 'office';
-    else if (c === 'CONGNT') emp.role = 'assistant';
-    else if (c === 'GIANGNH') emp.role = 'teacher';
-    else if (c === 'AD001' || c === 'ADMIN') emp.role = 'admin';
-    else emp.role = 'assistant';
+  // Self-heal known core center accounts to their canonical roles
+  if (c === 'LINHBMP' || c === 'SANGHN') {
+    if (emp.role !== 'office') { emp.role = 'office'; empUpdated = true; }
+  } else if (c === 'CONGNT') {
+    if (emp.role !== 'assistant') { emp.role = 'assistant'; empUpdated = true; }
+  } else if (c === 'GIANGNH') {
+    if (emp.role !== 'teacher') { emp.role = 'teacher'; empUpdated = true; }
+  } else if (c === 'AD001' || c === 'ADMIN') {
+    if (emp.role !== 'admin') { emp.role = 'admin'; empUpdated = true; }
+  } else if (!['admin', 'office', 'teacher', 'assistant'].includes(emp.role)) {
+    emp.role = 'assistant';
     empUpdated = true;
   }
 
@@ -3401,7 +3405,7 @@ function undoSeating() {
   toast('Đã hoàn tác thao tác trên sơ đồ lớp.');
 }
 
-let currentEmployeeId=signedInAccount?.employeeId||null;
+currentEmployeeId=currentEmployeeId||signedInAccount?.employeeId||null;
 const requestedClassId=new URLSearchParams(location.search).get('class');
 let CURRENT_CLASS_ID=classCatalog.some(item=>item.id===requestedClassId)?requestedClassId:defaultClassId;
 const EMPTY_CLASS_FALLBACK = {
@@ -4069,7 +4073,7 @@ function applyAutoNewStudentSessionNote(student, noteInputSelector = null) {
   }
   return resolvedNote;
 }
-const currentStaffName=()=>masterData?.employees?.find(e=>e.id===currentEmployeeId)?.name||document.querySelector('.user-name')?.childNodes[0]?.textContent.trim()||'Trợ giảng';
+const currentStaffName=()=>masterData?.employees?.find(e=>e.id===currentEmployeeId)?.name||signedInAccount?.name||document.querySelector('.user-name')?.childNodes?.[0]?.textContent?.trim()||'Trợ giảng';
 const personalWorkKey=()=>`lopvui.personal-work.v2.${currentEmployeeId||signedInAccount?.code||'anonymous'}`;
 const loadPersonalWorkDays=()=>{
   const v2 = read(personalWorkKey(), null);
@@ -4776,7 +4780,7 @@ function employeeNames(ids, fallback = 'Chưa phân công'){
 function isClassAssignedToCurrentAccount(item) {
   if (!item) return false;
   const role = selectedRole();
-  if (role === 'admin') return true;
+  if (role === 'admin' || role === 'office') return true;
   if (!currentEmployeeId && !signedInAccount?.employeeId && !signedInAccount?.code) return true;
 
   const empList = masterData?.employees || [];
@@ -4878,12 +4882,8 @@ function isClassAssignedToCurrentAccount(item) {
 }
 function getVisibleClassesForAccount() {
   const role = selectedRole();
-  if (role === 'admin' || (!currentEmployeeId && !signedInAccount?.employeeId && !signedInAccount?.code)) return classCatalog;
-  const assigned = classCatalog.filter(isClassAssignedToCurrentAccount);
-  if (role === 'office') {
-    return assigned.length > 0 ? assigned : classCatalog;
-  }
-  return assigned;
+  if (role === 'admin' || role === 'office' || (!currentEmployeeId && !signedInAccount?.employeeId && !signedInAccount?.code)) return classCatalog;
+  return classCatalog.filter(isClassAssignedToCurrentAccount);
 }
 function assignedShiftInstances(role){
   const results=[];
@@ -4961,9 +4961,13 @@ function scheduleCard(classInfo, dateArg, changeArg) {
 }
 function renderMainMenu(){
   const role=selectedRole(),workPanel=$('#work-menu-panel'),managed=$('#managed-class-list');
-  const _curEmp=masterData?.employees?.find(e=>e.id===currentEmployeeId);
-  const _cleanName = String(_curEmp?.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
-  const _code = _curEmp?.code || '';
+  const _curEmp=masterData?.employees?.find(e=>
+    (currentEmployeeId && (e.id === currentEmployeeId || normalizeAccountCode(e.code) === normalizeAccountCode(currentEmployeeId))) ||
+    (signedInAccount?.employeeId && e.id === signedInAccount.employeeId) ||
+    (signedInAccount?.code && normalizeAccountCode(e.code) === normalizeAccountCode(signedInAccount.code))
+  );
+  const _cleanName = String(_curEmp?.name || signedInAccount?.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
+  const _code = _curEmp?.code || signedInAccount?.code || '';
   const _roleName = ({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role] || 'Trợ giảng';
   const _userNameEl = document.querySelector('.user-name');
   if (_userNameEl && _cleanName) {
