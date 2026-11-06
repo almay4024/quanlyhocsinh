@@ -508,7 +508,23 @@ export function decryptStaffPasswordForAdmin(emp, callerRole = 'assistant') {
 export function normalizeEmployeeAccount(emp) {
   if (!emp || typeof emp !== 'object') return null;
   const code = normalizeAccountCode(emp.code) || 'NV000';
-  const role = ['admin', 'office', 'teacher', 'assistant'].includes(emp.role) ? emp.role : 'assistant';
+  let role = String(emp.role || '').trim().toLowerCase();
+  if (role === 'vanphong' || role === 'vp') role = 'office';
+  if (role === 'giaovien' || role === 'gv') role = 'teacher';
+  if (role === 'trogiang' || role === 'tg') role = 'assistant';
+  if (role === 'quantri' || role === 'quantrivien') role = 'admin';
+
+  if (!['admin', 'office', 'teacher', 'assistant'].includes(role)) {
+    if (code.startsWith('AD') || code.startsWith('ADMIN')) role = 'admin';
+    else if (code.startsWith('VP') || code.startsWith('OFFICE') || code.startsWith('VANPHONG') || code.includes('VANPHONG')) role = 'office';
+    else if (code.startsWith('GV') || code.startsWith('TEACHER')) role = 'teacher';
+    else role = 'assistant';
+  } else if (role === 'assistant') {
+    // Prevent accidental downgrades of Office/Teacher/Admin accounts
+    if (code.startsWith('VP') || code.startsWith('OFFICE') || code.startsWith('VANPHONG') || code.includes('VANPHONG')) role = 'office';
+    else if (code.startsWith('GV') || code.startsWith('TEACHER')) role = 'teacher';
+    else if (code.startsWith('AD') || code.startsWith('ADMIN')) role = 'admin';
+  }
   const defaultPwd = role === 'admin' ? 'admin123' : '123456';
 
   let plainToEncrypt = null;

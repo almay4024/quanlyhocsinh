@@ -1,15 +1,15 @@
-const APP_VERSION = "4.5.0";
+const APP_VERSION = "5.1.0";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.5.0';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=4.5.0';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=5.1.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=5.1.0';
 const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=4.5.0';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=4.5.0';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive, mergeTwoStudentProfiles, deduplicateStudentsByCode } from './data/student-repository.js?v=4.5.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=4.5.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature, isBirthYearOrCohortTag, cleanStudentTags, extractCohortFromStudentCode, isStudentInCohort } from './data/class-catalog-repository.js?v=4.5.0';
-import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=4.5.0';
+import { setupFeatures } from './features.js?v=5.1.0';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=5.1.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.1.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=5.1.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature, isBirthYearOrCohortTag, cleanStudentTags, extractCohortFromStudentCode, isStudentInCohort } from './data/class-catalog-repository.js?v=5.1.0';
+import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=5.1.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -2710,37 +2710,42 @@ function resolveVerifiedSignedInAccount(rawAcc) {
     emp = employees.find(e => normalizeAccountCode(e.code) === normalizeAccountCode(targetId));
   }
 
-  // Auto-register known persistent accounts if needed
-  if (!emp && normTargetCode) {
-    if (normTargetCode === 'CONGNT') {
-      emp = normalizeEmployeeAccount({
-        id: 'employee-teacher-congnt',
-        code: 'CONGNT',
-        name: 'Thầy Công',
-        role: 'teacher',
-        isActive: true,
-        authVersion: 1
-      });
+  // Auto-register / hydrate account into masterData if not present
+  if (!emp && (normTargetCode || targetId || rawAcc.code || rawAcc.role)) {
+    const rawRole = String(rawAcc.role || '').toLowerCase().trim();
+    let deducedRole = ['admin', 'office', 'teacher', 'assistant'].includes(rawRole) ? rawRole : null;
+    const c = normTargetCode || normalizeAccountCode(rawAcc.code || targetId || '');
+    if (!deducedRole) {
+      if (c.startsWith('AD') || c.startsWith('ADMIN')) deducedRole = 'admin';
+      else if (c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG')) deducedRole = 'office';
+      else if (c.startsWith('GV') || c.startsWith('TEACHER')) deducedRole = 'teacher';
+      else deducedRole = 'assistant';
+    }
+    const safeEmpId = targetId || `employee-${deducedRole}-${c.toLowerCase()}`;
+    emp = normalizeEmployeeAccount({
+      id: safeEmpId,
+      code: c || 'NV000',
+      name: rawAcc.name || (c === 'CONGNT' ? 'Thầy Công' : c === 'AD001' ? 'Quản trị hệ thống' : c) || 'Nhân viên',
+      role: deducedRole,
+      isActive: true,
+      authVersion: Number(rawAcc.authVersion) || 1
+    });
+    if (emp) {
       masterData.employees = [...(masterData.employees || []), emp];
-      try { saveMasterData(masterData); } catch {}
-    } else if (normTargetCode === 'AD001') {
-      emp = normalizeEmployeeAccount({
-        id: 'employee-admin-001',
-        code: 'AD001',
-        name: 'Quản trị hệ thống',
-        role: 'admin',
-        isActive: true,
-        authVersion: 1
-      });
-      masterData.employees = [emp, ...(masterData.employees || [])];
       try { saveMasterData(masterData); } catch {}
     }
   }
 
   if (!emp || emp.isActive === false) return null;
 
-  // Strict role integrity: cannot elevate beyond canonical role in masterData
-  if (rawAcc.role && rawAcc.role !== emp.role) {
+  // Strict role integrity & Office role preservation:
+  const c = normalizeAccountCode(emp.code);
+  const isOfficeCode = c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG') || rawAcc.role === 'office';
+  if (isOfficeCode && emp.role !== 'admin') {
+    emp.role = 'office';
+    rawAcc.role = 'office';
+    try { saveMasterData(masterData); } catch {}
+  } else if (rawAcc.role && rawAcc.role !== emp.role) {
     rawAcc.role = emp.role;
   }
 
@@ -4040,7 +4045,7 @@ function getUnmatchedSessionStudents() {
   const out = [];
   const seen = new Set();
   for (const s of classStudents()) {
-    if (!s || seen.has(s.id) || s._matchedOrConfirmed) continue;
+    if (!s || seen.has(s.id) || s._matchedOrConfirmed || hasValidStudentCode(s)) continue;
     const note = sessionNoteFor(s.id) || '';
     const isNew = isNewStudentRecord(s) || Boolean(note && String(note).toLocaleLowerCase('vi').includes('học sinh mới'));
     if (isNew) {
@@ -4049,8 +4054,8 @@ function getUnmatchedSessionStudents() {
     }
   }
   for (const m of sessionMakeupStudents(placements, lateIds)) {
-    if (!m || seen.has(m.id) || m._matchedOrConfirmed) continue;
-    if (m.studentType === 'makeup') {
+    if (!m || seen.has(m.id) || m._matchedOrConfirmed || hasValidStudentCode(m)) continue;
+    if (m.studentType === 'makeup' || !(m.classIds || []).includes(CURRENT_CLASS_ID)) {
       seen.add(m.id);
       out.push({ student: m, isMakeup: true });
     }
@@ -4063,7 +4068,13 @@ function renderNotifications(){
   if(!list)return;
   const canMatchMaster = canAccessCrossClassData();
   const unmatchedLive = canMatchMaster ? getUnmatchedSessionStudents() : [];
-  const visibleNotices = classCommunication.notifications.filter(item => item.type !== 'unmatched-student' || canMatchMaster);
+  const visibleNotices = classCommunication.notifications.filter(item => {
+    if (item.type !== 'unmatched-student') return true;
+    if (!canMatchMaster) return false;
+    const targetStu = item.studentId ? studentById(item.studentId) : null;
+    if (targetStu && hasValidStudentCode(targetStu)) return false;
+    return true;
+  });
   const unreadNoticeCount = visibleNotices.filter(item=>!item.read && !item.resolved).length;
   const unnotifiedUnmatchedCount = unmatchedLive.filter(({ student }) => !visibleNotices.some(n => n.studentId === student.id && !n.read && !n.resolved)).length;
   const unread = unreadNoticeCount + unnotifiedUnmatchedCount;
@@ -4089,7 +4100,7 @@ function renderNotifications(){
     : '';
   const itemsHtml = visibleNotices.slice().reverse().map(item => {
     const targetStu = item.studentId ? studentById(item.studentId) : null;
-    const canMatchThisItem = canMatchMaster && item.type === 'unmatched-student' && targetStu && !targetStu._matchedOrConfirmed && !item.resolved;
+    const canMatchThisItem = canMatchMaster && item.type === 'unmatched-student' && targetStu && !targetStu._matchedOrConfirmed && !hasValidStudentCode(targetStu) && !item.resolved;
     return `<article class="notification-item ${item.read?'':'unread'}">
       <span class="notification-item-icon ${escapeHtml(item.type)}">${item.type==='chat'?'':item.type==='homework'?'✓':item.type==='attendance'?'✓':item.type==='unmatched-student'?'•':item.type==='reminder'?'':''}</span>
       <div style="flex:1; min-width:0;">
@@ -4108,6 +4119,7 @@ function createClassNotification(title,body,type='system',key='',meta=null){if(k
 function notifyUnmatchedStudentCreated(student){
   if(!student||!student.id)return;
   if(canAccessCrossClassData())return;
+  if(hasValidStudentCode(student))return;
   const isMakeup=student.studentType==='makeup';
   const clsLabel=activeClassConfig()?.code||activeClassConfig()?.name||CURRENT_CLASS_ID;
   const staff=currentStaffName();
@@ -4789,7 +4801,7 @@ function assignedShiftInstances(role){
       if(date.getDay()!==Number(item.weekday))continue;
       const dateKey=date.toLocaleDateString('sv-SE'),change=getSessionChange(item.id,dateKey);
       if(change?.status==='cancelled')continue;
-      if(role!=='admin'&&currentEmployeeId&&!assignedIdsFor(item,change,role).includes(currentEmployeeId)&&!isClassAssignedToCurrentAccount(item))continue;
+      if(role!=='admin'&&role!=='office'&&currentEmployeeId&&!assignedIdsFor(item,change,role).includes(currentEmployeeId)&&!isClassAssignedToCurrentAccount(item))continue;
       results.push({item,date,change});
       break;
     }
@@ -4797,7 +4809,7 @@ function assignedShiftInstances(role){
   for(const change of Object.values(sessionChanges)){
     if(change?.status!=='makeup'||!change.date)continue;
     const item=classCatalog.find(row=>row.id===change.classId),date=new Date(`${change.date}T00:00:00`);
-    if(item&&(role==='admin'||!currentEmployeeId||assignedIdsFor(item,change,role).includes(currentEmployeeId)||isClassAssignedToCurrentAccount(item))&&!results.some(row=>row.item.id===item.id&&row.date.toLocaleDateString('sv-SE')===change.date))results.push({item,date,change});
+    if(item&&(role==='admin'||role==='office'||!currentEmployeeId||assignedIdsFor(item,change,role).includes(currentEmployeeId)||isClassAssignedToCurrentAccount(item))&&!results.some(row=>row.item.id===item.id&&row.date.toLocaleDateString('sv-SE')===change.date))results.push({item,date,change});
   }
   return results;
 }
@@ -6588,10 +6600,12 @@ function renderStudentList(){
     isNewStudentRecord(r.student) ||
     Boolean(r.note && String(r.note).toLocaleLowerCase('vi').includes('học sinh mới'))
   );
-  const isUnmatchedSessionRow = (r) => !r.student?._matchedOrConfirmed && (
-    (r.isMakeupRow && r.student?.studentType === 'makeup') ||
-    isNewSessionStudentRow(r)
-  );
+  const isUnmatchedSessionRow = (r) => {
+    if (!r.student) return false;
+    if (hasValidStudentCode(r.student)) return false;
+    if (r.student._matchedOrConfirmed) return false;
+    return (r.isMakeupRow && (r.student.studentType === 'makeup' || !(r.student.classIds || []).includes(CURRENT_CLASS_ID))) || isNewSessionStudentRow(r);
+  };
 
   // Cập nhật thanh Lọc nhanh & Khớp dữ liệu cho tài khoản Văn phòng / Admin
   const newStudentRowCount = records.filter(r => isNewSessionStudentRow(r)).length;
@@ -6829,7 +6843,7 @@ function renderStudentList(){
       };
 
       const isRowNewOrMakeup = isMakeupRow || isNewSessionStudentRow({ student, isMakeupRow, note });
-      const showMatchBtn = canCrossClass && isRowNewOrMakeup && !student?._matchedOrConfirmed;
+      const showMatchBtn = canCrossClass && isRowNewOrMakeup && !hasValidStudentCode(student) && !student?._matchedOrConfirmed;
 
       let sttTd = '';
       if (isPaperRosterMode) {
@@ -7634,6 +7648,13 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
     toast('Chỉ tài khoản Văn phòng hoặc Admin mới có quyền khớp dữ liệu với Danh sách tổng.');
     return;
   }
+  if (preselectedTempStudentId) {
+    const preStu = studentById(preselectedTempStudentId);
+    if (preStu && hasValidStudentCode(preStu)) {
+      toast(`Học sinh "${preStu.name}" đã có mã HS (${preStu.studentCode}), dữ liệu buổi học đã được đính vào hồ sơ nên không cần khớp nữa.`);
+      return;
+    }
+  }
   const placements = new Map(allEntries().filter(({ entry }) => entry.studentId).map(place => [place.entry.studentId, place]));
   const lateIds = new Set(lateQueue);
   const roster = classStudents();
@@ -7642,12 +7663,12 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
   const currentCls = classCatalog.find(c => c.id === CURRENT_CLASS_ID) || { id: CURRENT_CLASS_ID, name: CURRENT_CLASS_NAME || CURRENT_CLASS_ID, code: CURRENT_CLASS_ID };
   const currentClsLabel = currentCls.code || currentCls.name || CURRENT_CLASS_ID;
 
-  // Tập hợp các học sinh Mới hoặc Học bù trong buổi hiện tại (bỏ qua HS đã được xác nhận trừ khi bấm trực tiếp)
+  // Tập hợp các học sinh Mới hoặc Học bù trong buổi hiện tại (chỉ những HS chưa có mã HS)
   const tempCandidates = [];
   const seenTempIds = new Set();
 
   for (const s of roster) {
-    if (!s || (s._matchedOrConfirmed && s.id !== preselectedTempStudentId)) continue;
+    if (!s || hasValidStudentCode(s) || (s._matchedOrConfirmed && s.id !== preselectedTempStudentId)) continue;
     const note = sessionNoteFor(s.id) || '';
     const isNew = isNewStudentRecord(s) || Boolean(note && String(note).toLocaleLowerCase('vi').includes('học sinh mới'));
     if (isNew && !seenTempIds.has(s.id)) {
@@ -7656,17 +7677,17 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
     }
   }
   for (const m of classMakeups) {
-    if (!m || (m._matchedOrConfirmed && m.id !== preselectedTempStudentId)) continue;
+    if (!m || hasValidStudentCode(m) || (m._matchedOrConfirmed && m.id !== preselectedTempStudentId)) continue;
     if (!seenTempIds.has(m.id)) {
       seenTempIds.add(m.id);
       tempCandidates.push({ student: m, isMakeup: true, note: sessionNoteFor(m.id) || '', classId: CURRENT_CLASS_ID, classCode: currentCls.code || currentCls.id, className: currentCls.name });
     }
   }
 
-  // Nếu bấm từ 1 dòng cụ thể mà học sinh chưa nằm trong tempCandidates thì vẫn cho phép khớp
+  // Nếu bấm từ 1 dòng cụ thể mà học sinh chưa nằm trong tempCandidates thì chỉ cho phép nếu chưa có mã HS
   if (preselectedTempStudentId && !seenTempIds.has(preselectedTempStudentId)) {
     const preStu = studentById(preselectedTempStudentId);
-    if (preStu) {
+    if (preStu && !hasValidStudentCode(preStu)) {
       const isMk = preStu.studentType === 'makeup' || !(preStu.classIds || []).includes(CURRENT_CLASS_ID);
       tempCandidates.unshift({ student: preStu, isMakeup: isMk, note: sessionNoteFor(preStu.id) || '', classId: CURRENT_CLASS_ID, classCode: currentCls.code || currentCls.id, className: currentCls.name });
       seenTempIds.add(preStu.id);
@@ -7674,7 +7695,7 @@ function openMatchStudentWithMasterDialog(preselectedTempStudentId = null) {
   }
 
   if (!tempCandidates.length) {
-    toast('Trong buổi học hiện tại chưa có Học sinh mới hoặc Học sinh học bù nào cần khớp dữ liệu.');
+    toast('Trong buổi học hiện tại chưa có Học sinh mới hoặc Học sinh học bù nào cần khớp dữ liệu (các bạn đã có mã HS đều đã được lưu vào hồ sơ).');
     return;
   }
 
@@ -11895,7 +11916,9 @@ const features = setupFeatures({
   isStudentAccessibleToCurrentAccount: (stu) => isStudentAccessibleToCurrentAccount(stu),
   renderNotifications: () => renderNotifications(),
   openUnmatchedStudentsMatchDialog: (preselectedId) => openUnmatchedStudentsMatchDialog(preselectedId),
-  mergeAssistantStudentIntoMasterStudent: (tempId, masterId, classAction) => mergeAssistantStudentIntoMasterStudent(tempId, masterId, classAction)
+  mergeAssistantStudentIntoMasterStudent: (tempId, masterId, classAction) => mergeAssistantStudentIntoMasterStudent(tempId, masterId, classAction),
+  notifyUnmatchedStudentCreated: (stu) => notifyUnmatchedStudentCreated(stu),
+  hasValidStudentCode: (stu) => hasValidStudentCode(stu)
 });
 window.__featuresApp = features;
 

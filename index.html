@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f7f4" />
-  <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm (v5.0)</title>
+  <title>Quản lý học sinh · Hệ thống quản lý lớp học trung tâm (v5.1)</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
@@ -69,12 +69,12 @@
   </script>
   <link rel="preload" href="/src/fonts/plus-jakarta-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/src/fonts/plus-jakarta-sans-normal-vietnamese.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/src/styles.css?v=4.6.0" />
+  <link rel="stylesheet" href="/src/styles.css?v=5.1.0" />
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v5.0</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
+      <a class="brand" href="#"><span>Quản lý học sinh <span class="brand-version-badge" title="Phiên bản hệ thống">v5.1</span><small>TRUNG TÂM HỌC TẬP</small></span></a>
       <div class="nav-label">MENU CHÍNH</div>
       <button class="nav-item active" id="work-menu-nav">Đi làm</button>
       <button class="nav-item" id="tutoring-menu-nav">Lớp bổ trợ</button>
@@ -548,8 +548,8 @@
             <div id="sheets-subpanel-students" class="sheets-subpanel" hidden>
               <!-- Các nút quét & đồng bộ học sinh -->
               <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px 12px; background:#eff6ff; border:1.5px solid #93c5fd; border-radius:10px; align-items:center;">
-                <button type="button" class="primary-button" id="panel-pull-sheets-sync-btn" style="background:#1d4ed8; font-weight:800;">
-                  Quét Google Sheet: Tìm HS mới &amp; HS khác lớp gốc
+                <button type="button" class="primary-button" id="panel-pull-sheets-sync-btn" style="background:#1d4ed8; font-weight:800;" title="Quét toàn bộ các khóa và kiểm tra học sinh mới, chuyển lớp, hoặc thông tin chưa khớp">
+                  Kiểm tra đồng bộ
                 </button>
                 <button type="button" class="primary-button" id="panel-pull-multi-cohort-sheets-btn" style="background:#047857; font-weight:800;" title="Quét toàn bộ các khóa học sinh (2K9, 2K10, 2K11, 2K12, 2K13)">
                   Quét tất cả các khóa (2K9 - 2K13)
@@ -583,7 +583,7 @@
 
               <!-- Thông báo trạng thái quét -->
               <div id="panel-sheets-sync-status-banner" class="checklist-log" style="margin-top:10px;">
-                Sẵn sàng đồng bộ. Nhấp <strong>"Quét Google Sheet"</strong> để kiểm tra Học sinh mới &amp; Học sinh chuyển lớp.
+                Sẵn sàng đồng bộ. Nhấp <strong>"Kiểm tra đồng bộ"</strong> để quét toàn bộ các khóa và phát hiện Học sinh mới, Chuyển lớp, hoặc Thông tin chưa khớp.
               </div>
 
               <!-- BẢNG DUYỆT HỌC SINH MỚI & HỌC SINH KHÁC LỚP GỐC -->
@@ -1945,7 +1945,7 @@
       <button type="button" class="close-button" id="close-sheets-sync-dialog" aria-label="Đóng"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       <div class="eyebrow">TRUNG TÂM ĐỒNG BỘ GOOGLE SHEETS &amp; DUYỆT HỌC SINH THEO MÃ HS</div>
       <h2>Cấu hình &amp; Đồng bộ Mã học sinh với Google Sheets</h2>
-      <p class="dialog-hint">Khi bấm đồng bộ, hệ thống sẽ quét Google Sheet theo <strong>Mã học sinh</strong> để tìm các <strong>Học sinh mới</strong> và <strong>Học sinh có lớp trong Sheet khác với lớp gốc</strong>, hiển thị bảng để <strong>Văn phòng bấm duyệt</strong> trước khi cập nhật vào danh sách (mặc định gắn tag <strong>"Mới"</strong> và có thể bỏ chọn trước khi thêm).</p>
+      <p class="dialog-hint">Khi bấm <strong>Kiểm tra đồng bộ</strong>, hệ thống sẽ quét Google Sheet theo toàn bộ các khóa học sinh để phát hiện <strong>Học sinh mới</strong>, <strong>Chuyển lớp</strong> và <strong>Thông tin chưa khớp</strong>, hiển thị bảng để <strong>Văn phòng bấm duyệt</strong> trước khi cập nhật vào danh sách (học sinh đã khớp dữ liệu sẽ được tự động bỏ qua).</p>
 
       <!-- 1. CẤU HÌNH ĐẦY ĐỦ (CONFIGURATION PANEL) -->
       <div class="sheets-config-panel" style="padding:12px 14px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px;">
@@ -2126,8 +2126,8 @@
 
       <!-- 2. CÁC NÚT THAO TÁC QUÉT & ĐỒNG BỘ -->
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; padding:10px 12px; background:#eff6ff; border:1.5px solid #93c5fd; border-radius:10px; align-items:center;">
-        <button type="button" class="primary-button" id="pull-sheets-sync-btn" style="background:#1d4ed8; font-weight:800;">
-          Quét Google Sheet: Tìm HS mới &amp; HS khác lớp gốc
+        <button type="button" class="primary-button" id="pull-sheets-sync-btn" style="background:#1d4ed8; font-weight:800;" title="Quét toàn bộ các khóa và kiểm tra học sinh mới, chuyển lớp, hoặc thông tin chưa khớp">
+          Kiểm tra đồng bộ
         </button>
         <button type="button" class="primary-button" id="pull-multi-cohort-sheets-btn" style="background:#047857; font-weight:800;" title="Quét toàn bộ các khóa học sinh (2K9, 2K10, 2K11, 2K12, 2K13)">
           Quét tất cả các khóa (2K9 - 2K13)
@@ -2161,7 +2161,7 @@
 
       <!-- Thông báo trạng thái quét -->
       <div id="sheets-sync-status-banner" class="checklist-log" style="margin-top:10px;">
-        Sẵn sàng đồng bộ. Nhập Link Google Sheets rồi bấm <strong>"Quét Google Sheet"</strong> (hoặc dán bảng dữ liệu) để kiểm tra Học sinh mới &amp; Học sinh chuyển lớp.
+        Sẵn sàng đồng bộ. Nhập Link Google Sheets rồi bấm <strong>"Kiểm tra đồng bộ"</strong> (hoặc dán bảng dữ liệu) để kiểm tra toàn bộ các khóa.
       </div>
       <div id="sheets-sync-status-box" hidden></div>
 
@@ -3396,6 +3396,6 @@ function jsonOut_(obj) {
     </div>
   </dialog>
 
-  <script type="module" src="/src/app.js?v=4.5.0"></script>
+  <script type="module" src="/src/app.js?v=5.1.0"></script>
 </body>
 </html>

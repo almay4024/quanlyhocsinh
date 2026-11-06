@@ -34,6 +34,9 @@ export const seedStudents = [];
 
 export const seedMakeupStudents = [];
 
+export function hasValidStudentCode(person) {
+  return Boolean(person && person.studentCode && String(person.studentCode).trim());
+}
 
 export function mergeTwoStudentProfiles(primary, secondary) {
   if (!primary) return secondary;

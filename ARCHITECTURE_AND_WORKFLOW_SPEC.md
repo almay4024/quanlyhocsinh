@@ -1,4 +1,4 @@
-# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v5.0)
+# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v5.1)
 
 * **Mã dự án (Project Namespace):** `edu_center` / `class_mgr`
 * **Loại tài liệu:** Universal System Architecture & Product Specification (chuẩn GitHub Spec Kit dành cho mọi AI Coding Agent: Cursor, Claude Code, Windsurf, GitHub Copilot Workspace, Google Antigravity, Devin...)
@@ -546,6 +546,10 @@ Dành riêng cho tài khoản **Văn phòng (`office`)** và **Admin (`admin`)**
      * Trong hộp thoại Khớp dữ liệu (`#match-student-master-dialog`), danh sách lựa chọn học sinh tạm hiển thị rõ tiền tố lớp: `[HS mới của lớp 2K9.H3.GIANGNH] Nguyễn Văn A — THPT Kim Liên`.
      * Trong hộp thoại xác nhận và thông báo Toast sau khi khớp: hiển thị rõ câu thông báo chuẩn: `✓ Đã khớp học sinh mới của lớp 2K9.H3.GIANGNH ("Nguyễn Văn A") vào hồ sơ gốc "Nguyễn Văn A" (K09.1234)`.
 2. **Tab 1 — Học sinh Mới & Học bù Chờ Khớp Mã HS (`Pending TA Entries`):**
+   * **Nguyên tắc cốt lõi về Khớp danh sách:**
+     * Quy trình khớp danh sách (bao gồm hộp thoại `#match-student-master-dialog`, Hộp việc Văn phòng `#office-inbox-panel` tab `Pending TA Entries`, nút `Khớp DS tổng` trên thanh công cụ và trên từng dòng bảng học sinh) **chỉ dành riêng cho những học sinh mới hoặc học sinh học bù CHƯA CÓ MÃ HỌC SINH** (chưa được đính vào hồ sơ học sinh chính thức).
+     * **Trường hợp học sinh đã có mã học sinh (`studentCode`):** Mọi dữ liệu buổi học (chỗ ngồi, điểm danh, phút muộn, điểm BTVN, điểm kiểm tra, ghi chú) đã tự động được lưu và liên kết trực tiếp vào hồ sơ học sinh mang mã đó -> **Hệ thống xác định dữ liệu đã được khớp hoàn tất vào học sinh đó, không cần và không cho phép khớp lại**.
+     * Học sinh đã có mã HS sẽ tự động được loại trừ khỏi: danh sách chờ khớp (`getUnmatchedSessionStudents`, `getGlobalPendingTACandidates`), huy hiệu số đếm thông báo/inbox (`unmatchedCount`, `taCount`), nút "Khớp DS tổng" trên từng dòng bảng học sinh (`showMatchBtn`), và không tạo thông báo việc cần xử lý.
    * Tự động gom toàn bộ các học sinh Mới (nhãn `[Mới]`) và Học bù (nhãn `[Học bù]`) do Trợ giảng nhập tay ở tất cả các ca học mà chưa được gắn với `Mã HS` trong danh sách tổng.
    * Hiển thị đối chiếu trực quan:
      * **Bên trái:** Thông tin do Trợ giảng ghi nhận tại lớp (Họ tên, Lớp ghi nhận buổi học, Ngày học, Vị trí ghế, Điểm danh/Phút muộn, Trạng thái BTVN, Điểm BTVN/Test, Ghi chú).
@@ -1200,3 +1204,50 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
       - Học sinh có trạng thái chưa điểm danh (`unrecorded`, `unmarked`, hoặc chưa có trạng thái điểm danh).
     * Công thức tổng quát: `Vắng mặt = Sĩ số đang học - (Có mặt + Đi muộn trong DS lớp)`.
     * Giúp giáo viên và trợ giảng nắm bắt ngay tức thì số lượng học sinh chưa đến lớp / không đi học mà không cần chờ thao tác chốt ca thủ công.
+
+---
+
+## 17. ĐẶC TẢ CHI TIẾT NÂNG CẤP HỆ THỐNG PHIÊN BẢN 5.1 (v5.1 RELEASE SPECIFICATION)
+
+### 17.1. Chuẩn Hóa Bảo Toàn Vai Trò Tài Khoản Văn Phòng (`office`) & Truy Cập Lớp Cho Tài Khoản Nhân Viên
+- **Nguyên nhân cốt lõi đã xử lý:**
+  - Cơ chế `resolveVerifiedSignedInAccount` trước đây khi tài khoản chưa được nạp tức thời vào `masterData.employees` trên thiết bị client sẽ trả về `null`, dẫn đến phiên đăng nhập bị rơi về mặc định vai trò `assistant` với `currentEmployeeId = null`.
+  - Tầng `normalizeEmployeeAccount` trước đây thiếu quy tắc bảo toàn vai trò nhận diện từ mã tài khoản (`VP...`, `OFFICE...`, `VANPHONG...`), dẫn đến việc tài khoản Văn phòng bị hạ cấp thành Trợ giảng khi đối soát.
+  - Khi đăng nhập thành công qua Firebase Auth, hệ thống lưu `signedInAccount` trước khi `masterData` được đồng bộ và cập nhật, gây ra xung đột rỗng danh sách lớp phụ trách đối với các tài khoản không phải Admin (`assistant`, `teacher`).
+- **Quy chuẩn kiến trúc bảo mật v5.1:**
+  1. **Tự động nhận diện và bảo toàn vai trò Văn phòng (`office`):** Mọi mã tài khoản bắt đầu bằng `VP`, `OFFICE`, `VANPHONG` hoặc có vai trò được chỉ định là `office` sẽ được bảo toàn tuyệt đối là `role: 'office'`. Không bao giờ bị ép chuyển hoặc hạ cấp thành `assistant`.
+  2. **Tự động hydrate hồ sơ nhân sự vào `masterData`:** Khi người dùng đăng nhập hợp lệ nhưng dữ liệu máy trạm chưa kịp tải xong từ Cloud, `resolveVerifiedSignedInAccount` tự động khởi tạo và lưu tài khoản vào danh mục `masterData.employees` với đầy đủ `id`, `code`, `name`, `role`, giúp `currentEmployeeId` và `signedInAccount` luôn hợp lệ 100%.
+  3. **Đồng bộ Cloud tức thì sau xác thực:** Ngay khi `loginWithStaffCode` thành công, hệ thống gọi `pullFromFirebaseCloudNow('auth-login')` để nạp dữ liệu nhân sự và danh mục lớp mới nhất từ Firebase Realtime Database trước khi hoàn tất phiên làm việc.
+  4. **Quyền truy cập lớp học chuẩn xác:**
+     - Vai trò `admin` và `office` luôn xem được toàn bộ danh sách lớp học và dữ liệu xuyên lớp (`canAccessCrossClassData() === true`).
+     - Vai trò `assistant` và `teacher` được hiển thị đầy đủ, chính xác các lớp mà mình được phân công theo `teacherIds`, `assistantIds`, `teacherId`, `assistantId`, hoặc tên hiển thị trong danh mục lớp (`isClassAssignedToCurrentAccount`).
+
+### 17.2. Quy Chuẩn Cập Nhật Số Phiên Bản Toàn Diện (Universal Version Bump Standard)
+- Mỗi khi thực hiện bất kỳ sửa đổi, bổ sung tính năng hoặc sửa lỗi nào trên toàn bộ mã nguồn:
+  - Cập nhật số phiên bản đồng bộ tại:
+    * Tiêu đề tài liệu và mục đặc tả trong `ARCHITECTURE_AND_WORKFLOW_SPEC.md` (`v5.1`).
+    * Tiêu đề ứng dụng `<title>` trong `index.html` (`v5.1`).
+    * Huy hiệu phiên bản thanh điều hướng `.brand-version-badge` trong `index.html` (`v5.1`).
+    * Chuỗi tham số chống cache (cache buster) cho CSS và các script module ES6 (`/src/styles.css?v=5.1.0`, `/src/app.js?v=5.1.0`, và các import liên module `?v=5.1.0`).
+    * Hằng số `APP_VERSION = "5.1.0"` trong `src/app.js`.
+    * Thông báo trợ giúp hệ thống `#system-help-btn` trong `src/features.js`.
+
+### 17.3. Phạm Vi Dữ Liệu Tab Ca Bổ Trợ & Gia Sư (Strict Tutoring & Makeup Module Scoping)
+- **Quy chuẩn lọc danh sách ca học bù trong Tab Lớp bổ trợ & Học bù:**
+  - Tab "Lớp bổ trợ & Gia sư" (`#tutoring-view` / `#tutoring-session-list`) chỉ hiển thị:
+    * Các ca bổ trợ, gia sư 1-kèm-1 và ca học bù được tạo trực tiếp qua module Bổ trợ (`loadTutoringSessions()`).
+    * Các buổi học chuyên biệt do Trợ giảng phụ trách (buổi học có `classId === 'class-tutoring'`, hoặc `isTutoring === true`, hoặc mã lớp `BOTRO`).
+    * Các yêu cầu học bù chỉ định cụ thể cho ca bổ trợ do Trợ giảng kèm (`isTutoringSession === true` hoặc `classId === 'class-tutoring'`).
+  - **Loại trừ tuyệt đối học sinh học bù ở lớp khác:** Nếu học sinh nghỉ học ở lớp này và được xếp đi học bù ghép vào một lớp chính khóa thông thường khác (ví dụ: học sinh lớp 8A sang học bù tại lớp 8B), buổi học đó thuộc về lớp chính khóa của Giáo viên, **hoàn toàn không được hiển thị** trong Tab Ca bổ trợ & Gia sư.
+
+### 17.4. Đổi Nút "Quét Google Sheet" Thành Nút "Kiểm Tra Đồng Bộ" Đa Khóa
+- **Tên nút giao diện:** Đổi từ *"Quét Google Sheet: Tìm HS mới & HS khác lớp gốc"* thành **"Kiểm tra đồng bộ"** (`#panel-pull-sheets-sync-btn` và `#pull-sheets-sync-btn`).
+- **Phạm vi quét:** Tự động quét toàn bộ các khóa học sinh được cấu hình trong hệ thống (2K9, 2K10, 2K11, 2K12, 2K13) qua hàm `pullStudentsFromGoogleSheetsMultiCohort(cfg)`.
+- **Nguyên tắc hiển thị bảng duyệt lọc sạch (Clean Approval Scoping):**
+  - **Chỉ hiển thị các trường hợp cần xử lý:**
+    1. **Học sinh mới (`new_student`):** Học sinh có trên Google Sheet nhưng chưa từng có trong cơ sở dữ liệu học sinh của trung tâm.
+    2. **Chuyển lớp / Khác lớp gốc (`class_change`):** Học sinh đã có trên hệ thống nhưng thông tin lớp học trên Sheet khác với lớp gốc đang theo học.
+    3. **Thông tin chưa khớp (`code_update` / `info_mismatch`):** Học sinh cùng lớp nhưng có thay đổi/lệch về Mã học sinh, Trường học, Tên phụ huynh, Trạng thái học tập hoặc có Tag mới.
+    4. **Thiếu mã học sinh (`missing_code`):** Các dòng trên Sheet chưa được điền Mã học sinh để Văn phòng rà soát.
+  - **Bỏ qua 100% các học sinh đã khớp hoàn toàn:** Những học sinh có thông tin trùng khớp hoàn toàn giữa Sheet và Web sẽ được tự động bỏ qua (`unchangedCount++`), không hiển thị vào bảng duyệt để tránh làm rối mắt và tiết kiệm thao tác cho nhân sự Văn phòng.
+  - Nếu tất cả học sinh đã khớp hoàn toàn (không có trường hợp nào phát hiện lệch), hệ thống sẽ thông báo: *"✓ Đã kiểm tra đồng bộ: Tất cả học sinh, Mã HS và Lớp học đều đã khớp 100% với danh sách hiện tại."*

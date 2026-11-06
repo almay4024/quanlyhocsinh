@@ -1,18 +1,18 @@
-import { matchesAcronymOrText } from './student-search.js?v=4.5.0';
+import { matchesAcronymOrText } from './student-search.js?v=5.1.0';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=4.5.0';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature, extractCohortFromStudentCode, formatCohortDisplayName, isStudentInCohort, isBirthYearOrCohortTag, cleanStudentTags } from './data/class-catalog-repository.js?v=4.5.0';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, mergeTwoStudentProfiles, deduplicateStudentsByCode } from './data/student-repository.js?v=4.5.0';
-import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth, createStaffAuthAccount, updateSelfPassword } from './data/firebase-auth.js?v=4.5.0';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=5.1.0';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature, extractCohortFromStudentCode, formatCohortDisplayName, isStudentInCohort, isBirthYearOrCohortTag, cleanStudentTags } from './data/class-catalog-repository.js?v=5.1.0';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.1.0';
+import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth, createStaffAuthAccount, updateSelfPassword } from './data/firebase-auth.js?v=5.1.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=4.5.0';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=5.1.0';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -45,7 +45,7 @@ import {
   testGoogleAppsScriptConnection,
   uploadSessionDataToGoogleSheets,
   syncSingleStudentToGoogleSheets
-} from './excel-import-export.js?v=4.5.0';
+} from './excel-import-export.js?v=5.1.0';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -185,14 +185,7 @@ export function setupFeatures(ctx) {
       loginAt: Date.now()
     };
 
-    setSignedInAccount(account);
-    localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
-    localStorage.removeItem('lopvui.explicit-logout.v1');
-    try {
-      sessionStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
-    } catch {}
-
-    // Record lastLoginAt in masterData & ensure current employee exists in masterData
+    // Ensure current employee exists with proper role in masterData BEFORE setSignedInAccount
     const master = getMasterData();
     let targetInMaster = (master.employees || []).find(e => e && (e.id === normEmp.id || normalizeAccountCode(e.code) === normalizeAccountCode(normEmp.code)));
     if (targetInMaster) {
@@ -205,6 +198,13 @@ export function setupFeatures(ctx) {
       master.employees = [...(master.employees || []), normEmp];
     }
     if (ctx.setMasterData) ctx.setMasterData(master);
+
+    setSignedInAccount(account);
+    localStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
+    localStorage.removeItem('lopvui.explicit-logout.v1');
+    try {
+      sessionStorage.setItem('lopvui.signed-in-account.v1', JSON.stringify(account));
+    } catch {}
 
     // Reset any active class path/query in URL to return to main menu
     try {
@@ -318,7 +318,15 @@ export function setupFeatures(ctx) {
       return completeLoginSession(emp, rememberMe);
     }
 
-    // Firebase Auth thành công
+    // Firebase Auth thành công: kéo dữ liệu mới nhất từ cloud xuống để đảm bảo tài khoản và phân quyền đồng bộ
+    if (ctx.pullFromFirebaseCloudNow) {
+      try {
+        await ctx.pullFromFirebaseCloudNow('auth-login');
+      } catch (cloudErr) {
+        console.warn('Pull cloud post-login warning:', cloudErr);
+      }
+    }
+
     let master = getMasterData();
     let employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
     let emp = findMatchingEmployeeAccount(employees, rawCode);
@@ -354,7 +362,15 @@ export function setupFeatures(ctx) {
     }
 
     if (!emp) {
-      const deducedRole = cleanCode.startsWith('GV') ? 'teacher' : cleanCode.startsWith('VP') ? 'office' : 'assistant';
+      const c = cleanCode.toUpperCase();
+      let deducedRole = 'assistant';
+      if (c.startsWith('GV') || c.startsWith('TEACHER') || c.includes('GV')) {
+        deducedRole = 'teacher';
+      } else if (c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG')) {
+        deducedRole = 'office';
+      } else if (c.startsWith('AD') || c.startsWith('ADMIN')) {
+        deducedRole = 'admin';
+      }
       emp = {
         id: `employee-${deducedRole}-${cleanCode.toLowerCase()}`,
         code: cleanCode,
@@ -1025,53 +1041,57 @@ export function setupFeatures(ctx) {
     const directSessions = loadTutoringSessions() || [];
     const catalog = getClassCatalog();
 
-    // 1. Lấy danh sách ca học bù được đăng ký trong hệ thống
+    // 1. Chỉ lấy ca học bù được đăng ký cụ thể cho ca bổ trợ do Trợ giảng phụ trách (loại trừ học sinh học bù ở lớp khác)
     const makeups = (ctx.getMakeupStudents ? ctx.getMakeupStudents() : []) || [];
-    const mappedMakeups = makeups.map((m, idx) => {
-      const cls = catalog.find(c => c.id === m.classId || c.id === m.makeupClassId);
-      return {
-        id: m.id || `makeup-reg-${idx}-${m.studentId || m.name}`,
-        studentId: m.studentId,
-        studentName: m.name || m.studentName || 'Học sinh học bù',
-        studentClass: cls ? (cls.name || cls.code) : (m.sourceClassName || m.className || 'Lớp học bù'),
-        assistantName: m.assistantName || 'Trợ giảng phụ trách',
-        date: m.date || m.makeupDate || new Date().toISOString().slice(0, 10),
-        startTime: m.startTime || '18:00',
-        endTime: m.endTime || '19:30',
-        type: 'makeup',
-        lessonContent: m.reason || m.note || 'Ca học bù kiến thức',
-        homeworkStatus: m.homeworkDone ? 'completed' : 'pending',
-        evaluation: m.note || 'Ghi nhận học bù',
-        score: m.score ?? null,
-        isFromMakeupList: true
-      };
-    });
+    const mappedMakeups = makeups
+      .filter(m => m && (m.isTutoringSession || m.isTAOnly || m.classId === TUTORING_CLASS_ID || m.makeupClassId === TUTORING_CLASS_ID))
+      .map((m, idx) => {
+        const cls = catalog.find(c => c.id === m.classId || c.id === m.makeupClassId);
+        return {
+          id: m.id || `makeup-reg-${idx}-${m.studentId || m.name}`,
+          studentId: m.studentId,
+          studentName: m.name || m.studentName || 'Học sinh học bù',
+          studentClass: cls ? (cls.name || cls.code) : (m.sourceClassName || m.className || 'Ca bổ trợ TA'),
+          assistantName: m.assistantName || 'Trợ giảng phụ trách',
+          date: m.date || m.makeupDate || new Date().toISOString().slice(0, 10),
+          startTime: m.startTime || '18:00',
+          endTime: m.endTime || '19:30',
+          type: 'makeup',
+          lessonContent: m.reason || m.note || 'Ca học bù kiến thức do Trợ giảng kèm',
+          homeworkStatus: m.homeworkDone ? 'completed' : 'pending',
+          evaluation: m.note || 'Ghi nhận học bù',
+          score: m.score ?? null,
+          isFromMakeupList: true
+        };
+      });
 
-    // 2. Lấy học sinh học bù từ các buổi học đã lưu trong lịch sử
+    // 2. Chỉ lấy học sinh học bù từ các buổi học chuyên biệt bổ trợ/gia sư do Trợ giảng phụ trách trong lịch sử
     const allHist = (ctx.loadSessionHistory ? ctx.loadSessionHistory() : []) || [];
     const histMakeups = [];
-    allHist.forEach(sess => {
-      if (Array.isArray(sess.makeupStudents) && sess.makeupStudents.length) {
-        sess.makeupStudents.forEach((m, mIdx) => {
-          histMakeups.push({
-            id: `hist-makeup-${sess.id}-${mIdx}`,
-            studentId: m.id || m.studentId,
-            studentName: m.name || m.studentName || 'Học sinh học bù',
-            studentClass: sess.className || sess.classCode || sess.classId,
-            assistantName: sess.taName || sess.staffName || sess.startedBy?.name || 'Trợ giảng',
-            date: sess.date,
-            startTime: sess.startTime || '18:00',
-            endTime: sess.endTime || '19:30',
-            type: 'makeup',
-            lessonContent: m.reason || `Học bù buổi học ngày ${sess.date} tại lớp ${sess.className || sess.classCode || ''}`,
-            homeworkStatus: m.homeworkDone ? 'completed' : 'pending',
-            evaluation: m.note || 'Đã tham gia ca học bù.',
-            score: m.score ?? null,
-            isFromMakeupList: true
+    allHist
+      .filter(sess => sess && (sess.classId === TUTORING_CLASS_ID || sess.isTutoring === true || sess.classCode === 'BOTRO'))
+      .forEach(sess => {
+        if (Array.isArray(sess.makeupStudents) && sess.makeupStudents.length) {
+          sess.makeupStudents.forEach((m, mIdx) => {
+            histMakeups.push({
+              id: `hist-makeup-${sess.id}-${mIdx}`,
+              studentId: m.id || m.studentId,
+              studentName: m.name || m.studentName || 'Học sinh học bù',
+              studentClass: sess.className || sess.classCode || 'Ca bổ trợ TA',
+              assistantName: sess.taName || sess.staffName || sess.assistantName || 'Trợ giảng',
+              date: sess.date,
+              startTime: sess.startTime || '18:00',
+              endTime: sess.endTime || '19:30',
+              type: 'makeup',
+              lessonContent: m.reason || `Học bù ca bổ trợ ngày ${sess.date}`,
+              homeworkStatus: m.homeworkDone ? 'completed' : 'pending',
+              evaluation: m.note || 'Đã tham gia ca học bù bổ trợ.',
+              score: m.score ?? null,
+              isFromMakeupList: true
+            });
           });
-        });
-      }
-    });
+        }
+      });
 
     // Gộp tất cả ca bổ trợ, gia sư và học bù, loại trừ trùng lặp
     const seenIds = new Set();
@@ -8716,15 +8736,15 @@ export function setupFeatures(ctx) {
     if (!pendingSheetsApprovalItems.length) {
       renderSheetsApprovalTable();
       setSheetsSyncStatus(
-        `✓ Đã quét <strong>${extractedRows.length}</strong> học sinh từ ${escapeHtml(sourceLabel)}: Tất cả học sinh, Mã HS và Lớp học đều đã khớp 100% với danh sách hiện tại (không phát hiện học sinh mới hay khác lớp gốc).`,
+        `✓ Đã kiểm tra đồng bộ <strong>${extractedRows.length}</strong> học sinh từ ${escapeHtml(sourceLabel)}: Tất cả học sinh, Mã HS và Lớp học đều đã khớp 100% với danh sách hiện tại (không có học sinh mới, chuyển lớp hay thông tin chưa khớp).`,
         false
       );
-      toast(`Đã quét ${extractedRows.length} học sinh: Không có học sinh mới hoặc khác lớp gốc.`);
+      toast(`Đã kiểm tra ${extractedRows.length} học sinh: Tất cả thông tin đã khớp hoàn toàn.`);
       return;
     }
 
     setSheetsSyncStatus(
-      `Đã quét <strong>${extractedRows.length}</strong> dòng từ ${escapeHtml(sourceLabel)} · Phát hiện: <strong>${newCount} Học sinh mới</strong>, <strong>${diffClassCount} Học sinh khác lớp gốc</strong>${codeUpdateCount ? `, <strong>${codeUpdateCount} Cập nhật Mã HS/Thông tin</strong>` : ''} (và ${unchangedCount} HS đã khớp). Vui lòng kiểm tra và bấm <strong>Duyệt</strong> bên dưới!`,
+      `Kiểm tra đồng bộ <strong>${extractedRows.length}</strong> dòng từ ${escapeHtml(sourceLabel)} · Phát hiện: <strong>${newCount} Học sinh mới</strong>, <strong>${diffClassCount} Chuyển lớp / Khác lớp gốc</strong>${codeUpdateCount ? `, <strong>${codeUpdateCount} Thông tin chưa khớp</strong>` : ''} (đã bỏ qua ${unchangedCount} HS đã khớp). Vui lòng kiểm tra và bấm <strong>Duyệt</strong> bên dưới!`,
       false
     );
     renderSheetsApprovalTable();
@@ -9098,16 +9118,23 @@ export function setupFeatures(ctx) {
   $('#pull-sheets-sync-btn')?.addEventListener('click', async () => {
     if (!canAccessCrossClass()) { toast('Chỉ Văn phòng hoặc Admin mới có quyền đồng bộ Google Sheets.'); return; }
     const cfg = readAndSaveSheetsConfigFromDialog();
-    setSheetsSyncStatus('Đang kết nối Google Sheets và quét tìm Học sinh mới & Học sinh khác lớp gốc theo Mã HS...', false);
-    const res = await pullStudentsFromGoogleSheets(cfg);
+    setSheetsSyncStatus('Đang kiểm tra đồng bộ toàn bộ các khóa học sinh (2K9 - 2K13)...', false);
+    const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg);
     if (!res.success) {
-      setSheetsSyncStatus(escapeHtml(res.message), true);
-      const fallbackDetails = $('#sheets-paste-fallback-details');
-      if (fallbackDetails) fallbackDetails.open = true;
-      toast(res.message);
+      // Fallback to single sheet if multi-cohort had no configured cohorts
+      const fallbackRes = await pullStudentsFromGoogleSheets(cfg);
+      if (!fallbackRes.success) {
+        setSheetsSyncStatus(escapeHtml(res.message || fallbackRes.message), true);
+        const fallbackDetails = $('#sheets-paste-fallback-details');
+        if (fallbackDetails) fallbackDetails.open = true;
+        toast(res.message || fallbackRes.message);
+        return;
+      }
+      scanIncomingSheetsRowsForApproval(fallbackRes.rows, 'Google Sheets');
       return;
     }
-    scanIncomingSheetsRowsForApproval(res.rows, 'Google Sheets (Trực tuyến)');
+    scanIncomingSheetsRowsForApproval(res.rows, 'Google Sheets Toàn Bộ Các Khóa (2K9 - 2K13)');
+    toast(`✓ Đã kiểm tra đồng bộ: ${res.totalRows} dòng từ ${res.cohortResults.length} khóa.`);
   });
 
   $('#copy-sheets-tsv-btn')?.addEventListener('click', () => {
@@ -9544,13 +9571,14 @@ export function setupFeatures(ctx) {
   function getGlobalPendingTACandidates() {
     const catalog = getClassCatalog() || [];
     const allStudents = getStudents() || [];
+    const allMakeups = (ctx.getMakeupStudents ? ctx.getMakeupStudents() : []) || [];
     const candidates = [];
     const seenIds = new Set();
 
     catalog.forEach(cls => {
       const classStus = allStudents.filter(s => Array.isArray(s.classIds) && s.classIds.includes(cls.id));
       classStus.forEach(s => {
-        if (!s || seenIds.has(s.id) || s._matchedOrConfirmed) return;
+        if (!s || seenIds.has(s.id) || s._matchedOrConfirmed || hasValidStudentCode(s)) return;
         const isNew = isNewStudentRecord(s) || (s.tags || []).includes('Mới');
         const isMakeup = s.studentType === 'makeup';
         if (isNew || isMakeup) {
@@ -9565,6 +9593,20 @@ export function setupFeatures(ctx) {
         }
       });
     });
+
+    allMakeups.forEach(m => {
+      if (!m || seenIds.has(m.id) || m._matchedOrConfirmed || hasValidStudentCode(m)) return;
+      const targetCls = catalog.find(c => c.id === m.attendingClassId || (Array.isArray(m.classIds) && m.classIds.includes(c.id))) || { id: m.attendingClassId || '', name: m.attendingClassId || 'Chưa rõ lớp', code: m.attendingClassId || '' };
+      seenIds.add(m.id);
+      candidates.push({
+        student: m,
+        classId: targetCls.id,
+        className: targetCls.name,
+        classCode: targetCls.code || targetCls.id,
+        isMakeup: true
+      });
+    });
+
     return candidates;
   }
 
@@ -9987,7 +10029,7 @@ export function setupFeatures(ctx) {
   setInterval(updateOfficeInboxBadge, 30000);
 
   $('#system-help-btn')?.addEventListener('click', () => {
-    toast('Quản lý học sinh v5.0: Chọn lớp tại Menu Đi làm → Sơ đồ lớp (Thu BTVN & Điểm danh) → Nhập điểm → Checklist & Kết ca.');
+    toast('Quản lý học sinh v5.1: Chọn lớp tại Menu Đi làm → Sơ đồ lớp (Thu BTVN & Điểm danh) → Nhập điểm → Checklist & Kết ca.');
   });
 
   // Hook open & close session buttons
