@@ -254,7 +254,7 @@ export function setupFeatures(ctx) {
     }
 
     const roleLabelText = normEmp.role === 'assistant' ? 'Trợ giảng' : normEmp.role === 'office' ? 'Văn phòng' : normEmp.role === 'teacher' ? 'Giáo viên' : 'Admin';
-    const cleanEmpName = String(normEmp.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim() || normEmp.code;
+    const cleanEmpName = String(normEmp.name || '').replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim() || normEmp.code;
     toast(`Xin chào ${cleanEmpName} (${normEmp.code})! Đã đăng nhập vai trò ${roleLabelText}.`);
     return true;
   }
@@ -338,30 +338,8 @@ export function setupFeatures(ctx) {
 
     const upperCode = cleanCode.toUpperCase();
     if (!emp) {
-      let deducedRole = 'assistant';
+      let deducedRole = (upperCode === 'AD001' || upperCode === 'ADMIN' || upperCode.startsWith('AD')) ? 'admin' : 'assistant';
       let deducedName = cleanCode;
-      if (upperCode === 'AD001' || upperCode.startsWith('AD')) {
-        deducedRole = 'admin';
-        deducedName = 'Quản trị hệ thống';
-      } else if (upperCode === 'LINHBMP') {
-        deducedRole = 'office';
-        deducedName = 'Bùi Minh Phương Linh';
-      } else if (upperCode === 'SANGHN') {
-        deducedRole = 'office';
-        deducedName = 'Hoàng Ngọc Sáng';
-      } else if (upperCode === 'CONGNT') {
-        deducedRole = 'assistant';
-        deducedName = 'Nguyễn Thành Công';
-      } else if (upperCode === 'GIANGNH') {
-        deducedRole = 'teacher';
-        deducedName = 'Nguyễn Thị Hương Giang';
-      } else if (upperCode.startsWith('VP') || upperCode.startsWith('OFFICE') || upperCode.startsWith('VANPHONG') || upperCode.includes('VANPHONG')) {
-        deducedRole = 'office';
-      } else if (upperCode.startsWith('GV') || upperCode.startsWith('TEACHER') || upperCode.startsWith('GIAOVIEN')) {
-        deducedRole = 'teacher';
-      } else if (upperCode.startsWith('TA') || upperCode.startsWith('TG') || upperCode.startsWith('TROGIANG')) {
-        deducedRole = 'assistant';
-      }
       emp = normalizeEmployeeAccount({
         id: `employee-${deducedRole}-${cleanCode.toLowerCase()}`,
         code: cleanCode,
@@ -373,28 +351,18 @@ export function setupFeatures(ctx) {
       master.employees = [...(master.employees || []), emp];
       if (ctx.setMasterData) ctx.setMasterData(master);
     } else {
-      // Clean title prefixes in emp.name if any; self-heal core employee roles if needed
-      let cleanName = String(emp.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
-      if (cleanName === 'Công' || cleanName === 'Thầy Công') cleanName = 'Nguyễn Thành Công';
-      if (cleanName === 'Giang' || cleanName === 'Cô Giang') cleanName = 'Nguyễn Thị Hương Giang';
-      let empNeedsUpdate = false;
-      if (cleanName && cleanName !== emp.name) {
+      // Lọc sạch đại từ nhân xưng nếu có; bảo toàn 100% role và họ tên do Admin tự đặt trong Quản lý nhân sự
+      let cleanName = String(emp.name || '').replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim();
+      if (!cleanName || cleanName === 'Nhân sự' || cleanName === 'Chưa đăng nhập') {
+        cleanName = emp.code;
+      }
+      if (cleanName !== emp.name) {
         emp.name = cleanName;
-        empNeedsUpdate = true;
-      }
-      if (upperCode === 'LINHBMP' || upperCode === 'SANGHN') {
-        if (emp.role !== 'office') { emp.role = 'office'; empNeedsUpdate = true; }
-      } else if (upperCode === 'CONGNT') {
-        if (emp.role !== 'assistant') { emp.role = 'assistant'; empNeedsUpdate = true; }
-      } else if (upperCode === 'GIANGNH') {
-        if (emp.role !== 'teacher') { emp.role = 'teacher'; empNeedsUpdate = true; }
-      } else if (upperCode === 'AD001' || upperCode === 'ADMIN') {
-        if (emp.role !== 'admin') { emp.role = 'admin'; empNeedsUpdate = true; }
-      }
-      if (empNeedsUpdate) {
         const idx = (master.employees || []).findIndex(e => e.id === emp.id || normalizeAccountCode(e.code) === upperCode);
-        if (idx >= 0) master.employees[idx] = { ...master.employees[idx], role: emp.role, name: emp.name };
-        if (ctx.setMasterData) ctx.setMasterData(master);
+        if (idx >= 0) {
+          master.employees[idx] = { ...master.employees[idx], name: cleanName };
+          if (ctx.setMasterData) ctx.setMasterData(master);
+        }
       }
     }
 
@@ -633,7 +601,7 @@ export function setupFeatures(ctx) {
     };
 
     const rawDisplayName = (employee.name && employee.name !== 'Chưa đăng nhập') ? employee.name : (account?.name || account?.code || 'Nhân sự');
-    const displayName = String(rawDisplayName).replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim() || rawDisplayName;
+    const displayName = String(rawDisplayName).replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim() || rawDisplayName;
     const displayCode = employee.code && employee.code !== '—' ? employee.code : (account?.code || '—');
     const nameParts = String(displayName).split(' ').filter(Boolean);
     const initials = nameParts.length >= 2 
@@ -676,7 +644,7 @@ export function setupFeatures(ctx) {
 
     const activeCard = $('#active-account-profile-card');
     if (activeCard && currentEmp) {
-      const cleanEmpName = String(currentEmp.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim() || currentEmp.code;
+      const cleanEmpName = String(currentEmp.name || '').replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim() || currentEmp.code;
       const nameParts = String(cleanEmpName).split(' ').filter(Boolean);
       const initials = nameParts.length >= 2
         ? (nameParts[0][0] + nameParts.at(-1)[0]).toUpperCase()
@@ -888,7 +856,7 @@ export function setupFeatures(ctx) {
 
     tbody.innerHTML = filtered.map((emp, index) => {
       const empCodeNorm = normalizeAccountCode(emp.code);
-      const cleanEmpName = String(emp.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim().toLowerCase();
+      const cleanEmpName = String(emp.name || '').replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim().toLowerCase();
       const assigned = catalog.filter(c => {
         if ((c.teacherIds || []).includes(emp.id) || c.teacherId === emp.id ||
             (c.assistantIds || []).includes(emp.id) || c.assistantId === emp.id ||
@@ -1056,7 +1024,7 @@ export function setupFeatures(ctx) {
     const headers = ['STT', 'Mã NV (Login)', 'Họ và tên', 'Vai trò', 'Trạng thái TK', 'Số điện thoại', 'Email', 'Các lớp phụ trách', 'Ghi chú'];
     const rows = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean).map((emp, index) => {
       const empCodeNorm = normalizeAccountCode(emp.code);
-      const cleanEmpName = String(emp.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim().toLowerCase();
+      const cleanEmpName = String(emp.name || '').replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim().toLowerCase();
       const assigned = catalog.filter(c => {
         if ((c.teacherIds || []).includes(emp.id) || c.teacherId === emp.id ||
             (c.assistantIds || []).includes(emp.id) || c.assistantId === emp.id ||

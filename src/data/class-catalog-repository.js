@@ -608,41 +608,29 @@ export function normalizeEmployeeAccount(emp) {
   if (!emp || typeof emp !== 'object') return null;
   const code = normalizeAccountCode(emp.code) || 'NV000';
   const upperCode = code.toUpperCase();
+
+  // 1. Role: Quản lý nhân sự của admin là nguồn chân lý duy nhất (single source of truth)
   let role = String(emp.role || '').trim().toLowerCase();
   if (role === 'vanphong' || role === 'vp') role = 'office';
   else if (role === 'giaovien' || role === 'gv') role = 'teacher';
   else if (role === 'trogiang' || role === 'tg') role = 'assistant';
   else if (role === 'quantri' || role === 'quantrivien') role = 'admin';
 
-  // Core known staff accounts have authoritative canonical roles
-  if (upperCode === 'LINHBMP' || upperCode === 'SANGHN') {
-    role = 'office';
-  } else if (upperCode === 'CONGNT') {
-    role = 'assistant';
-  } else if (upperCode === 'GIANGNH') {
-    role = 'teacher';
-  } else if (upperCode === 'AD001' || upperCode === 'ADMIN') {
-    role = 'admin';
-  } else if (!['admin', 'office', 'teacher', 'assistant'].includes(role)) {
-    if (upperCode.startsWith('AD') || upperCode.startsWith('ADMIN')) role = 'admin';
-    else if (upperCode.startsWith('VP') || upperCode.startsWith('OFFICE') || upperCode.startsWith('VANPHONG') || upperCode.includes('VANPHONG')) role = 'office';
-    else if (upperCode.startsWith('GV') || upperCode.startsWith('TEACHER') || upperCode.startsWith('GIAOVIEN')) role = 'teacher';
-    else if (upperCode.startsWith('TA') || upperCode.startsWith('TG') || upperCode.startsWith('TROGIANG')) role = 'assistant';
-    else role = 'assistant';
+  // Chỉ khi role hoàn toàn trống hoặc không hợp lệ mới dùng fallback mặc định
+  if (!['admin', 'office', 'teacher', 'assistant'].includes(role)) {
+    if (upperCode === 'AD001' || upperCode === 'ADMIN' || upperCode.startsWith('AD')) {
+      role = 'admin';
+    } else {
+      role = 'assistant';
+    }
   }
 
+  // 2. Họ và tên: Lọc sạch toàn bộ đại từ nhân xưng / danh xưng (Thầy, Cô, Anh, Chị, Em, GV, TA, Trợ giảng, Giáo viên...)
+  // Giữ nguyên 100% họ tên đầy đủ do Admin tự đặt trong tab quản lý nhân sự
   let name = String(emp.name || '').normalize('NFC').trim();
-  // Strip any accidental title prefix (Thầy, Cô, Anh, Chị, Em, GV, TA)
-  name = name.replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
-  if (name === 'Công') name = 'Nguyễn Thành Công';
-  if (name === 'Giang') name = 'Nguyễn Thị Hương Giang';
-  if (!name || name === code || name === 'Nhân sự' || name === 'Chưa đăng nhập') {
-    if (upperCode === 'LINHBMP') name = 'Bùi Minh Phương Linh';
-    else if (upperCode === 'SANGHN') name = 'Hoàng Ngọc Sáng';
-    else if (upperCode === 'CONGNT') name = 'Nguyễn Thành Công';
-    else if (upperCode === 'GIANGNH') name = 'Nguyễn Thị Hương Giang';
-    else if (upperCode === 'AD001') name = 'Quản trị hệ thống';
-    else name = code;
+  name = name.replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim();
+  if (!name || name === 'Nhân sự' || name === 'Chưa đăng nhập') {
+    name = code;
   }
   const defaultPwd = role === 'admin' ? 'admin123' : '123456';
 
@@ -733,7 +721,7 @@ export function loadMasterData(storage = localStorage) {
         }
       }
 
-      // 3. Ensure core staff accounts exist and have self-healed roles
+      // 3. Khởi tạo tài khoản mặc định ban đầu nếu hệ thống chưa có
       let modified = false;
       for (const defEmp of masterDefaults.employees) {
         const existing = employees.find(e => normalizeAccountCode(e.code) === normalizeAccountCode(defEmp.code) || e.id === defEmp.id);
@@ -741,10 +729,10 @@ export function loadMasterData(storage = localStorage) {
           employees.push(normalizeEmployeeAccount(defEmp));
           modified = true;
         } else {
-          const norm = normalizeEmployeeAccount(existing);
-          if (existing.role !== norm.role || existing.name !== norm.name) {
-            existing.role = norm.role;
-            existing.name = norm.name;
+          // Lọc sạch đại từ nhân xưng nếu có, bảo toàn 100% role và họ tên do Admin tự đặt trong Quản lý nhân sự
+          const cleanName = String(existing.name || '').replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim();
+          if (cleanName && cleanName !== existing.name) {
+            existing.name = cleanName;
             modified = true;
           }
         }

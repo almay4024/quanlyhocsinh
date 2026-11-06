@@ -142,7 +142,7 @@ export function resolveClassIdsFromCell(val, defaultId, classCatalog = []) {
 
     // 3. Substring match
     if (!found) {
-      // 3A. The token contains the class code (e.g. cell has "2K9.T5 - Thầy Công" containing "2K9.T5")
+      // 3A. The token contains the class code (e.g. cell has "2K9.T5 - Toán 9" containing "2K9.T5")
       found = classCatalog.find(c => {
         const codeNorm = normStr(c.code);
         return codeNorm && codeNorm.length >= 3 && norm.includes(codeNorm);

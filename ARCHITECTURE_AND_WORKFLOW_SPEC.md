@@ -291,7 +291,7 @@ Trên Firebase Realtime Database, dữ liệu được phân tách theo từng p
   "hasBtvn": true,
   "hasTest": true,
   "testHandover": {
-    "person": "Anh Linh (TA001)",
+    "person": "Nguyễn Thành Công (CONGNT)",
     "at": 1730638800000
   },
   "layout": [],
@@ -918,14 +918,14 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 
 #### 10. Khắc Phục Lỗi Quản Lý Tài Khoản, Dropdown Nhân Sự & Hiển Thị Lớp Học Theo Phân Quyền
 - **Nguyên nhân gốc rễ (Root Cause Analysis):**
-  - Trước đây, dữ liệu nhân sự mặc định trong `masterDefaults.employees` chỉ có duy nhất 1 tài khoản quản trị (`AD001`). Khi người dùng tạo nhân viên mới hoặc đăng nhập bằng các tài khoản giáo viên/trợ giảng được bàn giao (ví dụ `CONGNT` - Thầy Công), các hàm dựng dropdown trong Quản lý lớp (`renderEmployeeOptions`, `renderStaffSearchPicker`) bị lọc theo `role === 'teacher'` hoặc `role === 'assistant'`, dẫn đến dropdown nhân sự bị rỗng.
+  - Trước đây, dữ liệu nhân sự mặc định trong `masterDefaults.employees` chỉ có duy nhất 1 tài khoản quản trị (`AD001`). Khi người dùng tạo nhân viên mới hoặc đăng nhập bằng các tài khoản giáo viên/trợ giảng được bàn giao (ví dụ `CONGNT`, `GIANGNH`, `LINHBMP`), các hàm dựng dropdown trong Quản lý lớp (`renderEmployeeOptions`, `renderStaffSearchPicker`) bị lọc theo `role === 'teacher'` hoặc `role === 'assistant'`, dẫn đến dropdown nhân sự bị rỗng.
   - Hàm kiểm tra phân quyền hiển thị lớp `isClassAssignedToCurrentAccount` trước đây chỉ so khớp `currentEmployeeId` dạng UUID/ID nội bộ với mảng ID trong lớp, không so khớp với mã nhân viên (`code` như `CONGNT`, `TA001`, `GV001`) hoặc tên đăng nhập (`username`), dẫn đến khi đăng nhập tài khoản nhân viên thì màn hình "Đi làm" và "Quản lý lớp" không hiển thị bất kỳ lớp học nào.
 - **Giải pháp khắc phục toàn diện:**
-  1. **Khôi phục đầy đủ nhân sự trung tâm:** Cung cấp sẵn danh sách nhân sự mặc định chuẩn hóa trong `masterDefaults.employees` gồm:
-     * Quản trị viên: `AD001` (Admin Tổng).
-     * Giáo viên: `CONGNT` (Thầy Công - Toán THCS/THPT), `GV001` (Cô Minh Anh), `GV002` (Thầy Quang), `GV003` (Cô Hương).
-     * Trợ giảng: `TA001` (Anh Linh), `TA002` (Mai Anh), `TA003` (Minh Khoa).
-     * Văn phòng: `VP001` (Lan Phương), `VP002` (Hoàng Nam).
+  1. **Nhân sự hoàn toàn do Admin tự đặt (Custom Credentials & RBAC Source of Truth):** Toàn bộ Mã nhân viên, Vai trò, Họ tên và Mật khẩu đều do Quản trị viên tự thiết lập và chỉnh sửa trong Tab Quản lý nhân sự (`#mgmt-panel-staff`). Hệ thống lấy dữ liệu nhân sự đã cấu hình làm Nguồn chân lý duy nhất (Single Source of Truth), tuyệt đối không gán cứng hay ghi đè. Tự động loại bỏ 100% đại từ nhân xưng (`Thầy`, `Cô`, `Anh`, `Chị`, `Em`, `GV`, `TA`, `Trợ giảng`, `Giáo viên`) khỏi tên nhân sự. Cung cấp sẵn danh sách khởi tạo ban đầu chuẩn hóa: `AD001` (Quản trị hệ thống), `LINHBMP` (Bùi Minh Phương Linh - Văn phòng), `SANGHN` (Hoàng Ngọc Sáng - Văn phòng), `CONGNT` (Nguyễn Thành Công - Trợ giảng), `GIANGNH` (Nguyễn Thị Hương Giang - Giáo viên).
+
+
+
+
   2. **Cơ chế tự động hợp nhất nhân sự (Auto-merge Defaults):** Trong `loadMasterData()`, hệ thống luôn đối chiếu và tự động hợp nhất các nhân sự mặc định còn thiếu vào `saved.employees`. Đảm bảo ngay cả khi trình duyệt đã có dữ liệu `localStorage` cũ, danh sách nhân viên vẫn luôn đầy đủ và không bị mất tài khoản.
   3. **Khôi phục danh mục lớp mẫu phân công đầy đủ (`seedClasses`):** Tạo sẵn các lớp học chuẩn (`TOAN8A`, `ANH7B`, `TOAN9C`) với phân công Giáo viên (`CONGNT`, `GV001`) và Trợ giảng (`TA001`), khởi tạo tự động khi danh mục lớp rỗng.
   4. **So khớp lớp linh hoạt đa tiêu chí (`isClassAssignedToCurrentAccount`):**
@@ -1274,7 +1274,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
     1. So khớp ID (`targetIds.has(id)`).
     2. So khớp Mã nhân viên (`targetCodes.has(normId)`).
     3. So khớp Mã nhân viên chịu lỗi số 0 (`normalizeLeadingZerosToken`: mã `GV01` khớp `GV001`, `TA01` khớp `TA001`).
-    4. So khớp Họ tên có gập dấu tiếng Việt (`foldAccountIdentifier`) và tự động bóc tách chuỗi nhiều nhân sự ngăn cách bởi dấu phẩy hoặc chấm phẩy (ví dụ: `"Cô Minh Anh, Thầy Công"`).
+    4. So khớp Họ tên có gập dấu tiếng Việt (`foldAccountIdentifier`) và tự động bóc tách chuỗi nhiều nhân sự ngăn cách bởi dấu phẩy hoặc chấm phẩy (ví dụ: `"Nguyễn Thị Hương Giang, Nguyễn Thành Công"`).
     5. So khớp cả các buổi học có sự phân công thay đổi ca / dạy thay trong `sessionChanges`.
   - Mọi Giáo viên và Trợ giảng khi đăng nhập đều nhìn thấy đầy đủ 100% các lớp mình phụ trách tại:
     * Thẻ ca hôm nay (`#ongoing-shift-list`)
@@ -1353,13 +1353,13 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - Tài khoản trợ giảng `CONGNT` bị gán nhầm mã cứng `role: 'teacher'` trong `features.js`, dẫn đến việc Trợ giảng biến thành Giáo viên.
   - Các bản ghi bị lỗi được lưu vào `localStorage` (`lopvui.signed-in-account.v1`, `lopvui.master-data.v3`) và Firebase mà không có cơ chế tự phục hồi (Self-Healing).
 - **Quy chuẩn vai trò chuẩn hóa trung tâm:**
-  - `LINHBMP`: Văn phòng (`office`) - Tên hiển thị: **Linh BMP**
-  - `SANGHN`: Văn phòng (`office`) - Tên hiển thị: **Sáng HN**
-  - `CONGNT`: Trợ giảng (`assistant`) - Tên hiển thị: **Thầy Công**
-  - `GIANGNH`: Giáo viên (`teacher`) - Tên hiển thị: **Cô Giang**
+  - `LINHBMP`: Văn phòng (`office`) - Tên hiển thị: **Bùi Minh Phương Linh**
+  - `SANGHN`: Văn phòng (`office`) - Tên hiển thị: **Hoàng Ngọc Sáng**
+  - `CONGNT`: Trợ giảng (`assistant`) - Tên hiển thị: **Nguyễn Thành Công**
+  - `GIANGNH`: Giáo viên (`teacher`) - Tên hiển thị: **Nguyễn Thị Hương Giang**
   - `AD001` / `ADMIN`: Quản trị viên (`admin`) - Tên hiển thị: **Quản trị hệ thống**
 - **Cơ chế tự phục hồi (Self-Healing):**
-  - Trong `normalizeEmployeeAccount` (`src/data/class-catalog-repository.js`), bất kỳ khi nào nạp hoặc chuẩn hóa tài khoản có mã trên, hệ thống tự động cưỡng chế vai trò và tên chính xác.
+  - Trong `normalizeEmployeeAccount` (`src/data/class-catalog-repository.js`), hệ thống lấy vai trò và họ tên trực tiếp từ Tab Quản lý nhân sự (`masterData.employees`) làm nguồn chân lý duy nhất, tự động lọc sạch các đại từ nhân xưng.
   - Trong `resolveVerifiedSignedInAccount` (`src/app.js`), khi người dùng đăng nhập hoặc tải lại trang, bản ghi lưu trữ phiên làm việc cũ bị hỏng sẽ được tự động sửa và ghi đè lại vào `localStorage`.
   - Trong `handleLoginByCredentials` (`src/features.js`), loại bỏ hoàn toàn đoạn gán nhầm `CONGNT` là giáo viên, tự động nạp vai trò đúng khi xác thực thành công.
 
@@ -1368,7 +1368,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - Tài khoản Văn phòng (`LINHBMP`, `SANGHN`) bị gán nhầm `assistant`. Theo phân quyền, trợ giảng chỉ xem lớp mình được phân công dạy kèm. Do văn phòng không đứng lớp, hệ thống lọc ra 0 lớp học.
   - Tài khoản Giáo viên (`GIANGNH`) bị gán nhầm `assistant`, trong khi các lớp học phân công `GIANGNH` ở vị trí Giáo viên.
   - Hàm kiểm tra phân công `isClassAssignedToCurrentAccount()` chỉ kiểm tra ID nhân sự trong mảng `teacherIds`/`assistantIds` mà **hoàn toàn không kiểm tra Mã lớp, Tên lớp** (như `2K9.H4.GIANGNH`, `2K9.H3.GIANGNH`).
-  - Hàm so khớp tên `matchesStaff()` so sánh chuỗi chặt chẽ, không xử lý các danh xưng ("Cô Giang" vs "GIANGNH", "Thầy Công" vs "CONGNT").
+  - Hàm so khớp tên `matchesStaff()` trước đây so sánh chuỗi chặt chẽ, chưa tự động bóc tách các tiền tố xưng hô nếu người dùng lỡ gõ thừa.
 - **Giải pháp xử lý:**
   1. **Quyền hạn Văn phòng (`office`):** Có toàn quyền xem và quản lý tất cả các lớp học như Admin (`selectedRole() === 'admin' || selectedRole() === 'office' => return true`).
   2. **So khớp trực tiếp theo Mã/Tên/ID lớp:** Tách các token trong `item.code`, `item.name`, `item.id`. Nếu chứa mã nhân viên (VD: `2K9.H4.GIANGNH` chứa `GIANGNH`), lớp đó lập tức được xác định là thuộc về nhân sự đó.

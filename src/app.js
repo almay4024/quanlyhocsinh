@@ -2716,32 +2716,16 @@ function resolveVerifiedSignedInAccount(rawAcc) {
     emp = employees.find(e => normalizeAccountCode(e.code) === normalizeAccountCode(targetId));
   }
 
-  // Auto-register / hydrate account into masterData if not present
+  // Auto-register / hydrate account into masterData ONLY if completely not present in masterData
   if (!emp && (normTargetCode || targetId || rawAcc.code || rawAcc.role)) {
     const rawRole = String(rawAcc.role || '').toLowerCase().trim();
     let deducedRole = ['admin', 'office', 'teacher', 'assistant'].includes(rawRole) ? rawRole : null;
     const c = normTargetCode || normalizeAccountCode(rawAcc.code || targetId || '');
-    if (c === 'LINHBMP' || c === 'SANGHN') deducedRole = 'office';
-    else if (c === 'CONGNT') deducedRole = 'assistant';
-    else if (c === 'GIANGNH') deducedRole = 'teacher';
-    else if (c === 'AD001' || c === 'ADMIN') deducedRole = 'admin';
-    else if (!deducedRole) {
-      if (c.startsWith('AD') || c.startsWith('ADMIN')) deducedRole = 'admin';
-      else if (c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG')) deducedRole = 'office';
-      else if (c.startsWith('GV') || c.startsWith('TEACHER') || c.startsWith('GIAOVIEN')) deducedRole = 'teacher';
-      else if (c.startsWith('TA') || c.startsWith('TG') || c.startsWith('TROGIANG')) deducedRole = 'assistant';
+    if (!deducedRole) {
+      if (c === 'AD001' || c === 'ADMIN' || c.startsWith('AD')) deducedRole = 'admin';
       else deducedRole = 'assistant';
     }
-    let defaultName = rawAcc.name;
-    if (!defaultName || defaultName === c) {
-      if (c === 'LINHBMP') defaultName = 'Bùi Minh Phương Linh';
-      else if (c === 'SANGHN') defaultName = 'Hoàng Ngọc Sáng';
-      else if (c === 'CONGNT') defaultName = 'Nguyễn Thành Công';
-      else if (c === 'GIANGNH') defaultName = 'Nguyễn Thị Hương Giang';
-      else if (c === 'AD001') defaultName = 'Quản trị hệ thống';
-      else defaultName = c;
-    }
-    defaultName = String(defaultName).replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
+    let defaultName = String(rawAcc.name || c).replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim() || c;
     const safeEmpId = targetId || `employee-${deducedRole}-${c.toLowerCase()}`;
     emp = normalizeEmployeeAccount({
       id: safeEmpId,
@@ -2759,18 +2743,10 @@ function resolveVerifiedSignedInAccount(rawAcc) {
 
   if (!emp || emp.isActive === false) return null;
 
-  // Clean name: strip any "Thầy/Cô" prefix; keep full name as configured in admin staff management
-  const c = normalizeAccountCode(emp.code);
-  let cleanName = String(emp.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
-  if (cleanName === 'Công' || cleanName === 'Thầy Công') cleanName = 'Nguyễn Thành Công';
-  if (cleanName === 'Giang' || cleanName === 'Cô Giang') cleanName = 'Nguyễn Thị Hương Giang';
-  if (!cleanName || cleanName === c || cleanName === 'Nhân sự' || cleanName === 'Chưa đăng nhập') {
-    if (c === 'LINHBMP') cleanName = 'Bùi Minh Phương Linh';
-    else if (c === 'SANGHN') cleanName = 'Hoàng Ngọc Sáng';
-    else if (c === 'CONGNT') cleanName = 'Nguyễn Thành Công';
-    else if (c === 'GIANGNH') cleanName = 'Nguyễn Thị Hương Giang';
-    else if (c === 'AD001') cleanName = 'Quản trị hệ thống';
-    else cleanName = c;
+  // Clean name: strip any leading pronouns/honorifics; preserve 100% of the custom name from admin setup
+  let cleanName = String(emp.name || '').replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim();
+  if (!cleanName || cleanName === 'Nhân sự' || cleanName === 'Chưa đăng nhập') {
+    cleanName = emp.code;
   }
   let empUpdated = false;
   if (cleanName !== emp.name) {
@@ -2778,29 +2754,21 @@ function resolveVerifiedSignedInAccount(rawAcc) {
     empUpdated = true;
   }
 
-  // Self-heal known core center accounts to their canonical roles
-  if (c === 'LINHBMP' || c === 'SANGHN') {
-    if (emp.role !== 'office') { emp.role = 'office'; empUpdated = true; }
-  } else if (c === 'CONGNT') {
-    if (emp.role !== 'assistant') { emp.role = 'assistant'; empUpdated = true; }
-  } else if (c === 'GIANGNH') {
-    if (emp.role !== 'teacher') { emp.role = 'teacher'; empUpdated = true; }
-  } else if (c === 'AD001' || c === 'ADMIN') {
-    if (emp.role !== 'admin') { emp.role = 'admin'; empUpdated = true; }
-  } else if (!['admin', 'office', 'teacher', 'assistant'].includes(emp.role)) {
-    emp.role = 'assistant';
+  // Role: 100% do Admin tự đặt trong tab Quản lý nhân sự (emp.role)
+  const effectiveRole = ['admin', 'office', 'teacher', 'assistant'].includes(emp.role) ? emp.role : 'assistant';
+  if (emp.role !== effectiveRole) {
+    emp.role = effectiveRole;
     empUpdated = true;
   }
 
   if (empUpdated && masterData?.employees) {
-    const idx = masterData.employees.findIndex(e => e.id === emp.id || normalizeAccountCode(e.code) === c);
+    const idx = masterData.employees.findIndex(e => e.id === emp.id || normalizeAccountCode(e.code) === normalizeAccountCode(emp.code));
     if (idx >= 0) {
       masterData.employees[idx] = { ...masterData.employees[idx], role: emp.role, name: emp.name };
       try { saveMasterData(masterData); } catch {}
     }
   }
 
-  const effectiveRole = emp.role || 'assistant';
   rawAcc.role = effectiveRole;
   rawAcc.name = emp.name;
 
@@ -4966,7 +4934,7 @@ function renderMainMenu(){
     (signedInAccount?.employeeId && e.id === signedInAccount.employeeId) ||
     (signedInAccount?.code && normalizeAccountCode(e.code) === normalizeAccountCode(signedInAccount.code))
   );
-  const _cleanName = String(_curEmp?.name || signedInAccount?.name || '').replace(/^(thầy|cô|anh|chị|em|gv|ta)\s+/i, '').trim();
+  const _cleanName = String(_curEmp?.name || signedInAccount?.name || '').replace(/^(?:thầy|cô|anh|chị|em|gv|ta|trợ\s*giảng|giáo\s*viên)\s+/i, '').trim();
   const _code = _curEmp?.code || signedInAccount?.code || '';
   const _roleName = ({assistant:'Trợ giảng',office:'Văn phòng',teacher:'Giáo viên',admin:'Admin'})[role] || 'Trợ giảng';
   const _userNameEl = document.querySelector('.user-name');

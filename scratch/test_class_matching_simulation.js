@@ -78,10 +78,10 @@ function isClassAssignedToCurrentAccountSimulation(item, currentEmployeeId, sign
 }
 
 const mockEmployees = [
-  { id: 'emp-gv-1', code: 'GV001', name: 'Thầy Công', role: 'teacher' },
-  { id: 'emp-ta-1', code: 'TA001', name: 'Cô Minh Anh', role: 'assistant' },
-  { id: 'emp-vp-1', code: 'VP001', name: 'Chị Lan Phương', role: 'office' },
-  { id: 'emp-ad-1', code: 'AD001', name: 'Admin', role: 'admin' },
+  { id: 'emp-gv-1', code: 'GV001', name: 'Nguyễn Thành Công', role: 'teacher' },
+  { id: 'emp-ta-1', code: 'TA001', name: 'Trần Minh Anh', role: 'assistant' },
+  { id: 'emp-vp-1', code: 'VP001', name: 'Lê Lan Phương', role: 'office' },
+  { id: 'emp-ad-1', code: 'AD001', name: 'Quản trị hệ thống', role: 'admin' },
 ];
 
 const mockClasses = [
@@ -90,40 +90,40 @@ const mockClasses = [
     code: 'MATH8A',
     teacherIds: ['emp-gv-1'],
     teacherId: 'emp-gv-1',
-    teacherName: 'Thầy Công',
+    teacherName: 'Nguyễn Thành Công',
     assistantIds: ['emp-ta-1'],
     assistantId: 'emp-ta-1',
-    assistantName: 'Cô Minh Anh'
+    assistantName: 'Trần Minh Anh'
   },
   {
     id: 'class-eng-7b',
     code: 'ENG7B',
     teacherIds: ['emp-gv-2'],
     teacherId: 'emp-gv-2',
-    teacherName: 'Thầy Quang',
+    teacherName: 'Phạm Nhật Quang',
     assistantIds: ['emp-ta-2'],
     assistantId: 'emp-ta-2',
-    assistantName: 'Mai Anh'
+    assistantName: 'Hoàng Mai Anh'
   }
 ];
 
 console.log('--- TEST 1: Office sees all classes ---');
-const officeAcc = { employeeId: 'emp-vp-1', code: 'VP001', role: 'office', name: 'Chị Lan Phương' };
+const officeAcc = { employeeId: 'emp-vp-1', code: 'VP001', role: 'office', name: 'Lê Lan Phương' };
 const officeVisible = mockClasses.filter(c => isClassAssignedToCurrentAccountSimulation(c, officeAcc.employeeId, officeAcc, mockEmployees));
 console.log(`Office sees ${officeVisible.length}/${mockClasses.length} classes:`, officeVisible.length === 2 ? 'PASS' : 'FAIL');
 
 console.log('--- TEST 2: Teacher sees assigned class (by ID) ---');
-const teacherAcc = { employeeId: 'emp-gv-1', code: 'GV001', role: 'teacher', name: 'Thầy Công' };
+const teacherAcc = { employeeId: 'emp-gv-1', code: 'GV001', role: 'teacher', name: 'Nguyễn Thành Công' };
 const teacherVisible = mockClasses.filter(c => isClassAssignedToCurrentAccountSimulation(c, teacherAcc.employeeId, teacherAcc, mockEmployees));
 console.log(`Teacher sees ${teacherVisible.length} classes (expected: 1):`, teacherVisible.length === 1 && teacherVisible[0].id === 'class-math-8a' ? 'PASS' : 'FAIL');
 
 console.log('--- TEST 3: Teacher sees assigned class even if logging in with TA01 vs TA001 or leading-zeros ---');
-const teacherAcc2 = { employeeId: 'employee-teacher-gv01', code: 'GV01', role: 'teacher', name: 'Thầy Công' };
+const teacherAcc2 = { employeeId: 'employee-teacher-gv01', code: 'GV01', role: 'teacher', name: 'Nguyễn Thành Công' };
 const teacherVisible2 = mockClasses.filter(c => isClassAssignedToCurrentAccountSimulation(c, teacherAcc2.employeeId, teacherAcc2, mockEmployees));
 console.log(`Teacher with code GV01 sees ${teacherVisible2.length} classes:`, teacherVisible2.length === 1 ? 'PASS' : 'FAIL');
 
 console.log('--- TEST 4: Assistant sees assigned class (by leading zeros & name) ---');
-const taAcc = { employeeId: 'employee-assistant-ta01', code: 'TA01', role: 'assistant', name: 'Cô Minh Anh' };
+const taAcc = { employeeId: 'employee-assistant-ta01', code: 'TA01', role: 'assistant', name: 'Trần Minh Anh' };
 const taVisible = mockClasses.filter(c => isClassAssignedToCurrentAccountSimulation(c, taAcc.employeeId, taAcc, mockEmployees));
 console.log(`Assistant with code TA01 sees ${taVisible.length} classes:`, taVisible.length === 1 ? 'PASS' : 'FAIL');
 
@@ -133,7 +133,7 @@ const subSessionChanges = {
     classId: 'class-eng-7b',
     date: '2026-11-06',
     teacherIds: ['emp-gv-1'],
-    teacherName: 'Thầy Công'
+    teacherName: 'Nguyễn Thành Công'
   }
 };
 const teacherVisibleWithSub = mockClasses.filter(c => isClassAssignedToCurrentAccountSimulation(c, teacherAcc.employeeId, teacherAcc, mockEmployees, subSessionChanges));
