@@ -1,18 +1,18 @@
-import { matchesAcronymOrText } from './student-search.js?v=5.1.0';
+import { matchesAcronymOrText } from './student-search.js?v=5.2.0';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=5.1.0';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature, extractCohortFromStudentCode, formatCohortDisplayName, isStudentInCohort, isBirthYearOrCohortTag, cleanStudentTags } from './data/class-catalog-repository.js?v=5.1.0';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.1.0';
-import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth, createStaffAuthAccount, updateSelfPassword } from './data/firebase-auth.js?v=5.1.0';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=5.2.0';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature, extractCohortFromStudentCode, formatCohortDisplayName, isStudentInCohort, isBirthYearOrCohortTag, cleanStudentTags } from './data/class-catalog-repository.js?v=5.2.0';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.2.0';
+import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth, createStaffAuthAccount, updateSelfPassword } from './data/firebase-auth.js?v=5.2.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=5.1.0';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=5.2.0';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -45,7 +45,7 @@ import {
   testGoogleAppsScriptConnection,
   uploadSessionDataToGoogleSheets,
   syncSingleStudentToGoogleSheets
-} from './excel-import-export.js?v=5.1.0';
+} from './excel-import-export.js?v=5.2.0';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -364,12 +364,14 @@ export function setupFeatures(ctx) {
     if (!emp) {
       const c = cleanCode.toUpperCase();
       let deducedRole = 'assistant';
-      if (c.startsWith('GV') || c.startsWith('TEACHER') || c.includes('GV')) {
-        deducedRole = 'teacher';
-      } else if (c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG')) {
+      if (c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG')) {
         deducedRole = 'office';
+      } else if (c.startsWith('GV') || c.startsWith('TEACHER') || c.startsWith('GIAOVIEN')) {
+        deducedRole = 'teacher';
       } else if (c.startsWith('AD') || c.startsWith('ADMIN')) {
         deducedRole = 'admin';
+      } else if (c.startsWith('TA') || c.startsWith('TG') || c.startsWith('TROGIANG')) {
+        deducedRole = 'assistant';
       }
       emp = {
         id: `employee-${deducedRole}-${cleanCode.toLowerCase()}`,
@@ -552,15 +554,23 @@ export function setupFeatures(ctx) {
   function updateCurrentUserDisplay() {
     const account = getSignedInAccount();
     const master = getMasterData();
-    const employee = (master.employees || []).map(normalizeEmployeeAccount).find(e => e && e.id === account?.employeeId) || {
-      name: 'Chưa đăng nhập',
-      code: '—',
-      role: 'assistant'
+    const employees = (master.employees || []).map(normalizeEmployeeAccount).filter(Boolean);
+    const employee = employees.find(e =>
+      e && (
+        (account?.employeeId && e.id === account.employeeId) ||
+        (account?.code && normalizeAccountCode(e.code) === normalizeAccountCode(account.code)) ||
+        (account?.employeeId && normalizeAccountCode(e.code) === normalizeAccountCode(account.employeeId))
+      )
+    ) || {
+      name: account?.name || (account?.code ? account.code : 'Chưa đăng nhập'),
+      code: account?.code || '—',
+      role: account?.role || 'assistant'
     };
 
-    const isAdmin = employee.role === 'admin';
-    const isAssistant = employee.role === 'assistant';
-    const hasCrossAccess = employee.role === 'admin' || employee.role === 'office';
+    const effectiveRole = employee.role || account?.role || 'assistant';
+    const isAdmin = effectiveRole === 'admin';
+    const isAssistant = effectiveRole === 'assistant';
+    const hasCrossAccess = effectiveRole === 'admin' || effectiveRole === 'office';
     window.__updateAdminLogBtnVisibility?.();
     const mgmtTabStaffEl = $('#mgmt-tab-staff');
     if (mgmtTabStaffEl) {
@@ -609,25 +619,27 @@ export function setupFeatures(ctx) {
       admin: 'Admin'
     };
 
-    const nameParts = String(employee.name || '').split(' ').filter(Boolean);
+    const displayName = (employee.name && employee.name !== 'Chưa đăng nhập') ? employee.name : (account?.name || account?.code || 'Nhân sự');
+    const displayCode = employee.code && employee.code !== '—' ? employee.code : (account?.code || '—');
+    const nameParts = String(displayName).split(' ').filter(Boolean);
     const initials = nameParts.length >= 2 
       ? (nameParts[0][0] + nameParts.at(-1)[0]).toUpperCase()
-      : String(employee.name || 'NV').slice(0, 2).toUpperCase();
+      : String(displayName).slice(0, 2).toUpperCase();
 
     const avatarEl = $('#current-user-avatar');
     if (avatarEl) {
       avatarEl.textContent = initials;
-      avatarEl.className = `user-avatar-chip role-${employee.role || 'assistant'}`;
+      avatarEl.className = `user-avatar-chip role-${effectiveRole}`;
     }
 
     const nameEl = $('#current-user-name');
     if (nameEl) {
-      const codeSuffix = employee.code && employee.code !== '—' ? ` · ${employee.code}` : '';
-      nameEl.innerHTML = `${escapeHtml(employee.name)}<small id="current-user-role">${escapeHtml((roleNames[employee.role] || employee.role) + codeSuffix)}</small>`;
+      const codeSuffix = displayCode && displayCode !== '—' ? ` · ${displayCode}` : '';
+      nameEl.innerHTML = `${escapeHtml(displayName)}<small id="current-user-role">${escapeHtml((roleNames[effectiveRole] || effectiveRole) + codeSuffix)}</small>`;
     }
     const roleBadge = $('#role-display-badge');
     if (roleBadge) {
-      roleBadge.textContent = `Vai trò: ${roleNames[employee.role] || employee.role} · ${employee.name} (${employee.code || ''})`;
+      roleBadge.textContent = `Vai trò: ${roleNames[effectiveRole] || effectiveRole} · ${displayName} (${displayCode})`;
     }
   }
 
@@ -10029,7 +10041,7 @@ export function setupFeatures(ctx) {
   setInterval(updateOfficeInboxBadge, 30000);
 
   $('#system-help-btn')?.addEventListener('click', () => {
-    toast('Quản lý học sinh v5.1: Chọn lớp tại Menu Đi làm → Sơ đồ lớp (Thu BTVN & Điểm danh) → Nhập điểm → Checklist & Kết ca.');
+    toast('Quản lý học sinh v5.2: Chọn lớp tại Menu Đi làm → Sơ đồ lớp (Thu BTVN & Điểm danh) → Nhập điểm → Checklist & Kết ca.');
   });
 
   // Hook open & close session buttons

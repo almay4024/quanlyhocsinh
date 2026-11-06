@@ -1,15 +1,15 @@
-const APP_VERSION = "5.1.0";
+const APP_VERSION = "5.2.0";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=5.1.0';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=5.1.0';
+import { TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=5.2.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=5.2.0';
 const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=5.1.0';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=5.1.0';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.1.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=5.1.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature, isBirthYearOrCohortTag, cleanStudentTags, extractCohortFromStudentCode, isStudentInCohort } from './data/class-catalog-repository.js?v=5.1.0';
-import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=5.1.0';
+import { setupFeatures } from './features.js?v=5.2.0';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=5.2.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.2.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=5.2.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature, isBirthYearOrCohortTag, cleanStudentTags, extractCohortFromStudentCode, isStudentInCohort, normalizeLeadingZerosToken, foldAccountIdentifier, compactAccountToken } from './data/class-catalog-repository.js?v=5.2.0';
+import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=5.2.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -1363,15 +1363,12 @@ function _mergeGranularJsonValue(key, localRawStr, remoteRawStr, remoteTs = 0, l
       if (localObj && remoteObj && Array.isArray(localObj.employees) && Array.isArray(remoteObj.employees)) {
         const empMap = new Map();
         const codeToId = new Map();
-        const MOCK_CODES = new Set(['TA001', 'TA002', 'TA003', 'GV001', 'GV002', 'GV003', 'VP001', 'VP002']);
-        const MOCK_NAMES = new Set(['anh linh', 'cô minh anh', 'thầy quang', 'cô hương', 'mai anh', 'minh khoa', 'lan phương', 'hoàng nam']);
         const addOrMergeEmp = (emp, isRemote = false) => {
           if (!emp || !emp.id || deletedMap[emp.id]) return;
-          const normCode = normalizeAccountCode(emp.code);
-          const nameNorm = (emp.name || '').trim().toLowerCase();
-          if ((normCode && MOCK_CODES.has(normCode)) || (nameNorm && MOCK_NAMES.has(nameNorm))) {
+          if (String(emp.id).startsWith('mock-') || String(emp.id).startsWith('employee-mock-')) {
             return;
           }
+          const normCode = normalizeAccountCode(emp.code);
           const existingIdByCode = normCode ? codeToId.get(normCode) : null;
           const targetId = existingIdByCode || emp.id;
           const prev = empMap.get(targetId);
@@ -2706,6 +2703,14 @@ function resolveVerifiedSignedInAccount(rawAcc) {
   if (!emp && normTargetCode) {
     emp = employees.find(e => normalizeAccountCode(e.code) === normTargetCode || normalizeAccountCode(e.username) === normTargetCode);
   }
+  if (!emp && normTargetCode) {
+    const compactInput = compactAccountToken(normTargetCode);
+    emp = employees.find(e => compactAccountToken(e.code) === compactInput);
+  }
+  if (!emp && normTargetCode) {
+    const noZeroInput = normalizeLeadingZerosToken(normTargetCode);
+    emp = employees.find(e => normalizeLeadingZerosToken(e.code) === noZeroInput);
+  }
   if (!emp && typeof targetId === 'string') {
     emp = employees.find(e => normalizeAccountCode(e.code) === normalizeAccountCode(targetId));
   }
@@ -2718,7 +2723,8 @@ function resolveVerifiedSignedInAccount(rawAcc) {
     if (!deducedRole) {
       if (c.startsWith('AD') || c.startsWith('ADMIN')) deducedRole = 'admin';
       else if (c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG')) deducedRole = 'office';
-      else if (c.startsWith('GV') || c.startsWith('TEACHER')) deducedRole = 'teacher';
+      else if (c.startsWith('GV') || c.startsWith('TEACHER') || c.startsWith('GIAOVIEN')) deducedRole = 'teacher';
+      else if (c.startsWith('TA') || c.startsWith('TG') || c.startsWith('TROGIANG')) deducedRole = 'assistant';
       else deducedRole = 'assistant';
     }
     const safeEmpId = targetId || `employee-${deducedRole}-${c.toLowerCase()}`;
@@ -2743,11 +2749,9 @@ function resolveVerifiedSignedInAccount(rawAcc) {
   const isOfficeCode = c.startsWith('VP') || c.startsWith('OFFICE') || c.startsWith('VANPHONG') || c.includes('VANPHONG') || rawAcc.role === 'office';
   if (isOfficeCode && emp.role !== 'admin') {
     emp.role = 'office';
-    rawAcc.role = 'office';
-    try { saveMasterData(masterData); } catch {}
-  } else if (rawAcc.role && rawAcc.role !== emp.role) {
-    rawAcc.role = emp.role;
   }
+  const effectiveRole = emp.role || rawAcc.role || 'assistant';
+  rawAcc.role = effectiveRole;
 
   const freshSig = computeSessionAuthSignature(emp);
   const resolved = {
@@ -2755,7 +2759,7 @@ function resolveVerifiedSignedInAccount(rawAcc) {
     employeeId: emp.id,
     code: emp.code,
     name: emp.name,
-    role: emp.role || 'assistant',
+    role: effectiveRole,
     authVersion: emp.authVersion || 1,
     authSig: freshSig
   };
@@ -2766,6 +2770,7 @@ function resolveVerifiedSignedInAccount(rawAcc) {
     }
   } catch {}
 
+  currentEmployeeId = resolved.employeeId;
   return resolved;
 }
 let signedInAccount=resolveVerifiedSignedInAccount(read('lopvui.signed-in-account.v1',null))||{employeeId:null,role:'assistant'};
@@ -4740,6 +4745,8 @@ function isClassAssignedToCurrentAccount(item) {
     .filter(Boolean)
     .map(c => normalizeAccountCode(c)));
 
+  const targetZeroTokens = new Set([...targetCodes].map(normalizeLeadingZerosToken).filter(Boolean));
+
   const targetNames = [currentEmp?.name, signedInAccount?.name]
     .filter(Boolean)
     .map(n => n.toLowerCase().trim())
@@ -4748,25 +4755,31 @@ function isClassAssignedToCurrentAccount(item) {
   function matchesStaff(ids = [], nameStr = '', singleId = '') {
     if (singleId) {
       if (targetIds.has(singleId)) return true;
-      if (targetCodes.has(normalizeAccountCode(singleId))) return true;
-      const emp = empList.find(e => e && (e.id === singleId || normalizeAccountCode(e.code) === normalizeAccountCode(singleId)));
-      if (emp && (targetIds.has(emp.id) || targetCodes.has(normalizeAccountCode(emp.code)))) return true;
+      const normSingle = normalizeAccountCode(singleId);
+      if (targetCodes.has(normSingle)) return true;
+      if (targetZeroTokens.has(normalizeLeadingZerosToken(normSingle))) return true;
+      const emp = empList.find(e => e && (e.id === singleId || normalizeAccountCode(e.code) === normSingle));
+      if (emp && (targetIds.has(emp.id) || targetCodes.has(normalizeAccountCode(emp.code)) || targetZeroTokens.has(normalizeLeadingZerosToken(emp.code)))) return true;
     }
     const arr = Array.isArray(ids) ? ids : (ids ? [ids] : []);
     for (const id of arr) {
       if (!id) continue;
       if (targetIds.has(id)) return true;
-      if (targetCodes.has(normalizeAccountCode(id))) return true;
-      const emp = empList.find(e => e && (e.id === id || normalizeAccountCode(e.code) === normalizeAccountCode(id)));
-      if (emp && (targetIds.has(emp.id) || targetCodes.has(normalizeAccountCode(emp.code)))) return true;
+      const normId = normalizeAccountCode(id);
+      if (targetCodes.has(normId)) return true;
+      if (targetZeroTokens.has(normalizeLeadingZerosToken(normId))) return true;
+      const emp = empList.find(e => e && (e.id === id || normalizeAccountCode(e.code) === normId));
+      if (emp && (targetIds.has(emp.id) || targetCodes.has(normalizeAccountCode(emp.code)) || targetZeroTokens.has(normalizeLeadingZerosToken(emp.code)))) return true;
     }
-    const cleanName = String(nameStr || '').toLowerCase().trim();
-    if (cleanName && cleanName.length >= 2) {
+    const rawNames = String(nameStr || '').split(/[,;/+]+/).map(s => s.trim().toLowerCase()).filter(s => s.length >= 2);
+    for (const namePart of rawNames) {
+      const foldedPart = foldAccountIdentifier(namePart);
       for (const code of targetCodes) {
-        if (code && cleanName.includes(code.toLowerCase())) return true;
+        if (code && (namePart.includes(code.toLowerCase()) || foldedPart.includes(code.toLowerCase()))) return true;
       }
       for (const n of targetNames) {
-        if (n && (cleanName.includes(n) || n.includes(cleanName))) return true;
+        const foldedTarget = foldAccountIdentifier(n);
+        if (foldedPart === foldedTarget || foldedPart.includes(foldedTarget) || foldedTarget.includes(foldedPart)) return true;
       }
     }
     return false;

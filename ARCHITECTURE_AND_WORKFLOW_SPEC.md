@@ -1,4 +1,4 @@
-# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v5.1)
+# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v5.2)
 
 * **Mã dự án (Project Namespace):** `edu_center` / `class_mgr`
 * **Loại tài liệu:** Universal System Architecture & Product Specification (chuẩn GitHub Spec Kit dành cho mọi AI Coding Agent: Cursor, Claude Code, Windsurf, GitHub Copilot Workspace, Google Antigravity, Devin...)
@@ -1251,3 +1251,36 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
     4. **Thiếu mã học sinh (`missing_code`):** Các dòng trên Sheet chưa được điền Mã học sinh để Văn phòng rà soát.
   - **Bỏ qua 100% các học sinh đã khớp hoàn toàn:** Những học sinh có thông tin trùng khớp hoàn toàn giữa Sheet và Web sẽ được tự động bỏ qua (`unchangedCount++`), không hiển thị vào bảng duyệt để tránh làm rối mắt và tiết kiệm thao tác cho nhân sự Văn phòng.
   - Nếu tất cả học sinh đã khớp hoàn toàn (không có trường hợp nào phát hiện lệch), hệ thống sẽ thông báo: *"✓ Đã kiểm tra đồng bộ: Tất cả học sinh, Mã HS và Lớp học đều đã khớp 100% với danh sách hiện tại."*
+
+---
+
+## 18. ĐẶC TẢ CHI TIẾT NÂNG CẤP HỆ THỐNG PHIÊN BẢN 5.2 (v5.2 RELEASE SPECIFICATION)
+
+### 18.1. Khắc Phục Triệt Để Lỗi Hoán Đổi Vai Trò & Bảo Toàn Vai Trò Tuyệt Đối
+- **Nguyên nhân cốt lõi đã xử lý:**
+  1. Trong hàm `updateCurrentUserDisplay()` (`src/features.js`), việc tìm kiếm tài khoản nhân sự chỉ dựa vào so khớp chính xác `e.id === account?.employeeId`. Khi tài khoản đăng nhập trên máy mới chưa kịp tải xong `masterData.employees` từ Firebase Realtime Database hoặc ID có sự sai lệch nhỏ, hàm đã rơi vào giá trị dự phòng cứng `{ role: 'assistant', name: 'Chưa đăng nhập' }`, dẫn đến việc tài khoản Văn phòng (`VP...`) và Giáo viên (`GV...`) bị ghi đè thành nhãn **"Trợ giảng"** ở góc trên màn hình.
+  2. Trong hàm `normalizeEmployeeAccount()` và tầng suy đoán vai trò, tiền tố `c.includes('GV')` đã vô tình biến các tài khoản Trợ giảng có chứa ký tự `GV` thành Giáo viên, trong khi cơ chế đối soát tài khoản của Giáo viên lại thiếu nhận diện đầy đủ tiền tố dẫn đến việc suy đoán ngược thành Trợ giảng.
+  3. Bộ lọc dọn dẹp tài khoản mẫu (`MOCK_DEFAULT_CODES = ['TA001', 'GV001', 'VP001'...]`) trước đây tự động xóa bỏ các mã nhân sự chuẩn của trung tâm khi tải dữ liệu từ LocalStorage hoặc đồng bộ Cloud, khiến hồ sơ nhân viên thực sự bị xóa mất trên client và buộc hệ thống phải tự sinh lại tài khoản tạm không trùng khớp.
+- **Quy chuẩn kiến trúc bảo mật v5.2:**
+  - **Tôn trọng 100% vai trò chuẩn xác thực:** Trong `normalizeEmployeeAccount()`, nếu trường `role` đã được chọn rõ ràng là `admin`, `office`, `teacher`, hoặc `assistant`, hệ thống bảo toàn tuyệt đối vai trò đó. Không bao giờ hoán đổi hay tự ý hạ cấp/nâng cấp vai trò giữa Giáo viên và Trợ giảng.
+  - **Hiển thị vai trò kiên cố trên thanh tiêu đề (`updateCurrentUserDisplay`):** So khớp nhân viên linh hoạt theo cả `e.id` lẫn `e.code`. Trong mọi tình huống kể cả khi danh mục Cloud chưa kịp nạp, hệ thống ưu tiên đọc trực tiếp `account.role`, `account.name`, `account.code` từ phiên đăng nhập hợp lệ. Tài khoản Văn phòng luôn hiển thị chuẩn *"Văn phòng"*, Giáo viên hiển thị *"Giáo viên"*, Trợ giảng hiển thị *"Trợ giảng"*.
+  - **Bỏ hoàn toàn việc xóa tài khoản theo mã:** Loại bỏ danh sách `MOCK_DEFAULT_CODES`. Chỉ những bản ghi có tiền tố ID rõ ràng là `mock-` hoặc `employee-mock-` mới được coi là dữ liệu mẫu cũ.
+
+### 18.2. Khôi Phục Quyền Hiển Thị Lớp Học Toàn Diện Cho Toàn Bộ Tài Khoản Nhân Viên
+- **Văn phòng (`office`):**
+  - Hàm `getVisibleClassesForAccount()` trả về toàn bộ danh mục lớp (`classCatalog`) cho tài khoản Văn phòng tương tự Admin, đáp ứng trọn vẹn nghiệp vụ quản lý, giám sát và điều phối lớp của khối Văn phòng.
+- **Giáo viên (`teacher`) & Trợ giảng (`assistant`):**
+  - Thuật toán kiểm tra phân công `isClassAssignedToCurrentAccount()` được nâng cấp so khớp đa tầng:
+    1. So khớp ID (`targetIds.has(id)`).
+    2. So khớp Mã nhân viên (`targetCodes.has(normId)`).
+    3. So khớp Mã nhân viên chịu lỗi số 0 (`normalizeLeadingZerosToken`: mã `GV01` khớp `GV001`, `TA01` khớp `TA001`).
+    4. So khớp Họ tên có gập dấu tiếng Việt (`foldAccountIdentifier`) và tự động bóc tách chuỗi nhiều nhân sự ngăn cách bởi dấu phẩy hoặc chấm phẩy (ví dụ: `"Cô Minh Anh, Thầy Công"`).
+    5. So khớp cả các buổi học có sự phân công thay đổi ca / dạy thay trong `sessionChanges`.
+  - Mọi Giáo viên và Trợ giảng khi đăng nhập đều nhìn thấy đầy đủ 100% các lớp mình phụ trách tại:
+    * Thẻ ca hôm nay (`#ongoing-shift-list`)
+    * Danh sách lớp phụ trách (`#upcoming-shift-list`)
+    * Danh mục quản lý lớp (`#all-classes-quick-list` & `#managed-class-list`)
+
+### 18.3. Quy Chuẩn Đồng Bộ Phiên Bản v5.2
+- Hệ thống được nâng cấp đồng bộ lên phiên bản **v5.2** (`v5.2.0`) trên toàn bộ các tệp cấu hình, giao diện và mã nguồn (`index.html`, `src/app.js`, `src/features.js`, `src/data/class-catalog-repository.js`, `ARCHITECTURE_AND_WORKFLOW_SPEC.md`).
+- Tuân thủ tuyệt đối quy tắc Zero-Emoji (chỉ dùng chữ và ký hiệu đơn sắc chuẩn), hiệu năng tức thì (0ms) và bảo mật dữ liệu cao nhất.

@@ -52,24 +52,17 @@ const masterDefaults = {
   ]
 };
 
-export const MOCK_DEFAULT_CODES = new Set(['TA001', 'TA002', 'TA003', 'GV001', 'GV002', 'GV003', 'VP001', 'VP002']);
+export const MOCK_DEFAULT_CODES = new Set();
 export const MOCK_DEFAULT_NAMES = new Set([
   'anh linh',
   'cô minh anh',
-  'thầy quang',
-  'cô hương',
-  'mai anh',
-  'minh khoa',
-  'lan phương',
-  'hoàng nam'
+  'thầy quang'
 ]);
 
 export function isMockEmployee(emp) {
   if (!emp) return false;
-  const code = normalizeAccountCode(emp.code);
-  if (code && MOCK_DEFAULT_CODES.has(code)) return true;
-  const name = (emp.name || '').trim().toLowerCase();
-  if (name && MOCK_DEFAULT_NAMES.has(name)) return true;
+  const id = String(emp.id || '');
+  if (id.startsWith('mock-') || id.startsWith('employee-mock-')) return true;
   return false;
 }
 
@@ -447,8 +440,11 @@ export function verifySessionAuthSignature(account, emp) {
                     (account.employeeId && normalizeAccountCode(account.employeeId) === normalizeAccountCode(norm.code));
   if (!idMatches) return false;
 
-  // If account specifies a role, it cannot exceed the employee's canonical role in masterData
-  if (account.role && account.role !== norm.role) return false;
+  // Privilege escalation check: non-admin account cannot claim admin role
+  if (account.role === 'admin' && norm.role !== 'admin') return false;
+  if (account.role && norm.role && account.role !== norm.role) {
+    account.role = norm.role;
+  }
 
   if (!account.authSig) {
     // Session authenticated without legacy authSig; accept if ID and role match canonical employee
@@ -510,20 +506,22 @@ export function normalizeEmployeeAccount(emp) {
   const code = normalizeAccountCode(emp.code) || 'NV000';
   let role = String(emp.role || '').trim().toLowerCase();
   if (role === 'vanphong' || role === 'vp') role = 'office';
-  if (role === 'giaovien' || role === 'gv') role = 'teacher';
-  if (role === 'trogiang' || role === 'tg') role = 'assistant';
-  if (role === 'quantri' || role === 'quantrivien') role = 'admin';
+  else if (role === 'giaovien' || role === 'gv') role = 'teacher';
+  else if (role === 'trogiang' || role === 'tg') role = 'assistant';
+  else if (role === 'quantri' || role === 'quantrivien') role = 'admin';
 
+  // If role is explicitly provided and valid, RESPECT IT! Never mutate an existing teacher to assistant or assistant to teacher
   if (!['admin', 'office', 'teacher', 'assistant'].includes(role)) {
     if (code.startsWith('AD') || code.startsWith('ADMIN')) role = 'admin';
     else if (code.startsWith('VP') || code.startsWith('OFFICE') || code.startsWith('VANPHONG') || code.includes('VANPHONG')) role = 'office';
-    else if (code.startsWith('GV') || code.startsWith('TEACHER')) role = 'teacher';
+    else if (code.startsWith('GV') || code.startsWith('TEACHER') || code.startsWith('GIAOVIEN')) role = 'teacher';
+    else if (code.startsWith('TA') || code.startsWith('TG') || code.startsWith('TROGIANG')) role = 'assistant';
     else role = 'assistant';
-  } else if (role === 'assistant') {
-    // Prevent accidental downgrades of Office/Teacher/Admin accounts
-    if (code.startsWith('VP') || code.startsWith('OFFICE') || code.startsWith('VANPHONG') || code.includes('VANPHONG')) role = 'office';
-    else if (code.startsWith('GV') || code.startsWith('TEACHER')) role = 'teacher';
-    else if (code.startsWith('AD') || code.startsWith('ADMIN')) role = 'admin';
+  } else {
+    // Role is valid. Only enforce office if code explicitly indicates VP and role is not admin
+    if ((code.startsWith('VP') || code.startsWith('OFFICE') || code.startsWith('VANPHONG') || code.includes('VANPHONG')) && role !== 'admin') {
+      role = 'office';
+    }
   }
   const defaultPwd = role === 'admin' ? 'admin123' : '123456';
 
