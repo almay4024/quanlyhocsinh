@@ -8156,8 +8156,15 @@ export function setupFeatures(ctx) {
           item.parentName || item['Tên phụ huynh'] || item['Phụ huynh'] || ''
         ).trim();
 
-        const rawStatus = (cfg.colStatus && item[cfg.colStatus] !== undefined ? item[cfg.colStatus] : null) ||
-          item.enrollmentStatus || item['Trạng thái'] || item['Tình trạng'] || item['Trạng thái học'] || '';
+        const hasStatusCol = Boolean(
+          (cfg.colStatus && item[cfg.colStatus] !== undefined) ||
+          item.enrollmentStatus !== undefined ||
+          item['Trạng thái'] !== undefined ||
+          item['Tình trạng'] !== undefined ||
+          item['Trạng thái học'] !== undefined
+        );
+        const rawStatus = (cfg.colStatus && item[cfg.colStatus] !== undefined ? item[cfg.colStatus] : null) ??
+          item.enrollmentStatus ?? item['Trạng thái'] ?? item['Tình trạng'] ?? item['Trạng thái học'] ?? '';
 
         const rawTagVal = (cfg.colTag && item[cfg.colTag] !== undefined ? item[cfg.colTag] : null) ||
           item.tags || item.tag || item['Tag'] || item['Tags'] || item['Thẻ'] || item['Phân loại'] || item['Nhãn'] || '';
@@ -8169,7 +8176,7 @@ export function setupFeatures(ctx) {
           givenName,
           school,
           parentName,
-          enrollmentStatus: rawStatus ? normalizeEnrollmentStatus(rawStatus) : '',
+          enrollmentStatus: hasStatusCol ? normalizeEnrollmentStatus(rawStatus) : '',
           tags: rawTagVal ? cleanStudentTags(String(rawTagVal).split(/[,;\n]+/).map(t => t.trim()).filter(Boolean)) : [],
           tag: String(rawTagVal).trim(),
           rawClassTexts: rawClassStr ? [rawClassStr] : [],
@@ -8226,6 +8233,7 @@ export function setupFeatures(ctx) {
     if (cfg.colParent) applyOverride(cfg.colParent, 'parentName');
     if (cfg.colStatus) applyOverride(cfg.colStatus, 'status');
 
+    const hasStatusCol = roles.includes('status');
     const startIdx = hasHeader ? 1 : 0;
     const results = [];
 
@@ -8291,6 +8299,10 @@ export function setupFeatures(ctx) {
         else if (sRole === 'testScore' && testScore === '') testScore = val;
         else if (sRole === 'note' && !sessionNote) sessionNote = val;
         else if (hText && /ghi\s*chú\s*học\s*lực/i.test(hText) && !learningNotes) learningNotes = val;
+      }
+
+      if (hasStatusCol && !enrollmentStatus) {
+        enrollmentStatus = 'Nghỉ';
       }
 
       if (!fullName && (familyName || givenName)) {

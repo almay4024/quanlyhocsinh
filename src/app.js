@@ -6011,8 +6011,8 @@ function handleRoute() {
   // Route: students
   if (parts[0] === 'students') {
     if (parts.length === 1) {
-      if (!canAccessCrossClassData()) {
-        toast('Tài khoản của bạn không có quyền truy cập Danh bạ Học sinh toàn trung tâm.');
+      if (selectedRole() === 'assistant') {
+        toast('Trợ giảng không có quyền truy cập Danh bạ Học sinh toàn trung tâm.');
         exitToMainMenu();
         return;
       }

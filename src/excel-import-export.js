@@ -490,7 +490,7 @@ export function extractStudentsFromGrid(rows = [], roles = [], options = {}, cla
 
     const parentName = firstNonEmpty(parentCols);
     const rawStatus = firstNonEmpty(statusCols);
-    const enrollmentStatus = normalizeEnrollmentStatus(rawStatus);
+    const enrollmentStatus = statusCols.length > 0 ? normalizeEnrollmentStatus(rawStatus) : 'Học';
     const rawTag = firstNonEmpty(tagCols);
     const cleanTag = isBirthYearOrCohortTag(rawTag) ? '' : rawTag;
 

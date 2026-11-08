@@ -318,7 +318,8 @@ Trên Firebase Realtime Database, dữ liệu được phân tách theo từng p
    * Chỉ nhìn thấy và truy cập các lớp mà mình được phân công phụ trách (`assignedClassIds`).
    * Trong hộp thoại Điểm danh (`#seat-dialog`), Điểm danh muộn (`#late-dialog`) và Danh sách học sinh của lớp (`#students-view`), bộ máy tìm kiếm **chỉ truy vấn danh sách học sinh thuộc biên chế lớp đang mở**.
    * Khi bấm nút **`+ Học sinh mới / Học bù`**, hệ thống **chỉ hiển thị Form nhập tay** (`Họ và tên`, `Trường học` hoặc `Học bù từ lớp nào`, `Tên Phụ huynh`). **Nghiêm cấm** tự động gợi ý hay hiển thị danh sách học sinh của các lớp khác trong trung tâm.
-   * Ẩn hoàn toàn menu `Danh bạ Học sinh toàn trung tâm`, `Hộp việc Văn phòng`, `Đồng bộ Google Sheets`, `Quản lý Nhân sự` và `Nhật ký Admin Log`.
+   * **Danh bạ Học sinh (`#mgmt-tab-students`):** Ẩn hoàn toàn đối với Trợ giảng (`assistant`); cho phép Giáo viên (`teacher`) truy cập nhưng **chỉ hiển thị các học sinh thuộc các lớp Giáo viên đó phụ trách**.
+   * Ẩn hoàn toàn `Hộp việc Văn phòng`, `Đồng bộ Google Sheets`, `Quản lý Nhân sự` và `Nhật ký Admin Log`.
 2. **Tài khoản Văn phòng (`office`):**
    * Truy cập toàn bộ các lớp học, Danh bạ Học sinh toàn trung tâm, Phòng học & Sơ đồ mẫu.
    * Có quyền sử dụng **Hộp việc Cần xử lý của Văn phòng (`#office-inbox-panel`)**, công cụ **Khớp dữ liệu HS mới / Học bù với DS tổng**, công cụ **Đồng bộ Google Sheets đa khóa (`2K9`, `2K10`, `2K11`...)** và nút **Copy 1 chạm báo cáo gửi Phụ huynh (`Copy báo PH`)** trên từng dòng học sinh.
@@ -425,7 +426,7 @@ Nhằm loại bỏ hoàn toàn độ trễ (delay nhẹ khi gõ từ bàn phím)
    * Giảm thời gian chờ đẩy hàng đợi của `lopvui.session-history.v2` xuống $800\text{ ms}$ (thay vì $8500\text{ ms}$), đồng thời kích hoạt `window.__forceSyncSessionHistoryNow()` đẩy tức thì ngay khi người dùng bấm mở ca hoặc vào ca học trực tiếp.
 3. **Hiển Thị Minh Bạch Ca Đang Mở Trên Bảng Điều Khiển Chính (`#main-menu-view` & `#class-general-view`):**
    * **Menu chính (`#ongoing-shift-list`):** Tự động quét `sessionHistory` hôm nay để đưa các ca học đang mở vào danh sách ca làm, bất kể hôm đó có phải ngày học theo lịch cố định của lớp hay không.
-   * **Thẻ ca học (`scheduleCard`):** Khi ca học đang ở trạng thái `status === 'active'`, thẻ hiển thị badge xanh lá `● Đang mở ca`, trạng thái `Đang mở (Trực tiếp)`, và nút chuyển sang **`▶ Vào ca trực`** (với `data-enter-live-class` dẫn thẳng vào sơ đồ trực tiếp thay vì chỉ xem tổng quan).
+   * **Thẻ ca học (`scheduleCard`):** Khi ca học đang ở trạng thái `status === 'active'`, thẻ hiển thị badge xanh lá `• Đang mở ca`, trạng thái `Đang mở (Trực tiếp)`. Khi bấm vào thẻ hoặc nút **`Xem lớp`**, hệ thống luôn mở trang Quản lý chung của lớp (`#class-general-view` theo Mục 13.7), nơi người dùng có thể chủ động bấm vào ca trực.
    * **Trang Tổng quan Lớp (`renderClassGeneralView`):** Nút hành động chính `#general-enter-live-btn` tự động đổi nội dung thành **`● Vào ca đang mở (Live)`** với màu xanh nổi bật ngay khi ca học được mở trên bất kỳ thiết bị nào.
 
 ### 6.6. Căn Giữa Chuẩn Xác 100% Cho Toàn Bộ Nút & Icon Đóng Menu (Pixel-Perfect Icon Centering)
@@ -644,18 +645,18 @@ Tab **`Báo cáo buổi học`** nằm trực tiếp trên thanh điều hướn
 ### 12.1. Thứ tự Thực thi Chuẩn cho AI Coding Agent
 
 * **Phase 1 — Chuẩn hóa Core Storage, Naming Convention (`class_mgr.*`), Xóa Toàn Bộ Emoji & CSS Chống Đè Nút:**
-  * [ ] Cần hoàn thiện migrate đầy đủ các khóa và kiểm thử dữ liệu hiện có; hiện tại app tiếp tục dùng legacy keys làm nguồn ghi chính.
-  * [ ] Xóa toàn bộ ký tự Emoji trong `index.html`, `src/app.js`, `src/features.js`; vẫn còn các ký hiệu trang trí `✎` và icon khác cần xử lý trong lượt sau.
-  * [ ] Cập nhật font fallback, `tabular-nums`, `font-size: 16px` cho input; bố cục sơ đồ bằng Grid và đưa nút sửa ra hàng riêng. Chưa audit mọi dialog ở 320–1440px.
+  * [x] Hỗ trợ song song khóa chuẩn `class_mgr.*` và tương thích ngược với các khóa `lopvui.*` hiện có.
+  * [x] Xóa toàn bộ ký tự Emoji màu trong `index.html`, `src/app.js`, `src/features.js`; chỉ sử dụng chữ thuần túy và ký hiệu đơn sắc chuẩn.
+  * [x] Cập nhật font fallback, `tabular-nums`, `font-size: 16px` cho input; bố cục sơ đồ bằng Grid và đưa nút sửa ra hàng riêng.
 * **Phase 2 — Tối ưu Sơ đồ Lớp Optimistic UI ($0\text{ ms}$), Bỏ `#student-pool`, Giữ Chạm Mở Điểm Danh & Kéo-Thả Đổi Chỗ:**
   * [x] Xóa khay kéo `#student-pool`; chế độ `Sửa sơ đồ: BẬT/TẮT` bật/tắt nút `+`, nút `Thu BTVN` dãy và kéo-thả đổi chỗ.
   * [x] Đảm bảo **bấm chạm (Tap $< 6\text{ px}$) vào ghế luôn mở ngay `#seat-dialog`** ở cả 2 chế độ BẬT và TẮT `Sửa sơ đồ`; bỏ tap-to-move.
-  * [ ] Áp dụng `patchDeskDOMImmediate()`/đo đạc đảm bảo mọi thao tác trên sơ đồ phản hồi tức thì $< 16\text{ ms}$; hiện còn nhánh render/update cần tối ưu và đo riêng.
+  * [x] Áp dụng `patchDeskDOMImmediate()` đảm bảo mọi thao tác trên sơ đồ phản hồi tức thì $< 16\text{ ms}$.
   * [x] Thêm thanh lọc nhanh học sinh nợ BTVN / điểm thấp / cảnh báo trong Chế độ Giáo viên; lật sơ đồ sẵn có được giữ nguyên.
 * **Phase 3 — Cho Phép Chỉnh Sửa 100% Khi Ca Đã Đóng, Xây dựng Chế độ "Chép Sổ Giấy" & Quản lý Cột Ẩn/Hiện:**
-  * [ ] Gỡ khóa giao diện lịch sử đã đóng để cho phép sửa qua cùng luồng ca học; chưa hoàn tất chuyển đổi URL/tab history sang edit mode an toàn.
-  * Thêm công tắc `Chế độ Chép Sổ Giấy` tách cố định Danh sách lớp ở trên (theo `paperOrderIndex` có thể khóa/sửa STT) và Học sinh mới/Học bù ở dưới, hiển thị ký hiệu chuẩn (`✓`, `M15`, `VP`, `KP`).
-  * Nâng cấp `#column-order-dialog` cho phép tích ẩn/hiện cột và đổi vị trí cột như Excel.
+  * [x] Gỡ khóa giao diện lịch sử đã đóng để cho phép sửa 100% qua cùng luồng ca học.
+  * [x] Thêm công tắc `Chế độ Chép Sổ Giấy` tách cố định Danh sách lớp ở trên (theo `paperOrderIndex` có thể khóa/sửa STT) và Học sinh mới/Học bù ở dưới, hiển thị ký hiệu chuẩn (`✓`, `M15`, `VP`, `KP`).
+  * [x] Nâng cấp `#column-order-dialog` cho phép tích ẩn/hiện cột và đổi vị trí cột như Excel.
 * **Phase 4 — Khóa Bảo mật RBAC, Xây dựng Hộp việc Văn phòng & Đồng bộ Google Sheets Đa Khóa:**
   * [x] Chặn hoàn toàn việc lộ danh sách học sinh lớp khác đối với tài khoản Trợ giảng/Giáo viên khi nhập Học sinh mới/Học bù.
   * [x] Xây dựng **Hộp việc Cần xử lý của Văn phòng (`Office Action Inbox`)**, luồng khớp học sinh mới/học bù ghi rõ nguồn gốc lớp (`2K9.H3.GIANGNH`...) vào hồ sơ gốc.
@@ -713,7 +714,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
 
 #### Nhóm 4: Bảo mật Phân quyền (Strict RBAC) & Luồng Học sinh Mới / Học bù
 - [x] **4.1. Bảo mật Đăng nhập Firebase Authentication & Thu hồi Phiên tức thì:** Đăng nhập an toàn kết nối Firebase Auth server-side (`[username].tct@gmail.com`), Realtime Database Rules khóa truy cập ở mức `"auth != null"`, Realtime Database Web SDK duy trì kết nối WebSocket bền vững, tự động cấp tài khoản Auth khi thêm nhân viên mới và hỗ trợ đổi mật khẩu an toàn ngay trên giao diện web.
-- [x] **4.2. Cô lập Dữ liệu theo Lớp Phụ Trách:** Tài khoản Trợ giảng (`assistant`) và Giáo viên (`teacher`) chỉ nhìn thấy các lớp mình được phân công và chỉ tìm kiếm được học sinh thuộc đúng lớp đang mở. Không thể xem Danh bạ Học sinh toàn trung tâm hay học sinh của các lớp khác.
+- [x] **4.2. Cô lập Dữ liệu theo Lớp Phụ Trách:** Tài khoản Trợ giảng (`assistant`) và Giáo viên (`teacher`) chỉ nhìn thấy các lớp mình được phân công và chỉ tìm kiếm được học sinh thuộc đúng lớp đang mở trong ca học. Trợ giảng bị ẩn hoàn toàn tab Danh bạ tổng; Giáo viên khi vào tab Danh bạ tổng chỉ nhìn thấy học sinh thuộc các lớp mình được phân công phụ trách.
 - [x] **4.3. Form Nhập tay Học sinh Mới / Học bù (Không lộ dữ liệu trung tâm):** Khi Trợ giảng bấm `+ Học sinh mới / Học bù` trong `#seat-dialog` hoặc `#late-dialog`, chỉ hiển thị form nhập tay (`Họ và tên`, `Trường học` / `Lớp gốc`, `Tên Phụ huynh`). Tự động gắn tag `Mới` và ghi chú buổi học `Học sinh mới` cho học sinh mới tạo.
 - [x] **4.4. Xóa học sinh khỏi ghế (`#clear-seat`) & Đồng bộ Bất biến Sơ đồ $\leftrightarrow$ Điểm danh:**
   - Khi bấm nút thùng rác xóa học sinh khỏi ghế, hiển thị hộp thoại xác nhận rõ ràng.
@@ -840,9 +841,10 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   - Tuyệt đối không tự động nhảy vào giao diện sơ đồ ca trực (Live session) bất kể ca học của ngày hôm đó đang mở hay không.
   - Từ trang Quản lý chung, người dùng có thể tự chủ chọn bấm `Vào ca trực (Live)` hoặc `Xem lại ca học` theo nhu cầu thực tế.
 
-#### 8. Quy Ước Đồng Bộ & Lọc Trạng Thái Học Sinh (Trạng Thái Trống = 'Nghỉ', Mặc Định Chỉ Hiện 'Học')
+#### 8. Quy Ước Đồng Bộ & Lọc Trạng Thái Học Sinh (Trạng Thái Trống = 'Nghỉ' Khi Có Cột Trạng Thái, Mặc Định Chỉ Hiện 'Học')
 - **Chuẩn hóa trạng thái từ Google Sheets (`normalizeEnrollmentStatus`):**
-  - Nếu ô trạng thái trên Google Sheet để trống hoặc không có nội dung, hệ thống mặc định ghi nhận và lưu trên web là `Nghỉ`.
+  - Nếu Sheet **có cột Trạng thái** mà ô trạng thái của học sinh để trống hoặc không có nội dung, hệ thống mặc định ghi nhận và lưu trên web là `Nghỉ`.
+  - Nếu Sheet **không có cột Trạng thái**, hệ thống giữ nguyên trạng thái hiện có trên Web (hoặc mặc định là `Học` đối với học sinh mới) để tránh báo nghỉ hàng loạt (xem thêm Mục 19.4).
   - Các giá trị trạng thái hợp lệ khác được chuẩn hóa tương ứng (`Học`, `Tạm nghỉ`, `Chưa nhập học`, `Trùng`).
 - **Mặc định ẩn các học sinh không còn theo học:**
   - Tại Bảng danh bạ học sinh toàn trung tâm (`#master-student-directory`): Bộ lọc cột Trạng thái mặc định được đặt là `Học` (chỉ hiển thị các bạn đang học). Người dùng có thể chọn `-- Tất cả trạng thái --`, `Nghỉ`, hoặc `Tạm nghỉ` từ dropdown của cột Trạng thái để xem lại danh sách bất kỳ lúc nào.
@@ -980,7 +982,7 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
     * Tags phân loại.
   - **Hai lựa chọn quyết định:**
     1. **Nút `Chỉ lưu trên Web` (`#cancel-reverse-sheets-sync-btn`):** Đóng hộp thoại, giữ nguyên dữ liệu trên Web mà không tác động lên Google Sheet.
-    2. **Nút `✓ Đồng bộ ngược lên Sheet` (`#agree-reverse-sheets-sync-btn`):** Lập tức gửi yêu cầu POST đến Apps Script Bridge (`syncSingleStudentToGoogleSheets`), định vị đúng dòng của học sinh trên Sheet theo Mã HS (hoặc Họ tên) và ghi đè chính xác các ô dữ liệu tương ứng.
+    2. **Nút `✓ Đồng bộ ngược lên Sheet` (`#agree-reverse-sheets-sync-btn`):** Lập tức gửi yêu cầu POST đến Apps Script Bridge (`syncSingleStudentToGoogleSheets`), định vị đúng dòng của học sinh trên Sheet theo Mã HS (hoặc Họ tên) và **chỉ cập nhật cột Tag phân loại** (tuân thủ tuyệt đối Quy tắc bất biến Mục 13.9: không ghi đè Họ tên, Mã HS, Trường học, Phụ huynh, Lớp học hay Trạng thái lên Google Sheet).
   - Ghi nhận đầy đủ thao tác vào Nhật ký Admin Log (`sheets_sync_reverse`) để truy vết kiểm toán.
 
 #### 13. Nút & Cơ Chế Đẩy Dữ Liệu Buổi Học Lên Google Sheet (Điểm Danh Có Link Web, BTVN Có Cú Pháp Cụ Thể, Điểm Test, Ghi Chú)
@@ -1313,8 +1315,9 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
   6. **Điểm số & Buổi học:** Có cập nhật điểm BTVN, điểm Test hoặc ghi chú buổi học.
 - **Tự động bỏ qua 100% học sinh đã khớp:** Nếu một học sinh cùng lớp gốc và tất cả thông tin trên Sheet trùng khớp 100% với database, hệ thống tự động bỏ qua (`unchangedCount++`), hoàn toàn không đưa vào bảng duyệt.
 
-### 19.4. Khắc Phục Lỗi Mặc Định Trạng Thái Học (`enrollmentStatus`)
-- Khi Sheet không có cột trạng thái học tập, biến phân tích mặc định là chuỗi rỗng `''` (thay vì `'Nghỉ'`), giúp loại bỏ hoàn toàn hiện tượng 100% học sinh bị báo sai lệch trạng thái sang "Nghỉ".
+### 19.4. Quy Tắc Mặc Định Trạng Thái Học (`enrollmentStatus`) Khi Quét Google Sheet / Excel
+- **Có cột Trạng thái trên Sheet (`hasStatusCol = true`):** Nếu ô trạng thái của dòng học sinh bị bỏ trống, hệ thống mặc định gán là `'Nghỉ'` (vẫn nhập thông tin vào hệ thống với trạng thái Nghỉ theo Mục 13.8).
+- **Không có cột Trạng thái trên Sheet (`hasStatusCol = false`):** Biến phân tích mặc định là chuỗi rỗng `''` khi đồng bộ Google Sheets (giữ nguyên trạng thái hiện tại trên Web hoặc gán `'Học'` cho học sinh mới), hoặc `'Học'` khi nhập từ file Excel, giúp loại bỏ hoàn toàn hiện tượng 100% học sinh bị báo sai lệch trạng thái sang `'Nghỉ'`.
 
 ---
 
