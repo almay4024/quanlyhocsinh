@@ -176,9 +176,12 @@ export function syncActiveClassSessionRecord(classId, date, currentUser, snapsho
   record.lessonTitle = snapshotData.lessonTitle ?? record.lessonTitle ?? '';
   record.finalNote = snapshotData.sessionNote ?? record.finalNote ?? '';
   record.sessionNote = snapshotData.sessionNote ?? record.sessionNote ?? '';
+  record.parentGeneralNote = snapshotData.parentGeneralNote ?? record.parentGeneralNote ?? '';
   record.homeworkAssignment = snapshotData.homeworkAssignment ?? record.homeworkAssignment ?? '';
   record.homeworkLink = snapshotData.homeworkLink ?? record.homeworkLink ?? '';
   record.notebookLink = snapshotData.notebookLink ?? record.notebookLink ?? '';
+  if (snapshotData.hasBtvn !== undefined) record.hasBtvn = Boolean(snapshotData.hasBtvn);
+  if (snapshotData.hasTest !== undefined) record.hasTest = Boolean(snapshotData.hasTest);
   record.updatedBy = operator;
   record.revision = (Number(record.revision) || 0) + 1;
   if (snapshotData.layout) record.layout = snapshotData.layout;
@@ -239,10 +242,14 @@ export function closeClassSession(classId, date, currentUser, snapshotData, fina
   record.updatedAt = now;
   record.closedBy = operator;
   record.finalNote = finalNote || snapshotData.sessionNote || record.finalNote || '';
+  record.sessionNote = finalNote || snapshotData.sessionNote || record.sessionNote || '';
+  record.parentGeneralNote = snapshotData.parentGeneralNote ?? record.parentGeneralNote ?? '';
   record.lessonTitle = snapshotData.lessonTitle || record.lessonTitle || '';
   record.homeworkAssignment = snapshotData.homeworkAssignment || record.homeworkAssignment || '';
   record.homeworkLink = snapshotData.homeworkLink || record.homeworkLink || '';
   record.notebookLink = snapshotData.notebookLink || record.notebookLink || '';
+  if (snapshotData.hasBtvn !== undefined) record.hasBtvn = Boolean(snapshotData.hasBtvn);
+  if (snapshotData.hasTest !== undefined) record.hasTest = Boolean(snapshotData.hasTest);
   record.updatedBy = operator;
   record.revision = (Number(record.revision) || 0) + 1;
   record.layout = snapshotData.layout || record.layout || null;

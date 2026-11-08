@@ -1,15 +1,15 @@
-const APP_VERSION = "5.6.0";
+const APP_VERSION = "5.7.0";
 const _INTERNAL_CLOUD_EP = [50, 46, 46, 42, 41, 96, 117, 117, 43, 47, 59, 52, 54, 35, 50, 53, 57, 41, 51, 52, 50, 119, 107, 109, 62, 105, 62, 119, 62, 63, 60, 59, 47, 54, 46, 119, 40, 46, 62, 56, 116, 59, 41, 51, 59, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 107, 116, 60, 51, 40, 63, 56, 59, 41, 63, 62, 59, 46, 59, 56, 59, 41, 63, 116, 59, 42, 42].map(c => String.fromCharCode(c ^ 0x5A)).join("");
-import { TUTORING_CLASS_CONFIG, TUTORING_CLASS_ID, loadTutoringSessions } from './data/tutoring-repository.js?v=5.6.0';
-import * as sessionHistoryRepo from './data/session-history-repository.js?v=5.6.0';
+import { TUTORING_CLASS_CONFIG, TUTORING_CLASS_ID, loadTutoringSessions } from './data/tutoring-repository.js?v=5.7.0';
+import * as sessionHistoryRepo from './data/session-history-repository.js?v=5.7.0';
 const { loadSessionHistory, saveSessionHistory, setNoHomeworkStatus, isNoHomeworkSession, getPreviousSessionSeatingRecord, evaluateStudentEarlyWarning, getAdminAuditLogKey, loadSessionAdminAuditLogs, appendSessionAdminAuditLog } = sessionHistoryRepo;
 let previousStudentProfileOrigin = null;
-import { setupFeatures } from './features.js?v=5.6.0';
-import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=5.6.0';
-import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.6.0';
-import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=5.6.0';
-import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature, isBirthYearOrCohortTag, cleanStudentTags, extractCohortFromStudentCode, isStudentInCohort, normalizeLeadingZerosToken, foldAccountIdentifier, compactAccountToken } from './data/class-catalog-repository.js?v=5.6.0';
-import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=5.6.0';
+import { setupFeatures } from './features.js?v=5.7.0';
+import { normalizeSearchText, searchStudents, searchRecords, matchesAcronymOrText } from './student-search.js?v=5.7.0';
+import { loadStudentRecords, saveStudentRecords, loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, extractGoogleDriveFileId, buildDrivePhotoUrl, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, syncStudentDrivePhotoRename, uploadStudentPhotoToDrive, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.7.0';
+import { loadClassCommunication, saveClassCommunication } from './data/class-communication-repository.js?v=5.7.0';
+import { loadClassCatalog, loadMasterData, saveClassCatalog, saveMasterData, loadClassSessionChanges, saveClassSessionChanges, normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, computeSessionAuthSignature, verifySessionAuthSignature, isBirthYearOrCohortTag, cleanStudentTags, extractCohortFromStudentCode, isStudentInCohort, normalizeLeadingZerosToken, foldAccountIdentifier, compactAccountToken } from './data/class-catalog-repository.js?v=5.7.0';
+import { db, ref, get, update, onValue, auth, logoutFirebaseAuth } from './data/firebase-auth.js?v=5.7.0';
 
 function formatBirthYearBadge(gradeVal) {
   const by = normalizeGradeToBirthYear(gradeVal);
@@ -1467,7 +1467,7 @@ function _applyRtRemoteEntries(entries, source = 'remote', remoteMetaMap = {}, r
         // Chỉ đẩy ngược bản hợp nhất (Re-push) trong 2 trường hợp:
         // (a) Khi F5 khởi động (source === 'cloud-init') mà máy có dữ liệu mới hơn hẳn trên Cloud (localTs > remoteTs).
         // (b) Khi 2 máy vừa cùng bấm thao tác trên CÙNG 1 KEY trong vòng 3.5 giây qua ((now - lastLocalWrite) < 3500)
-        //     và có giới hạn Cooldown tối소 6 giây / key để tuyệt đối KHÔNG BAO GIỜ tạo vòng lặp ping-pong giữa 2 máy!
+        //     và có giới hạn Cooldown tối thiểu 6 giây / key để tuyệt đối KHÔNG BAO GIỜ tạo vòng lặp ping-pong giữa 2 máy!
         if (curPlain !== null && source !== 'broadcast-tab' && remoteClientId !== RT_CLIENT_ID) {
           const isInitNewerLocal = (source === 'cloud-init' && localTs > remoteTs);
           const wasRecentlyEditedHere = (now - (_lastLocalKeyWriteAt[k] || 0)) < 3500;
@@ -5867,7 +5867,7 @@ function enterClass(classId, date, isHistoryMode = false, targetView = 'seating'
       badge.className = 'session-badge-state closed';
       badge.innerHTML = '✓ Đã đóng ca';
     }
-    if ($('#checklist-close-session-panel')) $('#checklist-close-session-panel').hidden = true;
+    if ($('#checklist-close-session-panel')) $('#checklist-close-session-panel').hidden = false;
   } else {
     if (histBanner) histBanner.hidden = true;
     if ($('#checklist-close-session-panel')) $('#checklist-close-session-panel').hidden = false;
@@ -6010,12 +6010,12 @@ function handleRoute() {
 
   // Route: students
   if (parts[0] === 'students') {
-    if (selectedRole() === 'assistant') {
-      toast('Trợ giảng không có quyền truy cập Danh bạ Học sinh toàn trung tâm.');
-      exitToMainMenu();
-      return;
-    }
     if (parts.length === 1) {
+      if (!canAccessCrossClassData()) {
+        toast('Tài khoản của bạn không có quyền truy cập Danh bạ Học sinh toàn trung tâm.');
+        exitToMainMenu();
+        return;
+      }
       if (window.__featuresApp?.renderMasterStudentDirectory) {
         window.__featuresApp.renderMasterStudentDirectory();
         $('#student-directory-dialog')?.showModal();
@@ -11577,9 +11577,12 @@ function syncLiveSessionData() {
       assistantName: classInfo?.assistantName || '',
       lessonTitle: checklist?.lessonTitle || '',
       sessionNote: checklist?.classNote || '',
+      parentGeneralNote: checklist?.parentGeneralNote || '',
       homeworkAssignment: checklist?.homeworkAssignment || '',
       homeworkLink: checklist?.homeworkLink || '',
       notebookLink: checklist?.notebookLink || '',
+      hasBtvn: !Boolean(window.__featuresApp?.isNoHomeworkSession?.()),
+      hasTest: Boolean(checklist?.testRequired),
       checklistSummary,
       layout,
       deskItems,

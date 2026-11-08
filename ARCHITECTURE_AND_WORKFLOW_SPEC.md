@@ -1,4 +1,4 @@
-# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v5.5)
+# UNIVERSAL GITHUB SPEC KIT: ĐẶC TẢ KIẾN TRÚC, GIAO DIỆN, ĐỒNG BỘ & NGHIỆP VỤ TOÀN DIỆN (`class_mgr` / `edu_center` v5.7)
 
 * **Mã dự án (Project Namespace):** `edu_center` / `class_mgr`
 * **Loại tài liệu:** Universal System Architecture & Product Specification (chuẩn GitHub Spec Kit dành cho mọi AI Coding Agent: Cursor, Claude Code, Windsurf, GitHub Copilot Workspace, Google Antigravity, Devin...)
@@ -1399,3 +1399,28 @@ AI Coding Agent bắt buộc phải kiểm tra và đảm bảo vượt qua **to
    - Học sinh mới có mã lớp không tồn tại sẽ được tạo hồ sơ với `enrollmentStatus: 'Nghỉ'` và `classIds: []` (không sinh lớp mới).
    - Học sinh cũ sẽ được cập nhật trạng thái `enrollmentStatus: 'Nghỉ'` mà không làm thay đổi hay gán vào lớp rác.
    - Thông báo kết quả và nhật ký admin ghi nhận rõ ràng số lượng học sinh chuyển về Nghỉ do lớp không tồn tại.
+
+---
+
+## 23. ĐẶC TẢ XỬ LÝ LỖI & HIỂN THỊ THÔNG BÁO KHI KIỂM TRA ĐỒNG BỘ GOOGLE SHEETS (v5.7 RELEASE SPECIFICATION)
+
+### 23.1. Khắc phục Sự cố Treo Trạng thái "Đang kiểm tra đồng bộ..."
+1. **Nguyên nhân cốt lõi:**
+   - Trong hàm `scanIncomingSheetsRowsForApproval` (`src/features.js`), các biến `normalizeLeadingZerosToken` (chưa import) và `catalog` (chưa khai báo qua `getClassCatalog()`) gây ra ngoại lệ thời gian chạy `ReferenceError: normalizeLeadingZerosToken is not defined` và `ReferenceError: catalog is not defined`.
+   - Do thiếu khối `try...catch` bao bọc, ngoại lệ làm đứt gãy luồng thực thi bất đồng bộ, khiến hàm `renderSheetsApprovalTable()` không được gọi và banner trạng thái bị treo vĩnh viễn ở thông điệp `"Đang kiểm tra đồng bộ..."`.
+2. **Giải pháp thực thi:**
+   - Đã bổ sung import `normalizeLeadingZerosToken` từ `./data/class-catalog-repository.js` vào đầu tệp `src/features.js`.
+   - Đã bổ sung khai báo `const catalog = getClassCatalog();` vào ngay đầu hàm `scanIncomingSheetsRowsForApproval`.
+   - Bọc toàn bộ logic của `scanIncomingSheetsRowsForApproval` và các trình xử lý sự kiện nút bấm (`#pull-sheets-sync-btn`, `#pull-multi-cohort-sheets-btn`, `[data-scan-single-cohort]`, `#apply-sheets-paste-sync-btn`, `#panel-apply-sheets-paste-sync-btn`) trong khối `try...catch` toàn diện.
+
+### 23.2. Hiển thị Lỗi Minh bạch & Tự động Mở Khung Dán Dữ liệu Dự phòng
+1. **Bắt và hiển thị mọi lỗi phát sinh:**
+   - Khi xảy ra lỗi mạng, lỗi phân quyền Google Sheet (trang tính riêng tư), lỗi 404 tên tab hoặc lỗi cấu trúc dữ liệu, hệ thống cập nhật banner trạng thái với định dạng lỗi màu đỏ (`#991b1b` trên nền `#fef2f2`), kèm thông báo toast trực quan cho người dùng.
+   - Phát hiện trang tính riêng tư (`<!DOCTYPE html` hoặc trang đăng nhập Google Accounts) để hướng dẫn chi tiết người dùng: *"Google Sheet đang ở chế độ RIÊNG TƯ (cần đăng nhập Google). Vui lòng mở Google Sheet -> Bấm nút 'Chia sẻ' -> Chuyển quyền thành 'Bất kỳ ai có đường liên kết đều có thể xem (Người xem)'..."*.
+2. **Kích hoạt Fallback dán dữ liệu tự động:**
+   - Khi fetch link Google Sheets thất bại, các vùng chi tiết dán dữ liệu dự phòng (`#sheets-paste-fallback-details` và `#panel-sheets-paste-fallback-details`) tự động mở (`open = true`) để người dùng có thể ngay lập tức dán (Ctrl+V) dữ liệu từ trang tính mà không bị gián đoạn công việc.
+3. **Cơ chế Timeout chống đóng băng mạng:**
+   - Tích hợp `createFetchTimeoutSignal` với thời gian chờ giới hạn (7 - 12 giây) cho các yêu cầu fetch CSV và Apps Script, ngăn chặn tình trạng trình duyệt treo vô hạn khi mạng chập chờn.
+
+### 23.3. Quy chuẩn Nâng cấp Phiên bản v5.7
+- Hệ thống được nâng cấp đồng bộ lên phiên bản **v5.7** (`v5.7.0`) trên toàn bộ các tệp cấu hình, giao diện và mã nguồn (`index.html`, `src/app.js`, `src/features.js`, `src/excel-import-export.js`, `ARCHITECTURE_AND_WORKFLOW_SPEC.md`).

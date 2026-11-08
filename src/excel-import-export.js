@@ -1901,6 +1901,20 @@ export async function syncSingleStudentToGoogleSheets(student) {
   return await resp.json();
 }
 
+function createFetchTimeoutSignal(ms = 8000) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  if (typeof AbortController !== 'undefined') {
+    const controller = new AbortController();
+    setTimeout(() => {
+      try { controller.abort(); } catch {}
+    }, ms);
+    return controller.signal;
+  }
+  return undefined;
+}
+
 export async function pullStudentsFromGoogleSheets(config) {
   try {
     const rawUrlOrId = String(config?.rawSheetUrl || config?.spreadsheetId || '').trim();
@@ -1926,6 +1940,7 @@ export async function pullStudentsFromGoogleSheets(config) {
     // 1. Ưu tiên đọc qua Google Apps Script Web App nếu đã cấu hình
     if (scriptUrl) {
       try {
+        const sig = createFetchTimeoutSignal(9000);
         const resp = await fetch(scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1934,7 +1949,8 @@ export async function pullStudentsFromGoogleSheets(config) {
             spreadsheetId,
             sheetName,
             gid
-          })
+          }),
+          signal: sig
         });
         if (resp.ok) {
           const data = await resp.json();
@@ -1948,7 +1964,9 @@ export async function pullStudentsFromGoogleSheets(config) {
             };
           }
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Apps Script fetch failed:', err?.message || err);
+      }
     }
 
     // 2. Fallback: Đọc trực tiếp từ link Google Sheets (gviz CSV hoặc export CSV)
@@ -1962,12 +1980,20 @@ export async function pullStudentsFromGoogleSheets(config) {
     }
     candidateUrls.push(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:csv`);
 
+    let htmlLoginDetected = false;
+    let lastHttpStatus = null;
+    let lastNetworkError = null;
+
     for (const csvUrl of candidateUrls) {
       try {
-        const csvResp = await fetch(csvUrl, { cache: 'no-store' });
+        const sig = createFetchTimeoutSignal(7000);
+        const csvResp = await fetch(csvUrl, { cache: 'no-store', signal: sig });
+        lastHttpStatus = csvResp.status;
         if (!csvResp.ok) continue;
         const csvText = await csvResp.text();
-        if (!csvText || csvText.trim().startsWith('<!DOCTYPE html') || csvText.trim().startsWith('<html')) {
+        if (!csvText) continue;
+        if (csvText.trim().startsWith('<!DOCTYPE html') || csvText.trim().startsWith('<html') || csvText.includes('ServiceLogin') || csvText.includes('accounts.google.com')) {
+          htmlLoginDetected = true;
           continue;
         }
         const parsed = parseRawTable(csvText);
@@ -1981,14 +2007,26 @@ export async function pullStudentsFromGoogleSheets(config) {
             message: `Đã đọc ${rows.length} dòng trực tiếp từ Google Sheets.`
           };
         }
-      } catch {}
+      } catch (err) {
+        lastNetworkError = err?.message || String(err);
+      }
     }
 
+    if (htmlLoginDetected) {
+      return {
+        success: false,
+        ok: false,
+        rows: [],
+        message: 'Google Sheet đang ở chế độ RIÊNG TƯ (cần đăng nhập Google). Vui lòng mở Google Sheet -> Bấm nút "Chia sẻ" -> Chuyển quyền thành "Bất kỳ ai có đường liên kết đều có thể xem (Người xem)", hoặc dán trực tiếp vùng dữ liệu (Ctrl+V) vào ô bên dưới.'
+      };
+    }
+
+    const detailErr = lastNetworkError ? ` (Lỗi mạng: ${lastNetworkError})` : (lastHttpStatus ? ` (Mã HTTP: ${lastHttpStatus})` : '');
     return {
       success: false,
       ok: false,
       rows: [],
-      message: 'Không thể đọc trực tiếp Google Sheet. Hãy đảm bảo Sheet được mở quyền "Bất kỳ ai có đường liên kết đều có thể xem (Anyone with the link can view)", hoặc cấu hình Google Apps Script URL, hoặc dán trực tiếp vùng dữ liệu (Ctrl+V) vào ô bên dưới.'
+      message: `Không thể đọc trực tiếp từ link Google Sheet${detailErr}. Hãy đảm bảo: (1) Sheet được chia sẻ quyền xem công khai, (2) Tên trang tính (tab) đúng, hoặc (3) Dán trực tiếp vùng dữ liệu từ Google Sheets (Ctrl+V) vào ô bên dưới.`
     };
   } catch (err) {
     return {
@@ -2001,108 +2039,123 @@ export async function pullStudentsFromGoogleSheets(config) {
 }
 
 export async function pullStudentsFromGoogleSheetsMultiCohort(config, specificCohort = null) {
-  const cohorts = Array.isArray(config?.cohortSheets) ? config.cohortSheets : DEFAULT_COHORTS;
-  const targetCohorts = specificCohort
-    ? cohorts.filter(c => c.cohortName === specificCohort)
-    : cohorts.filter(c => c.spreadsheetId || c.sheetUrl || c.sheetName || c.gid);
+  try {
+    const cohorts = Array.isArray(config?.cohortSheets) ? config.cohortSheets : DEFAULT_COHORTS;
+    const targetCohorts = specificCohort
+      ? cohorts.filter(c => c.cohortName === specificCohort)
+      : cohorts.filter(c => c.spreadsheetId || c.sheetUrl || c.sheetName || c.gid);
 
-  if (!targetCohorts.length) {
-    const singleRes = await pullStudentsFromGoogleSheets(config);
-    return {
-      ...singleRes,
-      totalRows: singleRes.rows ? singleRes.rows.length : 0,
-      cohortResults: [config.sheetName || 'Chính']
-    };
-  }
+    if (!targetCohorts.length) {
+      const singleRes = await pullStudentsFromGoogleSheets(config);
+      return {
+        ...singleRes,
+        totalRows: singleRes.rows ? singleRes.rows.length : 0,
+        cohortResults: [config.sheetName || 'Chính']
+      };
+    }
 
-  // Nếu có Apps Script URL và đang quét tất cả các sheet, thử gọi action: 'readAllSheets'
-  const scriptUrl = String(config?.scriptUrl || '').trim();
-  const spreadsheetId = extractSpreadsheetId(config?.spreadsheetId || config?.rawSheetUrl);
-  if (scriptUrl && !specificCohort && spreadsheetId) {
-    try {
-      const resp = await fetch(scriptUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'readAllSheets',
-          spreadsheetId
-        })
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data && data.ok && Array.isArray(data.sheets) && data.sheets.length) {
-          const allRows = [];
-          const cohortNames = [];
-          for (const sh of data.sheets) {
-            if (Array.isArray(sh.rows) && sh.rows.length) {
-              cohortNames.push(sh.sheetName);
-              const tagged = sh.rows.map(r => Array.isArray(r) ? [...r, sh.sheetName] : { ...r, cohort: sh.sheetName });
-              allRows.push(...tagged);
+    // Nếu có Apps Script URL và đang quét tất cả các sheet, thử gọi action: 'readAllSheets'
+    const scriptUrl = String(config?.scriptUrl || '').trim();
+    const spreadsheetId = extractSpreadsheetId(config?.spreadsheetId || config?.rawSheetUrl);
+    if (scriptUrl && !specificCohort && spreadsheetId) {
+      try {
+        const sig = createFetchTimeoutSignal(12000);
+        const resp = await fetch(scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'readAllSheets',
+            spreadsheetId
+          }),
+          signal: sig
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.ok && Array.isArray(data.sheets) && data.sheets.length) {
+            const allRows = [];
+            const cohortNames = [];
+            for (const sh of data.sheets) {
+              if (Array.isArray(sh.rows) && sh.rows.length) {
+                cohortNames.push(sh.sheetName);
+                const tagged = sh.rows.map(r => Array.isArray(r) ? [...r, sh.sheetName] : { ...r, cohort: sh.sheetName });
+                allRows.push(...tagged);
+              }
+            }
+            if (allRows.length) {
+              return {
+                success: true,
+                ok: true,
+                rows: allRows,
+                totalRows: allRows.length,
+                cohortResults: cohortNames,
+                source: 'apps-script-all-sheets',
+                message: `Đã đọc thành công ${allRows.length} học sinh từ ${cohortNames.length} trang tính qua Google Apps Script.`
+              };
             }
           }
-          if (allRows.length) {
-            return {
-              success: true,
-              ok: true,
-              rows: allRows,
-              totalRows: allRows.length,
-              cohortResults: cohortNames,
-              source: 'apps-script-all-sheets',
-              message: `Đã đọc thành công ${allRows.length} học sinh từ ${cohortNames.length} trang tính qua Google Apps Script.`
-            };
-          }
         }
+      } catch (err) {
+        console.warn('Multi-cohort Apps Script failed:', err?.message || err);
       }
-    } catch {}
-  }
-
-  const allRows = [];
-  const errors = [];
-  const successfulCohorts = [];
-
-  for (const cohort of targetCohorts) {
-    const subCfg = {
-      ...config,
-      spreadsheetId: cohort.spreadsheetId || config.spreadsheetId,
-      rawSheetUrl: cohort.sheetUrl || config.rawSheetUrl,
-      sheetName: cohort.sheetName || cohort.cohortName,
-      gid: cohort.gid || '0'
-    };
-    const res = await pullStudentsFromGoogleSheets(subCfg);
-    if (res.success && Array.isArray(res.rows) && res.rows.length) {
-      successfulCohorts.push(cohort.cohortName);
-      const rowsWithCohort = res.rows.map(r => {
-        if (Array.isArray(r)) {
-          return [...r, cohort.cohortName];
-        }
-        return { ...r, cohort: cohort.cohortName };
-      });
-      allRows.push(...rowsWithCohort);
-    } else {
-      errors.push(`${cohort.cohortName}: ${res.message || 'Không có dữ liệu'}`);
     }
-  }
 
-  if (allRows.length) {
+    const allRows = [];
+    const errors = [];
+    const successfulCohorts = [];
+
+    for (const cohort of targetCohorts) {
+      const subCfg = {
+        ...config,
+        spreadsheetId: cohort.spreadsheetId || config.spreadsheetId,
+        rawSheetUrl: cohort.sheetUrl || config.rawSheetUrl,
+        sheetName: cohort.sheetName || cohort.cohortName,
+        gid: cohort.gid || '0'
+      };
+      const res = await pullStudentsFromGoogleSheets(subCfg);
+      if (res.success && Array.isArray(res.rows) && res.rows.length) {
+        successfulCohorts.push(cohort.cohortName);
+        const rowsWithCohort = res.rows.map(r => {
+          if (Array.isArray(r)) {
+            return [...r, cohort.cohortName];
+          }
+          return { ...r, cohort: cohort.cohortName };
+        });
+        allRows.push(...rowsWithCohort);
+      } else {
+        errors.push(`${cohort.cohortName}: ${res.message || 'Không có dữ liệu'}`);
+      }
+    }
+
+    if (allRows.length) {
+      return {
+        success: true,
+        ok: true,
+        rows: allRows,
+        totalRows: allRows.length,
+        cohortResults: successfulCohorts,
+        source: 'multi-cohort',
+        message: `Đã đọc thành công ${allRows.length} học sinh từ ${successfulCohorts.length}/${targetCohorts.length} trang tính Google Sheets.`
+      };
+    }
+
     return {
-      success: true,
-      ok: true,
-      rows: allRows,
-      totalRows: allRows.length,
-      cohortResults: successfulCohorts,
-      source: 'multi-cohort',
-      message: `Đã đọc thành công ${allRows.length} học sinh từ ${successfulCohorts.length}/${targetCohorts.length} trang tính Google Sheets.`
+      success: false,
+      ok: false,
+      rows: [],
+      totalRows: 0,
+      cohortResults: [],
+      message: errors.length ? errors.join('; ') : 'Không tìm thấy dữ liệu từ các trang tính Google Sheets.'
+    };
+  } catch (err) {
+    return {
+      success: false,
+      ok: false,
+      rows: [],
+      totalRows: 0,
+      cohortResults: [],
+      message: `Lỗi quét đa khóa Google Sheets: ${err?.message || err}`
     };
   }
-
-  return {
-    success: false,
-    ok: false,
-    rows: [],
-    totalRows: 0,
-    cohortResults: [],
-    message: errors.length ? errors.join('; ') : 'Không tìm thấy dữ liệu từ các trang tính Google Sheets.'
-  };
 }
 
 export function exportSessionReportToGoogleDocs(reportData = {}, fileName = 'BaoCaoBuoiHoc.doc') {

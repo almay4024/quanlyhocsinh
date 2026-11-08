@@ -1,18 +1,18 @@
-import { matchesAcronymOrText } from './student-search.js?v=5.5.0';
+import { matchesAcronymOrText } from './student-search.js?v=5.7.0';
 // Features module: Account Switcher, Tutoring Module, Room Templates, Roster & Import,
 // Finalize Attendance, Visual Warnings, Late Calculation, TA Portal, and Report Center.
 
-import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=5.5.0';
-import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature, extractCohortFromStudentCode, formatCohortDisplayName, isStudentInCohort, isBirthYearOrCohortTag, cleanStudentTags } from './data/class-catalog-repository.js?v=5.5.0';
-import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.5.0';
-import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth, createStaffAuthAccount, updateSelfPassword } from './data/firebase-auth.js?v=5.5.0';
+import { loadRoomTemplates, saveRoomTemplates, buildLayoutFromTemplate, getClassesInRoom } from './data/room-template-repository.js?v=5.7.0';
+import { normalizeGradeToBirthYear, hashStaffPassword, verifyStaffPassword, normalizeEmployeeAccount, normalizeAccountCode, findMatchingEmployeeAccount, encryptStaffPasswordForAdmin, decryptStaffPasswordForAdmin, computeSessionAuthSignature, verifySessionAuthSignature, extractCohortFromStudentCode, formatCohortDisplayName, isStudentInCohort, isBirthYearOrCohortTag, cleanStudentTags, normalizeLeadingZerosToken } from './data/class-catalog-repository.js?v=5.7.0';
+import { loadGoogleDrivePhotoConfig, saveGoogleDrivePhotoConfig, buildStudentDrivePhotoFileName, resolveStudentPhotoUrls, mergeTwoStudentProfiles, deduplicateStudentsByCode, hasValidStudentCode } from './data/student-repository.js?v=5.7.0';
+import { loginWithStaffCode, logoutFirebaseAuth, codeToAuthEmail, auth, createStaffAuthAccount, updateSelfPassword } from './data/firebase-auth.js?v=5.7.0';
 
 function formatBirthYearLabel(val) {
   const by = normalizeGradeToBirthYear(val);
   if (!by || by === '—') return '—';
   return String(by);
 }
-import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=5.5.0';
+import { loadTutoringSessions, saveTutoringSessions, TUTORING_CLASS_ID, TUTORING_CLASS_CONFIG } from './data/tutoring-repository.js?v=5.7.0';
 import {
   ENROLLMENT_STATUS_PRESETS,
   GRID_COLUMN_ROLE_OPTIONS,
@@ -45,7 +45,7 @@ import {
   testGoogleAppsScriptConnection,
   uploadSessionDataToGoogleSheets,
   syncSingleStudentToGoogleSheets
-} from './excel-import-export.js?v=5.4.0';
+} from './excel-import-export.js?v=5.7.0';
 import {
   loadSessionHistory,
   saveSessionHistory,
@@ -57,7 +57,7 @@ import {
   getStaffShiftData,
   getStudentClassDeepDive,
   evaluateStudentEarlyWarning
-} from './data/session-history-repository.js?v=4.5.0';
+} from './data/session-history-repository.js?v=5.7.0';
 
 export function setupFeatures(ctx) {
   const {
@@ -7481,16 +7481,23 @@ export function setupFeatures(ctx) {
       // Wire single scan
       tbody.querySelectorAll('[data-scan-single-cohort]').forEach(btn => {
         btn.onclick = async () => {
-          const cohortName = btn.dataset.scanSingleCohort;
-          setSheetsSyncStatus(`Đang quét riêng trang tính "${cohortName}"...`, false);
-          const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg, cohortName);
-          if (!res.success) {
-            setSheetsSyncStatus(escapeHtml(res.message), true);
-            toast(res.message);
-            return;
+          try {
+            const cohortName = btn.dataset.scanSingleCohort;
+            setSheetsSyncStatus(`Đang quét riêng trang tính "${cohortName}"...`, false);
+            const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg, cohortName);
+            if (!res.success) {
+              setSheetsSyncStatus(escapeHtml(res.message), true);
+              toast(res.message);
+              return;
+            }
+            scanIncomingSheetsRowsForApproval(res.rows, `Google Sheet (${cohortName})`);
+            toast(`✓ Đã quét ${res.rows.length} dòng từ sheet "${cohortName}".`);
+          } catch (err) {
+            console.error('Lỗi khi quét trang tính đơn:', err);
+            const errorMsg = `Lỗi khi quét sheet: ${err?.message || err}`;
+            setSheetsSyncStatus(escapeHtml(errorMsg), true);
+            toast(errorMsg);
           }
-          scanIncomingSheetsRowsForApproval(res.rows, `Google Sheet (${cohortName})`);
-          toast(`✓ Đã quét ${res.rows.length} dòng từ sheet "${cohortName}".`);
         };
       });
 
@@ -8590,16 +8597,18 @@ export function setupFeatures(ctx) {
   }
 
   function scanIncomingSheetsRowsForApproval(rawRows, sourceLabel = 'Google Sheets') {
-    const cfg = readAndSaveSheetsConfigFromDialog();
-    const extractedRows = extractNormalizedSheetStudents(rawRows, cfg);
-    if (!extractedRows.length) {
-      setSheetsSyncStatus('Không tìm thấy dòng dữ liệu học sinh hợp lệ nào trong Sheet. Hãy kiểm tra lại Tên trang tính (Sheet Tab Name) hoặc cấu hình cột.', true);
-      toast('Không tìm thấy dữ liệu học sinh hợp lệ trong Sheet.');
-      return;
-    }
+    try {
+      const cfg = readAndSaveSheetsConfigFromDialog();
+      const extractedRows = extractNormalizedSheetStudents(rawRows, cfg);
+      if (!extractedRows.length) {
+        setSheetsSyncStatus('Không tìm thấy dòng dữ liệu học sinh hợp lệ nào trong Sheet. Hãy kiểm tra lại Tên trang tính (Sheet Tab Name) hoặc cấu hình cột.', true);
+        toast('Không tìm thấy dữ liệu học sinh hợp lệ trong Sheet.');
+        return;
+      }
 
-    const allStudents = getStudents();
-    const targetClsFilter = $('#panel-sheets-sync-class-filter')?.value || $('#sheets-sync-class-filter')?.value || 'all';
+      const catalog = getClassCatalog();
+      const allStudents = getStudents();
+      const targetClsFilter = $('#panel-sheets-sync-class-filter')?.value || $('#sheets-sync-class-filter')?.value || 'all';
     const defaultAddNewTag = cfg.defaultNewTag !== false;
     const defaultClassAction = cfg.classDiffMode || 'transfer';
 
@@ -8910,7 +8919,14 @@ export function setupFeatures(ctx) {
     );
     renderSheetsApprovalTable();
     $('#sheets-approval-section')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    $('#panel-sheets-approval-section')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) {
+    console.error('Lỗi khi quét dữ liệu Google Sheets:', err);
+    const errMsg = `Lỗi xử lý bảng dữ liệu đồng bộ: ${err?.message || err}. Vui lòng kiểm tra lại cấu hình cột hoặc định dạng bảng tính.`;
+    setSheetsSyncStatus(escapeHtml(errMsg), true);
+    toast(errMsg);
   }
+}
 
   function applyApprovedSheetsSyncItems() {
     if (!canAccessCrossClass()) {
@@ -9264,24 +9280,52 @@ export function setupFeatures(ctx) {
 
   $('#pull-sheets-sync-btn')?.addEventListener('click', async () => {
     if (!canAccessCrossClass()) { toast('Chỉ Văn phòng hoặc Admin mới có quyền đồng bộ Google Sheets.'); return; }
-    const cfg = readAndSaveSheetsConfigFromDialog();
-    setSheetsSyncStatus('Đang kiểm tra đồng bộ toàn bộ các khóa học sinh (2K9 - 2K13)...', false);
-    const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg);
-    if (!res.success) {
-      // Fallback to single sheet if multi-cohort had no configured cohorts
-      const fallbackRes = await pullStudentsFromGoogleSheets(cfg);
-      if (!fallbackRes.success) {
-        setSheetsSyncStatus(escapeHtml(res.message || fallbackRes.message), true);
+    try {
+      const cfg = readAndSaveSheetsConfigFromDialog();
+      setSheetsSyncStatus('Đang kiểm tra đồng bộ dữ liệu từ Google Sheets...', false);
+
+      let res = null;
+      const customCohorts = (cfg.cohortSheets || []).filter(c => c.sheetUrl || c.spreadsheetId);
+
+      if (customCohorts.length > 1) {
+        setSheetsSyncStatus('Đang kiểm tra đồng bộ toàn bộ các khóa học sinh (2K9 - 2K13)...', false);
+        res = await pullStudentsFromGoogleSheetsMultiCohort(cfg);
+      } else {
+        res = await pullStudentsFromGoogleSheets(cfg);
+        if (!res.success) {
+          const multiRes = await pullStudentsFromGoogleSheetsMultiCohort(cfg);
+          if (multiRes.success && multiRes.rows && multiRes.rows.length) {
+            res = multiRes;
+          }
+        }
+      }
+
+      if (!res || !res.success) {
+        const errorMsg = res?.message || 'Không thể lấy dữ liệu từ Google Sheets. Vui lòng kiểm tra lại đường link hoặc quyền truy cập.';
+        setSheetsSyncStatus(escapeHtml(errorMsg), true);
         const fallbackDetails = $('#sheets-paste-fallback-details');
         if (fallbackDetails) fallbackDetails.open = true;
-        toast(res.message || fallbackRes.message);
+        const panelFallbackDetails = $('#panel-sheets-paste-fallback-details');
+        if (panelFallbackDetails) panelFallbackDetails.open = true;
+        toast(errorMsg);
         return;
       }
-      scanIncomingSheetsRowsForApproval(fallbackRes.rows, 'Google Sheets');
-      return;
+
+      const label = res.source === 'multi-cohort' || res.source === 'apps-script-all-sheets'
+        ? `Google Sheets Đa Khóa (${res.cohortResults?.length || 0} khóa)`
+        : 'Google Sheets';
+      scanIncomingSheetsRowsForApproval(res.rows, label);
+      toast(`✓ Đã kiểm tra đồng bộ: ${res.rows.length} dòng từ ${label}.`);
+    } catch (err) {
+      console.error('Lỗi khi kiểm tra đồng bộ Google Sheets:', err);
+      const errorMsg = `Lỗi hệ thống khi kiểm tra đồng bộ: ${err?.message || err}`;
+      setSheetsSyncStatus(escapeHtml(errorMsg), true);
+      const fallbackDetails = $('#sheets-paste-fallback-details');
+      if (fallbackDetails) fallbackDetails.open = true;
+      const panelFallbackDetails = $('#panel-sheets-paste-fallback-details');
+      if (panelFallbackDetails) panelFallbackDetails.open = true;
+      toast(errorMsg);
     }
-    scanIncomingSheetsRowsForApproval(res.rows, 'Google Sheets Toàn Bộ Các Khóa (2K9 - 2K13)');
-    toast(`✓ Đã kiểm tra đồng bộ: ${res.totalRows} dòng từ ${res.cohortResults.length} khóa.`);
   });
 
   $('#copy-sheets-tsv-btn')?.addEventListener('click', () => {
@@ -9348,13 +9392,20 @@ export function setupFeatures(ctx) {
 
   $('#apply-sheets-paste-sync-btn')?.addEventListener('click', () => {
     if (!canAccessCrossClass()) { toast('Chỉ Văn phòng hoặc Admin mới có quyền đồng bộ Google Sheets.'); return; }
-    const raw = ($('#sheets-paste-sync-textarea')?.value || $('#sheets-paste-sync-input')?.value || '').trim();
-    if (!raw) {
-      toast('Vui lòng dán vùng dữ liệu từ Google Sheets (có cột Mã HS) vào ô bên trên.');
-      return;
+    try {
+      const raw = ($('#sheets-paste-sync-textarea')?.value || $('#sheets-paste-sync-input')?.value || '').trim();
+      if (!raw) {
+        toast('Vui lòng dán vùng dữ liệu từ Google Sheets (có cột Mã HS) vào ô bên trên.');
+        return;
+      }
+      const parsed = parseRawTable(raw);
+      scanIncomingSheetsRowsForApproval(parsed.rows || parsed, 'Bảng dán Google Sheets');
+    } catch (err) {
+      console.error('Lỗi dán dữ liệu Google Sheets:', err);
+      const errorMsg = `Lỗi phân tích dữ liệu dán: ${err?.message || err}`;
+      setSheetsSyncStatus(escapeHtml(errorMsg), true);
+      toast(errorMsg);
     }
-    const parsed = parseRawTable(raw);
-    scanIncomingSheetsRowsForApproval(parsed.rows || parsed, 'Bảng dán Google Sheets');
   });
 
   $('#save-drive-photo-config-btn')?.addEventListener('click', () => {
@@ -9430,13 +9481,20 @@ export function setupFeatures(ctx) {
 
   $('#panel-apply-sheets-paste-sync-btn')?.addEventListener('click', () => {
     if (!canAccessCrossClass()) { toast('Chỉ Văn phòng hoặc Admin mới có quyền đồng bộ Google Sheets.'); return; }
-    const raw = ($('#panel-sheets-paste-sync-textarea')?.value || '').trim();
-    if (!raw) {
-      toast('Vui lòng dán vùng dữ liệu từ Google Sheets (có cột Mã HS) vào ô bên trên.');
-      return;
+    try {
+      const raw = ($('#panel-sheets-paste-sync-textarea')?.value || '').trim();
+      if (!raw) {
+        toast('Vui lòng dán vùng dữ liệu từ Google Sheets (có cột Mã HS) vào ô bên trên.');
+        return;
+      }
+      const parsed = parseRawTable(raw);
+      scanIncomingSheetsRowsForApproval(parsed.rows || parsed, 'Bảng dán Google Sheets');
+    } catch (err) {
+      console.error('Lỗi dán dữ liệu Google Sheets:', err);
+      const errorMsg = `Lỗi phân tích dữ liệu dán: ${err?.message || err}`;
+      setSheetsSyncStatus(escapeHtml(errorMsg), true);
+      toast(errorMsg);
     }
-    const parsed = parseRawTable(raw);
-    scanIncomingSheetsRowsForApproval(parsed.rows || parsed, 'Bảng dán Google Sheets');
   });
 
   $('#panel-sheets-sync-file-input')?.addEventListener('change', (e) => {
@@ -10163,16 +10221,29 @@ export function setupFeatures(ctx) {
   // Hook multi-cohort pull in #google-sheets-sync-dialog
   $('#pull-multi-cohort-sheets-btn')?.addEventListener('click', async () => {
     if (!canAccessCrossClass()) { toast('Chỉ Văn phòng hoặc Admin mới có quyền đồng bộ Google Sheets.'); return; }
-    const cfg = readAndSaveSheetsConfigFromDialog();
-    setSheetsSyncStatus('Đang kết nối và quét toàn bộ các khóa học sinh (2K9 - 2K13)...', false);
-    const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg);
-    if (!res.success) {
-      setSheetsSyncStatus(escapeHtml(res.message), true);
-      toast(res.message);
-      return;
+    try {
+      const cfg = readAndSaveSheetsConfigFromDialog();
+      setSheetsSyncStatus('Đang kết nối và quét toàn bộ các khóa học sinh (2K9 - 2K13)...', false);
+      const res = await pullStudentsFromGoogleSheetsMultiCohort(cfg);
+      if (!res.success) {
+        setSheetsSyncStatus(escapeHtml(res.message), true);
+        const fallbackDetails = $('#sheets-paste-fallback-details');
+        if (fallbackDetails) fallbackDetails.open = true;
+        const panelFallbackDetails = $('#panel-sheets-paste-fallback-details');
+        if (panelFallbackDetails) panelFallbackDetails.open = true;
+        toast(res.message);
+        return;
+      }
+      scanIncomingSheetsRowsForApproval(res.rows, 'Google Sheets Đa Khóa (2K9 - 2K13)');
+      toast(`✓ Đã quét xong đa khóa: ${res.totalRows} dòng từ ${res.cohortResults.length} khóa.`);
+    } catch (err) {
+      console.error('Lỗi khi quét đa khóa Google Sheets:', err);
+      const errorMsg = `Lỗi hệ thống khi quét đa khóa: ${err?.message || err}`;
+      setSheetsSyncStatus(escapeHtml(errorMsg), true);
+      const fallbackDetails = $('#sheets-paste-fallback-details');
+      if (fallbackDetails) fallbackDetails.open = true;
+      toast(errorMsg);
     }
-    scanIncomingSheetsRowsForApproval(res.rows, 'Google Sheets Đa Khóa (2K9 - 2K13)');
-    toast(`✓ Đã quét xong đa khóa: ${res.totalRows} dòng từ ${res.cohortResults.length} khóa.`);
   });
 
   // Start background office badge updater
@@ -10180,7 +10251,7 @@ export function setupFeatures(ctx) {
   setInterval(updateOfficeInboxBadge, 30000);
 
   $('#system-help-btn')?.addEventListener('click', () => {
-    toast('Quản lý học sinh v5.5: Chọn lớp tại Menu Đi làm → Sơ đồ lớp (Thu BTVN & Điểm danh) → Nhập điểm → Checklist & Kết ca.');
+    toast('Quản lý học sinh v5.7: Chọn lớp tại Menu Đi làm → Sơ đồ lớp (Thu BTVN & Điểm danh) → Nhập điểm → Checklist & Kết ca.');
   });
 
   // Hook open & close session buttons
